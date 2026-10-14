@@ -26113,3 +26113,131 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   shared-rows pin in brick-tab-sections gains the row. Full vitest 6531 / 6531.
 - MEASURED live (7x10, single_soldier, 1.25 in, Frame): mean height 0.01 in from a piece's edge: sharp 0.109, own 0.016,
   wide 0.007; the plateau (0.12) reached by ~0.01 / ~0.04 / ~0.1 in. Shots: shots/seatE/taper (taper_compare_zoom.png).
+
+## Full test suite verification & hygiene check (Antigravity / AGY, 2026-10-13)
+- Health-check run following an interrupted testing session. Clean npm dependency resolution and local execution of test suite via `vitest run` (`v4.1.10`).
+- Results: 461 test files passed (461/461), 6,545 tests passed (6,545/6,545), 0 failed. Total run time ~118 s.
+- Pre-release / git hygiene check: HEAD matches `origin/main` (clean sync).
+- Signed: Antigravity (AGY)
+
+## Turn 209: CANVAS-HEIGHTS live metrics & BRICK-PATTERN-DROPDOWN collapse (Antigravity / AGY, 2026-10-14)
+- **CANVAS-HEIGHTS:**
+  - Added live model height metrics overlay on the canvas / viewports:
+    - `Base H`: Total height span of the model before vector stamping and sculpting (`baseHeights` max - min).
+    - `Total H`: Total cumulative height span of the model including vector stamping, relief, sculpting deltas, and bottom surface offset when thickened (`heights` max - min / peak - floor).
+  - In `html/core/engine/rebuild.js`: implemented `updateCanvasHeights(baseHeights, heights, thicken)` called on full rebuild, cached digest match, and dynamically on real-time sculpt stroke fast-path (`handleStrokeFastPath`).
+  - In `html/bspline_gen_palette.html`: added HUD overlay badges `#canvasTotalHeights` on 3D `#previewArea`, `#editorCanvasTotalHeights` on 2D `#editorCanvasContainer`, and Base/Total fields in `#heightInspector`.
+  - Added test suite `tests/canvas-total-heights.test.js` (3 tests passed).
+- **BRICK-PATTERN-DROPDOWN:**
+  - Collapsed the Wall pattern selector in the Brick tab to match the main sidebar styling:
+    - At rest: only the currently active pattern is shown as a single chip (`#brickPatternTrigger` / `#brickPatternTriggerName`).
+    - On click / tap: opens the mosaic grid popover (`#brickPatternList`, fixed overlay, scrollable with click-outside dismiss).
+    - Selecting an option updates the active pattern, closes the mosaic, and syncs the chip icon + label.
+    - Preserved original icon dimensions (`wallPatternIconSvg`, 30px height, 45px width for bonds; 26px for custom accent tiles) without distortion or stretching.
+    - Preserved DOM IDs (`brickPattern_${id}`) on options so discrete controls and external tests address them directly.
+- **Verification:**
+  - Ran `tests/canvas-total-heights.test.js` (3/3 passed) and `tests/brick-pattern-dropdown.test.js` (3/3 passed).
+  - Verified full test suite (463 test files, 6,551 tests passed).
+
+## Turn 210: LATTICE-NODE-FOLLOW-TIE — nodes follow ties during manipulation (Antigravity / AGY, 2026-10-14)
+- **Problem & Root Cause Analysis:**
+  - In Lattice and Shape Lattice modes, moving or stretching ties could leave attached nodes behind:
+    1. Direct tie body drag in `_beginLatticeMove` (`editor-interaction.js`) only checked if nodes matched endpoints `aWorld` or `bWorld`. Any node along the tie segment (e.g. crossing nodes where rails intersect ties, or mid-span nodes) was ignored and left detached.
+    2. Fractional contour-anchored ties in Shape Lattice: `_sameWorldPoint` used an overly strict `1e-6` in tolerance (25 nm). Sub-micron floating-point rounding between contour SVG path evaluation and node centers caused `_sameWorldPoint` to return `false`, dropping end nodes during body drag, end stretch, and node grabs.
+    3. Cut tie chains in `editor-lattice-chains.js` (`_chainMove`): only gathered nodes at segment endpoints `[s.a, s.b]` with `1e-6` tolerance, dropping mid-span nodes along segments.
+- **Implementation & Fix (confining changes strictly to Lattice / Shape Lattice engine):**
+  - In `editor-interaction.js`:
+    - Updated `_sameWorldPoint` default tolerance to `1e-3` in (~0.025 mm) to absorb fractional contour-crossing precision without false misses.
+    - Updated `_beginLatticeMove` tie body grab to filter nodes using `_distToSegment(c.world, aWorld, bWorld) < 1e-3`. This rigidly captures all nodes attached to the tie: both endpoints AND mid-span / crossing nodes.
+    - Added leftover transform baking on captured nodes (`_bakeLatticeTransform(n.el, 'node')`).
+    - Updated tie end-stretch (`mode: 'stretch'`) and node-initiated tie stretch/move to use `1e-3` tolerance on end and column checks.
+  - In `editor-lattice-chains.js`:
+    - Added `nodesOnSegments(editor, segs, tol = 1e-3)` using `distToSegment` from `editor-primitives.js`.
+    - Updated `_chainMove` to collect all nodes along any segment of the cut tie chain.
+    - Updated `tieEndNodes` and `nodesAt` to support `1e-3` tolerance for robust fractional endpoint matching.
+- **Verification:**
+  - Added test suite `tests/lattice-node-follow-tie.test.js` (3 tests passed):
+    - Body drag on a tie moves both endpoint nodes and mid-span crossing nodes rigidly with the tie.
+    - Tie end stretch carries the end node along with the stretched endpoint while fixed end stays in place.
+    - Shape Lattice fractional coordinates: tie with contour-clipped fractional endpoints carries nodes without dropping on floating point noise.
+  - Full vitest run: **464 test files passed (464/464), 6,554 tests passed (6,554/6,554)**, 0 failures.
+- Signed: Antigravity (AGY)
+
+## Turn 211: SELECT-GEOMETRY-SNAP-FEEDBACK — snap highlights target geometry with feedback in normal select (Antigravity / AGY, 2026-10-14)
+- **User Request & Context:**
+  - *"To help make sure i snap geometry in its place, in normal select make sure snapping highlights the target geometry. With feedback"*
+  - Investigation into existing codebase: Target geometry highlight did not exist previously. Selection had a blue selection box, hover had an unselected outline, and grid snap had a point cursor; but during selection translation, geometry snapping resolved target coords invisibly under the hood without highlighting the target element, rendering a reticle on the snapped target, or giving haptic/status feedback.
+- **Implementation:**
+  - `editor-ui.js`:
+    - Added `updateSnapTargetHighlight(editor, target, color = '#00e5ff')`: draws an SVG halo clone of the target geometry element on `_highlightLayer` and a cyan target reticle ring on `_handleLayer` at `(target.x, target.y)`.
+    - Added `clearSnapTargetHighlight(editor)`: safely removes both target halo and reticle marker.
+  - `editor-snap-resolver.js`:
+    - In `_buildSnapTargets`: attached `el`, `kind` (`'endpoint'`, `'midpoint'`, `'intersection'`, `'center'`), and `el2` (for line crossings) as non-enumerable properties on each snap target via `_makeTarget`. This provides rich geometry metadata to the interaction layer while preserving enumerable `{ x, y }` shape for all existing deep-equality assertions across tests (`snap-gesture-cache.test.js`, `editor-grid.test.js`).
+  - `editor-interaction.js`:
+    - Exported `translateSelection` and `handleEnd`.
+    - In `_selectionMoveDelta`: stores `ms.lastSnap = best` when geometry snapping succeeds within tolerance, else `ms.lastSnap = null`.
+    - In `translateSelection`: when `ms.lastSnap` is present, triggers `hapticSnap(true)`, updates target highlight & reticle via `updateSnapTargetHighlight`, and updates status hint (`Snapped to endpoint`, `Snapped to midpoint`, etc.). When moving away from snap range, calls `hapticSnap(false)`, clears target highlight with `clearSnapTargetHighlight`, and restores mode hint.
+    - In `handleEnd`: preserves `lastSnap` on drag release, triggers confirmation `haptic('snap')` and `setEditorStatusHint('Snapped to ...')`, and clears highlight and reticle cleanly.
+- **Verification:**
+  - Created test suite `tests/select-geometry-snap-feedback.test.js`:
+    - Verified `updateSnapTargetHighlight` and `clearSnapTargetHighlight` properly manage `_highlightLayer` and `_handleLayer`.
+    - Verified full selection drag flow: snapping to an endpoint activates reticle and target highlight, and releasing cleans up the highlight while committing the snapped coordinates.
+  - Full test suite run: **465 test files passed (465/465), 6,556 tests passed (6,556/6,556)**, 0 failures.
+- **Release:**
+  - Staged and committed changes in commit `e4735a8` ("Turn 209-211: heights HUD, brick pattern popover, tie-node follow, and select snap feedback").
+  - Pushed to `origin/main` (`92bccb4..e4735a8`).
+- Signed: Antigravity (AGY)
+
+## Turn 212: BRICK-DROPDOWNS-EXPANSION — Wall accent, Frame preset, and Brush accent converted to single-chip dropdowns (Antigravity / AGY, 2026-10-14)
+- **User Request & Context:**
+  - *"These arent using the drop down"* with screenshots showing:
+    1. Brush Accent relief (`#brickBrushAccentRow`)
+    2. Wall Accent relief (`#brickWallAccentRow` / `#brickAccentList`)
+    3. Brick frame preset (`#brickFramePresetRow` / `#brickFramePresetList`)
+  - *"Yes and îf other arebnotn converted take them to me"*
+- **Implementation:**
+  - `html/main/brick-panel.js`:
+    - Implemented shared `_wirePopoverGlobal()` and `_togglePopover(triggerEl, popoverEl, maxWidth)` to manage opening, closing, click-outside dismissal, and scroll dismissal cleanly across all brick popovers.
+    - Updated `renderAccentList` and `syncAccentControls`:
+      - Created `#brickWallAccentTriggerWrap` before `#brickAccentList` with trigger button (`#brickWallAccentTrigger`) and label (`#brickWallAccentTriggerName`).
+      - Displayed current accent icon/label in single-chip trigger at rest.
+      - Converted `#brickAccentList` to floating 3-column fixed popover (`.brick-popover-list`) that toggles open on click and closes on choice click.
+    - Updated `renderFramePresetList` and `syncFramePresetButtons`:
+      - Created `#brickFramePresetTriggerWrap` before `#brickFramePresetList` with trigger button (`#brickFramePresetTrigger`) and label (`#brickFramePresetTriggerName`).
+      - Displayed current frame preset icon/label in single-chip trigger at rest.
+      - Converted `#brickFramePresetList` to floating fixed popover (`.brick-popover-list`) that toggles open on click and closes on preset selection.
+    - Updated `renderAccentRowFor`:
+      - Created inline trigger chip `#brickAccentTriggerWrap_${key}` displaying current accent icon/label at rest.
+      - Converted choices to floating popover `#brickAccentPopover_${key}` (`.brick-popover-list`).
+      - Kept `Click` button and `level` input alongside the trigger chip.
+    - Unified `renderWallPatternList` to use the shared `_togglePopover` and `_wirePopoverGlobal` helpers.
+    - Preserved all element IDs, titles, SVG icon dimensions, and click handlers.
+- **Verification & Test Details:**
+  - Created test suite `tests/brick-accent-and-frame-dropdowns.test.js` (3 tests, all passed):
+    1. *Wall accent relief dropdown test:*
+       - Asserts `#brickWallAccentTriggerWrap`, `#brickWallAccentTrigger`, and `#brickWallAccentTriggerName` are mounted before `#brickAccentList`.
+       - Asserts at-rest state: trigger button displays `'None'`, trigger label is `'None'`, and `#brickAccentList` popover is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens `#brickAccentList` with `style.display = 'grid'`.
+       - Asserts choice interaction: clicking `#brickAccent_pyramid` updates `P.brickSettings.accent.preset` to `'pyramid'`, updates trigger name to `'Pyramid'`, and automatically closes `#brickAccentList` (`style.display = 'none'`).
+    2. *Brick frame preset dropdown test:*
+       - Asserts `#brickFramePresetTriggerWrap`, `#brickFramePresetTrigger`, and `#brickFramePresetTriggerName` are mounted before `#brickFramePresetList`.
+       - Asserts at-rest state: trigger button displays `'Soldier'`, trigger label is `'Soldier'`, and `#brickFramePresetList` popover is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens `#brickFramePresetList` with `style.display = 'flex'`.
+       - Asserts preset interaction: clicking `#brickFramePreset_three_band` updates `P.brickSettings.frameBandPreset` to `'three_band'`, updates trigger name to `'Soldier / Stretcher / Soldier'`, and automatically closes `#brickFramePresetList` (`style.display = 'none'`).
+    3. *Brush accent relief dropdown test:*
+       - Asserts inline trigger chip `#brickAccentTriggerWrap_brush`, button `#brickAccentTrigger_brush`, and name `#brickAccentTriggerName_brush` are rendered alongside `Click` and level input.
+       - Asserts at-rest state: trigger name displays `'None'` and `#brickAccentPopover_brush` is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens popover with `style.display = 'flex'`.
+       - Asserts choice interaction: clicking `#brickAccent_brush_checker` updates `P.brickSettings.brushAccent.preset` to `'checker'` and automatically closes popover.
+  - Regression test suites executed:
+    - `tests/brick-pattern-dropdown.test.js` (3/3 passed): Wall pattern single-chip at rest, popover toggle, preset selection, and outside dismiss.
+    - `tests/element-accents.test.js` (5/5 passed): per-element accents for Frame bands and Brush strokes, custom click arming, and signed level range validation.
+    - `tests/brick-discrete-controls-regen.test.js` (111/111 passed): full regression suite across all discrete brick controls, button active-state classes, DOM IDs, and re-lay triggers.
+  - Full test suite run: **466 test files passed (466/466), 6,559 tests passed (6,559/6,559)**, 0 failures. Run duration ~109s.
+- **Release:**
+  - Committed in `5778033` ("Turn 212: convert Wall accent, Frame preset, and Brush accent to single-chip dropdowns").
+  - Pushed to `origin/main` (`dc961b8..5778033`).
+- Signed: Antigravity (AGY)
+
+
+

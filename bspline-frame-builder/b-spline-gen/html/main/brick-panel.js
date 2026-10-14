@@ -40,7 +40,7 @@ import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
   accentLayInput, BOND_CUSTOM, isCustomBondTile, blankBond, resizeBond, pieceOfCells, bondTogglePiece, bondJoin, bondSplit,
-  bondShift, wallPatternOfBase,
+  bondShift, wallPatternOfBase, accentPresetsForPattern, accentPresetById,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -51,6 +51,7 @@ import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.j
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
+import { framePresetsForTemplate, isPresetConforming, familyForTemplate } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
@@ -464,13 +465,105 @@ export function setElementLevel(kind, levelIn, commit = 'generate') {
  *  the 2D highlight and re-masks, never re-lays. The picker = None + ACCENT_PRESETS as engine-drawn icons
  *  (icons only, the name as tooltip); Custom = the "Click bricks" toggle, which arms the canvas mode. */
 const _accent = () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.accent || {}) });
+export const accentChoicesForPattern = (patternId) => [
+  { id: 'none', label: 'None' },
+  ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
+];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
 let _accentClickArmed = false;
 
-function renderAccentList(container) {
+let _popoverGlobalWired = false;
+function _wirePopoverGlobal() {
+  if (_popoverGlobalWired || typeof document === 'undefined') return;
+  _popoverGlobalWired = true;
+  document.addEventListener('click', (e) => {
+    for (const list of document.querySelectorAll('.brick-popover-list')) {
+      if (list.style.display !== 'none') {
+        const triggerId = list.dataset.triggerId;
+        const trigger = triggerId ? document.getElementById(triggerId) : null;
+        if ((!trigger || !trigger.contains(e.target)) && !list.contains(e.target)) {
+          list.style.display = 'none';
+        }
+      }
+    }
+  });
+  window.addEventListener('scroll', (e) => {
+    for (const list of document.querySelectorAll('.brick-popover-list')) {
+      if (list.style.display !== 'none' && !list.contains(e.target)) {
+        list.style.display = 'none';
+      }
+    }
+  }, true);
+}
+
+function _togglePopover(triggerEl, popoverEl, maxWidth = 320) {
+  const open = popoverEl.style.display !== 'none';
+  for (const list of document.querySelectorAll('.brick-popover-list')) {
+    list.style.display = 'none';
+  }
+  if (open) return;
+  popoverEl.style.display = popoverEl.dataset.popoverDisplay || 'flex';
+  const r = triggerEl.getBoundingClientRect();
+  const w = maxWidth;
+  const maxW = window.innerWidth || 320;
+  const left = Math.max(4, Math.min(r.left, maxW - w - 4));
+  popoverEl.style.left = `${left}px`;
+  popoverEl.style.top = `${r.bottom + 4}px`;
+  popoverEl.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
+}
+
+export function renderAccentList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickWallAccentTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickWallAccentTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickWallAccentTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickWallAccentTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    triggerWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _togglePopover(triggerBtn, container, 280);
+    });
+  }
+
   container.innerHTML = '';
-  for (const choice of ACCENT_CHOICES) {
+  container.classList.add('brick-popover-list');
+  container.dataset.triggerId = 'brickWallAccentTriggerWrap';
+  container.dataset.popoverDisplay = 'grid';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  container.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+  container.style.gap = '4px';
+  container.style.maxWidth = '280px';
+  container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
+
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = accentChoicesForPattern(pattern);
+
+  for (const choice of choices) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-accent-icon';
@@ -478,16 +571,34 @@ function renderAccentList(container) {
     btn.title = choice.label;
     btn.setAttribute('aria-label', choice.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0 }) || choice.label; // item 32: sunk drawn lower
+    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0, bond: pattern }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
-    btn.addEventListener('click', () => setAccentPreset(choice.id));
+    btn.addEventListener('click', () => {
+      setAccentPreset(choice.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
 }
 
-function syncAccentControls() {
+export function syncAccentControls() {
   const a = _accent();
-  for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = accentChoicesForPattern(pattern);
+  for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  const triggerBtn = document.getElementById('brickWallAccentTrigger');
+  const triggerName = document.getElementById('brickWallAccentTriggerName');
+  if (triggerBtn && triggerName) {
+    const choice = choices.find((c) => c.id === a.preset)
+      || ACCENT_CHOICES.find((c) => c.id === a.preset)
+      || { id: a.preset, label: a.preset === 'none' ? 'None' : (accentPresetById(a.preset)?.label || a.preset) };
+    const isSunk = a.levelIn < 0;
+    triggerBtn.innerHTML = choice.id === 'none'
+      ? '<span style="font-size:11px; font-weight:600; opacity:0.8;">None</span>'
+      : (accentIconSvg(choice.id, 30, { sunk: isSunk, bond: pattern }) || choice.label);
+    triggerName.textContent = choice.label;
+    triggerBtn.title = `Accent: ${choice.label}`;
+  }
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
@@ -667,6 +778,8 @@ export function applyUserPattern(id) {
   _disarmAccentClick();
   P.brickSettings.accent = { ...accentOfUserPattern(u), clicks: _accent().clicks || [] };
   P.brickSettings.pattern = wallPatternOfBase(P.brickSettings.accent.tile.base); // 31e: a custom bond on the stretcher grid
+  const list = document.getElementById('brickPatternList');
+  if (list) list.style.display = 'none';
   syncWallPatternButtons();
   syncSetPicker();
   _accentChanged('generate');
@@ -874,23 +987,80 @@ function renderAccentRowFor(container, target, iconPx) {
   const row = document.createElement('div');
   row.className = 'brick-element-accent';
   row.dataset.accentFor = key;
-  row.style.cssText = 'display:flex; gap:3px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
+  row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
   const label = document.createElement('span');
   label.textContent = 'Accent';
-  label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+  label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
   row.appendChild(label);
-  for (const choice of ACCENT_CHOICES) {
+
+  const triggerWrap = document.createElement('div');
+  triggerWrap.id = `brickAccentTriggerWrap_${key}`;
+  triggerWrap.className = 'icon-select';
+  triggerWrap.style.cssText = 'position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer;';
+
+  const triggerBtn = document.createElement('button');
+  triggerBtn.type = 'button';
+  triggerBtn.id = `brickAccentTrigger_${key}`;
+  triggerBtn.className = 'cad-btn icon-select-button';
+  triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:40px; height:28px; padding:2px; overflow:hidden;';
+
+  const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
+  const isSunk = a.levelIn < 0;
+  triggerBtn.innerHTML = choice.id === 'none'
+    ? '<span style="font-size:10px; font-weight:600; opacity:0.8;">None</span>'
+    : (accentIconSvg(choice.id, Math.max(22, iconPx), { sunk: isSunk }) || choice.label);
+
+  const triggerName = document.createElement('span');
+  triggerName.id = `brickAccentTriggerName_${key}`;
+  triggerName.className = 'icon-select-name';
+  triggerName.textContent = choice.label;
+  triggerName.style.cssText = 'font-size:11px; opacity:0.85; font-weight:500;';
+
+  triggerWrap.append(triggerBtn, triggerName);
+  row.appendChild(triggerWrap);
+
+  const popover = document.createElement('div');
+  popover.id = `brickAccentPopover_${key}`;
+  popover.className = 'icon-select-grid brick-popover-list';
+  popover.dataset.triggerId = `brickAccentTriggerWrap_${key}`;
+  popover.dataset.popoverDisplay = 'flex';
+  popover.style.display = 'none';
+  popover.style.position = 'fixed';
+  popover.style.zIndex = '10001';
+  popover.style.background = '#fff';
+  popover.style.border = '1px solid #ccc';
+  popover.style.borderRadius = '4px';
+  popover.style.padding = '8px';
+  popover.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  popover.style.flexDirection = 'row';
+  popover.style.flexWrap = 'wrap';
+  popover.style.gap = '4px';
+  popover.style.maxWidth = '280px';
+  popover.style.overflowY = 'auto';
+
+  triggerWrap.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _togglePopover(triggerBtn, popover, 280);
+  });
+
+  for (const c of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon' + (a.preset === choice.id ? ' active' : '');
-    btn.id = `brickAccent_${key}_${choice.id}`;
-    btn.title = choice.label;
-    btn.setAttribute('aria-label', choice.label);
+    btn.className = 'cad-btn brick-accent-icon' + (a.preset === c.id ? ' active' : '');
+    btn.id = `brickAccent_${key}_${c.id}`;
+    btn.title = c.label;
+    btn.setAttribute('aria-label', c.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = choice.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(choice.id, iconPx, { sunk: a.levelIn < 0 }) || choice.label);
-    btn.addEventListener('click', () => setElementAccent(target, { preset: choice.id }));
-    row.appendChild(btn);
+    btn.innerHTML = c.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(c.id, iconPx, { sunk: a.levelIn < 0 }) || c.label);
+    btn.addEventListener('click', () => {
+      setElementAccent(target, { preset: c.id });
+      popover.style.display = 'none';
+    });
+    popover.appendChild(btn);
   }
+  row.appendChild(popover);
+  _wirePopoverGlobal();
+
   const click = document.createElement('button');
   click.type = 'button';
   click.className = 'cad-btn' + (a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _targetKey(_accentClickTarget) === key ? ' active' : '');
@@ -912,7 +1082,7 @@ function renderAccentRowFor(container, target, iconPx) {
   container.appendChild(row);
 }
 /** Re-render every non-Wall element's Accent row (the Frame bands' + the Brush's). */
-function renderElementAccentRows() {
+export function renderElementAccentRows() {
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
   const brush = document.getElementById('brickBrushAccentRow');
@@ -2044,10 +2214,59 @@ export function deselectTool() {
   if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
-function renderFramePresetList(container) {
+export function renderFramePresetList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickFramePresetTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickFramePresetTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickFramePresetTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickFramePresetTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    triggerWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _togglePopover(triggerBtn, container, 320);
+    });
+  }
+
   container.innerHTML = '';
-  for (const preset of FRAME_PRESET_LIST) {
+  container.classList.add('brick-popover-list');
+  container.dataset.triggerId = 'brickFramePresetTriggerWrap';
+  container.dataset.popoverDisplay = 'flex';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  container.style.flexDirection = 'row';
+  container.style.flexWrap = 'wrap';
+  container.style.gap = '4px';
+  container.style.maxWidth = '320px';
+  container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
+
+  const tplId = P.frame && P.frame.templateId;
+  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
+
+  for (const preset of presets) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-accent-icon'; // item 33 (audit N10): the band stack as an icon, the name as the tooltip
@@ -2056,7 +2275,10 @@ function renderFramePresetList(container) {
     btn.setAttribute('aria-label', preset.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
-    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
+    btn.addEventListener('click', () => {
+      setFrameBandPreset(preset.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
 }
@@ -2108,9 +2330,21 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
-function syncFramePresetButtons() {
+export function syncFramePresetButtons() {
+  const tplId = P.frame && P.frame.templateId;
+  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
+  }
+  const triggerBtn = document.getElementById('brickFramePresetTrigger');
+  const triggerName = document.getElementById('brickFramePresetTriggerName');
+  if (triggerBtn && triggerName) {
+    const active = presets.find((p) => p.id === P.brickSettings.frameBandPreset) || presets[0] || FRAME_PRESET_LIST[0];
+    if (active) {
+      triggerBtn.innerHTML = framePresetIconSvg(active.id, 30) || active.label;
+      triggerName.textContent = active.label;
+      triggerBtn.title = `Brick frame preset: ${active.label}`;
+    }
   }
   syncFrameFanCentreRow();
   syncQuickSettings();
@@ -2274,7 +2508,8 @@ function syncBrushPresetButtons() {
  *  later needs no change here. */
 const WALL_PATTERN_LABELS = {
   none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
-  flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  flemish: 'Flemish', english: 'English bond', monk: 'Monk bond', herringbone: 'Herringbone', double_herringbone: 'Double herringbone',
+  basketweave: 'Basketweave', windmill: 'Windmill pavers',
   // F35 item 13: the sheet's own names
   stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
   basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
@@ -2292,9 +2527,9 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
  *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
  *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
-  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'stacked_horizontal', 'stacked_variation'] },
-  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
-  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'english', 'monk', 'stacked_horizontal', 'stacked_variation'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron', 'double_herringbone'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked', 'windmill'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
   // F35 item 14: every BRICK_PATTERNS entry declaring `family: 'tiles'` lands here, under its own heading
   { id: 'tiles', label: 'Tiles', heading: true, patterns: [] },
@@ -2311,13 +2546,80 @@ function wallPatternFamilies() {
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 
-function renderWallPatternList(container) {
+let _mosaicGlobalWired = false;
+
+function syncWallPatternTrigger() {
+  const triggerBtn = document.getElementById('brickPatternTrigger');
+  const triggerName = document.getElementById('brickPatternTriggerName');
+  if (!triggerBtn || !triggerName) return;
+  const a = _accent();
+  if (a.preset === ACCENT_TILE.id && a.tile && a.tile.userId) {
+    const u = _userPatterns().find((x) => x.id === a.tile.userId);
+    if (u) {
+      triggerBtn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
+      triggerName.textContent = u.label;
+      triggerBtn.title = `Wall pattern: ${u.label}`;
+      return;
+    }
+  }
+  const id = P.brickSettings.pattern || DEFAULT_WALL_PATTERN;
+  const label = _patternLabel(id);
+  triggerBtn.innerHTML = wallPatternIconSvg(id, 30) || label;
+  triggerName.textContent = label;
+  triggerBtn.title = `Wall pattern: ${label}`;
+}
+
+export function renderWallPatternList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickPatternTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickPatternTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickPatternTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickPatternTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    triggerWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _togglePopover(triggerBtn, container, 320);
+    });
+  }
+
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
+  container.className = 'icon-select-grid brick-pattern-mosaic brick-popover-list';
+  container.dataset.triggerId = 'brickPatternTriggerWrap';
+  container.dataset.popoverDisplay = 'flex';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
   container.style.flexDirection = 'row';
   container.style.flexWrap = 'wrap';
+  container.style.gap = '4px';
+  container.style.maxWidth = '320px';
+  container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
+
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
       const h = document.createElement('div');
@@ -2335,7 +2637,10 @@ function renderWallPatternList(container) {
     btn.setAttribute('aria-label', _patternLabel(id));
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
-    btn.addEventListener('click', () => setWallPattern(id));
+    btn.addEventListener('click', () => {
+      setWallPattern(id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
   // item 31d: each SAVED custom pattern is a pattern of its own here (its icon drawn on its bond with its accents)
@@ -2348,9 +2653,13 @@ function renderWallPatternList(container) {
     btn.setAttribute('aria-label', u.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-    btn.addEventListener('click', () => applyUserPattern(u.id));
+    btn.addEventListener('click', () => {
+      applyUserPattern(u.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
+  syncWallPatternTrigger();
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2362,7 +2671,18 @@ export function setWallPattern(patternId, commit = 'generate') {
     if (_builder.open) _builder.open = false;
     renderPatternBuilder();
   }
+  const allowed = accentPresetsForPattern(patternId).map((p) => p.id);
+  const isPeriodic = ACCENT_PRESETS.some((p) => p.id === a.preset);
+  if (a.preset && a.preset !== 'none' && a.preset !== ACCENT_CUSTOM.id && a.preset !== ACCENT_TILE.id) {
+    if (!allowed.includes(a.preset) && !isPeriodic) {
+      P.brickSettings.accent = { ...a, preset: 'none' };
+    }
+  }
   P.brickSettings.pattern = patternId;
+  const list = document.getElementById('brickPatternList');
+  if (list) list.style.display = 'none';
+  renderAccentList(document.getElementById('brickAccentList'));
+  syncAccentControls();
   syncWallPatternButtons();
   syncSetPicker(); // item 23: Fieldstone makes the wall rock (no brick set active), another pattern gives it back
   commitBrickSetting(commit);
@@ -2372,6 +2692,7 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
+  syncWallPatternTrigger();
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
@@ -2482,34 +2803,51 @@ function renderFrameBandPatternList(container) {
   // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
   // Not the preset chips' rule ("grey + explain", a corner that cuts nothing here): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
+  const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     if (i >= keptBands) return;
+    const active = overrides[i] || band.pattern || 'stretcher';
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
+    row.style.cssText = 'display:flex; gap:6px; margin-bottom:4px; align-items:center;';
     const label = document.createElement('span');
     label.textContent = `Band ${i + 1}`;
-    label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+    label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
     row.appendChild(label);
+
+    const sel = document.createElement('select');
+    sel.id = `brickFrameBandPatternSelect_${i}`;
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
-      if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
-      btn.className = 'cad-btn brick-accent-icon';
-      btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
-      btn.title = pattern.label;
-      btn.setAttribute('aria-label', pattern.label);
-      btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-      btn.innerHTML = wallPatternIconSvg(pattern.id, 22) || pattern.label;
-      if (def && def.bandCapable) {
-        // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
-        btn.addEventListener('click', () => setFrameRock(true));
-      } else {
-        btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
-      }
-      row.appendChild(btn);
+      if (!bandCanLay(def)) continue;
+      const opt = document.createElement('option');
+      opt.value = pattern.id;
+      opt.textContent = pattern.label;
+      sel.appendChild(opt);
     }
+    sel.value = active;
+    sel.addEventListener('change', () => {
+      const def = BRICK_PATTERNS[sel.value];
+      if (def && def.bandCapable) {
+        setFrameRock(true);
+      } else {
+        setFrameBandPattern(i, sel.value);
+      }
+    });
+    row.appendChild(sel);
+
+    const wrap = mountIconSelect(sel, {
+      label: `Band ${i + 1}`,
+      iconFor: (v) => wallPatternIconSvg(v, 22),
+      optionId: (v) => `brickFrameBandPattern_${i}_${v}`,
+      pickSame: true,
+      tilePx: 44,
+      columns: { phone: 4, desktop: 4 },
+    });
+    if (wrap) {
+      const trigger = wrap.querySelector('.icon-select-button');
+      if (trigger) trigger.classList.add('active');
+    }
+
     container.appendChild(row);
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
   });
@@ -2524,6 +2862,11 @@ function syncFrameBandPatternButtons() {
   const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     const active = overrides[i] || band.pattern || 'stretcher';
+    const sel = document.getElementById(`brickFrameBandPatternSelect_${i}`);
+    if (sel) {
+      if (sel.value !== active) sel.value = active;
+      refreshIconSelect(sel);
+    }
     for (const pattern of WALL_PATTERN_LIST) {
       document.getElementById(`brickFrameBandPattern_${i}_${pattern.id}`)?.classList.toggle('active', pattern.id === active);
     }
@@ -2865,6 +3208,18 @@ const FRAME_PRESET_LABELS = {
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
   arch_keystone: 'Arch + keystone',
+  craftsman_apron: 'Craftsman apron',
+  double_soldier: 'Double soldier',
+  english_frame: 'English bond frame',
+  stepped_fret: 'Stepped fret apron',
+  tudor_frieze: 'Tudor diamond frieze',
+  corbelled_cornice: 'Corbelled cornice',
+  flemish_architrave: 'Flemish architrave',
+  chicago_dentil: 'Chicago dentil apron',
+  crenellated_battlement: 'Crenellated battlement',
+  art_deco_stepped: 'Art Deco stepped',
+  florentine_architrave: 'Florentine architrave',
+  venetian_dentil: 'Venetian dentil',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
@@ -2896,7 +3251,7 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => framePresetsForTemplate(P.frame && P.frame.templateId, FRAME_PRESET_LIST), iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -3065,10 +3420,8 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  // item 33: + the element's corner (frameBandsOf -- the preset's own; a board saved with an explicit frameCorner from
-  // the retired Corners row keeps it, tests/frame-corner-legacy-pin.test.js)
-  // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
-  return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
+  const tplId = P.frame && P.frame.templateId;
+  return { primitives, bands: frameBandsOf(P.brickSettings, tplId), insetRect: _insetWindowRect(editor), templateId: tplId };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
@@ -3249,6 +3602,17 @@ export function initBrickPanel() {
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts
+  onPageEvent('frameFamilyCheck', 'frameRecordChanged', () => {
+    const tplId = P.frame && P.frame.templateId;
+    if (tplId && !isPresetConforming(tplId, P.brickSettings.frameBandPreset)) {
+      const family = familyForTemplate(tplId);
+      const fallback = (family && family.defaultPreset) || 'soldier_stretcher';
+      P.brickSettings.frameBandPreset = fallback;
+    }
+    const container = document.getElementById('brickFramePresetList');
+    if (container) renderFramePresetList(container);
+    syncFramePresetButtons();
+  });
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));

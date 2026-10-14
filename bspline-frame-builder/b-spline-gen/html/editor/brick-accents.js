@@ -15,6 +15,7 @@
  * a Wall inside a frame (or, later, a wall element anywhere on the board) gets ITS zone (ACCENT_ZONES).
  */
 import { pointInPolygon, polygonCentroid, hashedRandom } from '../core/bricks/index.js';
+import { signedArea } from '../core/bricks/geometry.js';
 
 const mod = (a, n) => ((a % n) + n) % n;
 
@@ -35,6 +36,26 @@ export const ACCENT_MOTIFS = Object.freeze({
   crenellation: (c, i, p) => mod(c, p.every) === 0 && mod(i, 2) === 0,
   // a seeded share of the zone's bricks
   random: (c, i, p, ctx) => hashedRandom(ctx.seed, 'accent-random', c * 100003 + i) < p.share,
+  // stepped diamond outline or filled diamond
+  diamond: (c, i, p) => {
+    const period = p.period || 8, half = Math.floor(period / 2);
+    const d = Math.abs(mod(c, period) - half) + Math.abs(mod(i, period) - half);
+    return p.fill ? d <= (p.radius || 2) : d === (p.radius || 2);
+  },
+  // vertical columns / pilasters repeating every `every` columns
+  columnStripe: (c, i, p) => mod(i, p.every || 3) < (p.count || 1),
+  // a cross / plus '+' motif centered periodically
+  cross: (c, i, p) => {
+    const pr = p.periodRows || p.period || 6, pc = p.periodCols || p.period || 6;
+    const mr = Math.floor(pr / 2), mc = Math.floor(pc / 2);
+    const dr = Math.abs(mod(c, pr) - mr), dc = Math.abs(mod(i, pc) - mc);
+    return (dr === 0 && dc <= (p.arm || 1)) || (dc === 0 && dr <= (p.arm || 1));
+  },
+  // intersecting diagonal staircases forming a diamond wireframe lattice
+  diaperLattice: (c, i, p) => {
+    const period = p.period || 6;
+    return mod(i - c, period) === 0 || mod(i + c, period) === 0;
+  },
   // F35 item 31: a user TILE -- `rows` x `cols` cells, cells[row][col] true = raised; row 0 = the zone's bottom
   // course. Cell = (course mod rows, brick mod cols); the bond's stagger is already in the columns (accentGrid's
   // half-bond rule), so the tile repeats over the wall WITH the stagger.
@@ -66,7 +87,7 @@ export function tileOf(preset, max = 8, ctx = { seed: 1 }) {
 export const ACCENT_ZONES = Object.freeze({ WHOLE: Object.freeze([0, 1]), LOWER_THIRD: Object.freeze([0, 1 / 3]) });
 const { WHOLE, LOWER_THIRD } = ACCENT_ZONES;
 
-/** The 10 presets (advisor turn 207: "10, not 6", Fred picks from the icons). Ids are stable keys. */
+/** The 14 general presets (10 legacy + 4 new motifs). Ids are stable keys. */
 export const ACCENT_PRESETS = Object.freeze([
   { id: 'checker', label: 'Checker', motif: 'checker', params: {}, zone: WHOLE },
   { id: 'staircase', label: 'Staircase', motif: 'staircase', params: { period: 6, width: 1 }, zone: WHOLE },
@@ -78,6 +99,10 @@ export const ACCENT_PRESETS = Object.freeze([
   { id: 'crenellation', label: 'Crenellation', motif: 'crenellation', params: { every: 3 }, zone: WHOLE },
   { id: 'sparseDots', label: 'Sparse dots', motif: 'everyNth', params: { n: 4, m: 3, shift: 2 }, zone: WHOLE },
   { id: 'random', label: 'Random 15%', motif: 'random', params: { share: 0.15 }, zone: WHOLE },
+  { id: 'diamond', label: 'Diaper diamond', motif: 'diamond', params: { period: 8, radius: 2, fill: false }, zone: WHOLE },
+  { id: 'columnStripe', label: 'Column stripes', motif: 'columnStripe', params: { every: 3, count: 1 }, zone: WHOLE },
+  { id: 'cross', label: 'Cross motif', motif: 'cross', params: { period: 6, arm: 1 }, zone: WHOLE },
+  { id: 'diaperLattice', label: 'Diaper lattice', motif: 'diaperLattice', params: { period: 6 }, zone: WHOLE },
 ]);
 export const ACCENT_CUSTOM = Object.freeze({ id: 'custom', label: 'Custom (click bricks)' });
 export const DEFAULT_ACCENT = Object.freeze({ preset: 'none', levelIn: 0.0625, clicks: [] });
@@ -270,7 +295,562 @@ export const accentOfUserPattern = (u) => ({ preset: ACCENT_TILE.id, levelIn: u.
  *  (stretcher-high courses, the bond layout), a built-in bond as itself. */
 export const wallPatternOfBase = (base) => (base === BOND_CUSTOM ? 'stretcher' : base);
 
-export const accentPresetById = (id) => ACCENT_PRESETS.find((p) => p.id === id) || null;
+// --- Pattern-specific geometry rules (F35 items: bespoke accents per bond/pattern) ---
+function herringboneWeaveRule(bricks) {
+  const out = new Set();
+  bricks.forEach((b, k) => {
+    const c = polygonCentroid(b.polygon);
+    let cov = 0;
+    for (const p of b.polygon) cov += (p.x - c.x) * (p.y - c.y);
+    if (cov > 1e-4) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  }
+  return out;
+}
+
+function herringboneStripesRule(bricks) {
+  const out = new Set();
+  const us = bricks.map((b) => {
+    const c = polygonCentroid(b.polygon);
+    return c.x + c.y;
+  });
+  const minU = Math.min(...us), maxU = Math.max(...us);
+  const span = maxU - minU || 1;
+  const stripeCount = Math.max(4, Math.min(12, Math.round(bricks.length / 8)));
+  const stripeWidth = span / stripeCount || 1;
+  us.forEach((u, k) => {
+    if (mod(Math.floor((u - minU) / stripeWidth), 2) === 0) out.add(k);
+  });
+  return out;
+}
+
+function herringboneSpineRule(bricks) {
+  const out = new Set();
+  const xs = bricks.map((b) => polygonCentroid(b.polygon).x);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const span = maxX - minX || 1;
+  const colCount = Math.max(3, Math.min(8, Math.round(bricks.length / 12)));
+  const colWidth = span / colCount || 1;
+  xs.forEach((x, k) => {
+    const col = Math.floor((x - minX) / colWidth);
+    if (mod(col, 2) === 0) out.add(k);
+  });
+  return out;
+}
+
+function herringboneBandsRule(bricks) {
+  const out = new Set();
+  const ys = bricks.map((b) => polygonCentroid(b.polygon).y);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const span = maxY - minY || 1;
+  const bandCount = Math.max(3, Math.min(8, Math.round(bricks.length / 10)));
+  const bandH = span / bandCount || 1;
+  ys.forEach((y, k) => {
+    const band = Math.floor((y - minY) / bandH);
+    if (mod(band, 2) === 0) out.add(k);
+  });
+  return out;
+}
+
+function basketweaveHorizRule(bricks) {
+  const out = new Set();
+  bricks.forEach((b, k) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    if (w >= h) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  }
+  return out;
+}
+
+function basketweaveVertRule(bricks) {
+  const out = new Set();
+  bricks.forEach((b, k) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    if (h > w) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 2 === 1) out.add(k); });
+  }
+  return out;
+}
+
+function basketweaveCheckerRule(bricks) {
+  const out = new Set();
+  const info = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    return { c: polygonCentroid(b.polygon), maxDim: Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) };
+  });
+  const L = median(info.map((n) => n.maxDim)) || 1;
+  const minX = Math.min(...info.map((n) => n.c.x)), minY = Math.min(...info.map((n) => n.c.y));
+  info.forEach((n, k) => {
+    const bx = Math.floor((n.c.x - minX + 0.1 * L) / L);
+    const by = Math.floor((n.c.y - minY + 0.1 * L) / L);
+    if (mod(bx + by, 2) === 0) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  }
+  return out;
+}
+
+function basketweavePinwheelRule(bricks) {
+  const out = new Set();
+  const areas = bricks.map((b) => Math.abs(signedArea(b.polygon)));
+  const medArea = median(areas) || 1;
+  areas.forEach((a, k) => {
+    if (a < medArea * 0.6) out.add(k);
+  });
+  if (out.size > 0 && out.size < bricks.length) return out;
+  const info = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    return { c: polygonCentroid(b.polygon), maxDim: Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) };
+  });
+  const L = median(info.map((n) => n.maxDim)) || 1;
+  const minX = Math.min(...info.map((n) => n.c.x)), minY = Math.min(...info.map((n) => n.c.y));
+  info.forEach((n, k) => {
+    const bx = Math.floor((n.c.x - minX + 0.1 * L) / L);
+    const by = Math.floor((n.c.y - minY + 0.1 * L) / L);
+    if (mod(bx, 2) === 0 && mod(by, 2) === 0) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 4 === 0) out.add(k); });
+  }
+  return out;
+}
+
+function fieldstoneLargeRule(bricks) {
+  const out = new Set();
+  const areas = bricks.map((b, k) => ({ k, area: Math.abs(signedArea(b.polygon)) }));
+  areas.sort((a, b) => b.area - a.area);
+  const count = Math.max(1, Math.round(bricks.length * 0.25));
+  for (let i = 0; i < count; i++) out.add(areas[i].k);
+  return out;
+}
+
+function fieldstoneMediumRule(bricks) {
+  const out = new Set();
+  const areas = bricks.map((b, k) => ({ k, area: Math.abs(signedArea(b.polygon)) }));
+  areas.sort((a, b) => b.area - a.area);
+  const start = Math.floor(bricks.length * 0.35);
+  const end = Math.min(bricks.length, Math.floor(bricks.length * 0.70));
+  for (let i = start; i < end; i++) out.add(areas[i].k);
+  if (out.size === 0) {
+    for (let i = 0; i < Math.max(1, Math.floor(bricks.length / 2)); i++) out.add(areas[i].k);
+  }
+  return out;
+}
+
+function fieldstoneLedgeRule(bricks) {
+  const out = new Set();
+  const ys = bricks.map((b) => polygonCentroid(b.polygon).y);
+  const minY = Math.min(...ys), maxY = Math.max(...ys), span = maxY - minY || 1;
+  ys.forEach((y, k) => {
+    if ((y - minY) / span >= 0.70) out.add(k);
+  });
+  if (out.size === 0) {
+    bricks.forEach((_, k) => { if (k % 3 === 0) out.add(k); });
+  }
+  return out;
+}
+
+function fieldstoneScatteredRule(bricks, params, ctx) {
+  const out = new Set();
+  const seed = (ctx && ctx.seed) || 1;
+  bricks.forEach((b, k) => {
+    if (hashedRandom(seed, 'accent-fieldstone', k * 7919) < 0.20) out.add(k);
+  });
+  if (out.size === 0 && bricks.length > 0) out.add(0);
+  return out;
+}
+
+function flemishHeadersRule(bricks) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  widths.forEach((w, k) => {
+    if (w < medW * 0.8) out.add(k);
+  });
+  if (out.size === 0 || out.size === bricks.length) {
+    bricks.forEach((_, k) => { if (k % 2 === 1) out.add(k); });
+  }
+  return out;
+}
+
+function flemishDiamondRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && ACCENT_MOTIFS.diamond(g.course, g.column, { period: 6, radius: 2, fill: false })) out.add(k);
+  });
+  if (out.size === 0) {
+    grid.forEach((g, k) => {
+      if (g && ACCENT_MOTIFS.diamond(g.course, g.column, { period: 6, radius: 2, fill: false })) out.add(k);
+    });
+  }
+  return out;
+}
+
+function flemishCheckerRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.course, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) {
+    grid.forEach((g, k) => { if (g && mod(g.course + g.column, 2) === 0) out.add(k); });
+  }
+  return out;
+}
+
+function flemishBandsRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.course, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) {
+    grid.forEach((g, k) => { if (g && mod(g.course, 2) === 0) out.add(k); });
+  }
+  return out;
+}
+
+function tilesDotsRule(bricks) {
+  const out = new Set();
+  const areas = bricks.map((b) => Math.abs(signedArea(b.polygon)));
+  const medArea = median(areas) || 1;
+  areas.forEach((a, k) => {
+    if (a < medArea * 0.45) out.add(k);
+  });
+  if (out.size > 0 && out.size < bricks.length) return out;
+  bricks.forEach((b, k) => { if (k % 3 === 0) out.add(k); });
+  return out;
+}
+
+function englishHeadersRule(bricks) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  widths.forEach((w, k) => {
+    if (w < medW * 0.8) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  return out;
+}
+
+function englishCheckerRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.column, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) grid.forEach((g, k) => { if (g && mod(g.course + g.column, 2) === 0) out.add(k); });
+  return out;
+}
+
+function englishDentilsRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.column, 3) === 0) out.add(k);
+  });
+  if (out.size === 0) grid.forEach((g, k) => { if (g && mod(g.column, 3) === 0) out.add(k); });
+  return out;
+}
+
+function englishDiamondRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && ACCENT_MOTIFS.diamond(g.course, g.column, { period: 6, radius: 2, fill: false })) out.add(k);
+  });
+  if (out.size === 0) grid.forEach((g, k) => { if (g && ACCENT_MOTIFS.diamond(g.course, g.column, { period: 6, radius: 2, fill: false })) out.add(k); });
+  return out;
+}
+
+function monkHeadersRule(bricks) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  widths.forEach((w, k) => {
+    if (w < medW * 0.8) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 3 === 0) out.add(k); });
+  return out;
+}
+
+function monkDiagonalRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.course + g.column, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) grid.forEach((g, k) => { if (g && mod(g.course + g.column, 2) === 0) out.add(k); });
+  return out;
+}
+
+function monkCheckerRule(bricks, params, ctx) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (!g) return;
+    const isHeader = widths[k] < medW * 0.8;
+    if (isHeader && mod(g.course, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) grid.forEach((g, k) => { if (g && mod(g.course, 2) === 0) out.add(k); });
+  return out;
+}
+
+function monkStretchersRule(bricks) {
+  const out = new Set();
+  const widths = bricks.map((b) => {
+    const xs = b.polygon.map((p) => p.x);
+    return Math.max(...xs) - Math.min(...xs);
+  });
+  const medW = median(widths) || 1;
+  widths.forEach((w, k) => {
+    if (w >= medW * 0.8) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 2 === 1) out.add(k); });
+  return out;
+}
+
+function windmillHorizRule(bricks) {
+  const out = new Set();
+  bricks.forEach((b, k) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    if (w > h * 1.2) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  return out;
+}
+
+function windmillVertRule(bricks) {
+  const out = new Set();
+  bricks.forEach((b, k) => {
+    const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+    if (h > w * 1.2) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 2 === 1) out.add(k); });
+  return out;
+}
+
+function windmillCoresRule(bricks) {
+  const out = new Set();
+  const areas = bricks.map((b) => Math.abs(signedArea(b.polygon)));
+  const medArea = median(areas) || 1;
+  areas.forEach((a, k) => {
+    if (a < medArea * 0.6) out.add(k);
+  });
+  if (out.size === 0) {
+    bricks.forEach((b, k) => {
+      const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y);
+      const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+      if (Math.abs(w - h) < Math.min(w, h) * 0.3) out.add(k);
+    });
+  }
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 4 === 0) out.add(k); });
+  return out;
+}
+
+function windmillCheckerRule(bricks, params, ctx) {
+  const out = new Set();
+  const grid = accentGrid(bricks, ctx.zone || [0, 1]);
+  grid.forEach((g, k) => {
+    if (g && mod(g.course + g.column, 2) === 0) out.add(k);
+  });
+  if (out.size === 0) bricks.forEach((_, k) => { if (k % 2 === 0) out.add(k); });
+  return out;
+}
+
+/** 4 tailored, curated accent presets per wall pattern template (or family). */
+export const PATTERN_ACCENT_PRESETS = Object.freeze({
+  stretcher: Object.freeze([
+    { id: 'diamond', label: 'Diaper diamond', motif: 'diamond', params: { period: 8, radius: 2, fill: false }, zone: WHOLE },
+    { id: 'staircase', label: 'Diagonal staircase', motif: 'staircase', params: { period: 6, width: 1 }, zone: WHOLE },
+    { id: 'pyramid', label: 'Pyramid', motif: 'pyramid', params: { base: 7 }, zone: WHOLE },
+    { id: 'zigzag', label: 'Stepped zigzag', motif: 'zigzag', params: { amp: 3, period: 8 }, zone: WHOLE },
+    { id: 'crenellation', label: 'Dentil / crenellation', motif: 'crenellation', params: { every: 2 }, zone: WHOLE },
+    { id: 'checker', label: 'Checkerboard', motif: 'checker', params: {}, zone: WHOLE },
+  ]),
+  stack: Object.freeze([
+    { id: 'stack_pilaster', label: 'Vertical pilasters', motif: 'columnStripe', params: { every: 3, count: 1 }, zone: WHOLE },
+    { id: 'stack_checker', label: 'Grid checkerboard', motif: 'checker', params: {}, zone: WHOLE },
+    { id: 'stack_bands', label: 'Horizontal bands', motif: 'courseBand', params: { every: 3, count: 1 }, zone: WHOLE },
+    { id: 'stack_dots', label: 'Grid corner dots', motif: 'everyNth', params: { n: 3, m: 2, shift: 0 }, zone: WHOLE },
+  ]),
+  soldier: Object.freeze([
+    { id: 'soldier_fluting', label: 'Vertical fluting', motif: 'columnStripe', params: { every: 2, count: 1 }, zone: WHOLE },
+    { id: 'soldier_crenellation', label: 'Dentil battlement', motif: 'crenellation', params: { every: 2 }, zone: WHOLE },
+    { id: 'soldier_bands', label: 'Soldier bands', motif: 'courseBand', params: { every: 2, count: 1 }, zone: WHOLE },
+    { id: 'soldier_dots', label: 'Soldier accent dots', motif: 'everyNth', params: { n: 4, m: 2, shift: 1 }, zone: WHOLE },
+  ]),
+  header: Object.freeze([
+    { id: 'header_diamond', label: 'Header diaper', motif: 'diamond', params: { period: 6, radius: 2, fill: false }, zone: WHOLE },
+    { id: 'header_checker', label: 'Header checkerboard', motif: 'checker', params: {}, zone: WHOLE },
+    { id: 'header_bands', label: 'Header course bands', motif: 'courseBand', params: { every: 3, count: 1 }, zone: WHOLE },
+    { id: 'header_cross', label: 'Header cross / fleur', motif: 'cross', params: { period: 6, arm: 1 }, zone: WHOLE },
+  ]),
+  flemish: Object.freeze([
+    { id: 'flemish_headers', label: 'Raised headers', geometryRule: flemishHeadersRule, zone: WHOLE },
+    { id: 'flemish_diamond', label: 'Header diaper diamond', geometryRule: flemishDiamondRule, zone: WHOLE },
+    { id: 'flemish_checker', label: 'Alternating headers', geometryRule: flemishCheckerRule, zone: WHOLE },
+    { id: 'flemish_bands', label: 'Header course bands', geometryRule: flemishBandsRule, zone: WHOLE },
+  ]),
+  english: Object.freeze([
+    { id: 'english_headers', label: 'Raised header courses', geometryRule: englishHeadersRule, zone: WHOLE },
+    { id: 'english_checker', label: 'Header checkerboard', geometryRule: englishCheckerRule, zone: WHOLE },
+    { id: 'english_dentils', label: 'Dentil headers', geometryRule: englishDentilsRule, zone: WHOLE },
+    { id: 'english_diamond', label: 'English diaper diamond', geometryRule: englishDiamondRule, zone: WHOLE },
+  ]),
+  monk: Object.freeze([
+    { id: 'monk_headers', label: 'All monk headers', geometryRule: monkHeadersRule, zone: WHOLE },
+    { id: 'monk_diagonal', label: 'Diagonal header steps', geometryRule: monkDiagonalRule, zone: WHOLE },
+    { id: 'monk_checker', label: 'Alternating headers', geometryRule: monkCheckerRule, zone: WHOLE },
+    { id: 'monk_stretchers', label: 'Raised stretcher pairs', geometryRule: monkStretchersRule, zone: WHOLE },
+  ]),
+  herringbone: Object.freeze([
+    { id: 'herringbone_weave', label: 'Directional weave', geometryRule: herringboneWeaveRule, zone: WHOLE },
+    { id: 'herringbone_spine', label: 'Herringbone spine', geometryRule: herringboneSpineRule, zone: WHOLE },
+    { id: 'herringbone_stripes', label: 'Diagonal stripes', geometryRule: herringboneStripesRule, zone: WHOLE },
+    { id: 'herringbone_bands', label: 'Chevron bands', geometryRule: herringboneBandsRule, zone: WHOLE },
+  ]),
+  double_herringbone: Object.freeze([
+    { id: 'double_herringbone_weave', label: 'Twin directional weave', geometryRule: herringboneWeaveRule, zone: WHOLE },
+    { id: 'double_herringbone_spine', label: 'Double chevron spine', geometryRule: herringboneSpineRule, zone: WHOLE },
+    { id: 'double_herringbone_stripes', label: 'Twin diagonal stripes', geometryRule: herringboneStripesRule, zone: WHOLE },
+    { id: 'double_herringbone_bands', label: 'Twin chevron bands', geometryRule: herringboneBandsRule, zone: WHOLE },
+  ]),
+  basketweave: Object.freeze([
+    { id: 'basketweave_horiz', label: 'Horizontal blocks', geometryRule: basketweaveHorizRule, zone: WHOLE },
+    { id: 'basketweave_vert', label: 'Vertical blocks', geometryRule: basketweaveVertRule, zone: WHOLE },
+    { id: 'basketweave_checker', label: 'Block checkerboard', geometryRule: basketweaveCheckerRule, zone: WHOLE },
+    { id: 'basketweave_pinwheel', label: 'Pinwheel / corner dots', geometryRule: basketweavePinwheelRule, zone: WHOLE },
+  ]),
+  windmill: Object.freeze([
+    { id: 'windmill_horiz', label: 'Horizontal bricks', geometryRule: windmillHorizRule, zone: WHOLE },
+    { id: 'windmill_vert', label: 'Vertical bricks', geometryRule: windmillVertRule, zone: WHOLE },
+    { id: 'windmill_cores', label: 'Pinwheel cores', geometryRule: windmillCoresRule, zone: WHOLE },
+    { id: 'windmill_checker', label: 'Pinwheel checkerboard', geometryRule: windmillCheckerRule, zone: WHOLE },
+  ]),
+  fieldstone: Object.freeze([
+    { id: 'fieldstone_large', label: 'Prominent boulders', geometryRule: fieldstoneLargeRule, zone: WHOLE },
+    { id: 'fieldstone_medium', label: 'Quarry feature stones', geometryRule: fieldstoneMediumRule, zone: WHOLE },
+    { id: 'fieldstone_ledge', label: 'Foundation ledge', geometryRule: fieldstoneLedgeRule, zone: WHOLE },
+    { id: 'fieldstone_scattered', label: 'Scattered river stones', geometryRule: fieldstoneScatteredRule, zone: WHOLE },
+  ]),
+  stacked_horizontal: Object.freeze([
+    { id: 'stacked_horiz_bands', label: 'Alternating courses', motif: 'courseBand', params: { every: 2, count: 1 }, zone: WHOLE },
+    { id: 'stacked_horiz_checker', label: 'Staggered blocks', motif: 'checker', params: {}, zone: WHOLE },
+    { id: 'stacked_horiz_stripes', label: 'Vertical pilasters', motif: 'columnStripe', params: { every: 3, count: 1 }, zone: WHOLE },
+    { id: 'stacked_horiz_dots', label: 'Accent dots', motif: 'everyNth', params: { n: 4, m: 2, shift: 1 }, zone: WHOLE },
+  ]),
+  tiles: Object.freeze([
+    { id: 'tiles_dots', label: 'Encaustic dot inserts', geometryRule: tilesDotsRule, zone: WHOLE },
+    { id: 'tiles_checker', label: 'Tile checkerboard', motif: 'checker', params: {}, zone: WHOLE },
+    { id: 'tiles_lattice', label: 'Diaper lattice', motif: 'diaperLattice', params: { period: 6 }, zone: WHOLE },
+    { id: 'tiles_cross', label: 'Cross / star clusters', motif: 'cross', params: { period: 6, arm: 1 }, zone: WHOLE },
+  ]),
+});
+
+const _PATTERN_ALIASES = {
+  chevron: 'herringbone',
+  basketweave_variation: 'basketweave',
+  basketweave_stacked: 'basketweave',
+  coursed_rubble: 'fieldstone',
+  coursed_ashlar: 'fieldstone',
+  stacked_variation: 'stacked_horizontal',
+  square_grid: 'tiles',
+  square_diamond: 'tiles',
+  octagon_square: 'tiles',
+  hexagon: 'tiles',
+  lozenge: 'tiles',
+  framed_square: 'tiles',
+};
+
+const _ALL_PRESETS_MAP = new Map();
+for (const p of ACCENT_PRESETS) _ALL_PRESETS_MAP.set(p.id, p);
+for (const list of Object.values(PATTERN_ACCENT_PRESETS)) {
+  for (const p of list) if (!_ALL_PRESETS_MAP.has(p.id)) _ALL_PRESETS_MAP.set(p.id, p);
+}
+
+export const accentPresetById = (id) => _ALL_PRESETS_MAP.get(id) || null;
+
+export function accentPresetsForPattern(patternId) {
+  if (!patternId || patternId === 'none') return PATTERN_ACCENT_PRESETS.stretcher;
+  const key = _PATTERN_ALIASES[patternId] || patternId;
+  return PATTERN_ACCENT_PRESETS[key] || PATTERN_ACCENT_PRESETS.stretcher;
+}
 
 const median = (xs) => {
   if (!xs.length) return 0;
@@ -353,6 +933,10 @@ export function accentedBrickIndices(bricks, accent, ctx = {}) {
   const preset = accent.preset === ACCENT_TILE.id && accent.tile
     ? { motif: 'tile', params: accent.tile, zone: accent.tile.zone || [0, 1] }
     : typeof accent.preset === 'object' ? accent.preset : accentPresetById(accent.preset);
+  if (!preset) return out;
+  if (typeof preset.geometryRule === 'function') {
+    return preset.geometryRule(bricks, preset.params || {}, ctx);
+  }
   const rule = preset && ACCENT_MOTIFS[preset.motif];
   if (!rule) return out;
   const zone = ctx.zone || preset.zone;
