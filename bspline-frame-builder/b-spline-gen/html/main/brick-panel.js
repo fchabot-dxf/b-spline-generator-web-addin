@@ -2803,34 +2803,51 @@ function renderFrameBandPatternList(container) {
   // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
   // Not the preset chips' rule ("grey + explain", a corner that cuts nothing here): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
+  const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     if (i >= keptBands) return;
+    const active = overrides[i] || band.pattern || 'stretcher';
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
+    row.style.cssText = 'display:flex; gap:6px; margin-bottom:4px; align-items:center;';
     const label = document.createElement('span');
     label.textContent = `Band ${i + 1}`;
-    label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+    label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
     row.appendChild(label);
+
+    const sel = document.createElement('select');
+    sel.id = `brickFrameBandPatternSelect_${i}`;
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
-      if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
-      btn.className = 'cad-btn brick-accent-icon';
-      btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
-      btn.title = pattern.label;
-      btn.setAttribute('aria-label', pattern.label);
-      btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-      btn.innerHTML = wallPatternIconSvg(pattern.id, 22) || pattern.label;
-      if (def && def.bandCapable) {
-        // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
-        btn.addEventListener('click', () => setFrameRock(true));
-      } else {
-        btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
-      }
-      row.appendChild(btn);
+      if (!bandCanLay(def)) continue;
+      const opt = document.createElement('option');
+      opt.value = pattern.id;
+      opt.textContent = pattern.label;
+      sel.appendChild(opt);
     }
+    sel.value = active;
+    sel.addEventListener('change', () => {
+      const def = BRICK_PATTERNS[sel.value];
+      if (def && def.bandCapable) {
+        setFrameRock(true);
+      } else {
+        setFrameBandPattern(i, sel.value);
+      }
+    });
+    row.appendChild(sel);
+
+    const wrap = mountIconSelect(sel, {
+      label: `Band ${i + 1}`,
+      iconFor: (v) => wallPatternIconSvg(v, 22),
+      optionId: (v) => `brickFrameBandPattern_${i}_${v}`,
+      pickSame: true,
+      tilePx: 44,
+      columns: { phone: 4, desktop: 4 },
+    });
+    if (wrap) {
+      const trigger = wrap.querySelector('.icon-select-button');
+      if (trigger) trigger.classList.add('active');
+    }
+
     container.appendChild(row);
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
   });
@@ -2845,6 +2862,11 @@ function syncFrameBandPatternButtons() {
   const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     const active = overrides[i] || band.pattern || 'stretcher';
+    const sel = document.getElementById(`brickFrameBandPatternSelect_${i}`);
+    if (sel) {
+      if (sel.value !== active) sel.value = active;
+      refreshIconSelect(sel);
+    }
     for (const pattern of WALL_PATTERN_LIST) {
       document.getElementById(`brickFrameBandPattern_${i}_${pattern.id}`)?.classList.toggle('active', pattern.id === active);
     }
