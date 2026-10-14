@@ -1,0 +1,92 @@
+/**
+ * Pull from Fusion -- the add-in's 'sketch_pulled' reply (b-spline-gen.py _handle_pull_sketch), handled here as a named
+ * handler like frame_result's (main.js dispatches the message by its declared name). Seat A 2026-10-14 (advisor, Fred:
+ * "fix now"): the board is resized ONLY by a size the design declares (sizeSource 'fusion'); a design without one keeps
+ * the palette's board (the curves were placed on it), with a note when the sketch reaches past it; the curve types the
+ * pull left out (or failed to read) are said, never dropped in silence; the loading card is held from the request to here.
+ */
+import { P } from '../core/state.js';
+import { applyParam } from './param-manager.js';
+import { addLayer, setActiveLayer } from '../editor/layers.js';
+import { showToast } from '../core/toast.js';
+import { setFusionStatus, fusLog } from '../core/fusion-bridge.js';
+import { releaseHeldStage } from '../core/loading-signal.js';
+
+/** The add-in's reply action, and the loading stage held while it walks the sketch. */
+export const SKETCH_PULLED = 'sketch_pulled';
+export const PULL_SKETCH_STAGE = 'pullSketch';
+/** The layer the pulled curves replace their previous copy on. */
+export const PULLED_LAYER_NAME = 'Fusion Sketch';
+/** How a skipped / failed curve collection is said (the add-in's PULL_SKETCH_UNSUPPORTED + its own curve kinds). */
+export const PULLED_CURVE_WORDS = Object.freeze({
+  sketchFixedSplines: 'fixed spline', sketchControlPointSplines: 'control-point spline', sketchEllipses: 'ellipse',
+  sketchEllipticalArcs: 'elliptical arc', sketchConicCurves: 'conic', line: 'line', circle: 'circle', arc: 'arc', spline: 'spline',
+});
+const counted = (byKind) => Object.entries(byKind || {}).filter(([, n]) => n > 0)
+  .map(([k, n]) => `${n} ${PULLED_CURVE_WORDS[k] || k}${n > 1 ? 's' : ''}`);
+
+/** The notes a pull leaves (none = the empty list): what it left out, what failed, a sketch past the kept board. */
+export function pulledSketchNotes(data, board = { widthIn: P.widthIn, heightIn: P.heightIn }) {
+  const notes = [];
+  const skipped = counted(data.skipped);
+  if (skipped.length) notes.push(`Not imported (not supported yet): ${skipped.join(', ')}.`);
+  const failed = counted(data.failed);
+  if (failed.length) notes.push(`Could not be read: ${failed.join(', ')}.`);
+  const b = data.bounds;
+  if (data.sizeSource !== 'fusion' && b && (b.x0 < -1e-3 || b.y0 < -1e-3 || b.x1 > board.widthIn + 1e-3 || b.y1 > board.heightIn + 1e-3)) {
+    const w = (b.x1 - b.x0).toFixed(2), h = (b.y1 - b.y0).toFixed(2);
+    notes.push(`The sketch spans ${w} x ${h} in, past the ${board.widthIn} x ${board.heightIn} in board -- the board size was kept (the design declares none).`);
+  }
+  return notes;
+}
+
+/** The 'sketch_pulled' reply: the curves onto their layer, the board resized only by the design's own size. */
+export function onSketchPulled(raw) {
+  releaseHeldStage(); // the card held since the request (fusion-bridge.js pullSketchFromFusion)
+  try {
+    const data = JSON.parse(raw || '{}');
+    if (!data.ok) {
+      const errMsg = data.error || 'Failed to pull sketch from Fusion';
+      setFusionStatus(errMsg, 'warn');
+      showToast(errMsg, 'warn');
+      return;
+    }
+    const curves = data.curves || [];
+    // Prefer non-construction curves (the carved slots, outlines, holes)
+    const targetCurves = curves.filter((c) => !c.isConstruction);
+    const toImport = targetCurves.length > 0 ? targetCurves : curves;
+    const notes = pulledSketchNotes(data);
+    if (toImport.length === 0) {
+      setFusionStatus('No curves found in Fusion sketch', 'warn');
+      showToast([`Sketch "${data.sketchName}" has no curves to import.`, ...notes].join(' '), 'warn');
+      return;
+    }
+    const editor = window.svgEditor;
+    if (!editor) {
+      setFusionStatus('Editor not initialized', 'warn');
+      return;
+    }
+    // the board follows the DESIGN's own size only (never a fallback)
+    if (data.sizeSource === 'fusion' && Number.isFinite(data.widthIn) && Number.isFinite(data.heightIn)
+      && (Math.abs(P.widthIn - data.widthIn) > 0.001 || Math.abs(P.heightIn - data.heightIn) > 0.001)) {
+      applyParam('widthIn', data.widthIn);
+      applyParam('heightIn', data.heightIn);
+    }
+    let layer = (editor._layers || []).find((l) => l.name === PULLED_LAYER_NAME);
+    if (!layer) layer = addLayer(editor, { name: PULLED_LAYER_NAME });
+    setActiveLayer(editor, layer.id);
+    if (editor._sketchLayer) {
+      editor._sketchLayer.children().toArray().filter((ch) => String(ch.attr('data-layer')) === String(layer.id)).forEach((ch) => ch.remove());
+      toImport.forEach((c) => {
+        if (c.d) editor._sketchLayer.path(c.d).fill('none').stroke({ width: 0.05, color: '#000000' }).attr('data-layer', layer.id);
+      });
+    }
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+    setFusionStatus(`Pulled ${toImport.length} curves from "${data.sketchName}" ✓`, 'ok');
+    showToast([`✓ Pulled ${toImport.length} curves from "${data.sketchName}"`, ...notes].join(' '), notes.length ? 'warn' : 'ok');
+  } catch (e) {
+    fusLog(`sketch_pulled handling failed: ${e.message}`);
+    setFusionStatus(`Sketch pull failed: ${e.message}`, 'warn');
+  }
+}

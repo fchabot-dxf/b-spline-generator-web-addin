@@ -20,7 +20,8 @@ describe('pullSketchFromFusion & sketch_pulled pipeline', () => {
         globalThis.adsk = { fusionSendData: sendFn };
 
         pullSketchFromFusion();
-        expect(sendFn).toHaveBeenCalledWith('pull_sketch_from_fusion', '{}');
+        // the palette's board goes along (a design without its own size places the curves on it: main/pull-sketch.js)
+        expect(sendFn).toHaveBeenCalledWith('pull_sketch_from_fusion', JSON.stringify({ widthIn: P.widthIn, heightIn: P.heightIn }));
     });
 
     it('dispatching sketch_pulled creates Fusion Sketch layer and populates curves', async () => {

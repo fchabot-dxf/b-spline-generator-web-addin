@@ -35,11 +35,9 @@ import { initPhotoFootprint } from './photo-footprint.js';
 import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
-import { P, saveLastSession, flushSessionSave, isFusionMode } from '../core/state.js';
+import { saveLastSession, flushSessionSave, isFusionMode } from '../core/state.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
-import { addLayer, setActiveLayer } from '../editor/layers.js';
-import { showToast } from '../core/toast.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
@@ -48,6 +46,7 @@ import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { receiveEditPasswordFromFusion } from './edit-password.js';
 import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } from './frame-panel.js';
+import { onSketchPulled, SKETCH_PULLED } from './pull-sketch.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
@@ -271,75 +270,7 @@ export function handleFusionHandshake(ev) {
         return;
     }
 
-    if (action === 'sketch_pulled') {
-        try {
-            const data = JSON.parse(ev.detail.data || '{}');
-            if (!data.ok) {
-                const errMsg = data.error || 'Failed to pull sketch from Fusion';
-                setFusionStatus(errMsg, 'warn');
-                showToast(errMsg, 'warn');
-                return;
-            }
-            const curves = data.curves || [];
-            // Prefer non-construction curves (the carved slots, outlines, holes)
-            const targetCurves = curves.filter(c => !c.isConstruction);
-            const toImport = targetCurves.length > 0 ? targetCurves : curves;
-
-            if (toImport.length === 0) {
-                setFusionStatus('No curves found in Fusion sketch', 'warn');
-                showToast(`Sketch "${data.sketchName}" has no curves to import.`, 'warn');
-                return;
-            }
-
-            const editor = window.svgEditor;
-            if (!editor) {
-                setFusionStatus('Editor not initialized', 'warn');
-                return;
-            }
-
-            // Sync board dimensions if updated in Fusion
-            if (typeof data.widthIn === 'number' && typeof data.heightIn === 'number') {
-                if (Math.abs(P.widthIn - data.widthIn) > 0.001 || Math.abs(P.heightIn - data.heightIn) > 0.001) {
-                    applyParam('widthIn', data.widthIn);
-                    applyParam('heightIn', data.heightIn);
-                }
-            }
-
-            // Find or create 'Fusion Sketch' layer
-            let layer = (editor._layers || []).find(l => l.name === 'Fusion Sketch');
-            if (!layer) {
-                layer = addLayer(editor, { name: 'Fusion Sketch' });
-            }
-            setActiveLayer(editor, layer.id);
-
-            // Replace elements on this layer
-            if (editor._sketchLayer) {
-                const oldNodes = editor._sketchLayer.children().toArray().filter(
-                    ch => String(ch.attr('data-layer')) === String(layer.id)
-                );
-                oldNodes.forEach(ch => ch.remove());
-
-                toImport.forEach(c => {
-                    if (c.d) {
-                        editor._sketchLayer.path(c.d)
-                            .fill('none')
-                            .stroke({ width: 0.05, color: '#000000' })
-                            .attr('data-layer', layer.id);
-                    }
-                });
-            }
-
-            if (typeof editor.pushState === 'function') editor.pushState();
-            if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-
-            setFusionStatus(`Pulled ${toImport.length} curves from "${data.sketchName}" ✓`, 'ok');
-            showToast(`✓ Pulled ${toImport.length} curves from "${data.sketchName}"`, 'ok');
-        } catch (e) {
-            fusLog(`sketch_pulled handling failed: ${e.message}`);
-            setFusionStatus(`Sketch pull failed: ${e.message}`, 'warn');
-        }
-        return;
-    }
+    if (action === SKETCH_PULLED) { onSketchPulled(ev.detail.data); return; } // Pull from Fusion (main/pull-sketch.js)
 
     if (action === 'pong') return;
 

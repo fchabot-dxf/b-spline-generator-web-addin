@@ -1553,6 +1553,11 @@ def _frame_builder_dir():
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frame-builder')
 
 
+# Pull from Fusion (seat A 2026-10-14): the sketch-curve collections the pull does NOT read -- each one present is
+# reported back (result['skipped']) so the palette can say what it left out
+PULL_SKETCH_UNSUPPORTED = ('sketchFixedSplines', 'sketchControlPointSplines', 'sketchEllipses',
+                           'sketchEllipticalArcs', 'sketchConicCurves')
+
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
     def __init__(self):
         super().__init__()
@@ -1785,7 +1790,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             # ── pull_sketch_from_fusion — extract constrained sketch curves from Fusion ─────
             elif action == 'pull_sketch_from_fusion':
-                res = self._handle_pull_sketch()
+                try:
+                    board = json.loads(htmlArgs.data or '{}')
+                except Exception:
+                    board = {}
+                res = self._handle_pull_sketch(board)
                 pal = ui.palettes.itemById(PALETTE_ID)
                 if pal:
                     pal.sendInfoToHTML('sketch_pulled', json.dumps(res, default=str))
@@ -1860,10 +1869,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         except Exception as e:
             _log(f'CLEAR DESIGN could not report back: {e}')
 
-    def _handle_pull_sketch(self):
+    def _handle_pull_sketch(self, board=None):
         """Extracts evaluated/solved sketch curves from the active or latest Fusion sketch
-        and converts them to board-relative coordinates (inches) for the Web Add-in canvas."""
-        result = {'ok': False, 'sketchName': None, 'widthIn': 7.0, 'heightIn': 9.0, 'curves': [], 'error': None}
+        and converts them to board-relative coordinates (inches) for the Web Add-in canvas.
+
+        Seat A 2026-10-14 (advisor, Fred: "fix now"): the board is NEVER resized by a fallback -- the size comes from
+        the design's own widthIn / heightIn parameters (sizeSource 'fusion'), else the palette's board (`board`, sent
+        with the request) places the curves and sizeSource is None (the palette keeps its board). `bounds` = the
+        pulled curves' extent in board inches. A curve type this pull does not read is REPORTED (`skipped`, by
+        PULL_SKETCH_UNSUPPORTED) and one that failed to read is counted (`failed`), never dropped in silence."""
+        board = board or {}
+        result = {'ok': False, 'sketchName': None, 'widthIn': None, 'heightIn': None, 'sizeSource': None,
+                  'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'error': None}
         try:
             des = _active_design()
             if not des:
@@ -1913,15 +1930,27 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             w_param = des.allParameters.itemByName('widthIn') or des.allParameters.itemByName('BSG_widthIn')
             h_param = des.allParameters.itemByName('heightIn') or des.allParameters.itemByName('BSG_heightIn')
-            width_in = (w_param.value / 2.54) if w_param else 7.0
-            height_in = (h_param.value / 2.54) if h_param else 9.0
-            result['widthIn'] = width_in
-            result['heightIn'] = height_in
+            if w_param and h_param:
+                width_in, height_in = w_param.value / 2.54, h_param.value / 2.54
+                result['widthIn'], result['heightIn'], result['sizeSource'] = width_in, height_in, 'fusion'
+            else:
+                # no size in the design: place the curves on the palette's own board (never a made-up 7 x 9)
+                width_in = float(board.get('widthIn') or 0) or None
+                height_in = float(board.get('heightIn') or 0) or None
+                if not width_in or not height_in:
+                    raise RuntimeError('The design has no widthIn / heightIn parameters and the palette sent no board size.')
+
+            seen = []
 
             def _to_svg(pt_cm):
                 x_in = (pt_cm.x / 2.54) + (width_in / 2.0)
                 y_in = (height_in / 2.0) - (pt_cm.y / 2.54)
+                seen.append((x_in, y_in))
                 return round(x_in, 5), round(y_in, 5)
+
+            def _failed(kind, e):
+                result['failed'][kind] = result['failed'].get(kind, 0) + 1
+                _log(f"{kind} extract failed: {e}")
 
             curves_out = []
             curves = target_sketch.sketchCurves
@@ -1939,7 +1968,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         'isConstruction': bool(line.isConstruction)
                     })
                 except Exception as e:
-                    _log(f"Line extract failed: {e}")
+                    _failed('line', e)
 
             # Circles
             for circle in curves.sketchCircles:
@@ -1959,7 +1988,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         'isConstruction': bool(circle.isConstruction)
                     })
                 except Exception as e:
-                    _log(f"Circle extract failed: {e}")
+                    _failed('circle', e)
 
             # Arcs
             for arc in curves.sketchArcs:
@@ -1998,17 +2027,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         'isConstruction': bool(arc.isConstruction)
                     })
                 except Exception as e:
-                    _log(f"Arc extract failed: {e}")
+                    _failed('arc', e)
 
             # Fitted Splines
             for spline in curves.sketchFittedSplines:
                 try:
                     evaluator = spline.geometry.evaluator
-                    _, s_p = evaluator.getParamExtents()
+                    ext = evaluator.getParamExtents()  # (ok, startParameter, endParameter)
+                    t0, t1 = float(ext[-2]), float(ext[-1])
                     steps = 25
                     pts = []
                     for s in range(steps + 1):
-                        t = s_p.minimumValue + (s_p.maximumValue - s_p.minimumValue) * (s / float(steps))
+                        t = t0 + (t1 - t0) * (s / float(steps))
                         _, p3d = evaluator.getPointAtParameter(t)
                         pts.append(_to_svg(p3d))
                     d = f"M {pts[0][0]} {pts[0][1]} " + " ".join([f"L {p[0]} {p[1]}" for p in pts[1:]])
@@ -2018,8 +2048,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         'isConstruction': bool(spline.isConstruction)
                     })
                 except Exception as e:
-                    _log(f"Spline extract failed: {e}")
+                    _failed('spline', e)
 
+            # the curve types this pull does not read: reported, never skipped in silence
+            for coll in PULL_SKETCH_UNSUPPORTED:
+                try:
+                    n = getattr(curves, coll).count
+                except Exception:
+                    n = 0
+                if n:
+                    result['skipped'][coll] = n
+            if seen:
+                xs, ys = [q[0] for q in seen], [q[1] for q in seen]
+                result['bounds'] = {'x0': min(xs), 'y0': min(ys), 'x1': max(xs), 'y1': max(ys)}
             result['curves'] = curves_out
             result['ok'] = True
             _log(f"[PULL SKETCH] Extracted {len(curves_out)} curves from sketch '{target_sketch.name}'")

@@ -6,7 +6,7 @@
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
 import { fusLog } from './fusion-log.js';
-import { releaseHeldStage } from './loading-signal.js';
+import { releaseHeldStage, holdLoadingStage } from './loading-signal.js';
 import FUSION_HOST from '../data/fusion-host.js';
 
 export { fusLog } from './fusion-log.js';
@@ -177,7 +177,10 @@ export function pollMode(onFusionReady, onWebMode) {
 export function pullSketchFromFusion() {
     if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
         setFusionStatus('Pulling sketch from Fusion...', 'busy');
-        adsk.fusionSendData('pull_sketch_from_fusion', '{}');
+        // the card stays up while the add-in walks the sketch (released by main/pull-sketch.js onSketchPulled); the
+        // board size goes along so a design that declares none places the curves on it -- never a made-up 7 x 9
+        holdLoadingStage('pullSketch');
+        adsk.fusionSendData('pull_sketch_from_fusion', JSON.stringify({ widthIn: P.widthIn, heightIn: P.heightIn }));
         fusLog('pull_sketch_from_fusion sent to Python');
     } else {
         fusLog('pull_sketch_from_fusion skipped: not in Fusion environment');
