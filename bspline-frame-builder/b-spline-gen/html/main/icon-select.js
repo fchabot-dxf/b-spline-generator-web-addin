@@ -150,9 +150,10 @@ const _gridObservers = new Map(); // grid -> MutationObserver
 function _sweepGridObservers() {
   for (const [g, o] of _gridObservers) if (!g.isConnected) { o.disconnect(); _gridObservers.delete(g); }
 }
-export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, columns = PICKER_TILE.columns, optionSelector = 'button', ids = {}, preferActive = null } = {}) {
+export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, columns = PICKER_TILE.columns, optionSelector = 'button', ids = {}, preferActive = null, nameOf = null } = {}) {
   if (!grid || !grid.parentNode) return null;
-  if (MOUNTED_GRIDS.has(grid)) return MOUNTED_GRIDS.get(grid);
+  // mounted already (a renderer re-filled it): refresh now -- the chip, the tiles, the headings' span -- not a tick later
+  if (MOUNTED_GRIDS.has(grid)) { const m = MOUNTED_GRIDS.get(grid); m.refresh(); return m.wrap; }
   _sweepGridObservers();
   const wrap = document.createElement('div');
   wrap.className = 'icon-select icon-grid-picker';
@@ -189,7 +190,8 @@ export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, c
       for (const h of grid.children) if (!h.matches(optionSelector)) h.style.gridColumn = '1 / -1'; // a family heading spans the row
       const active = opts().filter((o) => o.classList.contains('active'));
       const cur = (preferActive && active.find((o) => o.matches(preferActive))) || active[0];
-      const text = cur ? (cur.getAttribute('aria-label') || cur.title || cur.textContent.trim()) : '';
+      // nameOf: a picker's declared name for an option (default: its aria-label / title / text)
+      const text = cur ? ((nameOf && nameOf(cur)) || cur.getAttribute('aria-label') || cur.title || cur.textContent.trim()) : '';
       button.innerHTML = cur ? cur.innerHTML : label;
       fitSvg(button, PICKER_TILE.chipPx - 6);
       button.title = `${label}: ${text}`;
@@ -215,6 +217,6 @@ export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, c
   }
   _wireGlobal();
   refresh();
-  MOUNTED_GRIDS.set(grid, wrap);
+  MOUNTED_GRIDS.set(grid, { wrap, refresh });
   return wrap;
 }

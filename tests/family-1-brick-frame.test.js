@@ -57,7 +57,7 @@ describe('Family 1 Brick Frame Adaptation (Straight Top/Bottom & Hourglass / Nec
     }
   });
 
-  it('framePresetsForTemplate filters out arch_keystone for Family 1', () => {
+  it('framePresetsForTemplate lists Family 1 presets first, arch_keystone after (never hidden)', () => {
     const mockList = [
       { id: 'single_soldier', label: 'Single Soldier' },
       { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
@@ -67,10 +67,12 @@ describe('Family 1 Brick Frame Adaptation (Straight Top/Bottom & Hourglass / Nec
 
     const filtered = framePresetsForTemplate('template_1', mockList);
     const ids = filtered.map((x) => x.id);
-    expect(ids).toContain('single_soldier');
-    expect(ids).toContain('soldier_stretcher');
-    expect(ids).toContain('quoin_corners');
-    expect(ids).not.toContain('arch_keystone');
+    // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset stays pickable -- the family's first, marked, the rest after
+    expect([...ids].sort()).toEqual(mockList.map((x) => x.id).sort());
+    const fit = ["single_soldier","soldier_stretcher","quoin_corners"], other = ["arch_keystone"];
+    for (const id of fit) expect(filtered.find((x) => x.id === id).fits, id).toBe(true);
+    for (const id of other) expect(filtered.find((x) => x.id === id).fits, id).toBe(false);
+    expect(Math.max(...fit.map((id) => ids.indexOf(id)))).toBeLessThan(Math.min(...other.map((id) => ids.indexOf(id))));
   });
 
   it('engine: generates clean brick bands for all Family 1 templates with conforming presets (0 out of bounds)', () => {

@@ -55,7 +55,7 @@ import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts, LAID_BY_COURSES, familyForTemplate } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts, LAID_BY_COURSES } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import BRICK_ICONS from '../data/brick-icons.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
@@ -669,21 +669,12 @@ export function frameCornerOf(settings) {
 /** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
  *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
 /** 2026-10-11: the arch the board's Frame preset carries (library.js withArch: an arch-surround.js ARCH_SPECS id), or null. */
-export const frameArchOf = (settings, templateId = null) => {
-  const preset = settings && settings.frameBandPreset;
-  if (!preset) return null;
-  if ((FRAME_PRESETS[preset] || {}).arch) return FRAME_PRESETS[preset].arch;
-  if (preset === 'quoin_corners' && familyForTemplate(templateId)?.id === 'family_2_arched') {
-    return 'soldier_quoin';
-  }
-  return null;
-};
-export function frameBandsOf(settings, templateId = null) {
-  const preset = settings && settings.frameBandPreset;
-  if (preset === 'quoin_corners' && familyForTemplate(templateId)?.id === 'family_2_arched') {
-    return [];
-  }
-  const base = FRAME_PRESETS[preset] || FRAME_PRESETS.single_soldier;
+// Fred 2026-10-14: a preset lays the SAME on every template -- a saved board re-lays exactly as before (d4b2ec1 had
+// routed quoin_corners on the arched family to a soldier_quoin arch with no bands; Fred chose the curved quoin there,
+// tests/frame-preset-saved-boards-pin.test.js). A wood-frame family only SUGGESTS presets (core/bricks/frame-families.js).
+export const frameArchOf = (settings) => (FRAME_PRESETS[settings && settings.frameBandPreset] || {}).arch || null;
+export function frameBandsOf(settings) {
+  const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = (settings && settings.frameBandPatterns) || [];
   const corner = settings && settings.frameCorner ? frameCornerOf(settings) : null;
   return base.map((band, i) => ({
@@ -1398,18 +1389,11 @@ function _layInput(editor, settings, frameGeom) {
   if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, preset: surround.preset, corner: surround.corner };
   // 2026-10-11: the frame preset's arch (library.js withArch) -- part of the Frame element, like the surround: no Frame
   // element (frameGeomForLay emptied its bands), no arch; a preset without one = absent, the lay byte-identical
-  const tplId = (frameGeom && frameGeom.templateId) || (editor && (editor._templateId || (editor.frame && editor.frame.templateId))) || null;
-  const arch = frameArchOf(settings, tplId);
+  const arch = frameArchOf(settings);
   if (arch && frameGeom && frameGeom.primitives && !frameGeom.noFrameElement) input.arch = { spec: arch };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
-  if (frameGeom) {
-    input.frame = {
-      ...frameGeom,
-      ...(arch ? { bands: [] } : {}),
-      set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale),
-    };
-  }
+  if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
   // T86 item 16e: the frame's fan centre -- sent only off the default (Needle = absent = the lay byte-identical)
   if (frameGeom && frameFanCentreOf(settings) !== FAN_CENTRE_DEFAULT) input.fanCentre = frameFanCentreOf(settings);
   applyWallPattern(input, wallSettings);

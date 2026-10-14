@@ -40,7 +40,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 });
 
 import {
-  initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
+  initBrickPanel, renderFramePresetList, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
@@ -1304,5 +1304,40 @@ describe("Fred 2026-10-11: EDGE TAPER per element -- the active element's should
     expect(Number($('brickEdgeTaper').value)).toBe(ownEdge('wall'));
     $('brickTool_frame').click();
     expect(Number($('brickEdgeTaper').value)).toBe(0);
+  });
+});
+
+describe('Fred 2026-10-14 ("suggest, don\'t hide"): a wood-frame family orders the presets, never rewrites or hides one', () => {
+  beforeEach(() => { setup('frame'); });
+  afterEach(() => { P.frame = null; });
+  it('a template outside the preset\'s family keeps the board\'s preset (it was rewritten to the family default)', () => {
+    P.brickSettings.frameBandPreset = 'quoin_corners';
+    setFrameRecord({ templateId: 'template_7', params: {} }); // Family 3 (gables): quoin_corners is not one of its presets
+    expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+  it('the preset popover lists EVERY preset: the family\'s first, marked "fits this frame", then the rest', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    const ids = [...list.querySelectorAll('button[id^="brickFramePreset_"]')].map((b) => b.id.replace('brickFramePreset_', ''));
+    expect([...ids].sort()).toEqual(Object.keys(FRAME_PRESETS).sort());
+    for (const id of ['dentil_corbel', 'recessed_panel', 'diaper_lattice', 'chicago_dentil', 'butt_frame']) expect(ids, id).toContain(id);
+    const fits = ids.filter((id) => $(`brickFramePreset_${id}`).classList.contains('fits-frame'));
+    expect(fits).toContain('arch_keystone');
+    expect(fits).not.toContain('butt_frame');
+    expect(ids.slice(0, fits.length)).toEqual(fits); // the family's first
+    expect($('brickFramePreset_arch_keystone').title).toMatch(/fits this frame/);
+    expect($('brickFramePresetGroup_fits')).not.toBeNull();
+    expect($('brickFramePresetGroup_other')).not.toBeNull();
+  });  it('inside the picker (main/icon-select.js): the headings span the grid, the chip names the preset alone', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    P.brickSettings.frameBandPreset = 'arch_keystone';
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    expect(list.closest('.icon-grid-picker')).not.toBeNull();
+    for (const id of ['brickFramePresetGroup_fits', 'brickFramePresetGroup_other']) expect($(id).style.gridColumn, id).toBe('1 / -1');
+    const name = $('brickFramePresetTriggerName').textContent;
+    expect(name).toBe($('brickFramePreset_arch_keystone').dataset.name);
+    expect(name).not.toMatch(/fits this frame/); // the tooltip says it; the chip names the preset
   });
 });

@@ -195,4 +195,9 @@ describe('mountIconGrid: the picker over existing option buttons', () => {
     mountIconGrid(document.getElementById('list3'), { label: 'P', preferActive: '.user', ids: { name: 'pName' } });
     expect(document.getElementById('pName').textContent).toBe('Mine');
   });
+  it('nameOf: a picker declares the name its chip shows (default: the aria-label)', () => {
+    document.body.innerHTML = '<div id="row"><div id="list4"><button class="active" aria-label="Arch · fits this frame" data-name="Arch">a</button></div></div>';
+    mountIconGrid(document.getElementById('list4'), { label: 'F', nameOf: (o) => o.dataset.name, ids: { name: 'fName' } });
+    expect(document.getElementById('fName').textContent).toBe('Arch');
+  });
 });

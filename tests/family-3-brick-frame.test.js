@@ -73,7 +73,7 @@ describe('Family 3 Brick Frame Adaptation (Pointed & Dipped Gables)', () => {
     }
   });
 
-  it('framePresetsForTemplate includes conforming presets and excludes clashing presets for Family 3', () => {
+  it('framePresetsForTemplate lists Family 3 presets first, the clashing ones after (never hidden)', () => {
     const mockList = [
       { id: 'single_soldier', label: 'Single Soldier' },
       { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
@@ -88,15 +88,12 @@ describe('Family 3 Brick Frame Adaptation (Pointed & Dipped Gables)', () => {
 
     const filtered = framePresetsForTemplate('template_7', mockList);
     const ids = filtered.map((x) => x.id);
-    expect(ids).toContain('single_soldier');
-    expect(ids).toContain('soldier_stretcher');
-    expect(ids).toContain('three_band');
-    expect(ids).not.toContain('arch_keystone');
-    expect(ids).not.toContain('butt_frame');
-    expect(ids).not.toContain('quoin_corners');
-    expect(ids).not.toContain('flemish_architrave');
-    expect(ids).not.toContain('double_course');
-    expect(ids).not.toContain('stepped_fret');
+    // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset stays pickable -- the family's first, marked, the rest after
+    expect([...ids].sort()).toEqual(mockList.map((x) => x.id).sort());
+    const fit = ["single_soldier","soldier_stretcher","three_band"], other = ["arch_keystone","butt_frame","quoin_corners","flemish_architrave","double_course","stepped_fret"];
+    for (const id of fit) expect(filtered.find((x) => x.id === id).fits, id).toBe(true);
+    for (const id of other) expect(filtered.find((x) => x.id === id).fits, id).toBe(false);
+    expect(Math.max(...fit.map((id) => ids.indexOf(id)))).toBeLessThan(Math.min(...other.map((id) => ids.indexOf(id))));
   });
 
   it('engine: generates clean brick bands for all Family 3 templates with conforming presets (0 out of bounds)', () => {
