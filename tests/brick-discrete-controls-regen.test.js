@@ -895,13 +895,14 @@ describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid (fla
 
 describe('F35 item 15: raised accents -- a preset icon grid + Click bricks, 3D-only (never pending)', () => {
   beforeEach(() => { P.brickSettings.accent = { preset: 'none', levelIn: 0.0625, clicks: [] }; setup('wall'); });
-  it('None + the 10 presets, icon only with the name as tooltip; the level row hidden for None', async () => {
-    const { ACCENT_PRESETS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js');
+  it('None + the tailored presets, icon only with the name as tooltip; the level row hidden for None', async () => {
+    const { accentPresetsForPattern } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js');
     const btns = [...$('brickAccentList').querySelectorAll('button')];
-    expect(btns.map((b) => b.id)).toEqual(['brickAccent_none', ...ACCENT_PRESETS.map((p) => `brickAccent_${p.id}`)]);
-    expect($('brickAccent_pyramid').title).toBe('Pyramid');
-    expect($('brickAccent_pyramid').querySelector('svg')).not.toBeNull();
-    expect($('brickAccent_pyramid').textContent.trim()).toBe('');
+    const presets = accentPresetsForPattern(P.brickSettings.pattern);
+    expect(btns.map((b) => b.id)).toEqual(['brickAccent_none', ...presets.map((p) => `brickAccent_${p.id}`)]);
+    expect($('brickAccent_zigzag').title).toBe('Stepped zigzag');
+    expect($('brickAccent_zigzag').querySelector('svg')).not.toBeNull();
+    expect($('brickAccent_zigzag').textContent.trim()).toBe('');
     expect($('brickAccent_none').classList.contains('active')).toBe(true);
     expect($('brickAccentLevelRow').style.display).toBe('none');
   });
@@ -1192,8 +1193,8 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
 
   it('(c) a wall can carry a raised preset while the frame has none: accents are the Wall\'s alone', () => {
     setup('wall');
-    $('brickAccent_sparseDots').click();
-    expect(P.brickSettings.accent.preset).toBe('sparseDots');
+    $('brickAccent_diamond').click();
+    expect(P.brickSettings.accent.preset).toBe('diamond');
     expect(runBricks.mock.calls.every((c) => !c[3].kinds.includes('frame') || c[3].kinds.includes('wall'))).toBe(true);
   });
 });

@@ -376,8 +376,12 @@ export const BRICK_PATTERNS = Object.freeze({
   // the textbook alternating-stretcher-and-header bond, no further parameters needed here (the unit
   // sequence itself isn't user-tunable, matching how stretcher/soldier/etc. have no exposed knobs).
   flemish: { kind: 'course-alternating' },
+  english: { kind: 'course-alternating', subtype: 'english' },
+  monk: { kind: 'course-alternating', subtype: 'monk' },
   herringbone: { kind: 'tile2d' },
+  double_herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
+  windmill: { kind: 'tile2d' },
   // F35 item 13: Fred's sheet (shots/fred/ref_brick_pattern_sheet.jpg), layouts/sheet-patterns.js -- Wall-only
   stacked_horizontal: { kind: 'tile2d' },
   chevron: { kind: 'tile2d' },
@@ -458,7 +462,10 @@ function withArch(arch, bands) {
  *  separate Corners picker is retired. A look that needs another corner is a VARIANT preset, declared here: these presets
  *  each get a quoin variant `<id>_quoin` (the same bands, every corner a quoin block -- the inner bands wrap it with an L,
  *  contour-bands.js QUOIN_INNER_WRAP -- and the same best size), listed right after them. */
-export const QUOIN_VARIANT_OF = Object.freeze(['soldier_stretcher', 'three_band', 'mixed_bands', 'recessed_panel']);
+export const QUOIN_VARIANT_OF = Object.freeze([
+  'soldier_stretcher', 'three_band', 'mixed_bands', 'recessed_panel',
+  'craftsman_apron', 'double_soldier',
+]);
 const cornered = (bands, cornerStyle) => {
   const v = bands.map((b) => ({ ...b, cornerStyle }));
   return bands.bestSize ? withBestSize(bands.bestSize, v) : v;
@@ -557,6 +564,26 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
   // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
   arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
+  craftsman_apron: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
+  ]),
+  double_soldier: withBestSize(1.25, [
+    { widthIn: 0.75, rows: 1, pattern: 'soldier' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier' },
+  ]),
+  english_frame: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+  ]),
+  stepped_fret: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'raised' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+  ]),
 }));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,

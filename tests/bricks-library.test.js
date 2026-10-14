@@ -102,8 +102,11 @@ describe('FRAME_PRESETS', () => {
     expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band',
       // frame motifs phase 1 (tests/bricks-band-motif.test.js)
       'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'arch_keystone',
+      // architectural apron & bond presets
+      'craftsman_apron', 'double_soldier', 'english_frame', 'stepped_fret',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
-      'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin'].sort());
+      'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
+      'craftsman_apron_quoin', 'double_soldier_quoin'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
     expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {

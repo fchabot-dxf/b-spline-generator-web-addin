@@ -40,7 +40,7 @@ import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
   accentLayInput, BOND_CUSTOM, isCustomBondTile, blankBond, resizeBond, pieceOfCells, bondTogglePiece, bondJoin, bondSplit,
-  bondShift, wallPatternOfBase,
+  bondShift, wallPatternOfBase, accentPresetsForPattern, accentPresetById,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -464,6 +464,10 @@ export function setElementLevel(kind, levelIn, commit = 'generate') {
  *  the 2D highlight and re-masks, never re-lays. The picker = None + ACCENT_PRESETS as engine-drawn icons
  *  (icons only, the name as tooltip); Custom = the "Click bricks" toggle, which arms the canvas mode. */
 const _accent = () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.accent || {}) });
+export const accentChoicesForPattern = (patternId) => [
+  { id: 'none', label: 'None' },
+  ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
+];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
 let _accentClickArmed = false;
 
@@ -555,7 +559,10 @@ export function renderAccentList(container) {
   container.style.overflowY = 'auto';
   _wirePopoverGlobal();
 
-  for (const choice of ACCENT_CHOICES) {
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = accentChoicesForPattern(pattern);
+
+  for (const choice of choices) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-accent-icon';
@@ -563,7 +570,7 @@ export function renderAccentList(container) {
     btn.title = choice.label;
     btn.setAttribute('aria-label', choice.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0 }) || choice.label; // item 32: sunk drawn lower
+    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0, bond: pattern }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
     btn.addEventListener('click', () => {
       setAccentPreset(choice.id);
@@ -575,15 +582,19 @@ export function renderAccentList(container) {
 
 export function syncAccentControls() {
   const a = _accent();
-  for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = accentChoicesForPattern(pattern);
+  for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
   const triggerBtn = document.getElementById('brickWallAccentTrigger');
   const triggerName = document.getElementById('brickWallAccentTriggerName');
   if (triggerBtn && triggerName) {
-    const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
+    const choice = choices.find((c) => c.id === a.preset)
+      || ACCENT_CHOICES.find((c) => c.id === a.preset)
+      || { id: a.preset, label: a.preset === 'none' ? 'None' : (accentPresetById(a.preset)?.label || a.preset) };
     const isSunk = a.levelIn < 0;
     triggerBtn.innerHTML = choice.id === 'none'
       ? '<span style="font-size:11px; font-weight:600; opacity:0.8;">None</span>'
-      : (accentIconSvg(choice.id, 30, { sunk: isSunk }) || choice.label);
+      : (accentIconSvg(choice.id, 30, { sunk: isSunk, bond: pattern }) || choice.label);
     triggerName.textContent = choice.label;
     triggerBtn.title = `Accent: ${choice.label}`;
   }
@@ -2491,7 +2502,8 @@ function syncBrushPresetButtons() {
  *  later needs no change here. */
 const WALL_PATTERN_LABELS = {
   none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
-  flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  flemish: 'Flemish', english: 'English bond', monk: 'Monk bond', herringbone: 'Herringbone', double_herringbone: 'Double herringbone',
+  basketweave: 'Basketweave', windmill: 'Windmill pavers',
   // F35 item 13: the sheet's own names
   stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
   basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
@@ -2509,9 +2521,9 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
  *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
  *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
-  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'stacked_horizontal', 'stacked_variation'] },
-  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
-  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'english', 'monk', 'stacked_horizontal', 'stacked_variation'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron', 'double_herringbone'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked', 'windmill'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
   // F35 item 14: every BRICK_PATTERNS entry declaring `family: 'tiles'` lands here, under its own heading
   { id: 'tiles', label: 'Tiles', heading: true, patterns: [] },
@@ -2653,9 +2665,18 @@ export function setWallPattern(patternId, commit = 'generate') {
     if (_builder.open) _builder.open = false;
     renderPatternBuilder();
   }
+  const allowed = accentPresetsForPattern(patternId).map((p) => p.id);
+  const isPeriodic = ACCENT_PRESETS.some((p) => p.id === a.preset);
+  if (a.preset && a.preset !== 'none' && a.preset !== ACCENT_CUSTOM.id && a.preset !== ACCENT_TILE.id) {
+    if (!allowed.includes(a.preset) && !isPeriodic) {
+      P.brickSettings.accent = { ...a, preset: 'none' };
+    }
+  }
   P.brickSettings.pattern = patternId;
   const list = document.getElementById('brickPatternList');
   if (list) list.style.display = 'none';
+  renderAccentList(document.getElementById('brickAccentList'));
+  syncAccentControls();
   syncWallPatternButtons();
   syncSetPicker(); // item 23: Fieldstone makes the wall rock (no brick set active), another pattern gives it back
   commitBrickSetting(commit);
@@ -3159,6 +3180,10 @@ const FRAME_PRESET_LABELS = {
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
   arch_keystone: 'Arch + keystone',
+  craftsman_apron: 'Craftsman apron',
+  double_soldier: 'Double soldier',
+  english_frame: 'English bond frame',
+  stepped_fret: 'Stepped fret apron',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
