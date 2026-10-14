@@ -3394,10 +3394,8 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  // item 33: + the element's corner (frameBandsOf -- the preset's own; a board saved with an explicit frameCorner from
-  // the retired Corners row keeps it, tests/frame-corner-legacy-pin.test.js)
-  // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
-  return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
+  const tplId = P.frame && P.frame.templateId;
+  return { primitives, bands: frameBandsOf(P.brickSettings, tplId), insetRect: _insetWindowRect(editor), templateId: tplId };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the

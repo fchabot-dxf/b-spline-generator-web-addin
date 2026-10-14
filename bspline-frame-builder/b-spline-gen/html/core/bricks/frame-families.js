@@ -65,6 +65,7 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
     conformingPresetIds: Object.freeze([
       'none',
       'arch_keystone',
+      'quoin_corners',
       'single_soldier',
       'soldier_stretcher',
       'three_band',
@@ -73,9 +74,7 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
       'mixed_bands',
       'craftsman_apron',
       'corbelled_cornice',
-      'flemish_architrave',
       'zigzag_band',
-      'double_course',
     ]),
     defaultPreset: 'arch_keystone',
   }),

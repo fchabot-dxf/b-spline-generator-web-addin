@@ -43,9 +43,9 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
     }
   });
 
-  it('correctly filters conforming presets (including arch_keystone) vs non-conforming presets (butt_frame, quoin_corners)', () => {
-    const conforming = ['arch_keystone', 'single_soldier', 'soldier_stretcher', 'three_band', 'corbelled_cornice', 'double_soldier'];
-    const nonConforming = ['butt_frame', 'quoin_corners', 'stepped_fret'];
+  it('correctly filters conforming presets (including arch_keystone, quoin_corners) vs non-conforming presets', () => {
+    const conforming = ['arch_keystone', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band', 'corbelled_cornice', 'double_soldier'];
+    const nonConforming = ['butt_frame', 'stepped_fret', 'flemish_architrave', 'double_course'];
 
     for (const tid of family2Templates) {
       for (const p of conforming) {
@@ -57,22 +57,26 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
     }
   });
 
-  it('framePresetsForTemplate includes arch_keystone and excludes butt_frame for Family 2', () => {
+  it('framePresetsForTemplate includes arch_keystone, quoin_corners and excludes pruned/clashing presets for Family 2', () => {
     const mockList = [
       { id: 'single_soldier', label: 'Single Soldier' },
       { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
       { id: 'arch_keystone', label: 'Arch + Keystone' },
       { id: 'butt_frame', label: 'Butt Frame' },
       { id: 'quoin_corners', label: 'Quoined Frame' },
+      { id: 'flemish_architrave', label: 'Flemish architrave' },
+      { id: 'double_course', label: 'Double course' },
     ];
 
     const filtered = framePresetsForTemplate('template_10', mockList);
     const ids = filtered.map((x) => x.id);
     expect(ids).toContain('arch_keystone');
+    expect(ids).toContain('quoin_corners');
     expect(ids).toContain('single_soldier');
     expect(ids).toContain('soldier_stretcher');
     expect(ids).not.toContain('butt_frame');
-    expect(ids).not.toContain('quoin_corners');
+    expect(ids).not.toContain('flemish_architrave');
+    expect(ids).not.toContain('double_course');
   });
 
   it('engine: generates clean brick bands for all Family 2 templates with conforming presets (0 out of bounds)', () => {
@@ -88,16 +92,23 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
       for (const pid of fam.conformingPresetIds) {
         if (pid === 'none') continue;
 
-        if (pid === 'arch_keystone') {
-          const res = layArch(ARCH_SPECS.rowlock_keystone, prims, [], { set, seed: 1 });
-          expect(res.pieces?.length, `${tid} + arch_keystone should generate pieces`).toBeGreaterThan(0);
+        if (pid === 'arch_keystone' || pid === 'quoin_corners') {
+          const spec = pid === 'arch_keystone' ? ARCH_SPECS.rowlock_keystone : ARCH_SPECS.soldier_quoin;
+          const res = layArch(spec, prims, [], { set, seed: 1 });
+          expect(res.pieces?.length, `${tid} + ${pid} should generate pieces`).toBeGreaterThan(0);
+          
+          if (pid === 'quoin_corners') {
+            const stones = res.pieces.filter((p) => p.setId === 6);
+            expect(stones.length, `${tid} + quoin_corners must have 5 accent stones (2 base + 2 springers + 1 keystone)`).toBe(5);
+          }
+
           for (const p of res.pieces) {
             expect(p.polygon.length, `Arch piece polygon on ${tid} must have at least 3 vertices`).toBeGreaterThanOrEqual(3);
             for (const pt of p.polygon) {
-              expect(pt.x, `${tid} + arch_keystone piece x out of bounds`).toBeGreaterThanOrEqual(-0.02);
-              expect(pt.x, `${tid} + arch_keystone piece x out of bounds`).toBeLessThanOrEqual(7.02);
-              expect(pt.y, `${tid} + arch_keystone piece y out of bounds`).toBeGreaterThanOrEqual(-0.02);
-              expect(pt.y, `${tid} + arch_keystone piece y out of bounds`).toBeLessThanOrEqual(9.02);
+              expect(pt.x, `${tid} + ${pid} piece x out of bounds`).toBeGreaterThanOrEqual(-0.02);
+              expect(pt.x, `${tid} + ${pid} piece x out of bounds`).toBeLessThanOrEqual(7.02);
+              expect(pt.y, `${tid} + ${pid} piece y out of bounds`).toBeGreaterThanOrEqual(-0.02);
+              expect(pt.y, `${tid} + ${pid} piece y out of bounds`).toBeLessThanOrEqual(9.02);
             }
           }
         } else {
