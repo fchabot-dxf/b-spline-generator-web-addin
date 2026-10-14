@@ -1,3 +1,4 @@
+import { blame, PROF_MARK } from '../blame.mjs';
 // Brick matrix group 'blind': no freeze without its card (Fred's rule: a loading signal before every long computation).
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
@@ -150,6 +151,10 @@ async function doAct(a) {
   return false;
 }
 
+// BLIND_PROFILE=1 (opt-in, seat D 2026-10-11): each row's action runs under the CPU profiler and the row prints which app
+// code ran before its card and in its longest tasks (blame.mjs). BLIND_ROWS=<regex> runs only the matching rows.
+const PROFILE = !!process.env.BLIND_PROFILE, ROWS = process.env.BLIND_ROWS ? new RegExp(process.env.BLIND_ROWS, 'i') : null;
+
 async function runBlindBudget() {
   const B = BLIND_BUDGET;
   await send('Emulation.setDeviceMetricsOverride', { ...B.viewport, deviceScaleFactor: 1, mobile: true });
@@ -159,8 +164,10 @@ async function runBlindBudget() {
   try { await send('Page.reload', {}); await waitApp(); } finally { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier }); }
   await sleep(3000);
   await js(RECORDERS);
+  if (PROFILE) { await js(PROF_MARK); await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); }
   try {
     for (const row of B.rows) {
+      if (ROWS && !ROWS.test(row.name)) continue;
       const budget = row.budgetMs ?? B.budgetMs, name = `No blind freeze (phone, CPU x${B.cpu}): ${row.name} -- under ${budget} ms before its card`;
       if (row.closeEditor) { await tap('#editorApply'); await sleep(4000); }
       if (row.sidebar) {
@@ -177,10 +184,21 @@ async function runBlindBudget() {
       await sleep(1200); // the setup's own work settles before the measured action
       if (!ready) { checkRow('blind', name, false, `setup control missing (${(row.pre || []).join(', ')})`); continue; }
       await send('Emulation.setCPUThrottlingRate', { rate: B.cpu });
+      let markT = null;
+      if (PROFILE) { await send('Profiler.start'); markT = await js('window.__profMark()'); }
       const t0 = await js('performance.now()');
       const did = await doAct(row.act);
       const m = did ? await jsJSON(`window.__blind(${t0}, ${B.quietMs})`) : null;
       await send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      if (PROFILE) {
+        const p = (await send('Profiler.stop')).result?.profile;
+        if (p && m) {
+          const end = m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0);
+          const w = [['before card', t0, t0 + (m.cardMs ?? end)], ...m.tasks.filter(([, d]) => d >= 100).map(([s, d]) => [`task @${s} ${d}ms`, t0 + s, t0 + s + d])];
+          console.log(`  PROFILE ${row.name}: card ${m.cardMs ?? 'never'} ms, blind ${m.blindMs} ms`);
+          for (const b of blame(p, w, markT, 6)) console.log(`   ${b.w}: ${b.top.map(([ms, c]) => ms + 'ms ' + c).join(' || ')}`);
+        }
+      }
       const ok = !!m && m.blindMs <= budget;
       const load = ok || !m ? '' : ` -- ${loadNote(await calibrate())}`; // detection only: the verdict above is final
       checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
