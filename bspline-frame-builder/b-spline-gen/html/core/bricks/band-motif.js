@@ -113,7 +113,9 @@ export function tagMotifRow(pieces, sources, primitives, motif, plan, row, rows)
     for (let j = 0; j < e - k; j++) {
       const relief = runRelief(motif, plan, row, rows, j, e - k, sources[k], primitives);
       const p = pieces[k + j];
-      out[k + j] = { ...p, relief, heightOffset: (p.heightOffset || 0) + (RELIEF_LEVELS[relief] || 0) };
+      // a raised piece of a motif declaring raisedTop 'flat' / joinRaised carries it (the height mask reads both)
+      const raisedLook = relief === 'raised' ? { ...(motif.raisedTop === 'flat' ? { topFlat: true } : {}), ...(motif.joinRaised ? { joinRaised: true } : {}) } : {};
+      out[k + j] = { ...p, relief, heightOffset: (p.heightOffset || 0) + (RELIEF_LEVELS[relief] || 0), ...raisedLook };
     }
     k = e;
   }

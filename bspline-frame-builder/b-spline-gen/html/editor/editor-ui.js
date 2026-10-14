@@ -566,3 +566,64 @@ export function setHover(editor, el) {
         editor._hoveredElement.addClass('svg-hover');
     }
 }
+
+/**
+ * Removes the geometry snap target highlight and reticle marker.
+ */
+export function clearSnapTargetHighlight(editor) {
+    if (!editor) return;
+    if (editor._snapTargetHighlight) {
+        try { editor._snapTargetHighlight.remove(); } catch (_) {}
+        editor._snapTargetHighlight = null;
+        editor._snapTargetHighlightEl = null;
+    }
+    if (editor._snapTargetMarker) {
+        try { editor._snapTargetMarker.remove(); } catch (_) {}
+        editor._snapTargetMarker = null;
+    }
+}
+
+/**
+ * Highlights the target geometry and draws a snap indicator reticle at target (x, y).
+ */
+export function updateSnapTargetHighlight(editor, target, color = '#00e5ff') {
+    if (!editor) return;
+    if (!target) {
+        clearSnapTargetHighlight(editor);
+        return;
+    }
+
+    // 1. Highlight target element if present and on sketch layer
+    if (target.el && editor._highlightLayer) {
+        if (!editor._snapTargetHighlight || editor._snapTargetHighlightEl !== target.el) {
+            if (editor._snapTargetHighlight) {
+                try { editor._snapTargetHighlight.remove(); } catch (_) {}
+                editor._snapTargetHighlight = null;
+            }
+            editor._snapTargetHighlight = _renderHighlight(editor, target.el, color, {
+                textFillOpacity: 0.2, textStrokeOpacity: 0.8, lineStrokeOpacity: 0.9, back: false,
+            });
+            editor._snapTargetHighlightEl = target.el;
+        }
+    } else if (editor._snapTargetHighlight) {
+        try { editor._snapTargetHighlight.remove(); } catch (_) {}
+        editor._snapTargetHighlight = null;
+        editor._snapTargetHighlightEl = null;
+    }
+
+    // 2. Draw snap target reticle on _handleLayer
+    const layer = editor._handleLayer;
+    if (layer) {
+        const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(6) : 0.06;
+        if (!editor._snapTargetMarker || !editor._snapTargetMarker.node || !editor._snapTargetMarker.node.isConnected) {
+            editor._snapTargetMarker = layer.circle(0)
+                .fill({ color, opacity: 0.25 })
+                .attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+        }
+        editor._snapTargetMarker
+            .stroke({ color, width: 2 })
+            .radius(r)
+            .center(target.x, target.y);
+        if (typeof editor._snapTargetMarker.front === 'function') editor._snapTargetMarker.front();
+    }
+}

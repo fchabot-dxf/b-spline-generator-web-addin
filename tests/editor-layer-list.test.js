@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   renderLayerList, renderLayersPanel, applyLayerState, addLayer,
-  isCarved, isExported, isShown, showsColor, isOnVisibleLayer,
+  isCarved, isExported, isShown, showsColor, isOnVisibleLayer, initLayerControls,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 function mockEditor(layers, activeLayer) {
@@ -577,3 +577,56 @@ describe('drag-to-reorder via Pointer Events on the grip (H22 item 1)', () => {
     expect(editor.pushState).not.toHaveBeenCalled();
   });
 });
+
+describe('permanent main sidebar layers panel', () => {
+  let mainList, mainSummary, mainAddBtn;
+  beforeEach(() => {
+    mainList = document.createElement('div');
+    mainList.id = 'mainLayersList';
+    mainSummary = document.createElement('span');
+    mainSummary.id = 'mainLayersSummary';
+    mainAddBtn = document.createElement('button');
+    mainAddBtn.id = 'mainAddLayer';
+    document.body.appendChild(mainList);
+    document.body.appendChild(mainSummary);
+    document.body.appendChild(mainAddBtn);
+  });
+  afterEach(() => {
+    mainList.remove();
+    mainSummary.remove();
+    mainAddBtn.remove();
+  });
+
+  it('renders compact rows and updates the summary count in the main sidebar', () => {
+    const editor = mockEditor([mockLayer('0'), mockLayer('1')], '0');
+    renderLayersPanel(editor);
+
+    expect(mainList.querySelectorAll('.layer-row').length).toBe(2);
+    expect(mainList.querySelector('.layer-row.compact')).not.toBeNull();
+    expect(mainSummary.textContent).toBe('— 2 layers');
+  });
+
+  it('summary shows singular "— 1 layer" when 1 layer exists', () => {
+    const editor = mockEditor([mockLayer('0')], '0');
+    renderLayersPanel(editor);
+
+    expect(mainSummary.textContent).toBe('— 1 layer');
+  });
+
+  it('clicking mainAddLayer adds a new layer and sets it active', () => {
+    const editor = mockEditor([], null);
+    editor.pushState = vi.fn();
+    editor._onChange = vi.fn();
+    initLayerControls(editor);
+
+    expect(editor._layers.length).toBe(1);
+    expect(mainSummary.textContent).toBe('— 1 layer');
+
+    mainAddBtn.click();
+    expect(editor._layers.length).toBe(2);
+    expect(mainSummary.textContent).toBe('— 2 layers');
+    expect(mainList.querySelectorAll('.layer-row').length).toBe(2);
+    expect(editor._activeLayer).toBe(editor._layers[1].id);
+  });
+});
+

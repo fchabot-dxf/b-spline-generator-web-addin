@@ -17,6 +17,7 @@ import { applyParam } from './param-manager.js';
 import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
 import { onClearFusionDesign } from './export-flow.js';
 import { copyLogToClipboard } from './copy-log.js';
+import { pullSketchFromFusion } from '../core/fusion-bridge.js';
 
 const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
 
@@ -29,6 +30,9 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
 
     const btnWizardExport = document.getElementById('btnWizardExport');
     if (btnWizardExport) btnWizardExport.addEventListener('click', onWizardExport);
+
+    document.getElementById('btnPullFromFusion')?.addEventListener('click', pullSketchFromFusion);
+    document.getElementById('btnMainLayersPullFusion')?.addEventListener('click', pullSketchFromFusion);
 
     document.getElementById('btnClearFusionDesign')?.addEventListener('click', onClearFusionDesign);
     document.getElementById('btnCopyLog')?.addEventListener('click', copyLogToClipboard);

@@ -86,6 +86,14 @@ export function geometrySnapTargets(editor, excludeEl = null) {
 export function beginSnapGesture(editor) { editor._snapGesture = { excludeEl: undefined, kids: [], targets: null }; }
 export function endSnapGesture(editor) { editor._snapGesture = null; }
 
+function _makeTarget(x, y, el, kind, el2 = null) {
+  const t = { x, y };
+  if (el) Object.defineProperty(t, 'el', { value: el, enumerable: false, writable: true, configurable: true });
+  if (kind) Object.defineProperty(t, 'kind', { value: kind, enumerable: false, writable: true, configurable: true });
+  if (el2) Object.defineProperty(t, 'el2', { value: el2, enumerable: false, writable: true, configurable: true });
+  return t;
+}
+
 function _buildSnapTargets(editor, excludeEl) {
   const targets = [];
   const lines = [];
@@ -100,17 +108,18 @@ function _buildSnapTargets(editor, excludeEl) {
     } catch (_) {
       continue; // defensive: an element type getNodes doesn't recognize
     }
-    for (const n of nodes) targets.push({ x: n.x, y: n.y });
+    const defaultKind = el.type === 'circle' ? 'center' : 'endpoint';
+    for (const n of nodes) targets.push(_makeTarget(n.x, n.y, el, defaultKind));
     for (let i = 0; i + 1 < nodes.length; i++) {
-      targets.push({ x: (nodes[i].x + nodes[i + 1].x) / 2, y: (nodes[i].y + nodes[i + 1].y) / 2 });
+      targets.push(_makeTarget((nodes[i].x + nodes[i + 1].x) / 2, (nodes[i].y + nodes[i + 1].y) / 2, el, 'midpoint'));
     }
-    if (el.type === 'line' && nodes.length === 2) lines.push({ a: nodes[0], b: nodes[1] });
+    if (el.type === 'line' && nodes.length === 2) lines.push({ a: nodes[0], b: nodes[1], el });
   }
 
   for (let i = 0; i < lines.length; i++) {
     for (let j = i + 1; j < lines.length; j++) {
       const hit = _segmentIntersection(lines[i].a, lines[i].b, lines[j].a, lines[j].b);
-      if (hit) targets.push(hit);
+      if (hit) targets.push(_makeTarget(hit.x, hit.y, lines[i].el, 'intersection', lines[j].el));
     }
   }
 

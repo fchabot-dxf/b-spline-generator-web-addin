@@ -17,6 +17,7 @@ import { LATTICE_ATTR, orient, toLatticeFractional, fromLattice } from './editor
 import { worldPoint } from './editor-coords.js';
 import { getElementLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
+import { distToSegment } from './editor-primitives.js';
 
 /** The one "same point" tolerance (model inches), SE7i's own attachment epsilon (editor-interaction.js
  *  _sameWorldPoint, editor-lattice.js sameRow). Both joint ends are written from one number, and lattice moves
@@ -104,12 +105,25 @@ const canonOf = (seg, spacing, orientation) => ({
 });
 
 /** Every lattice node (any layer of the editor) sitting exactly at one of `points` (world). */
-function nodesAt(editor, points) {
+function nodesAt(editor, points, tol = 1e-3) {
   const out = [];
+  if (!editor || !editor._sketchLayer) return out;
   for (const ch of editor._sketchLayer.children().toArray()) {
     if (!ch || !ch.node || ch.node.getAttribute(LATTICE_ATTR) !== 'node') continue;
     const c = worldPoint(ch, { x: parseFloat(ch.node.getAttribute('cx')), y: parseFloat(ch.node.getAttribute('cy')) });
-    if (points.some((p) => same(p, c))) out.push({ el: ch, world: c });
+    if (points.some((p) => same(p, c, tol))) out.push({ el: ch, world: c });
+  }
+  return out;
+}
+
+/** Every lattice node lying on any of `segs` (world). */
+function nodesOnSegments(editor, segs, tol = 1e-3) {
+  const out = [];
+  if (!editor || !editor._sketchLayer) return out;
+  for (const ch of editor._sketchLayer.children().toArray()) {
+    if (!ch || !ch.node || ch.node.getAttribute(LATTICE_ATTR) !== 'node') continue;
+    const c = worldPoint(ch, { x: parseFloat(ch.node.getAttribute('cx')), y: parseFloat(ch.node.getAttribute('cy')) });
+    if (segs.some((s) => distToSegment(c, s.a, s.b) < tol)) out.push({ el: ch, world: c });
   }
   return out;
 }
@@ -124,12 +138,12 @@ function nodesAt(editor, points) {
  *  Returns [{ el, world }], 0-2 entries (a bare tie: 0; both ends sitting on
  *  a node: 2; two selected ties sharing one node each report it, but it's
  *  the SAME el both times -- callers dedupe by identity, e.g. a Set). */
-export function tieEndNodes(editor, tieEl) {
+export function tieEndNodes(editor, tieEl, tol = 1e-3) {
   if (!tieEl || !tieEl.node || tieEl.node.getAttribute(LATTICE_ATTR) !== 'tie') return [];
   const n = (k) => parseFloat(tieEl.node.getAttribute(k));
   const a = worldPoint(tieEl, { x: n('x1'), y: n('y1') });
   const b = worldPoint(tieEl, { x: n('x2'), y: n('y2') });
-  return nodesAt(editor, [a, b]);
+  return nodesAt(editor, [a, b], tol);
 }
 
 /**
@@ -165,8 +179,8 @@ function _chainMove(editor, move) {
     const j = segs[0].canon.a.j;
     return { ...out, railCanon: { a: { i: Math.min(...is), j }, b: { i: Math.max(...is), j } } };
   }
-  // tie body move: every node on any segment's ends rides along
-  const nodes = nodesAt(editor, segs.flatMap((s) => [s.a, s.b]))
+  // tie body move: every node on any segment of the chain rides along
+  const nodes = nodesOnSegments(editor, segs)
     .map((n) => ({ el: n.el, point: orient(toLatticeFractional(n.world, spacing), orientation) }));
   return { ...out, nodes };
 }
