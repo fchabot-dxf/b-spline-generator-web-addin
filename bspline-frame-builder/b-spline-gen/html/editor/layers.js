@@ -713,6 +713,17 @@ export function renderLayersPanel(editor) {
   const stampList = document.getElementById('stampLayersList');
   if (stampList) renderLayerList(stampList, editor, { compact: true });
 
+  // Permanent main sidebar's layer browser — same data, same renderLayerList, compact presentation.
+  const mainList = document.getElementById('mainLayersList');
+  if (mainList) renderLayerList(mainList, editor, { compact: true });
+
+  const mainSummary = document.getElementById('mainLayersSummary');
+  if (mainSummary) {
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    const count = layers.length;
+    mainSummary.textContent = `— ${count} layer${count === 1 ? '' : 's'}`;
+  }
+
   _syncLegacySelect(editor);
 
   // Notify other UI (main/stamp/layer.js keeps P.activeLayerIdx and a
@@ -1212,6 +1223,14 @@ export function initLayerControls(editor) {
   const addBtn = document.getElementById('editorAddLayer');
   if (addBtn) {
     on(addBtn, 'click', () => {
+      const layer = addLayer(editor);
+      setActiveLayer(editor, layer.id);
+    });
+  }
+
+  const mainAddBtn = document.getElementById('mainAddLayer');
+  if (mainAddBtn) {
+    on(mainAddBtn, 'click', () => {
       const layer = addLayer(editor);
       setActiveLayer(editor, layer.id);
     });

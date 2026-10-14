@@ -20,5 +20,6 @@ export { ribbonPieces } from './primitive-ribbon.js';
 export { generateBricks, buildSpatialIndex, sampleHeight, ENGINE_OPTIONS } from './engine.js';
 export { brickTopHeight } from './height-profile.js';
 export { PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, BRUSH_PRESETS, brickSetById, enabledPieces, scaledSet } from './library.js';
+export { WOOD_FRAME_FAMILIES, familyForTemplate, isPresetConforming, framePresetsForTemplate } from './frame-families.js';
 export { pointInPolygon, polygonCentroid, rectPolygon, offsetPathInward, inwardSignFor, clipToHalfPlane, roundPolygonCorners } from './geometry.js';
 export { mulberry32, seedFor, hashedRandom } from './rng.js';

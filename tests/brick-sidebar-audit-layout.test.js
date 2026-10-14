@@ -19,6 +19,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', ()
 
 import { initBrickPanel, selectSet, revealBrickControl, activeBrickTab } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { BRICK_SET_IDS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { PICKER_TILE } from '../bspline-frame-builder/b-spline-gen/html/main/icon-select.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
@@ -72,10 +75,22 @@ describe('BRICK audit layout items', () => {
       expect(pickerOf(grid).querySelectorAll('.icon-select-button').length, id).toBe(1);
     }
     expect(pickerOf($('brickPattern_stretcher'))).not.toBeNull();
-    const bandButtons = [...document.querySelectorAll('#brickFrameBandPatternList button[id^=brickFrameBandPattern_0_]')];
+    // each band's patterns: a select-backed picker (mountIconSelect), its accents a grid picker -- both at PICKER_TILE
+    const bandButtons = [...document.querySelectorAll('[id^=brickFrameBandPattern_0_]')];
     expect(bandButtons.length).toBeGreaterThan(1);
-    for (const b of bandButtons) expect(pickerOf(b)).not.toBeNull();
-    expect(pickerOf(document.querySelector('#brickFrameBandPatternList [id^=brickAccent_]'))).not.toBeNull();
+    for (const b of bandButtons) { expect(b.closest('.icon-select'), b.id).not.toBeNull(); expect(b.style.width, b.id).toBe(`${PICKER_TILE.tilePx}px`); }
+    const bandAccent = document.querySelector('#brickFrameBandPatternList [id^=brickAccent_band0_]');
+    expect(pickerOf(bandAccent)).not.toBeNull();
+    expect(bandAccent.style.width).toBe(`${PICKER_TILE.tilePx}px`); // not the row's old 16 px icons
+  });
+  it('the per-band row is SHOWN for a preset with bands (8e57aeb hid it with nothing showing it again)', () => {
+    expect(P.brickSettings.frameBandPreset ? (FRAME_PRESETS[P.brickSettings.frameBandPreset] || []).length : 1).toBeGreaterThan(0);
+    const row = $('brickFrameBandPatternRow');
+    expect(row.style.display).not.toBe('none');
+    expect($('brickFrameBandPatternLabel').style.display).not.toBe('none');
+    expect($('brickFrameBandPatternList').style.display).not.toBe('none');
+    expect(row.querySelector('[id^=brickFrameBandPatternSelect_0]')).not.toBeNull();
+    expect(row.querySelector('[id^=brickAccentClick_band0]')).not.toBeNull(); // the band's accents (and the rock pick in its patterns)
   });
   it('A7: "Grout" labels the Recessed / Flush toggle, which sits above the depth', () => {
     const toggle = $('brickGroutProfileToggle');

@@ -125,7 +125,17 @@ export function withFitExtra(r, editor) {
 /** Pure: the view fitView would set now -- FB-APP F7: with a frame, its cut profile's region, else the whole board;
  *  on a coarse pointer zoomed out to FIT_EDGE_MARGIN_PX (the svg's own on-screen box, read here). */
 export function fittedView(editor) {
-    const r = withFitExtra(frameFitRegion(editor), editor);
+    const frameR = frameFitRegion(editor);
+    const boardR = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const merged = frameR
+        ? {
+            x: Math.min(0, frameR.x),
+            y: Math.min(0, frameR.y),
+            w: Math.max(editor._mW, frameR.x + frameR.w) - Math.min(0, frameR.x),
+            h: Math.max(editor._mH, frameR.y + frameR.h) - Math.min(0, frameR.y),
+          }
+        : boardR;
+    const r = withFitExtra(merged, editor);
     const base = r
         ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
         : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };

@@ -19,10 +19,13 @@ import { mulberry32, seedFor } from './rng.js';
 import { scaledSet, brickSetById, RELIEF_LEVELS } from './library.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pickSample } from './piece-plan.js';
-import { polygonIntersection, polygonDifference, lobesOf, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
+import { polygonIntersection, polygonDifference, lobesOf, signedArea, offsetPathInward, inwardSignFor, dedupePolygon } from './geometry.js';
 
 /** The arches a frame preset can carry (library.js FRAME_PRESETS `arch`). Lengths in inches unless named by brick
  *  unit (L = length, H = height of the frame's scaled set). */
+/** A stone outline's edges shorter than this many joints are dropped before it is grown into the hole the courses are
+ *  cleared off (a sub-joint edge is no side, and its normal throws the mitre out). */
+export const STONE_EDGE_MIN_JOINTS = 0.5;
 export const ARCH_SPECS = Object.freeze({
   rowlock_keystone: Object.freeze({
     hoodDepthH: 0.5, // the hood: one row this x H deep, all round, directly inside the frame's bands
@@ -39,6 +42,19 @@ export const ARCH_SPECS = Object.freeze({
     stoneSetId: 6, // the keystone, springers and sill blocks: Grey ashlar
     // Fred's "shrink to fit, skip with a hint": the stacks tried in order, the first that fits is laid
     ladder: Object.freeze([Object.freeze({ hood: true, rings: 2 }), Object.freeze({ hood: false, rings: 2 }), Object.freeze({ hood: false, rings: 1 })]),
+  }),
+  soldier_quoin: Object.freeze({
+    hoodDepthH: 0,
+    rings: 1, // single soldier band (0.5 * brickLengthIn)
+    ringDepthL: 0.5,
+    hoodRelief: null,
+    keystoneRelief: null,
+    keystoneHalfIn: 0.32,
+    springerTopIn: 0.6,
+    springerSideIn: 0.3,
+    sillBlockHalfIn: 0.5,
+    stoneSetId: 6,
+    ladder: Object.freeze([Object.freeze({ hood: false, rings: 1 })]),
   }),
 });
 
@@ -214,8 +230,11 @@ function tryStack(spec, rung, { primitives, fb, plan, layOpts, s, tb, seed }) {
   // a corner its band cannot turn) is not laid; the ladder tries the next
   const count = (part) => stones.filter((x) => x.part === part).length;
   if (count('keystone') !== 1 || count('springer') !== 2 || count('sillBlock') !== 2 || anyOverlap(stones.map((x) => x.polygon))) return null;
-  // the bricks are cleared off the stones, a joint off -- every cut piece kept (fill-shape.js bricksClearOf's rule)
-  const holes = stones.map((st) => offsetPathInward(st.polygon, J, -inwardSignFor(st.polygon)));
+  // the bricks are cleared off the stones, a joint off -- every cut piece kept (fill-shape.js bricksClearOf's rule). A
+  // stone's outline first loses its sub-joint edges (STONE_EDGE_MIN_JOINTS): a mitred grow throws the vertex of a
+  // degenerate edge up to 5 joints out (MEASURED: a sill block's zero-length edge and a springer's 0.009 in one cut
+  // a wedge out of the course beside them -- the gap sweep's arch_keystone rows, bare 0.07 - 0.19 of a brick face)
+  const holes = stones.map((st) => { const q = dedupePolygon(st.polygon, J * STONE_EDGE_MIN_JOINTS); return offsetPathInward(q, J, -inwardSignFor(q)); });
   const clear = (pieces) => pieces.flatMap((b) => {
     let parts = [b.polygon];
     for (const h of holes) parts = parts.flatMap((q) => { const d = polygonDifference(q, h); return d.holeIgnored ? [q] : d; });

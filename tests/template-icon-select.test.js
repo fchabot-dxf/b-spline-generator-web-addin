@@ -169,4 +169,30 @@ describe('mountIconGrid: the picker over existing option buttons', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(name.textContent).toBe('Gamma');
   });
+
+  // the convergence (advisor 2026-10-14): main's hand-rolled popovers folded in -- their ids and behaviours, declared here
+  it('ids: the wrap, chip and name take the declared ids of a picker', () => {
+    document.body.innerHTML = '<div id="row"><div id="list2"><button id="o1" title="One" class="active">1</button></div></div>';
+    mountIconGrid(document.getElementById('list2'), { label: 'X', ids: { wrap: 'xWrap', chip: 'xChip', name: 'xName' } });
+    expect(document.getElementById('xWrap').classList.contains('icon-grid-picker')).toBe(true);
+    expect(document.getElementById('xChip').classList.contains('icon-select-button')).toBe(true);
+    expect(document.getElementById('xName').textContent).toBe('One');
+  });
+  it('a pick shows on the chip AT ONCE (no observer tick) and closes the grid; the name opens the grid too', () => {
+    const { grid, chip, name } = setup();
+    name.click();
+    expect(grid.style.display).not.toBe('none');
+    const c = document.getElementById('opt_c'); // B is active: picking C must show on the chip in the same tick
+    c.addEventListener('click', () => { for (const o of grid.querySelectorAll('button')) o.classList.toggle('active', o === c); });
+    c.click();
+    expect(name.textContent).toBe('Gamma');
+    expect(chip.title).toBe('Thing: Gamma');
+    expect(grid.style.display).toBe('none');
+  });
+  it('preferActive: with two options active, the chip shows the preferred one (a saved pattern over its bond)', () => {
+    document.body.innerHTML = '<div id="row"><div id="list3"><button id="bond" title="Bond" class="active">b</button>'
+      + '<button id="mine" title="Mine" class="active user">m</button></div></div>';
+    mountIconGrid(document.getElementById('list3'), { label: 'P', preferActive: '.user', ids: { name: 'pName' } });
+    expect(document.getElementById('pName').textContent).toBe('Mine');
+  });
 });

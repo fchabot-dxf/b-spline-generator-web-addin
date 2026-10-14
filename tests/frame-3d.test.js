@@ -281,12 +281,12 @@ describe('editor grid / snap / fit follow the outline (AMEND 1)', () => {
     const e = { ...editorWith('template_1'), _draw: { viewbox: (...v) => applied.push(v) } };
     fitView(e);
     expect(frameFitRegion(e)).toEqual({ x: 0.25, y: 0.25, w: 6.5, h: 8.5 });
-    // Aspect is preserved, so the limiting side fits exactly (height: 9/8.5) and the box contains the region.
+    // Fit contains both the outline region and the full board so edges/shoulders are never clipped
     const [x, y, w, h] = applied[0];
-    expect(h).toBeCloseTo(8.5, 9);
-    expect(y).toBeCloseTo(0.25, 9);
-    expect(x).toBeLessThanOrEqual(0.25 + 1e-9);
-    expect(x + w).toBeGreaterThanOrEqual(6.75 - 1e-9);
+    expect(h).toBeCloseTo(9, 9);
+    expect(y).toBeCloseTo(0, 9);
+    expect(w).toBeCloseTo(7, 9);
+    expect(x).toBeCloseTo(0, 9);
     const e2 = { ...editorWith(null), _draw: { viewbox: (...v) => applied.push(v) } };
     fitView(e2);
     expect(applied[1]).toEqual([0, 0, 7, 9]);

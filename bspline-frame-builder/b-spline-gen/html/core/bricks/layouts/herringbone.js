@@ -75,3 +75,47 @@ export function herringboneLayout(boardOutline, set, _zones) {
   }
   return { cells };
 }
+
+export function doubleHerringboneLayout(boardOutline, set, _zones) {
+  const L = set.brickLengthIn, W = set.brickHeightIn, g = set.grout.widthIn;
+  const w = 2 * (W + g), l = L + g;
+  const theta = (ROTATION_DEG * Math.PI) / 180;
+  const ct = Math.cos(theta), st = Math.sin(theta);
+
+  const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const margin = 2 * L;
+  const corners = [
+    [minX - margin, minY - margin], [maxX + margin, minY - margin],
+    [minX - margin, maxY + margin], [maxX + margin, maxY + margin],
+  ];
+  let uMin = Infinity, uMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (const [wx, wy] of corners) {
+    const lx = ct * wx + st * wy, ly = -st * wx + ct * wy;
+    const u = lx + ly, z = ly - lx;
+    if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+    if (z < zMin) zMin = z; if (z > zMax) zMax = z;
+  }
+  const iLo = Math.floor(uMin / (2 * w)) - 2, iHi = Math.ceil(uMax / (2 * w)) + 2;
+  const kLo = Math.floor(zMin / (2 * l)) - 2, kHi = Math.ceil(zMax / (2 * l)) + 2;
+
+  const cells = [];
+  let nextId = 0;
+  for (let k = kLo; k <= kHi; k++) {
+    const originX = k * -l, originY = k * l;
+    for (let i = iLo; i <= iHi; i++) {
+      for (let s = 0; s < 2; s++) {
+        const hcx = originX + i * w + L / 2, hcy = originY + i * w + s * (W + g) + W / 2;
+        const vcx = originX + (i - 1) * w + s * (W + g) + W / 2, vcy = originY + i * w + L / 2;
+        for (const [cx, cy, dx, dy] of [[hcx, hcy, 1, 0], [vcx, vcy, 0, 1]]) {
+          const wcx = ct * cx - st * cy, wcy = st * cx + ct * cy;
+          const wdx = ct * dx - st * dy, wdy = st * dx + ct * dy;
+          const poly = rectPolygon(wcx, wcy, L / 2, W / 2, wdx, wdy);
+          const clipped = clipPolygonToRegion(poly, boardOutline, { x: wcx, y: wcy });
+          if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} });
+        }
+      }
+    }
+  }
+  return { cells };
+}

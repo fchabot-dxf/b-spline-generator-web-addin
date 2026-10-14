@@ -156,6 +156,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         const digest = rebuildInputDigest(preview, nx, nz);
         if (digest !== null && digest === _lastBuiltDigest && lastResult) {
             if (preview) updatePreviewSculptMode(preview, scheduleRebuild); // the cheap interaction sync still runs
+            updateCanvasHeights(lastResult.baseHeights, lastResult.heights, lastResult.thickenData);
             return;
         }
         _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
@@ -187,6 +188,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
 
             await yieldToMain();
             updateEditorTopView(heights, nx, nz);
+            updateCanvasHeights(baseHeights, heights, thicken);
             if (isFusionMode) sendFusionMeshPreview(preview);
 
             if (statusBar) updateStatusBar(statusBar, thicken, nx, nz);
@@ -258,6 +260,7 @@ function handleStrokeFastPath(preview, nx, nz) {
         nx, nz,
         thickenData,
     });
+    updateCanvasHeights(baseHeights, heights, thickenData);
 
     if (!preview) return;
     preview.update(
@@ -429,4 +432,54 @@ function formatWarning(thicken) {
     if (topBot > 0) msg += (msg ? ' · ' : '') + `<span style="color:#ff2222;font-weight:600;">⚠️ Collision (Red): ${topBot}</span>`;
     if (thin   > 0) msg += (msg ? ' · ' : '') + `<span style="color:#ffcc00;font-weight:600;">Thin: ${thin}</span>`;
     return msg || '<span style="color:#208a4f;">Thickness Surface Safe</span>';
+}
+
+/**
+ * Updates the live total heights on the canvas HUD overlays:
+ *   - Base Height: Model total height before vector stamping & sculpting
+ *   - Total Height: Model total height including vector stamping, brick relief, and sculpting
+ */
+export function updateCanvasHeights(baseHeights, heights, thicken = null) {
+    if (typeof document === 'undefined') return;
+    if (!baseHeights || !heights) return;
+
+    let bMin = Infinity, bMax = -Infinity;
+    for (let k = 0; k < baseHeights.length; k++) {
+        const z = baseHeights[k];
+        if (z < bMin) bMin = z;
+        if (z > bMax) bMax = z;
+    }
+    const baseSpan = Math.max(0, bMax - bMin);
+
+    let tMin = Infinity, tMax = -Infinity;
+    for (let k = 0; k < heights.length; k++) {
+        const z = heights[k];
+        if (z < tMin) tMin = z;
+        if (z > tMax) tMax = z;
+    }
+
+    const offsetPts = thicken?.data?.offsetPts || thicken?.offsetPts;
+    if (offsetPts && offsetPts.length > 0) {
+        for (let k = 2; k < offsetPts.length; k += 3) {
+            const z = offsetPts[k];
+            if (z < tMin) tMin = z;
+            if (z > tMax) tMax = z;
+        }
+    } else if (thicken?.floorZ !== undefined && thicken?.peakZ !== undefined && P.thickenEnabled) {
+        if (thicken.floorZ < tMin) tMin = thicken.floorZ;
+        if (thicken.peakZ > tMax) tMax = thicken.peakZ;
+    }
+    const totalSpan = Math.max(0, tMax - tMin);
+
+    const baseStr = (Number.isFinite(baseSpan) ? baseSpan : 0).toFixed(3);
+    const totalStr = (Number.isFinite(totalSpan) ? totalSpan : 0).toFixed(3);
+
+    for (const id of ['canvasBaseHeight', 'editorCanvasBaseHeight', 'inspectorBaseHeight']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = baseStr;
+    }
+    for (const id of ['canvasTotalHeight', 'editorCanvasTotalHeight', 'inspectorTotalHeight']) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = totalStr;
+    }
 }

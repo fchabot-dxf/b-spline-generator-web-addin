@@ -90,6 +90,9 @@ const sineEase = (t) => Math.sin(Math.max(0, Math.min(1, t)) * Math.PI / 2);
  * @returns {number} height in inches (shape + detail + this brick's own existing heightOffset)
  */
 export function brickTopHeight(x, y, brick, set, seed, sampleDetailAt) {
+  // 2026-10-11 (Fred: a motif's raised pieces read as plateaus): a `topFlat` piece is flat at the relief -- no shoulder,
+  // crown, photo detail or chips; its heightOffset still lifts it (as every brick's, below)
+  if (brick.topFlat) return (set.reliefIn ?? 0.125) + (brick.heightOffset || 0);
   const hp = set.heightProfile || {};
   const edgeRadiusIn = hp.edgeRadiusIn ?? 0;
   const crown = hp.crown ?? 0;

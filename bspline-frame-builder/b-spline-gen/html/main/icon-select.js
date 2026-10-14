@@ -150,7 +150,7 @@ const _gridObservers = new Map(); // grid -> MutationObserver
 function _sweepGridObservers() {
   for (const [g, o] of _gridObservers) if (!g.isConnected) { o.disconnect(); _gridObservers.delete(g); }
 }
-export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, columns = PICKER_TILE.columns, optionSelector = 'button' } = {}) {
+export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, columns = PICKER_TILE.columns, optionSelector = 'button', ids = {}, preferActive = null } = {}) {
   if (!grid || !grid.parentNode) return null;
   if (MOUNTED_GRIDS.has(grid)) return MOUNTED_GRIDS.get(grid);
   _sweepGridObservers();
@@ -164,6 +164,11 @@ export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, c
   const name = document.createElement('span');
   name.className = 'icon-select-name';
   name.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85;';
+  // ids: { wrap, chip, name } -- a picker's declared ids, for its callers / tests / matrix rows. preferActive: a selector
+  // whose ACTIVE option the chip shows first when two are active (a saved pattern is active with its bond)
+  if (ids.wrap) wrap.id = ids.wrap;
+  if (ids.chip) button.id = ids.chip;
+  if (ids.name) name.id = ids.name;
   grid.parentNode.insertBefore(wrap, grid);
   wrap.append(button, name, grid);
   grid.classList.add('icon-select-grid');
@@ -182,7 +187,8 @@ export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, c
         fitSvg(o, tilePx - 8);
       }
       for (const h of grid.children) if (!h.matches(optionSelector)) h.style.gridColumn = '1 / -1'; // a family heading spans the row
-      const cur = opts().find((o) => o.classList.contains('active'));
+      const active = opts().filter((o) => o.classList.contains('active'));
+      const cur = (preferActive && active.find((o) => o.matches(preferActive))) || active[0];
       const text = cur ? (cur.getAttribute('aria-label') || cur.title || cur.textContent.trim()) : '';
       button.innerHTML = cur ? cur.innerHTML : label;
       fitSvg(button, PICKER_TILE.chipPx - 6);
@@ -198,8 +204,10 @@ export function mountIconGrid(grid, { label = '', tilePx = PICKER_TILE.tilePx, c
     _placeGrid(grid, button, tilePx, columns);
     _open.add(entry);
   });
-  // a pick (the option's own handler runs first) closes the grid
-  grid.addEventListener('click', (e) => { if (e.target.closest && e.target.closest(optionSelector)) entry.close(); });
+  // a pick (the option's own handler runs first, its sync marks the new active option) shows on the chip at once and
+  // closes the grid; the name opens the grid like the chip
+  grid.addEventListener('click', (e) => { if (e.target.closest && e.target.closest(optionSelector)) { refresh(); entry.close(); } });
+  name.addEventListener('click', () => button.click());
   if (typeof MutationObserver === 'function') {
     const obs = new MutationObserver(refresh);
     obs.observe(grid, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'disabled'] });
