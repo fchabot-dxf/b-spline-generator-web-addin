@@ -14,6 +14,7 @@
 export const SECTION_THEMES = Object.freeze({
   // main sidebar (.panel-<id>)
   stock: { hue: 210 },
+  layers: { hue: 115 }, // the permanent Layers panel (c64a466, 2026-10-14): its own green, clear of Vector stamping's 135
   frame: { hue: 28 },
   skeleton: { hue: 265 },
   filter: { hue: 175 },
