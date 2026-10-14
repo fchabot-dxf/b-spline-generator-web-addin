@@ -375,9 +375,13 @@ export const BRICK_PATTERNS = Object.freeze({
   // flemish: see layouts/bond.js's own flemishRow for the exact repeat-unit/stagger construction --
   // the textbook alternating-stretcher-and-header bond, no further parameters needed here (the unit
   // sequence itself isn't user-tunable, matching how stretcher/soldier/etc. have no exposed knobs).
+  // smallestFace 'header' (seat E 2026-10-14): the bond's header courses are whole pieces -- a tip's course front reads them
+  // (tip-fill.js bareTips: a piece of half a WHOLE piece is a course; english / monk left a T14 tip bare when only a stretcher
+  // counted). Declared on english / monk only: on header and flemish it MEASURED a different frame tip fill (T14 / T16 1.25
+  // in), and a saved board re-lays as before (Fred 2026-10-14) -- they keep the stretcher rule
   flemish: { kind: 'course-alternating' },
-  english: { kind: 'course-alternating', subtype: 'english' },
-  monk: { kind: 'course-alternating', subtype: 'monk' },
+  english: { kind: 'course-alternating', subtype: 'english', smallestFace: 'header' },
+  monk: { kind: 'course-alternating', subtype: 'monk', smallestFace: 'header' },
   herringbone: { kind: 'tile2d' },
   double_herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },

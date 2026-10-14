@@ -17,7 +17,8 @@
  * FLUSH (no additional inter-square gap) -- the square grid itself has zero gap, exactly the
  * advisor's own "unit square side = L" spec, not L+grout.
  */
-import { clipPolygonToRegion, rectPolygon } from '../geometry.js';
+import { rectPolygon } from '../geometry.js';
+import { clipRegionCellParts, recordCellParts } from '../cell-parts.js';
 
 /**
  * @param {{x:number,y:number}[]} boardOutline — closed polygon, board inches
@@ -56,9 +57,11 @@ export function basketweaveLayout(boardOutline, set, _zones) {
           halfLen = L / 2; halfHt = crossWidth / 2; dirX = 0; dirY = 1;
         }
         const poly = rectPolygon(cx, cy, halfLen, halfHt, dirX, dirY);
-        const clipped = clipPolygonToRegion(poly, boardOutline, { x: cx, y: cy });
+        const { main: clipped, extra } = clipRegionCellParts(poly, boardOutline, { x: cx, y: cy }); // every part (cell-parts.js)
         if (clipped.length < 3) continue;
-        cells.push({ id: nextId++, polygon: clipped, courseIndex: j, cx, cy, neighbors: {} });
+        const cell = { id: nextId++, polygon: clipped, courseIndex: j, cx, cy, neighbors: {} };
+        cells.push(cell);
+        recordCellParts(cells, cell, extra);
       }
     }
   }

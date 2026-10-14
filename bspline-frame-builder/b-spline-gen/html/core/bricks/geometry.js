@@ -477,6 +477,21 @@ function touchesDegenerately(a, b) {
   return near(a, b) || near(b, a);
 }
 
+/** `subject & clip` as EVERY piece (seat E 2026-10-14, the pattern gaps: a wall cell across a frame corner or tip that juts
+ *  into the region is cut in TWO; polygonIntersection keeps the larger, the other was never laid -- T9 7x9 1 in
+ *  double_herringbone: a 0.06 sq in triangle, a 0.26-face hole). The walk's every loop, held to the one-piece answer's own
+ *  reality check (their areas sum to no more than the subject's); a touching input (the shifted path) or any doubt: the
+ *  one piece polygonIntersection gives. [] = no overlap. */
+export function polygonIntersectionParts(subject, clip) {
+  const one = polygonIntersection(subject, clip);
+  if (one.length < 3) return [];
+  if (touchesDegenerately(subject, clip)) return [one];
+  const loops = clipLoops(subject, clip, false);
+  if (!Array.isArray(loops[0]) || loops.length < 2) return [one];
+  const total = loops.reduce((sum, l) => sum + Math.abs(signedArea(l)), 0);
+  return total > Math.abs(signedArea(subject)) * 1.0001 + 1e-9 ? [one] : loops.filter((l) => l.length >= 3);
+}
+
 function intersectGeneral(subject, clip) {
   const loops = clipLoops(subject, clip, false);
   if (!Array.isArray(loops[0])) return loops; // a no-crossing answer: one polygon or []
@@ -724,6 +739,15 @@ export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
  *  (seat E, 2026-10-08, every pattern x template x 0.75 - 1.5 in): a cell across the bridge's zero-width corridor came back
  *  EMPTY (T18 7x9 1 in hexagon / square_diamond / basketweave: a 1.2-face bare tip) or across the corridor (35 lays with a
  *  wall piece overlapping another). The bond keeps clipPolygonToBoard: its tips are the band's (tip-fill.js, item 16f). */
+/** clipPolygonToRegion, every piece: a convex region's clip is one piece; a bridged region's, each lobe's pieces; any other
+ *  region's, every piece of the cut (polygonIntersectionParts). The largest piece is clipPolygonToRegion's own answer. */
+export function clipPolygonToRegionParts(poly, region, cellRefPoint) {
+  if (isConvex(region)) { const one = clipPolygonToBoard(poly, region, cellRefPoint); return one.length >= 3 ? [one] : []; }
+  const lobes = lobesCached(region);
+  if (!lobes) return polygonIntersectionParts(poly, region);
+  return lobes.flatMap((lobe) => polygonIntersectionParts(poly, lobe));
+}
+
 export function clipPolygonToRegion(poly, region, cellRefPoint) {
   if (isConvex(region)) return clipPolygonToBoard(poly, region, cellRefPoint);
   const lobes = lobesCached(region);

@@ -34,7 +34,8 @@
  * each cell's own UNCLIPPED grid centre (cx/cy) -- clipping only trims the stored polygon, never
  * the logical grid position neighbours/suppression reason about.
  */
-import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
+import { rectPolygon } from '../geometry.js';
+import { clipBoardCellParts, recordCellParts, orphanParentId } from '../cell-parts.js';
 import { BRICK_PATTERNS, MIN_PIECE_FRACTION, RUSTIC, COURSE_ROW_ORIGIN } from '../library.js';
 import { hashedRandom } from '../rng.js';
 
@@ -369,12 +370,19 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
   for (let c = 0; c < laid.length; c++) {
     for (let k = 0; k < laid[c].length; k++) {
       const cell = laid[c][k];
-      const clipped = clipPolygonToBoard(cell.polygon, boardOutline, { x: cell.cx, y: cell.cy });
-      if (clipped.length < 3) { idGrid[c].push(-1); continue; } // fully outside, or clipped to a degenerate sliver
+      // every part (cell-parts.js): today's piece is the cell, a tip's other part is appended after the lay (fill-shape.js)
+      const { main: clipped, extra } = clipBoardCellParts(cell.polygon, boardOutline, { x: cell.cx, y: cell.cy });
+      if (clipped.length < 3) { // fully outside, or clipped to a degenerate sliver -- or lost whole across a bridge: its parts (cell-parts.js)
+        idGrid[c].push(-1);
+        recordCellParts(cells, { id: orphanParentId(c, k), courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {} }, extra);
+        continue;
+      }
       const id = nextId++;
       idGrid[c].push(id);
-      cells.push({ id, polygon: clipped, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {},
-        ...(cell.accentMarked !== undefined ? { accentMarked: cell.accentMarked } : {}) });
+      const laidCell = { id, polygon: clipped, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {},
+        ...(cell.accentMarked !== undefined ? { accentMarked: cell.accentMarked } : {}) };
+      cells.push(laidCell);
+      recordCellParts(cells, laidCell, extra);
     }
   }
   const byId = new Map(cells.map((c) => [c.id, c]));

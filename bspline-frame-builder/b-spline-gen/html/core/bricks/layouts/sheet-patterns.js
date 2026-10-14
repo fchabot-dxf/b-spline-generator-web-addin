@@ -17,7 +17,8 @@
  *   basketweave + stacked a column of stacked stretchers (L wide), then a pinwheel column (4 bricks round a centre
  *                         square of L - W, period L + W); repeat.
  */
-import { clipPolygonToRegion, rectPolygon } from '../geometry.js';
+import { rectPolygon } from '../geometry.js';
+import { clipRegionCellParts, recordCellParts } from '../cell-parts.js';
 
 const bbox = (outline) => {
   const xs = outline.map((p) => p.x), ys = outline.map((p) => p.y);
@@ -26,9 +27,11 @@ const bbox = (outline) => {
 /** Clip `poly` to the board and add it as a cell (skipped when nothing is left). */
 function pushCell(cells, outline, poly, courseIndex) {
   const c = poly.reduce((a, p) => ({ x: a.x + p.x / poly.length, y: a.y + p.y / poly.length }), { x: 0, y: 0 });
-  const clipped = clipPolygonToRegion(poly, outline, c);
+  const { main: clipped, extra } = clipRegionCellParts(poly, outline, c); // every part (cell-parts.js); today's piece first
   if (clipped.length < 3) return;
-  cells.push({ id: cells.length, polygon: clipped, courseIndex, cx: c.x, cy: c.y, neighbors: {} });
+  const cell = { id: cells.length, polygon: clipped, courseIndex, cx: c.x, cy: c.y, neighbors: {} };
+  cells.push(cell);
+  recordCellParts(cells, cell, extra);
 }
 const rect = (x0, y0, w, h) => rectPolygon(x0 + w / 2, y0 + h / 2, w / 2, h / 2, 1, 0);
 /** The basketweave unit's packing: n bricks across an L x L square, each `cross` wide, `pitch` apart. */
