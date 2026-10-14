@@ -51,6 +51,7 @@ import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.j
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
+import { framePresetsForTemplate, isPresetConforming, familyForTemplate } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
@@ -2262,7 +2263,10 @@ export function renderFramePresetList(container) {
   container.style.overflowY = 'auto';
   _wirePopoverGlobal();
 
-  for (const preset of FRAME_PRESET_LIST) {
+  const tplId = P.frame && P.frame.templateId;
+  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
+
+  for (const preset of presets) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-accent-icon'; // item 33 (audit N10): the band stack as an icon, the name as the tooltip
@@ -2327,13 +2331,15 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
 }
 
 export function syncFramePresetButtons() {
+  const tplId = P.frame && P.frame.templateId;
+  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
   const triggerBtn = document.getElementById('brickFramePresetTrigger');
   const triggerName = document.getElementById('brickFramePresetTriggerName');
   if (triggerBtn && triggerName) {
-    const active = FRAME_PRESET_LIST.find((p) => p.id === P.brickSettings.frameBandPreset) || FRAME_PRESET_LIST[0];
+    const active = presets.find((p) => p.id === P.brickSettings.frameBandPreset) || presets[0] || FRAME_PRESET_LIST[0];
     if (active) {
       triggerBtn.innerHTML = framePresetIconSvg(active.id, 30) || active.label;
       triggerName.textContent = active.label;
@@ -3219,7 +3225,7 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => framePresetsForTemplate(P.frame && P.frame.templateId, FRAME_PRESET_LIST), iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -3572,6 +3578,17 @@ export function initBrickPanel() {
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts
+  onPageEvent('frameFamilyCheck', 'frameRecordChanged', () => {
+    const tplId = P.frame && P.frame.templateId;
+    if (tplId && !isPresetConforming(tplId, P.brickSettings.frameBandPreset)) {
+      const family = familyForTemplate(tplId);
+      const fallback = (family && family.defaultPreset) || 'soldier_stretcher';
+      P.brickSettings.frameBandPreset = fallback;
+    }
+    const container = document.getElementById('brickFramePresetList');
+    if (container) renderFramePresetList(container);
+    syncFramePresetButtons();
+  });
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
