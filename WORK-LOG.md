@@ -26188,5 +26188,40 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   - Pushed to `origin/main` (`92bccb4..e4735a8`).
 - Signed: Antigravity (AGY)
 
+## Turn 212: BRICK-DROPDOWNS-EXPANSION — Wall accent, Frame preset, and Brush accent converted to single-chip dropdowns (Antigravity / AGY, 2026-10-14)
+- **User Request & Context:**
+  - *"These arent using the drop down"* with screenshots showing:
+    1. Brush Accent relief (`#brickBrushAccentRow`)
+    2. Wall Accent relief (`#brickWallAccentRow` / `#brickAccentList`)
+    3. Brick frame preset (`#brickFramePresetRow` / `#brickFramePresetList`)
+  - *"Yes and îf other arebnotn converted take them to me"*
+- **Implementation:**
+  - `html/main/brick-panel.js`:
+    - Implemented shared `_wirePopoverGlobal()` and `_togglePopover(triggerEl, popoverEl, maxWidth)` to manage opening, closing, click-outside dismissal, and scroll dismissal cleanly across all brick popovers.
+    - Updated `renderAccentList` and `syncAccentControls`:
+      - Created `#brickWallAccentTriggerWrap` before `#brickAccentList` with trigger button (`#brickWallAccentTrigger`) and label (`#brickWallAccentTriggerName`).
+      - Displayed current accent icon/label in single-chip trigger at rest.
+      - Converted `#brickAccentList` to floating 3-column fixed popover (`.brick-popover-list`) that toggles open on click and closes on choice click.
+    - Updated `renderFramePresetList` and `syncFramePresetButtons`:
+      - Created `#brickFramePresetTriggerWrap` before `#brickFramePresetList` with trigger button (`#brickFramePresetTrigger`) and label (`#brickFramePresetTriggerName`).
+      - Displayed current frame preset icon/label in single-chip trigger at rest.
+      - Converted `#brickFramePresetList` to floating fixed popover (`.brick-popover-list`) that toggles open on click and closes on preset selection.
+    - Updated `renderAccentRowFor`:
+      - Created inline trigger chip `#brickAccentTriggerWrap_${key}` displaying current accent icon/label at rest.
+      - Converted choices to floating popover `#brickAccentPopover_${key}` (`.brick-popover-list`).
+      - Kept `Click` button and `level` input alongside the trigger chip.
+    - Unified `renderWallPatternList` to use the shared `_togglePopover` and `_wirePopoverGlobal` helpers.
+    - Preserved all element IDs, titles, SVG icon dimensions, and click handlers.
+- **Verification:**
+  - Created test suite `tests/brick-accent-and-frame-dropdowns.test.js`:
+    - Verified Wall accent relief single-chip trigger, popover open, selection update, and close.
+    - Verified Brick frame preset single-chip trigger, popover open, selection update, and close.
+    - Verified Brush accent relief single-chip trigger, popover open, selection update, and close.
+  - Ran `tests/brick-pattern-dropdown.test.js` (3/3 passed).
+  - Ran `tests/element-accents.test.js` (5/5 passed).
+  - Ran `tests/brick-discrete-controls-regen.test.js` (111/111 passed).
+  - Full test suite run: **466 test files passed (466/466), 6,559 tests passed (6,559/6,559)**, 0 failures.
+- Signed: Antigravity (AGY)
+
 
 

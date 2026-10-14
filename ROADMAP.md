@@ -1229,5 +1229,10 @@ In normal Select mode, moving a selection with geometry snapping enabled:
 3. Fires haptic feedback (`hapticSnap(true)` / `haptic('snap')` on release) and displays status hints (`Snapped to endpoint`, `Snapped to midpoint`, `Snapped to intersection`, `Snapped to center`).
 4. Moving away or releasing the drag clears the highlight and reticle cleanly.
 5. In `editor-snap-resolver.js`, snap target metadata (`el`, `kind`) is attached via non-enumerable properties so existing deep-equality expectations across tests (`snap-gesture-cache.test.js`, `editor-grid.test.js`) remain cleanly satisfied.
-6. Verified with `tests/select-geometry-snap-feedback.test.js` (2/2 passed) and full test suite (465 test files, 6,556 tests passing).
-
+## Done (turn 212) — BRICK-DROPDOWNS-EXPANSION: Wall accent, Frame preset, and Brush accent converted to single-chip dropdowns (Fred 2026-10-14)
+Converted remaining static icon grids across the Brick panel to the single-chip at rest + popover mosaic dropdown design:
+1. **Wall Accent Relief (`#brickAccentList`):** Single-chip trigger (`#brickWallAccentTriggerWrap`) showing active accent icon and label; opens 3-column floating popover on click; clicking option sets accent and closes popover.
+2. **Brick Frame Preset (`#brickFramePresetList`):** Single-chip trigger (`#brickFramePresetTriggerWrap`) showing active preset icon and label; opens 24-preset floating popover on click; clicking preset sets frame band preset and closes popover.
+3. **Brush & Band Accent Relief (`renderAccentRowFor`):** Single-chip trigger (`#brickAccentTriggerWrap_${key}`) showing active accent icon and label; opens floating popover on click; clicking option sets element accent and closes popover.
+4. **Shared popover lifecycle:** Unified `_togglePopover` and `_wirePopoverGlobal` with click-outside and scroll dismiss across all brick popovers.
+5. **Verification:** Verified with `tests/brick-accent-and-frame-dropdowns.test.js` (3/3 passed) and full vitest suite (466 test files, 6,559 tests passing).

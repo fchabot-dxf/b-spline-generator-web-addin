@@ -467,9 +467,94 @@ const _accent = () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.accent || {}) })
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
 let _accentClickArmed = false;
 
-function renderAccentList(container) {
+let _popoverGlobalWired = false;
+function _wirePopoverGlobal() {
+  if (_popoverGlobalWired || typeof document === 'undefined') return;
+  _popoverGlobalWired = true;
+  document.addEventListener('click', (e) => {
+    for (const list of document.querySelectorAll('.brick-popover-list')) {
+      if (list.style.display !== 'none') {
+        const triggerId = list.dataset.triggerId;
+        const trigger = triggerId ? document.getElementById(triggerId) : null;
+        if ((!trigger || !trigger.contains(e.target)) && !list.contains(e.target)) {
+          list.style.display = 'none';
+        }
+      }
+    }
+  });
+  window.addEventListener('scroll', (e) => {
+    for (const list of document.querySelectorAll('.brick-popover-list')) {
+      if (list.style.display !== 'none' && !list.contains(e.target)) {
+        list.style.display = 'none';
+      }
+    }
+  }, true);
+}
+
+function _togglePopover(triggerEl, popoverEl, maxWidth = 320) {
+  const open = popoverEl.style.display !== 'none';
+  for (const list of document.querySelectorAll('.brick-popover-list')) {
+    list.style.display = 'none';
+  }
+  if (open) return;
+  popoverEl.style.display = popoverEl.dataset.popoverDisplay || 'flex';
+  const r = triggerEl.getBoundingClientRect();
+  const w = maxWidth;
+  const maxW = window.innerWidth || 320;
+  const left = Math.max(4, Math.min(r.left, maxW - w - 4));
+  popoverEl.style.left = `${left}px`;
+  popoverEl.style.top = `${r.bottom + 4}px`;
+  popoverEl.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
+}
+
+export function renderAccentList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickWallAccentTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickWallAccentTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickWallAccentTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickWallAccentTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    triggerWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _togglePopover(triggerBtn, container, 280);
+    });
+  }
+
   container.innerHTML = '';
+  container.classList.add('brick-popover-list');
+  container.dataset.triggerId = 'brickWallAccentTriggerWrap';
+  container.dataset.popoverDisplay = 'grid';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  container.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+  container.style.gap = '4px';
+  container.style.maxWidth = '280px';
+  container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
+
   for (const choice of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -480,14 +565,28 @@ function renderAccentList(container) {
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0 }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
-    btn.addEventListener('click', () => setAccentPreset(choice.id));
+    btn.addEventListener('click', () => {
+      setAccentPreset(choice.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
 }
 
-function syncAccentControls() {
+export function syncAccentControls() {
   const a = _accent();
   for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  const triggerBtn = document.getElementById('brickWallAccentTrigger');
+  const triggerName = document.getElementById('brickWallAccentTriggerName');
+  if (triggerBtn && triggerName) {
+    const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
+    const isSunk = a.levelIn < 0;
+    triggerBtn.innerHTML = choice.id === 'none'
+      ? '<span style="font-size:11px; font-weight:600; opacity:0.8;">None</span>'
+      : (accentIconSvg(choice.id, 30, { sunk: isSunk }) || choice.label);
+    triggerName.textContent = choice.label;
+    triggerBtn.title = `Accent: ${choice.label}`;
+  }
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
@@ -876,23 +975,80 @@ function renderAccentRowFor(container, target, iconPx) {
   const row = document.createElement('div');
   row.className = 'brick-element-accent';
   row.dataset.accentFor = key;
-  row.style.cssText = 'display:flex; gap:3px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
+  row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
   const label = document.createElement('span');
   label.textContent = 'Accent';
-  label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+  label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
   row.appendChild(label);
-  for (const choice of ACCENT_CHOICES) {
+
+  const triggerWrap = document.createElement('div');
+  triggerWrap.id = `brickAccentTriggerWrap_${key}`;
+  triggerWrap.className = 'icon-select';
+  triggerWrap.style.cssText = 'position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer;';
+
+  const triggerBtn = document.createElement('button');
+  triggerBtn.type = 'button';
+  triggerBtn.id = `brickAccentTrigger_${key}`;
+  triggerBtn.className = 'cad-btn icon-select-button';
+  triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:40px; height:28px; padding:2px; overflow:hidden;';
+
+  const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
+  const isSunk = a.levelIn < 0;
+  triggerBtn.innerHTML = choice.id === 'none'
+    ? '<span style="font-size:10px; font-weight:600; opacity:0.8;">None</span>'
+    : (accentIconSvg(choice.id, Math.max(22, iconPx), { sunk: isSunk }) || choice.label);
+
+  const triggerName = document.createElement('span');
+  triggerName.id = `brickAccentTriggerName_${key}`;
+  triggerName.className = 'icon-select-name';
+  triggerName.textContent = choice.label;
+  triggerName.style.cssText = 'font-size:11px; opacity:0.85; font-weight:500;';
+
+  triggerWrap.append(triggerBtn, triggerName);
+  row.appendChild(triggerWrap);
+
+  const popover = document.createElement('div');
+  popover.id = `brickAccentPopover_${key}`;
+  popover.className = 'icon-select-grid brick-popover-list';
+  popover.dataset.triggerId = `brickAccentTriggerWrap_${key}`;
+  popover.dataset.popoverDisplay = 'flex';
+  popover.style.display = 'none';
+  popover.style.position = 'fixed';
+  popover.style.zIndex = '10001';
+  popover.style.background = '#fff';
+  popover.style.border = '1px solid #ccc';
+  popover.style.borderRadius = '4px';
+  popover.style.padding = '8px';
+  popover.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  popover.style.flexDirection = 'row';
+  popover.style.flexWrap = 'wrap';
+  popover.style.gap = '4px';
+  popover.style.maxWidth = '280px';
+  popover.style.overflowY = 'auto';
+
+  triggerWrap.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _togglePopover(triggerBtn, popover, 280);
+  });
+
+  for (const c of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon' + (a.preset === choice.id ? ' active' : '');
-    btn.id = `brickAccent_${key}_${choice.id}`;
-    btn.title = choice.label;
-    btn.setAttribute('aria-label', choice.label);
+    btn.className = 'cad-btn brick-accent-icon' + (a.preset === c.id ? ' active' : '');
+    btn.id = `brickAccent_${key}_${c.id}`;
+    btn.title = c.label;
+    btn.setAttribute('aria-label', c.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = choice.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(choice.id, iconPx, { sunk: a.levelIn < 0 }) || choice.label);
-    btn.addEventListener('click', () => setElementAccent(target, { preset: choice.id }));
-    row.appendChild(btn);
+    btn.innerHTML = c.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(c.id, iconPx, { sunk: a.levelIn < 0 }) || c.label);
+    btn.addEventListener('click', () => {
+      setElementAccent(target, { preset: c.id });
+      popover.style.display = 'none';
+    });
+    popover.appendChild(btn);
   }
+  row.appendChild(popover);
+  _wirePopoverGlobal();
+
   const click = document.createElement('button');
   click.type = 'button';
   click.className = 'cad-btn' + (a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _targetKey(_accentClickTarget) === key ? ' active' : '');
@@ -914,7 +1070,7 @@ function renderAccentRowFor(container, target, iconPx) {
   container.appendChild(row);
 }
 /** Re-render every non-Wall element's Accent row (the Frame bands' + the Brush's). */
-function renderElementAccentRows() {
+export function renderElementAccentRows() {
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
   const brush = document.getElementById('brickBrushAccentRow');
@@ -2046,9 +2202,55 @@ export function deselectTool() {
   if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
-function renderFramePresetList(container) {
+export function renderFramePresetList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickFramePresetTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickFramePresetTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickFramePresetTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickFramePresetTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    triggerWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _togglePopover(triggerBtn, container, 320);
+    });
+  }
+
   container.innerHTML = '';
+  container.classList.add('brick-popover-list');
+  container.dataset.triggerId = 'brickFramePresetTriggerWrap';
+  container.dataset.popoverDisplay = 'flex';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
+  container.style.flexDirection = 'row';
+  container.style.flexWrap = 'wrap';
+  container.style.gap = '4px';
+  container.style.maxWidth = '320px';
+  container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
+
   for (const preset of FRAME_PRESET_LIST) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -2058,7 +2260,10 @@ function renderFramePresetList(container) {
     btn.setAttribute('aria-label', preset.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
-    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
+    btn.addEventListener('click', () => {
+      setFrameBandPreset(preset.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
 }
@@ -2110,9 +2315,19 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
-function syncFramePresetButtons() {
+export function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
+  }
+  const triggerBtn = document.getElementById('brickFramePresetTrigger');
+  const triggerName = document.getElementById('brickFramePresetTriggerName');
+  if (triggerBtn && triggerName) {
+    const active = FRAME_PRESET_LIST.find((p) => p.id === P.brickSettings.frameBandPreset) || FRAME_PRESET_LIST[0];
+    if (active) {
+      triggerBtn.innerHTML = framePresetIconSvg(active.id, 30) || active.label;
+      triggerName.textContent = active.label;
+      triggerBtn.title = `Brick frame preset: ${active.label}`;
+    }
   }
   syncFrameFanCentreRow();
   syncQuickSettings();
@@ -2360,46 +2575,18 @@ export function renderWallPatternList(container) {
     triggerWrap.append(triggerBtn, triggerName);
     parent.insertBefore(triggerWrap, container);
 
-    const toggleOpen = (e) => {
+    triggerWrap.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = container.style.display !== 'none';
-      if (open) {
-        container.style.display = 'none';
-      } else {
-        container.style.display = 'flex';
-        const r = triggerBtn.getBoundingClientRect();
-        const w = 320;
-        const maxW = window.innerWidth || 320;
-        const left = Math.max(4, Math.min(r.left, maxW - w - 4));
-        container.style.left = `${left}px`;
-        container.style.top = `${r.bottom + 4}px`;
-        container.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
-      }
-    };
-    triggerWrap.addEventListener('click', toggleOpen);
-
-    if (!_mosaicGlobalWired && typeof document !== 'undefined') {
-      _mosaicGlobalWired = true;
-      document.addEventListener('click', (e) => {
-        const wrap = document.getElementById('brickPatternTriggerWrap');
-        const list = document.getElementById('brickPatternList');
-        if (list && list.style.display !== 'none' && wrap && !wrap.contains(e.target) && !list.contains(e.target)) {
-          list.style.display = 'none';
-        }
-      });
-      window.addEventListener('scroll', (e) => {
-        const list = document.getElementById('brickPatternList');
-        if (list && list.style.display !== 'none' && !list.contains(e.target)) {
-          list.style.display = 'none';
-        }
-      }, true);
-    }
+      _togglePopover(triggerBtn, container, 320);
+    });
   }
 
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
-  container.className = 'icon-select-grid brick-pattern-mosaic';
+  container.className = 'icon-select-grid brick-pattern-mosaic brick-popover-list';
+  container.dataset.triggerId = 'brickPatternTriggerWrap';
+  container.dataset.popoverDisplay = 'flex';
   container.style.display = 'none';
   container.style.position = 'fixed';
   container.style.zIndex = '10001';
@@ -2413,6 +2600,7 @@ export function renderWallPatternList(container) {
   container.style.gap = '4px';
   container.style.maxWidth = '320px';
   container.style.overflowY = 'auto';
+  _wirePopoverGlobal();
 
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
@@ -2431,7 +2619,10 @@ export function renderWallPatternList(container) {
     btn.setAttribute('aria-label', _patternLabel(id));
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
-    btn.addEventListener('click', () => setWallPattern(id));
+    btn.addEventListener('click', () => {
+      setWallPattern(id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
   // item 31d: each SAVED custom pattern is a pattern of its own here (its icon drawn on its bond with its accents)
@@ -2444,7 +2635,10 @@ export function renderWallPatternList(container) {
     btn.setAttribute('aria-label', u.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-    btn.addEventListener('click', () => applyUserPattern(u.id));
+    btn.addEventListener('click', () => {
+      applyUserPattern(u.id);
+      container.style.display = 'none';
+    });
     container.appendChild(btn);
   }
   syncWallPatternTrigger();
