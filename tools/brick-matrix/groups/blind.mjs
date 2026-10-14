@@ -117,7 +117,7 @@ const RECORDERS = `(() => { if (window.__blindRec) return 1; window.__blindRec =
     const tasks = window.__long.filter((e) => e.start >= t0 - 5), shown = window.__shown.find((t) => t >= t0 - 5);
     const cut = shown ?? Infinity;
     return JSON.stringify({ blindMs: Math.round(tasks.reduce((s, e) => s + Math.max(0, Math.min(e.start + e.dur, cut) - e.start), 0)),
-      cardMs: shown == null ? null : Math.round(shown - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
+      cardMs: shown == null ? null : Math.round(shown - t0), actMs: Math.round(t1 - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
       tasks: tasks.map((e) => [Math.round(e.start - t0), Math.round(e.dur)]) }); };
   return 1; })()`;
 
@@ -151,9 +151,10 @@ async function doAct(a) {
   return false;
 }
 
-// BLIND_PROFILE=1 (opt-in, seat D 2026-10-11): each row's action runs under the CPU profiler and the row prints which app
-// code ran before its card and in its longest tasks (blame.mjs). BLIND_ROWS=<regex> runs only the matching rows.
-const PROFILE = !!process.env.BLIND_PROFILE, ROWS = process.env.BLIND_ROWS ? new RegExp(process.env.BLIND_ROWS, 'i') : null;
+// BLIND_PROFILE=<regex> (opt-in, seat D 2026-10-11): the matching rows' actions run under the CPU profiler and print which
+// app code ran before the card and in their longest tasks (blame.mjs). Every row still runs, in order: a row's state is
+// what the rows before it left (a filtered run skipped the row that opens the editor -- measured: setup control missing).
+const PROFILE = process.env.BLIND_PROFILE ? new RegExp(process.env.BLIND_PROFILE, 'i') : null;
 
 async function runBlindBudget() {
   const B = BLIND_BUDGET;
@@ -167,7 +168,6 @@ async function runBlindBudget() {
   if (PROFILE) { await js(PROF_MARK); await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); }
   try {
     for (const row of B.rows) {
-      if (ROWS && !ROWS.test(row.name)) continue;
       const budget = row.budgetMs ?? B.budgetMs, name = `No blind freeze (phone, CPU x${B.cpu}): ${row.name} -- under ${budget} ms before its card`;
       if (row.closeEditor) { await tap('#editorApply'); await sleep(4000); }
       if (row.sidebar) {
@@ -185,12 +185,13 @@ async function runBlindBudget() {
       if (!ready) { checkRow('blind', name, false, `setup control missing (${(row.pre || []).join(', ')})`); continue; }
       await send('Emulation.setCPUThrottlingRate', { rate: B.cpu });
       let markT = null;
-      if (PROFILE) { await send('Profiler.start'); markT = await js('window.__profMark()'); }
+      const prof = !!PROFILE && PROFILE.test(row.name);
+      if (prof) { await send('Profiler.start'); markT = await js('window.__profMark()'); }
       const t0 = await js('performance.now()');
       const did = await doAct(row.act);
       const m = did ? await jsJSON(`window.__blind(${t0}, ${B.quietMs})`) : null;
       await send('Emulation.setCPUThrottlingRate', { rate: 1 });
-      if (PROFILE) {
+      if (prof) {
         const p = (await send('Profiler.stop')).result?.profile;
         if (p && m) {
           const end = m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0);
@@ -201,7 +202,7 @@ async function runBlindBudget() {
       }
       const ok = !!m && m.blindMs <= budget;
       const load = ok || !m ? '' : ` -- ${loadNote(await calibrate())}`; // detection only: the verdict above is final
-      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
+      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms (the action took ${m.actMs} ms), longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
       if (!ok) await shot(`FAIL_blind_${row.name.replace(/[^A-Za-z0-9]+/g, '_')}`);
       for (const id of row.post || []) { await tap('#' + id); await sleep(500); }
     }
