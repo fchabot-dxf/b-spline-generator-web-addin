@@ -483,10 +483,12 @@ function wrapInnerQuoins(bricks, ribbons, joint) {
   for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
     let outer = null, best = Infinity;
     for (let k = r - 1; k >= 0 && !outer; k--) for (const o of ribbons[k]) {
-      const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.hypot(o.square[1].x - o.square[0].x, o.square[1].y - o.square[0].y);
+      // its size: the side of a square of its area (a square's own side; a curved block's first edge is one arc step)
+      const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.sqrt(Math.abs(signedArea(o.square)));
       if (d < 1.5 * size && d < best) { best = d; outer = o; } // a deep band puts its corner up to ~1.4 sizes in (T5 9x12 1 in)
     }
     if (!outer) continue;
+    q.wrapped = true;
     const grown = offsetPathInward(outer.square, joint, -inwardSignFor(outer.square));
     const pieces = polygonDifference(q.square, grown);
     const L = (pieces || []).filter((p) => p && p.length >= 3).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0];
@@ -597,6 +599,10 @@ function cornersThatCannotWrap(bricks, ribbons) {
   const all = ribbons.flat(), off = new Map();
   for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
     if (q.corner == null) continue;
+    // a CURVED block exists only as the L of an outer band's curved corner (Fred 2026-10-11: it matches the square quoins):
+    // an inner band's own kink -- an offset of the contour, no corner outside it -- keeps the mitre (MEASURED T3 7x10
+    // 0.75 in three_band: band 2's waist offset turns 56 deg; the matched block reached into the wall as a pentagon)
+    if (q.curved && !q.wrapped) { if (!off.has(q.key)) off.set(q.key, new Set()); off.get(q.key).add(q.corner); continue; }
     const p = bricks[q.at].polygon, pb = boxOfPoly(p);
     if (!all.some((o) => o.at !== q.at && boxesMeet(pb, boxOfPoly(bricks[o.at].polygon)) && overlapArea(p, bricks[o.at].polygon) > MEDIAL_OVERLAP_SQIN)) continue;
     if (!off.has(q.key)) off.set(q.key, new Set());
@@ -1130,7 +1136,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
       // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
       const ribbonQuoins = [];
-      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey }); });
+      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey, curved: !!pieces[i].curved }); });
       if (ribbonQuoins.length) quoinRibbons.push(ribbonQuoins);
       bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
       // T86 item 30: a fan slice also records its corner (the two primitives it sits between), for the fan-vs-fan split
@@ -1170,7 +1176,11 @@ export function bricksContourBands(primitives, bands, opts) {
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
   // the wall's region, never off the board (primitive-ribbon.js wallRegionAtDepth)
   const innerPath = closed ? wallRegionAtDepth(enriched, wallDepth) : [];
-  if (QUOIN_INNER_WRAP === 'L' && (quoinRibbons.length > 1 || (opts.blockOff && quoinRibbons.length))) {
+  // A curved block (primitive-ribbon.js buildCurveBlockJoint) needs it on ONE quoin ribbon too: it spans the whole row and
+  // its faces meet the runs at the corner's own angle (MEASURED: T10 7x9 1.25 in, a short side's last piece 0.003 sq in under
+  // it; T16 9x12 0.75 in, band 2's mitred corner under band 1's block). It cuts only a piece truly over a quoin -- a square
+  // quoin's lay has none, so its pieces stay byte-identical
+  if (QUOIN_INNER_WRAP === 'L' && quoinRibbons.length >= 1) {
     // a merged remnant stays out of the wall's region by the band's half of the joint (MEASURED T5 9x12 1 in
     // soldier_stretcher: an arc piece's hull took the chord across its curved inner edge, 0.02 sq in into the wall)
     const wallZone = innerPath.length >= 3 ? offsetPathInward(innerPath, halfJoint, -inwardSignFor(innerPath)) : null;

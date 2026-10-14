@@ -311,6 +311,9 @@
     /* Version-stamp status (set by main.js on the Fusion 'build_info' push):
        ok = deployed SHA == source HEAD; stale = differs or dirty; unknown =
        no build-info.json (dev run) -> stays the muted fallback literal. */
+    /* Fred 2026-10-11: the project name is the header's one name (the disk button is icon-only): bigger than the
+       version-badge class it borrows, in the same row -- the header height does not change, a long name ends in "…" */
+    #fmCurrentFileLabel { font-size: 15px; font-weight: 600; color: var(--cad-text-main); line-height: 1.2; }
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
@@ -508,7 +511,9 @@
              not "the title". H16: dirty-dot REMOVED (Fred, phone, pointing
              at it: "what is the point for?") -- the Save button's own
              colour-vs-grey state (main/cloud-project-manager.js) is the
-             one unsaved-changes signal now. -->
+             one unsaved-changes signal now. Fred 2026-10-11: the name lives
+             HERE only (the disk button is icon-only), bigger, "Unsaved" when
+             never saved. -->
         <!-- workflow audit #10: a long name is cut with "…" instead of pushing the header buttons off a phone -->
         <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none; max-width:30vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;"></span>
       </span>
@@ -541,7 +546,6 @@
       <button class="cad-btn cad-btn-secondary cad-nav-btn disabled" id="btnQuickSave"
               title="Saved">
         <span style="font-size:18px; line-height:1;">💾</span>
-        <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
       <!-- Fred ("yes please" to a New project button): main/cloud-project-manager.js newProject -->
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnNewProject" title="New project: empty drawing, keeps the stock size and frame">
