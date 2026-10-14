@@ -57,7 +57,7 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
     }
   });
 
-  it('framePresetsForTemplate includes arch_keystone, quoin_corners and excludes pruned/clashing presets for Family 2', () => {
+  it('framePresetsForTemplate lists Family 2 presets first, the others after (never hidden)', () => {
     const mockList = [
       { id: 'single_soldier', label: 'Single Soldier' },
       { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
@@ -70,13 +70,12 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
 
     const filtered = framePresetsForTemplate('template_10', mockList);
     const ids = filtered.map((x) => x.id);
-    expect(ids).toContain('arch_keystone');
-    expect(ids).toContain('quoin_corners');
-    expect(ids).toContain('single_soldier');
-    expect(ids).toContain('soldier_stretcher');
-    expect(ids).not.toContain('butt_frame');
-    expect(ids).not.toContain('flemish_architrave');
-    expect(ids).not.toContain('double_course');
+    // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset stays pickable -- the family's first, marked, the rest after
+    expect([...ids].sort()).toEqual(mockList.map((x) => x.id).sort());
+    const fit = ["arch_keystone","quoin_corners","single_soldier","soldier_stretcher"], other = ["butt_frame","flemish_architrave","double_course"];
+    for (const id of fit) expect(filtered.find((x) => x.id === id).fits, id).toBe(true);
+    for (const id of other) expect(filtered.find((x) => x.id === id).fits, id).toBe(false);
+    expect(Math.max(...fit.map((id) => ids.indexOf(id)))).toBeLessThan(Math.min(...other.map((id) => ids.indexOf(id))));
   });
 
   it('engine: generates clean brick bands for all Family 2 templates with conforming presets (0 out of bounds)', () => {
@@ -92,15 +91,11 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
       for (const pid of fam.conformingPresetIds) {
         if (pid === 'none') continue;
 
-        if (pid === 'arch_keystone' || pid === 'quoin_corners') {
-          const spec = pid === 'arch_keystone' ? ARCH_SPECS.rowlock_keystone : ARCH_SPECS.soldier_quoin;
-          const res = layArch(spec, prims, [], { set, seed: 1 });
+        // Fred 2026-10-14: quoin_corners lays its own bands on every template (the curved quoin at an arched corner) --
+        // only arch_keystone carries an arch
+        if (pid === 'arch_keystone') {
+          const res = layArch(ARCH_SPECS.rowlock_keystone, prims, [], { set, seed: 1 });
           expect(res.pieces?.length, `${tid} + ${pid} should generate pieces`).toBeGreaterThan(0);
-          
-          if (pid === 'quoin_corners') {
-            const stones = res.pieces.filter((p) => p.setId === 6);
-            expect(stones.length, `${tid} + quoin_corners must have 5 accent stones (2 base + 2 springers + 1 keystone)`).toBe(5);
-          }
 
           for (const p of res.pieces) {
             expect(p.polygon.length, `Arch piece polygon on ${tid} must have at least 3 vertices`).toBeGreaterThanOrEqual(3);

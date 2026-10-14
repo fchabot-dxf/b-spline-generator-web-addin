@@ -26239,6 +26239,34 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   - Pushed to `origin/main` (`dc961b8..5778033`).
 - Signed: Antigravity (AGY)
 
+
+
+
+## Saved boards lay as before; wood-frame families suggest, never hide or rewrite (seat E / 61, 2026-10-14)
+
+- Fred (advisor): two live regressions from the outside agent's commits (main 92bccb4 -> ac93a1c), fixed before curve-quoin.
+- 1. d4b2ec1 laid quoin_corners on the arched family (T10 / T16 / T18 / T19) as a new soldier_quoin arch with no bands
+  (frameBandsOf / frameArchOf / _layInput keyed on the template; resolveFrameGeom passed it). Saved quoin boards there
+  re-laid differently, with no migration and no pin. Fred chose the curved quoin there (curve-quoin, on top). Restored
+  the lay path to 92bccb4 exactly (editor-brick-tool.js frameArchOf / frameBandsOf / _layInput; brick-panel.js
+  resolveFrameGeom; arch-surround.js soldier_quoin removed, nothing reads it). No migration needed: a board stores
+  the preset id, so it re-lays as before. Pin: tests/frame-preset-saved-boards-pin.test.js -- the app's own path
+  (frameBandsOf -> brickLayInput -> generateBricks) for every preset that existed at 92bccb4 on T10 / T16 / T18 / T19
+  + no template, 0.75 / 1.25 in, digests taken in a temp worktree at 92bccb4 (fixtures/frame-preset-saved-boards.json).
+- 2. brick-panel.js frameFamilyCheck REWROTE frameBandPreset to the family default whenever a template outside the
+  preset's family loaded. Removed: the handler only re-renders the list. framePresetsForTemplate (frame-families.js)
+  no longer filters: every preset, the family's first, each marked `fits`; the popover heads them "Fits this frame" /
+  "Other presets" (class fits-frame, tooltip "... · fits this frame"); the sidebar quick picker the same order + label.
+  The family tests that asserted hiding (family-1 / 2 / 3) now assert the suggest rule; family-2's 5-stone arch for
+  quoin_corners went with the route. family.defaultPreset is no longer read (declared data, kept).
+- Scan (one-off, not committed): every template x every 92bccb4 preset x 0.75 / 1.25 (760 lays) and 6 templates x every
+  wall pattern (264) through the same path: byte-identical to 92bccb4 -- no other drift from the family commits.
+- Tests: 9 new / rewritten fail on main (4 pins on the arched templates, 3 family orderings, no-rewrite, the popover).
+  bricks-library's preset list gained the 4 presets main 8e57aeb added unlisted (it was red on main). Full vitest:
+  6650 / 6659 -- the 9 failures (sidebar-tabs 7, section-themes 1, open-editor-buttons 1) fail identically on main's
+  own sources (c64a466's permanent layers panel), not this branch. Icons regenerated (main's were stale).
+- greek_key (advisor's list) is not on main -- nothing to check there.
+
 ### 2026-10-11 (seat E): the CURVED block -- a quoin where a straight side meets an arc (Fred picked mockup A)
 - Where: MEASURED every template at its defaults + Fred's Armor record: only T10 Arched Hourglass (the arched top meets the
   tapered sides, a 30 deg turn = 150 inside) and T18 Arched Head (43 deg = 137 inside) have a non-tangent line/arc corner;
