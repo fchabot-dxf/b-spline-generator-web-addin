@@ -296,6 +296,7 @@ export class VectorEditor {
     }
     open(svgString, w, h) { return open(this, svgString, w, h); }
     sync3DBackground() { return sync3DBackground(this); }
+    updateHistoryButtons() { updateHistoryButtons(this); }
     
     setMode(mode) { return setMode(this, mode); }
     setStrokeWidth(w) {

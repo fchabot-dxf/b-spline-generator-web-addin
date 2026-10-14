@@ -154,7 +154,14 @@ export function initSvgSource(ctx, layerModule) {
         // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:
         // in the unified model ctx.activeLayer() returns an EDITOR layer with no
         // `.svg`, so the old code passed undefined and reopened blank (RO1).
-        window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+        const targetSvg = editorRestoreSvg();
+        const currentSvg = typeof window.svgEditor.save === 'function' ? window.svgEditor.save() : null;
+        if (!currentSvg || currentSvg !== targetSvg || !window.svgEditor._undoStack?.length) {
+          window.svgEditor.open(targetSvg, P.widthIn, P.heightIn);
+        } else {
+          window.svgEditor.sync3DBackground?.();
+          window.svgEditor.updateHistoryButtons?.();
+        }
       }
       // workflow audit #1: open on the last working tool (or Select), never the Pen
       if (window.svgEditor && typeof window.svgEditor.setMode === 'function') window.svgEditor.setMode(openingMode());

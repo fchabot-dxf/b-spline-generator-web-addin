@@ -43,7 +43,7 @@ import {
     isLatticePoint, moveRailAlongAxis, translateTie,
     nearestEndWithin, stretchRailEnd, stretchTieEnd, LATTICE_DRAW_KINDS,
 } from './editor-lattice.js';
-import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary, bakeContourPieceTransform, CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary, bakeContourPieceTransform, CONTOUR_SEG_INDEX_ATTR, _ensureKindLayers, freshPattern } from './editor-lattice-pattern.js';
 import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
@@ -2027,11 +2027,23 @@ function _emitStyled(editor, kind, a, b) {
     const previousColor = editor._color;
     editor._color = colors[styleKey];
     // a hand-drawn rail / tie / node goes onto the lattice's own layer for its kind (Rails / Ties / Nodes), not
-    // whichever layer happens to be active -- a tie drawn with Rails active used to land on Rails (and under it)
-    const pattern = getLayerPattern(editor);
+    // whichever layer happens to be active -- a tie drawn with Rails active used to land on Rails (and under it).
+    // Ensure kind layers exist (Rails, Ties, Nodes) just like Shape Lattice does.
+    let pattern = getLayerPattern(editor);
+    if (!pattern) {
+        const layer = (editor._layers || []).find((l) => l.id === editor._activeLayer);
+        if (layer) {
+            layer.pattern = freshPattern(editor);
+            pattern = layer.pattern;
+        }
+    }
+    const layerExists = (id) => id && (editor._layers || []).some((l) => l.id === id);
+    if (pattern && (!pattern.layers || !layerExists(pattern.layers[styleKey]))) {
+        _ensureKindLayers(editor, pattern, editor._activeLayer, ['rails', 'ties', 'nodes']);
+    }
     const kindLayer = pattern && pattern.layers && pattern.layers[styleKey];
     const previousLayer = editor._activeLayer;
-    if (kindLayer && (editor._layers || []).some((l) => l.id === kindLayer)) editor._activeLayer = kindLayer;
+    if (layerExists(kindLayer)) editor._activeLayer = kindLayer;
     const el = kind === 'node'
         ? emitNode(editor, a, widths.nodeDiameter / 2)
         : emitSegment(editor, kind, a, b, widths[styleKey]);
