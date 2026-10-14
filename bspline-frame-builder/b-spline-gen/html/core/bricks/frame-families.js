@@ -108,6 +108,59 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
     ]),
     defaultPreset: 'soldier_stretcher',
   }),
+  family_4_stepped_tabs: Object.freeze({
+    id: 'family_4_stepped_tabs',
+    label: 'Stepped & Tabbed Profiles',
+    templates: Object.freeze([
+      'template_6',
+      'template_9',
+    ]),
+    segmentTypes: Object.freeze({
+      top: 'stepped_tab',
+      bottom: 'straight_or_stepped_tab',
+      corners: 'stepped_90_and_reflex',
+      sides: 'flank_or_waist',
+    }),
+    conformingPresetIds: Object.freeze([
+      'none',
+      'single_soldier',
+      'soldier_stretcher',
+      'three_band',
+      'double_soldier',
+      'header_band',
+      'mixed_bands',
+      'stepped_fret',
+      'zigzag_band',
+    ]),
+    defaultPreset: 'soldier_stretcher',
+  }),
+  family_5_shouldered_flared: Object.freeze({
+    id: 'family_5_shouldered_flared',
+    label: 'Shouldered Neck & Flared Profiles',
+    templates: Object.freeze([
+      'template_15',
+      'template_17',
+    ]),
+    segmentTypes: Object.freeze({
+      top: 'neck_or_flared_lip',
+      bottom: 'straight',
+      corners: 'curved_shoulders_and_square_base',
+      sides: 'bottle_or_tulip_curves',
+    }),
+    conformingPresetIds: Object.freeze([
+      'none',
+      'single_soldier',
+      'soldier_stretcher',
+      'three_band',
+      'double_soldier',
+      'header_band',
+      'mixed_bands',
+      'craftsman_apron',
+      'corbelled_cornice',
+      'zigzag_band',
+    ]),
+    defaultPreset: 'soldier_stretcher',
+  }),
 });
 
 /** Find the declared wood frame family for a template ID. */
