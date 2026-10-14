@@ -187,6 +187,7 @@ export async function updateStampMasks(nx, nz) {
             groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
             groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
             levels: P.brickSettings && P.brickSettings.elementLevelIn, // F35 item 16: per-element Level
+            edges: P.brickSettings && P.brickSettings.edgeByElement, // Fred 2026-10-11: per-element EDGE TAPER
             accent: P.brickSettings && P.brickSettings.accent, // F35 item 15: raised accents (Wall)
             frameBandAccents: P.brickSettings && P.brickSettings.frameBandAccents, // per band (advisor)
             brushAccent: P.brickSettings && P.brickSettings.brushAccent, // the Brush element's, per stroke

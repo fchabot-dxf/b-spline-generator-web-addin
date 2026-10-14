@@ -40,7 +40,7 @@ import { hashedRandom } from '../rng.js';
 
 function patternFor(name) {
   const p = BRICK_PATTERNS[name];
-  return (p && (p.kind === 'course' || p.kind === 'course-alternating')) ? p : BRICK_PATTERNS.stretcher;
+  return (p && (p.kind === 'course' || p.kind === 'course-alternating')) ? { ...p, id: name } : BRICK_PATTERNS.stretcher;
 }
 
 // T86 item 15 (Fred, shots/fred/empty_course_top.png: "empty line of brick, can it be filled with
@@ -164,6 +164,41 @@ function flemishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
   return row;
 }
 
+function englishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
+  const isHeader = courseIndex % 2 === 1;
+  const w = isHeader ? H : L;
+  const pitch = w + J;
+  const stagger = (!isHeader && (courseIndex % 4 === 2)) ? (L + J) * 0.5 : 0;
+  const row = [];
+  let x = minX - stagger - pitch;
+  while (x < maxX + pitch) {
+    const cx = x + w / 2;
+    if (!(cx + w / 2 < minX - 1e-6 || cx - w / 2 > maxX + 1e-6)) {
+      row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon: rectPolygon(cx, courseCy, w / 2, cH / 2) });
+    }
+    x += pitch;
+  }
+  return row;
+}
+
+function monkRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
+  const period = 2 * (L + J) + (H + J);
+  const phase = (courseIndex % 3) * (L + J);
+  const row = [];
+  let x = minX - phase - period;
+  while (x < maxX + period) {
+    const units = [{ x0: x, w: L }, { x0: x + L + J, w: L }, { x0: x + 2 * (L + J), w: H }];
+    for (const u of units) {
+      const cx = u.x0 + u.w / 2;
+      if (!(cx + u.w / 2 < minX - 1e-6 || cx - u.w / 2 > maxX + 1e-6)) {
+        row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon: rectPolygon(cx, courseCy, u.w / 2, cH / 2) });
+      }
+    }
+    x += period;
+  }
+  return row;
+}
+
 /**
  * @param {{x:number,y:number}[]} boardOutline — closed polygon, board inches
  * @param {{brickLengthIn:number, brickHeightIn:number, grout:{widthIn:number}}} set — the active brick set
@@ -276,11 +311,15 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
     const coursePitch = cH + J;
     const courseCy = cy + cH / 2;
     const row = custom ? { courseCy, cH } // laid below, once the course count (the tile row origin) is known
-      : pattern.kind === 'course-alternating'
-        ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
-        : rustic > 0 && isRunningBondPattern(pattern)
-          ? (() => { const r = rusticRow(c, minX, maxX, courseCy, cH, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below); below = r.joints; return r.row; })()
-          : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
+      : pattern.subtype === 'english' || pattern.id === 'english'
+        ? englishRow(c, minX, maxX, courseCy, cH, L, H, J)
+        : pattern.subtype === 'monk' || pattern.id === 'monk'
+          ? monkRow(c, minX, maxX, courseCy, cH, L, H, J)
+          : pattern.kind === 'course-alternating'
+            ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
+            : rustic > 0 && isRunningBondPattern(pattern)
+              ? (() => { const r = rusticRow(c, minX, maxX, courseCy, cH, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below); below = r.joints; return r.row; })()
+              : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
@@ -305,11 +344,15 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
       const pattern = patternFor(coursePatterns[c - 1]);
       const courseCy = cy + remaining / 2;
       const row = custom ? { courseCy, cH: remaining }
-        : pattern.kind === 'course-alternating'
-          ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
-          : rustic > 0 && isRunningBondPattern(pattern)
-            ? rusticRow(c, minX, maxX, courseCy, remaining, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below).row
-            : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
+        : pattern.subtype === 'english' || pattern.id === 'english'
+          ? englishRow(c, minX, maxX, courseCy, remaining, L, H, J)
+          : pattern.subtype === 'monk' || pattern.id === 'monk'
+            ? monkRow(c, minX, maxX, courseCy, remaining, L, H, J)
+            : pattern.kind === 'course-alternating'
+              ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
+              : rustic > 0 && isRunningBondPattern(pattern)
+                ? rusticRow(c, minX, maxX, courseCy, remaining, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below).row
+                : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
       courses.push(row);
     }
   }

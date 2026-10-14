@@ -43,6 +43,19 @@ export const ARCH_SPECS = Object.freeze({
     // Fred's "shrink to fit, skip with a hint": the stacks tried in order, the first that fits is laid
     ladder: Object.freeze([Object.freeze({ hood: true, rings: 2 }), Object.freeze({ hood: false, rings: 2 }), Object.freeze({ hood: false, rings: 1 })]),
   }),
+  soldier_quoin: Object.freeze({
+    hoodDepthH: 0,
+    rings: 1, // single soldier band (0.5 * brickLengthIn)
+    ringDepthL: 0.5,
+    hoodRelief: null,
+    keystoneRelief: null,
+    keystoneHalfIn: 0.32,
+    springerTopIn: 0.6,
+    springerSideIn: 0.3,
+    sillBlockHalfIn: 0.5,
+    stoneSetId: 6,
+    ladder: Object.freeze([Object.freeze({ hood: false, rings: 1 })]),
+  }),
 });
 
 const OVERLAP_SQIN = 1e-4; // two pieces sharing more than this are a collision (the rings meeting in a narrow neck)

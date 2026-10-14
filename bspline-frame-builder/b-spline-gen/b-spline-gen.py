@@ -1783,6 +1783,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if palette:
                     palette.isVisible = False
 
+            # ── pull_sketch_from_fusion — extract constrained sketch curves from Fusion ─────
+            elif action == 'pull_sketch_from_fusion':
+                res = self._handle_pull_sketch()
+                pal = ui.palettes.itemById(PALETTE_ID)
+                if pal:
+                    pal.sendInfoToHTML('sketch_pulled', json.dumps(res, default=str))
+
             # ── ping — bridge health check ────────────────────────────────────
             elif action == 'ping':
                 # Silenced to prevent refresh loop
@@ -1852,6 +1859,174 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 pal.sendInfoToHTML('clear_result', json.dumps(result, default=str))
         except Exception as e:
             _log(f'CLEAR DESIGN could not report back: {e}')
+
+    def _handle_pull_sketch(self):
+        """Extracts evaluated/solved sketch curves from the active or latest Fusion sketch
+        and converts them to board-relative coordinates (inches) for the Web Add-in canvas."""
+        result = {'ok': False, 'sketchName': None, 'widthIn': 7.0, 'heightIn': 9.0, 'curves': [], 'error': None}
+        try:
+            des = _active_design()
+            if not des:
+                raise RuntimeError('No active Fusion design found.')
+
+            target_sketch = None
+            # 1. Check if user is actively in sketch edit mode
+            try:
+                active_obj = app.activeEditObject
+                if active_obj and isinstance(active_obj, adsk.fusion.Sketch):
+                    target_sketch = active_obj
+            except Exception:
+                pass
+
+            # 2. Check UI selection
+            if not target_sketch and app.userInterface:
+                try:
+                    for i in range(app.userInterface.activeSelections.count):
+                        ent = app.userInterface.activeSelections.item(i).entity
+                        if isinstance(ent, adsk.fusion.Sketch):
+                            target_sketch = ent
+                            break
+                except Exception:
+                    pass
+
+            # 3. Check sketches in root component and occurrences
+            if not target_sketch:
+                all_sketches = []
+                for sk in des.rootComponent.sketches:
+                    all_sketches.append(sk)
+                for occ in des.rootComponent.allOccurrences:
+                    for sk in occ.component.sketches:
+                        all_sketches.append(sk)
+                if all_sketches:
+                    for sk in reversed(all_sketches):
+                        nl = sk.name.lower()
+                        if any(k in nl for k in ['se15', 'carved', 'artwork', 'drawing', 'lattice', 'slot', 'track']):
+                            target_sketch = sk
+                            break
+                    if not target_sketch:
+                        target_sketch = all_sketches[-1]
+
+            if not target_sketch:
+                raise RuntimeError('No sketch found in the active Fusion design.')
+
+            result['sketchName'] = target_sketch.name
+
+            w_param = des.allParameters.itemByName('widthIn') or des.allParameters.itemByName('BSG_widthIn')
+            h_param = des.allParameters.itemByName('heightIn') or des.allParameters.itemByName('BSG_heightIn')
+            width_in = (w_param.value / 2.54) if w_param else 7.0
+            height_in = (h_param.value / 2.54) if h_param else 9.0
+            result['widthIn'] = width_in
+            result['heightIn'] = height_in
+
+            def _to_svg(pt_cm):
+                x_in = (pt_cm.x / 2.54) + (width_in / 2.0)
+                y_in = (height_in / 2.0) - (pt_cm.y / 2.54)
+                return round(x_in, 5), round(y_in, 5)
+
+            curves_out = []
+            curves = target_sketch.sketchCurves
+
+            # Lines
+            for line in curves.sketchLines:
+                try:
+                    sp = line.startSketchPoint.geometry
+                    ep = line.endSketchPoint.geometry
+                    x1, y1 = _to_svg(sp)
+                    x2, y2 = _to_svg(ep)
+                    curves_out.append({
+                        'type': 'line',
+                        'd': f"M {x1} {y1} L {x2} {y2}",
+                        'isConstruction': bool(line.isConstruction)
+                    })
+                except Exception as e:
+                    _log(f"Line extract failed: {e}")
+
+            # Circles
+            for circle in curves.sketchCircles:
+                try:
+                    cp = circle.centerSketchPoint.geometry
+                    r_in = round(circle.radius / 2.54, 5)
+                    cx, cy = _to_svg(cp)
+                    d = (f"M {cx - r_in} {cy} "
+                         f"A {r_in} {r_in} 0 1 0 {cx + r_in} {cy} "
+                         f"A {r_in} {r_in} 0 1 0 {cx - r_in} {cy} Z")
+                    curves_out.append({
+                        'type': 'circle',
+                        'd': d,
+                        'cx': cx,
+                        'cy': cy,
+                        'r': r_in,
+                        'isConstruction': bool(circle.isConstruction)
+                    })
+                except Exception as e:
+                    _log(f"Circle extract failed: {e}")
+
+            # Arcs
+            for arc in curves.sketchArcs:
+                try:
+                    sp = arc.startSketchPoint.geometry
+                    ep = arc.endSketchPoint.geometry
+                    cp = arc.centerSketchPoint.geometry
+                    r_in = round(arc.radius / 2.54, 5)
+                    x1, y1 = _to_svg(sp)
+                    x2, y2 = _to_svg(ep)
+                    cx, cy = _to_svg(cp)
+
+                    evaluator = arc.geometry.evaluator
+                    _, s_p = evaluator.getParameterAtPoint(sp)
+                    _, e_p = evaluator.getParameterAtPoint(ep)
+                    mid_p = (s_p + e_p) / 2.0
+                    _, mid_pt = evaluator.getPointAtParameter(mid_p)
+                    mx, my = _to_svg(mid_pt)
+
+                    cross = (mx - x1) * (y2 - y1) - (my - y1) * (x2 - x1)
+                    sweep = 1 if cross > 0 else 0
+
+                    ang1 = math.atan2(y1 - cy, x1 - cx)
+                    ang2 = math.atan2(y2 - cy, x2 - cx)
+                    def _norm(a):
+                        while a < 0: a += 2 * math.pi
+                        while a >= 2 * math.pi: a -= 2 * math.pi
+                        return a
+                    diff = _norm(ang2 - ang1) if sweep == 1 else _norm(ang1 - ang2)
+                    large_arc = 1 if diff > math.pi else 0
+
+                    d = f"M {x1} {y1} A {r_in} {r_in} 0 {large_arc} {sweep} {x2} {y2}"
+                    curves_out.append({
+                        'type': 'arc',
+                        'd': d,
+                        'isConstruction': bool(arc.isConstruction)
+                    })
+                except Exception as e:
+                    _log(f"Arc extract failed: {e}")
+
+            # Fitted Splines
+            for spline in curves.sketchFittedSplines:
+                try:
+                    evaluator = spline.geometry.evaluator
+                    _, s_p = evaluator.getParamExtents()
+                    steps = 25
+                    pts = []
+                    for s in range(steps + 1):
+                        t = s_p.minimumValue + (s_p.maximumValue - s_p.minimumValue) * (s / float(steps))
+                        _, p3d = evaluator.getPointAtParameter(t)
+                        pts.append(_to_svg(p3d))
+                    d = f"M {pts[0][0]} {pts[0][1]} " + " ".join([f"L {p[0]} {p[1]}" for p in pts[1:]])
+                    curves_out.append({
+                        'type': 'spline',
+                        'd': d,
+                        'isConstruction': bool(spline.isConstruction)
+                    })
+                except Exception as e:
+                    _log(f"Spline extract failed: {e}")
+
+            result['curves'] = curves_out
+            result['ok'] = True
+            _log(f"[PULL SKETCH] Extracted {len(curves_out)} curves from sketch '{target_sketch.name}'")
+        except Exception as e:
+            _log(f"[PULL SKETCH] Failed: {e}\n{traceback.format_exc()}")
+            result['error'] = str(e)
+        return result
 
     def _handle_send_frame(self, payload):
         """FB-APP S5 (F10): fb_engine.send_frame does the work (delete the
