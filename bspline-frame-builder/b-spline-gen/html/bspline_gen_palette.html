@@ -552,6 +552,10 @@
         <span style="font-size:18px; line-height:1;">📁</span>
         <span class="cad-nav-label">Projects</span>
       </button>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnPullFromFusion" title="Pull constrained sketch from Fusion">
+        <span style="font-size:18px; line-height:1;">🔄</span>
+        <span class="cad-nav-label">From Fusion</span>
+      </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnDownloadAddin" title="Download Fusion add-in">
         <span style="font-size:18px; line-height:1;">🧩</span>
         <span class="cad-nav-label">Add-in</span>
@@ -635,7 +639,10 @@
             <button id="mainAddLayer" type="button" class="layers-add-btn" title="Add Layer">+</button>
           </div>
           <div id="mainLayersList" style="margin-bottom:8px;"></div>
-          <button type="button" id="btnMainLayersOpenEditor" class="cad-btn cad-btn-secondary" style="width:100%; height:30px; font-size:12px; margin-top:4px;">Open Editor ✎</button>
+          <div style="display:flex; gap:6px; margin-top:4px;">
+            <button type="button" id="btnMainLayersOpenEditor" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;">Open Editor ✎</button>
+            <button type="button" id="btnMainLayersPullFusion" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;" title="Pull constrained sketch from Fusion">Pull Fusion 🔄</button>
+          </div>
         </div>
       </div>
 
