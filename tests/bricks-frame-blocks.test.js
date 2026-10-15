@@ -80,3 +80,13 @@ describe('the settings reach the lay (P.brickSettings.frameBlocks)', () => {
     expect(m.when({ brickSettings: { frameBlocks: BLOCKS } })).toBe(false);
   });
 });
+
+describe('a block that places nothing leaves the lay as it was', () => {
+  it('every block skipped (a corner fillet too tight, MEASURED: the frame was lost) = the lay with no block', () => {
+    // T1's corner fillet arcs (prims 1, 3, 7, 9: r 0.69 in) are too tight for the unit
+    const skipped = [1, 3, 7, 9].map((i) => ({ id: `s${i}`, x: prims[i].cx + prims[i].r * Math.cos((prims[i].theta1 + prims[i].theta2) / 2), y: prims[i].cy + prims[i].r * Math.sin((prims[i].theta1 + prims[i].theta2) / 2) }));
+    const r = lay('mixed_bands', 1.25, skipped);
+    expect(r.blocksSkipped.map((s) => s.why)).toEqual(['arc too tight', 'arc too tight', 'arc too tight', 'arc too tight']);
+    expect(digest(r)).toBe(digest(lay('mixed_bands', 1.25)));
+  });
+});

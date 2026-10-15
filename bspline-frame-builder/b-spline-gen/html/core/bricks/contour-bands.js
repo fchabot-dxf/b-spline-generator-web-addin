@@ -1180,9 +1180,11 @@ export function bricksContourBands(primitives, bands, opts) {
   // goes in as a quoin -- cut under (cutUnderQuoins, below) and cleared from the wall (engine.js) as the corners' own; none = as before
   let blocksSkipped = null;
   if (closed && opts.blocks && opts.blocks.length) {
-    const placed = placeFrameBlocks({ blocks: opts.blocks, bricks, origins, quoinRibbons, primitives: enriched, sizeIn: QUOIN_BLOCK_IN, quoinSrc: QUOIN });
-    bricks.length = 0; bricks.push(...placed.bricks); origins.length = 0; origins.push(...placed.origins);
-    quoinRibbons.length = 0; quoinRibbons.push(...placed.quoinRibbons);
+    const placed = placeFrameBlocks({ blocks: opts.blocks, bricks, origins, quoinRibbons, primitives: enriched, sizeIn: QUOIN_BLOCK_IN, quoinSrc: QUOIN, minPieceSqIn: minArea });
+    if (placed.bricks !== bricks) { // (none placed: the same arrays back -- clearing them first would lose the frame)
+      const b = placed.bricks, o = placed.origins, q = placed.quoinRibbons;
+      bricks.length = 0; bricks.push(...b); origins.length = 0; origins.push(...o); quoinRibbons.length = 0; quoinRibbons.push(...q);
+    }
     if (placed.skipped.length) blocksSkipped = placed.skipped;
   }
   const quoinIds = new Set(quoinRibbons.flat().map((q) => bricks[q.at].id)); // the result's `quoins` (below)
