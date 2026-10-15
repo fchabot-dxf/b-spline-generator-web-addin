@@ -4,6 +4,7 @@
  * dragged, a tap opens the step (the app's opener), an amber dot marks a step cut before one it depends on.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
 
@@ -136,5 +137,22 @@ describe('before the page-load restore', () => {
       document.dispatchEvent(new Event('editorLayersChanged'));
       expect(P.jobTimeline).not.toBeNull();
     } finally { vi.useRealTimers(); }
+  });
+});
+
+// gate 2026-10-15 (blind: "Art: Shape Generate" setup missing): on a phone the undo / redo pill (position:fixed, outside
+// the strip's host) sat UNDER the 2D strip, so a real tap on Undo hit the playhead and on Redo the Stock chip
+describe('what floats over the editor canvas clears the 2D strip', () => {
+  it('the 2D strip publishes its height on the root; the phone pill and the tool hint add it', () => {
+    const def = JOB_STRIP_HOSTS.find((h) => h.id === 'jobStrip2d');
+    expect(def.rootVar).toBe('--job-strip-2d-height');
+    expect(document.documentElement.style.getPropertyValue(def.rootVar)).toBe(`${JOB_STRIP.heightPx.desktop}px`);
+    const css = readFileSync('bspline-frame-builder/styles/editor.css', 'utf8');
+    const coarse = css.slice(css.indexOf('@media (pointer: coarse) {\n    /* Moved OUT of normal flow'));
+    const rules = [...coarse.matchAll(/\.editor-history \{[^}]*bottom: calc\(([^;]*)\);/g)].map((m) => m[1]);
+    expect(rules.length).toBe(2); // the pill, and its lift above the drawer
+    for (const r of rules) expect(r).toContain(`var(${def.rootVar}, 0px)`);
+    const hint = css.slice(css.indexOf('#editorStatusHint {'));
+    expect(hint.slice(0, hint.indexOf(';'))).toContain(`var(${def.rootVar}, 0px)`);
   });
 });

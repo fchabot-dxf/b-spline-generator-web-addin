@@ -10,10 +10,12 @@ import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
 
-/** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). */
+/** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
+ *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
+ *  undo / redo pill and the tool hint, styles/editor.css -- under the strip a real tap hit the strip; gate 2026-10-15). */
 export const JOB_STRIP_HOSTS = Object.freeze([
   Object.freeze({ host: 'previewArea', id: 'jobStrip3d', bottom: '0px' }),
-  Object.freeze({ host: 'editorCanvasContainer', id: 'jobStrip2d', bottom: 'var(--drawer-height, 0px)' }),
+  Object.freeze({ host: 'editorCanvasContainer', id: 'jobStrip2d', bottom: 'var(--drawer-height, 0px)', rootVar: '--job-strip-2d-height' }),
 ]);
 // heightPx: the strip's own band; headOverhangPx (Fred: "make the cursor stick out up a bit", like Fusion's marker): how
 // far the playhead's grab tab rises ABOVE the band; headGrabPx: the head's width = its touch target (>= 28 on a phone)
@@ -105,6 +107,7 @@ export function renderJobStrips(doc = typeof document !== 'undefined' ? document
     bar.style.setProperty('--job-overhang', `${over}px`);
     bar.style.setProperty('--job-head-grab', `${grab}px`);
     host.style.setProperty('--job-strip-height', `${h}px`);
+    if (def.rootVar) doc.documentElement.style.setProperty(def.rootVar, `${h}px`);
     bar.replaceChildren();
     const label = doc.createElement('span');
     label.className = 'job-strip-title';

@@ -191,7 +191,7 @@
            observer yet still renders at the same 12px inset as before. */
         position: fixed;
         left: calc(var(--canvas-left, 0px) + 12px);
-        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px));
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--job-strip-2d-height, 0px));
         z-index: 55; /* above #editorSVGContainer's z-index:2, below the Pattern sheet's z-index:60 */
         background: rgba(255, 255, 255, 0.92);
         border-radius: 999px;
@@ -213,7 +213,7 @@
        Lattice-sheet/Layers-strip mechanism it tracked) is kept in sync by
        editor-drawer.js's own ResizeObserver on #editorMobileDrawer. */
     .editor-history {
-        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px));
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px) + var(--job-strip-2d-height, 0px));
     }
     /* MOB3b: at the drawer's full height the canvas area this pill floats
        in has shrunk to nothing (or less), and the bottom:calc() above has
@@ -229,7 +229,7 @@
     /* workflow audit #6: the tool hint (where scissors / stripe explain themselves) floats just above the pill,
        which sits above the drawer -- it used to be hidden under the drawer */
     #editorStatusHint {
-        bottom: calc(var(--canvas-bottom-offset, 0px) + 76px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px)) !important;
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 76px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px) + var(--job-strip-2d-height, 0px)) !important;
     }
 }
 
