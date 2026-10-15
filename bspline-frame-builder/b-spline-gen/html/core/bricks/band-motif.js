@@ -8,7 +8,7 @@
  * without a motif never reaches this file, so every other lay is unchanged.
  */
 import { BAND_MOTIFS, RELIEF_LEVELS, RELIEF_CHARS } from './library.js';
-import { MIN_CLOSER_FRACTION } from './piece-plan.js';
+import { MIN_CLOSER_FRACTION, CLOSER_MAX_FRACTION } from './piece-plan.js';
 import { signedArea } from './geometry.js';
 
 /** The band's motif (BAND_MOTIFS entry), or null. */
@@ -36,16 +36,26 @@ function rowSlots(motif, row) {
  * closer's floor plus half the row's depth (the mitre takes a triangle that deep); each later piece is one slot, a joint
  * shorter than its module. Returns the ribbonPieces inputs (pitch, sequence, forcedFStart) + the slot the second piece
  * takes (`firstSlot`) and, for a grid, the start piece's lattice column (`startColumn`).
+ * `bond` (the band's optional FRAME_PRESETS `bond`, in the motif's unit): the lattice is anchored at the BOARD's corner line
+ * instead, shifted `bond` along -- so bands declaring the same bond have their joints stacked across bands, and a bond of half
+ * a piece lays them in running bond (2026-10-14, the short-brick presets). Absent: anchored at the band's own corner line.
  */
-export function motifRowPlan(motif, { row, d0, d1, bandStart, L, H, J }) {
+export function motifRowPlan(motif, { row, d0, d1, bandStart, L, H, J, bond }) {
   const unit = unitOf(motif, L, H);
-  const { offset, slots } = rowSlots(motif, row);
+  const rs = rowSlots(motif, row), slots = rs.slots;
+  const offset = bond === undefined ? rs.offset : rs.offset + bond - bandStart / unit;
   // the run's pitch (the closers' and the run merge's base) is one MODULE, joint included: an end closer the mitre cuts to a
   // sliver then merges into its neighbour under the 1.2 ceiling (MEASURED 9x12 at 1 in: on a one-cell pitch the merge was
   // refused at 1.23 and the sliver stayed, 0.17 of a cell)
-  const pitch = unit;
+  // `maxPieceFactor` (Fred 2026-10-15, the short-brick motifs): the closers and the merge are based on the motif's own piece
+  // instead, so no closer or merged piece passes maxPieceFactor x its longest slot (a closer reaches CLOSER_MAX_FRACTION x the
+  // pitch) -- on a whole-brick pitch a third-brick run's end pieces reached 3-4 bricks on short curves. Absent: as before.
+  const pitch = motif.maxPieceFactor ? (motif.maxPieceFactor * (Math.max(...slots.map((s) => s.len)) * unit - J)) / CLOSER_MAX_FRACTION : unit;
   const from = d0 - bandStart;
-  const minEnd = from + J + MIN_CLOSER_FRACTION * (unit - J) + (d1 - d0) / 2;
+  // the start piece's reach past the run's start: a closer's floor plus half the row's depth (a right-angle mitre's triangle);
+  // under maxPieceFactor the floor alone -- a curve run starts on a smooth joint with no triangle, and that half depth made its
+  // start piece 1.7-2x the motif's brick (MEASURED T1 9x12 notch); a mitre-clipped start sliver merges forward (ceiling above)
+  const minEnd = from + J + MIN_CLOSER_FRACTION * (pitch - J) + (motif.maxPieceFactor ? 0 : (d1 - d0) / 2);
   const period = slots.reduce((s, x) => s + x.len, 0) * unit;
   // the boundary at the start of slot 0 of the period just before minEnd, then forward slot by slot
   let b = offset * unit + Math.floor((minEnd - offset * unit) / period - 1) * period, i = 0;

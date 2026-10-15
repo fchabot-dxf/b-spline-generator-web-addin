@@ -396,6 +396,10 @@
         white-space: nowrap;
         overflow: hidden;
       }
+      /* Fred 2026-10-15: a header button whose face declares a phone icon (core/header-faces.js HEADER_BUTTON_FACES)
+         shows the ICON here, not its label ("Send to Fusion" read "d to Fu" at 36 px); the desktop keeps the label. */
+      .cad-navbar .cad-nav-has-phone-icon .cad-nav-face-label { display: none !important; }
+      .cad-navbar .cad-nav-has-phone-icon .cad-nav-face-icon { display: inline-flex !important; }
     }
 
     /* UX2: the one status line for Fusion traffic. Token colors only —
@@ -565,6 +569,11 @@
         <span class="cad-nav-label">Add-in</span>
       </button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
+      <!-- Send targets (seat A 2026-10-14): Fusion only -- the Send ▾ menu (main/send-targets.js SEND_TARGETS) -->
+      <span class="send-menu-wrap">
+        <button class="cad-btn cad-btn-primary" id="btnSendMenu" title="Send options" aria-haspopup="menu" aria-expanded="false">▾</button>
+        <div id="sendTargetMenu" class="send-target-menu" role="menu" hidden></div>
+      </span>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="settings-btn" title="Settings">
         <span style="font-size:18px; line-height:1;">⚙️</span>
         <span class="cad-nav-label">Settings</span>
@@ -2171,7 +2180,7 @@
                  itself needs a full re-layout of rails/ties, unlike
                  Widths/Colors' own live re-style of already-owned pieces
                  in place. -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="latticeSec_boundary" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Boundary</span>
               <div style="display:flex; gap:6px;">
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
@@ -2201,7 +2210,7 @@
                  <-> Left/Center/Right with orientation (properties-
                  lattice.js); the VALUE (start/center/end -> rails.anchor)
                  never changes meaning, just its on-screen name. -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="latticeSec_rails" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Rails</span>
               <div role="group" class="segmented-group">
                 <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
@@ -2226,7 +2235,7 @@
               </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="latticeSec_ties" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Ties</span>
               <!-- T56 (Fred: "I want... 8-10 ties" that BRIDGE rails):
                    mode toggle, same shape as Rails' own above. Count
@@ -2310,7 +2319,7 @@
               </label>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="latticeSec_nodes" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Nodes</span>
               <!-- SE7p: base.css's global `label { flex-direction: column }`
                    (the "label ABOVE its input" default every OTHER label in
@@ -2334,7 +2343,7 @@
               </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="latticeSec_colors" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Colors</span>
               <!-- MOB5 ADD-ON: already one row (desktop keeps display:flex
                    here — no .panel-row-3 needed since there's no stacking
@@ -2377,7 +2386,7 @@
                  ties" stepper; the chain toggle unlinks back to today's
                  separate Rails/Ties pair. Node size is always its own
                  stepper (Nodes keep their own size, unaffected). -->
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="latticeSec_widths" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Widths</span>
               <!-- MOB5 ADD-ON: Rails & ties | link | Node size as one
                    3-column row on phones (.panel-row-3), same width ratio
@@ -2440,7 +2449,7 @@
                  via `data-no-collapse` (so editor-drawer.js's collapsible-
                  section sweep, which reads visible bold-span-first-child
                  sections, leaves it alone entirely) + `display:none`. -->
-            <div data-no-collapse style="display:none;">
+            <div id="latticeSec_seed" data-no-collapse style="display:none;">
               <span style="font-weight:600;">Seed</span>
               <label style="display:flex; flex-direction:column; gap:3px;">
                 <input id="latticeSeed" type="number" step="1" value="42" title="Generate picks a new seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
@@ -2453,7 +2462,7 @@
                  Nodes) is about GENERATED-pattern settings; Add is a
                  drawing-mode toggle, closer in kind to the Generate/
                  Detach footer buttons right below it than to those 4. -->
-            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
+            <div id="latticeSec_add" data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Add</span>
               <!-- SE7k (Fred: "needs an add rail and add tie, add node
                    button"): explicit kind choice — the tool no longer
@@ -2535,7 +2544,7 @@
                  panels is BOUNDARY" -- renamed from "Size" (same ids, same
                  fields, just the section title + its new position: the
                  first section (F12 moved Shape/Segments into Contour). -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="shapeSec_boundary" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Boundary</span>
               <!-- Fred ("boundary isnt useful if i have offset from frame on"): greyed while the contour follows the frame -->
               <div id="shapeLatticeBoundaryFields" style="display:flex; gap:6px;">
@@ -2554,7 +2563,7 @@
                  before Fill seed); no ids/wiring changed, just DOM
                  position (properties-shape-lattice.js reads every one of
                  these by id exactly as before). -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="shapeSec_contour" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Contour</span>
               <div id="shapeLatticeEndRuleRow" style="display:none; flex-direction:column; gap:3px;">
                 <span style="font-size:11px; color:#444;">Rail ends (contour off only)</span>
@@ -2679,7 +2688,7 @@
                  reasoning -- this panel shares the SAME PATTERN.rails
                  shape and the SAME computePattern engine, so nothing here
                  is a second design). -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="shapeSec_rails" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Rails</span>
               <div role="group" class="segmented-group">
                 <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
@@ -2704,7 +2713,7 @@
               </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div id="shapeSec_ties" style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Ties</span>
               <div role="group" class="segmented-group">
                 <button type="button" id="shapeLatticeTiesModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded tie count on distinct columns">Count</button>
@@ -2764,7 +2773,7 @@
               </label>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="shapeSec_nodes" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Nodes</span>
               <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
                    panel's own Nodes (.panel-row-3, phones only). -->
@@ -2781,7 +2790,7 @@
               </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="shapeSec_colors" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Colors</span>
               <!-- MOB5 ADD-ON: swatch capped to ~44px (.panel-color-swatch,
                    phones only), same as the box Lattice panel's own Colors. -->
@@ -2805,7 +2814,7 @@
 
             <!-- T58 ADD-ON: same linked-widths row as the box Lattice
                  panel above (SHARED contract, not a second design). -->
-            <div style="display:flex; flex-direction:column; gap:4px;">
+            <div id="shapeSec_widths" style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Widths</span>
               <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
                    panel's own Widths (.panel-row-3, phones only). T81 item 4:
@@ -2837,7 +2846,7 @@
                  FILL seed, `PATTERN.seed` -- distinct from the Shape
                  section's own `#shapeSeed`, the SILHOUETTE's seed, seat
                  C's SHAPE-PARAMS territory, untouched and still visible.) -->
-            <div data-no-collapse style="display:none;">
+            <div id="shapeSec_seed" data-no-collapse style="display:none;">
               <span style="font-weight:600;">Fill seed</span>
               <label style="display:flex; flex-direction:column; gap:3px;">
                 <input id="shapeLatticeSeed" type="number" step="1" value="42" title="Generate picks a new fill seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
@@ -3484,7 +3493,9 @@
               </svg>
             </button>
             </div>
-            <div id="artGeneralBody" style="display:none;"></div>
+            <div id="artGeneralBody"></div>
+            <!-- phase 4: the Draw tree's other branch bodies (main/draw-tree.js); EDITOR_TABS artwork panelHosts fill them -->
+            <div id="artTextBody"></div><div id="artExpandBody"></div><div id="drawLayersBody"></div>
           </div>
           <!-- F35 item 40: the header, the Brick start hint and the list are the ONE Layers component; the Brick tab
                hosts them in its own panel (main/editor-tabs.js EDITOR_TABS brick.panelHosts) and they come back here -->

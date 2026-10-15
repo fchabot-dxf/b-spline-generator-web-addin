@@ -51,6 +51,7 @@ _BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')
 _LATTICE_OWNED_PARAMS = (
     'stroke_width', 'rail_width', 'tie_width', 'node_diameter',
     'half_width', 'contour_width', 'contour_height',
+    'lattice_spacing',  # Send targets step 0 (2026-10-14): Pull's "spacing"
 )
 
 # F22 PANEL LIP (Fred: "if needed add a param in fusion"): the ONE user parameter a frame build may create,

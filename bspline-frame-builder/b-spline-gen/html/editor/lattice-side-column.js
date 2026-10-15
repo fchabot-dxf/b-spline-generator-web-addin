@@ -25,6 +25,7 @@
  * A body another tab hosts (EDITOR_TABS `modeHosts`: the Brick tab's Stripe) is only ever moved back from THIS column,
  * never pulled out of that host.
  */
+import { createDrawerTree } from '../main/drawer-tree.js';
 import { el, on } from './dom.js';
 import { GUIDE_STROKE } from './editor-guides.js';
 import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
@@ -353,8 +354,8 @@ function _saveSectionOpen(label, open) {
 }
 
 /** Wires one section's label as a click-to-collapse toggle for the rest
- *  of its own children — shared tail for both `_makeSectionsCollapsible`
- *  (a real bold-span section) and `_makeLayersCollapsible` (the Layers
+ *  of its own children — used by the Shape / Segments sub-blocks and by
+ *  `_makeLayersCollapsible` (the sections themselves are a collapse tree since phase 4: LATTICE_DRAWER_TREES) (the Layers
  *  header + list, a different DOM shape but the same behaviour). `title`
  *  is the persistence key; `label` gets the chevron + click handler;
  *  `body` is the list of sibling nodes the toggle shows/hides. */
@@ -397,35 +398,51 @@ function _wireCollapse(title, label, body, defaultOpen = true) {
   });
 }
 
-/** Walks every direct child of `bodyEl` and makes the ones matching the
- *  bold-span-first-child section shape collapsible. `data-no-collapse`
- *  opts a section out — AMEND 1's new icon tool row (replacing Add:) must
- *  always stay visible, same as Add: itself always was. */
-function _makeSectionsCollapsible(bodyEl, folded = {}) {
-  if (!bodyEl) return;
-  for (const section of Array.from(bodyEl.children)) {
-    if (section.hasAttribute('data-no-collapse')) continue;
-    const label = section.firstElementChild;
-    if (!label || label.tagName !== 'SPAN' || !/font-weight:\s*600/.test(label.getAttribute('style') || '')) continue;
-    const title = label.textContent.trim();
-    if (!title || section.dataset.collapsibleInit) continue;
-    section.dataset.collapsibleInit = '1';
-    const body = Array.from(section.children).filter((c) => c !== label);
-    if (folded[title]) _wireCollapse(folded[title], label, body, _isDesktop());
-    else _wireCollapse(title, label, body);
+/** Redesign phase 4 (Fred's mockups shots/seatD/redesign/mock_Lattice_*; advisor 2026-10-15: Colors + Widths are one
+ *  "Look" branch): each lattice tool's panel is ONE collapse tree on the shared mechanism (main/drawer-tree.js) --
+ *  it replaces UI3's per-section folds (Fred: "like in main side bar, make lattice section collapsible": still
+ *  foldable, now as the tree every editor tab uses). A branch holds its declared section(s) (palette ids latticeSec_* /
+ *  shapeSec_*); a one-section branch's own bold title is hidden (the branch says it). Not in a tree: the Add icon row
+ *  (always shown, `data-no-collapse`) and the hidden Seed / Fill seed. `foldedOnPhone`: Fred, item 13 (the Shape
+ *  Lattice panel was ~4 screens tall on a phone) -- the rarely used Boundary starts folded there. */
+const sec = (id, title, summary, hosts) => Object.freeze({ id, title, summary, hosts: Object.freeze(hosts) });
+export const LATTICE_DRAWER_TREES = Object.freeze({
+  lattice: Object.freeze({ treeId: 'latticeDrawerTree', prefix: 'latticeBranch_', openKey: 'bspline.lattice.drawerOpen', foldedOnPhone: Object.freeze([]),
+    branches: Object.freeze([
+      sec('boundary', 'Boundary', 'board · shape · frame', ['latticeSec_boundary']),
+      sec('rails', 'Rails', 'spacing · anchor', ['latticeSec_rails']),
+      sec('ties', 'Ties', 'count · span · gap', ['latticeSec_ties']),
+      sec('nodes', 'Nodes', 'size · placement', ['latticeSec_nodes']),
+      sec('look', 'Look', 'colours · widths', ['latticeSec_colors', 'latticeSec_widths']),
+    ]) }),
+  shapeLattice: Object.freeze({ treeId: 'shapeLatticeDrawerTree', prefix: 'shapeLatticeBranch_', openKey: 'bspline.shapeLattice.drawerOpen',
+    foldedOnPhone: Object.freeze(['boundary', 'look']),
+    branches: Object.freeze([
+      sec('boundary', 'Boundary', 'board · shape · frame', ['shapeSec_boundary']),
+      sec('contour', 'Contour', 'shape · segments', ['shapeSec_contour']),
+      sec('rails', 'Rails', 'spacing · anchor', ['shapeSec_rails']),
+      sec('ties', 'Ties', 'count · span · gap', ['shapeSec_ties']),
+      sec('nodes', 'Nodes', 'size · placement', ['shapeSec_nodes']),
+      sec('look', 'Look', 'colours · widths', ['shapeSec_colors', 'shapeSec_widths']),
+    ]) }),
+});
+const _latticeTrees = {};
+/** The declared tree of a lattice tool's panel, built once into `bodyEl` (every branch open at first, but the ones
+ *  folded on a phone). */
+function _buildSectionTree(toolKey, bodyEl) {
+  const def = LATTICE_DRAWER_TREES[toolKey];
+  if (!def || !bodyEl) return;
+  const defaultOpen = () => def.branches.map((b) => b.id).filter((id) => _isDesktop() || !def.foldedOnPhone.includes(id));
+  const tree = _latticeTrees[toolKey] || (_latticeTrees[toolKey] = createDrawerTree({ id: def.treeId, branches: def.branches, openKey: def.openKey,
+    defaultOpen, branchDomId: (id) => `${def.prefix}${id}` }));
+  tree.build(bodyEl, () => {});
+  for (const b of def.branches) {
+    if (b.hosts.length !== 1) continue;
+    const label = document.getElementById(b.hosts[0])?.firstElementChild;
+    if (label && label.tagName === 'SPAN') label.classList.add('drawer-host-title');
   }
 }
 
-/** Item 13 (Fred: the Shape Lattice panel was ~4 screens tall on a phone): the rarely used parts start
- *  folded -- Boundary, Widths, and under Contour the Shape preset/sliders and the per-segment controls. Each keeps
- *  its own remembered open/closed state, under a Shape-Lattice-only key (so the box Lattice panel's own
- *  Boundary/Widths, which share a title, are unaffected and a state remembered from before doesn't
- *  override the new folded default). Folded by default on a phone only; the desktop column starts open,
- *  as before. Value = the storage key suffix. */
-export const SHAPE_LATTICE_FOLDED_SECTIONS = {
-  Boundary: 'shapeLattice.Boundary',
-  Widths: 'shapeLattice.Widths',
-};
 /** The two sub-blocks inside Contour that fold under their own small label: the silhouette's preset +
  *  sliders (Shape) and the per-segment controls (Segments). Folded by default on a phone. While Offset
  *  from frame is on, both blocks are inert (properties-shape-lattice.js), so they stay as they are. */
@@ -588,7 +605,7 @@ export function initLatticeSideColumn(editor) {
     if (!bodyEl) continue;
     _tagSections(bodyEl);
     _wireLiveColors(cfg.panelId, bodyEl);
-    _makeSectionsCollapsible(bodyEl, bodyEl === shapeBody ? SHAPE_LATTICE_FOLDED_SECTIONS : {});
+    _buildSectionTree(Object.keys(TOOL_PANEL_MOUNTS).find((k) => TOOL_PANEL_MOUNTS[k] === cfg), bodyEl); // phase 4: one collapse tree
   }
   SHAPE_LATTICE_FOLDED_SUBBLOCKS.forEach(_foldShapeLatticeSubBlock);
   _makeLayersCollapsible(el('editorLayersPanel'));

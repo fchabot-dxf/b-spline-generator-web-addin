@@ -21,7 +21,8 @@ import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
 import { layArch } from './arch-surround.js';
 import { bareTips } from './tip-fill.js';
-import { scaledSet } from './library.js';
+import { isPartCellId, CELL_PART } from './cell-parts.js';
+import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
 import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
 import { insideReliefOf, tagInsideRelief } from './band-motif.js'; // frame motifs: a band's relief for the wall inside it
@@ -73,6 +74,9 @@ export const ENGINE_OPTIONS = Object.freeze([
   'arch', // 2026-10-11: { spec } -- a blind arch conforming to the frame (arch-surround.js layArch): the wall is cleared off it and fills its opening
   'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
+
+const boxOf = (p) => [Math.min(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y))];
+const overlapsMoreThan = (a, b, sqIn) => { const A = boxOf(a), B = boxOf(b); return !(A[2] < B[0] || B[2] < A[0] || A[3] < B[1] || B[3] < A[1]) && Math.abs(signedArea(polygonIntersection(a, b)) || 0) > sqIn; };
 
 export function generateBricks(input) {
   const { boardOutline, set, frame, seed, scale } = input;
@@ -166,10 +170,29 @@ export function generateBricks(input) {
   const archBricks = arch ? cutAll(arch.pieces, frameSetUsed) : null;
   // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
   // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
-  const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
+  // the wall's smallest whole piece: a header when any of its patterns lays headers (library.js smallestFace), else a stretcher --
+  // a tip's course front reads it (tip-fill.js bareTips)
+  const wallSet = scaledSet(set, scale), wallPatterns = [set.layout, ...(input.zones || []).map((z) => z && z.pattern)].filter(Boolean);
+  const wholeFaceSqIn = wallPatterns.some((p) => BRICK_PATTERNS[p] && BRICK_PATTERNS[p].smallestFace === 'header') ? wallSet.brickHeightIn * wallSet.brickHeightIn : undefined;
+  // read off today's pieces only (cell-parts.js: an added part never moves the frame -- a bond's tips are the band's)
+  const todays = bricks.filter((b) => !isPartCellId(b.id));
+  const tips = frameLay && frameLay.bands.length && todays.length ? bareTips(interiorOutline, todays, wallSet, { wholeFaceSqIn }) : [];
   if (frameLay) {
     const laidFrame = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) });
     frameBricks = laidFrame.bricks;
+    // an added wall part (cell-parts.js) is cut clear of the band (a joint off: a tip the band took, a piece reaching past the
+    // stack -- MEASURED T10 7x9 1 in herringbone, 0.001 sq in under a fan slice), the id kept; a fleck left of it drops
+    const J = wallSet.grout.widthIn;
+    wallBricks = wallBricks.flatMap((b) => {
+      if (!isPartCellId(b.id)) return [b];
+      let poly = b.polygon;
+      for (const fb of frameBricks) {
+        if (!poly || !overlapsMoreThan(poly, fb.polygon, 1e-6)) continue;
+        poly = (polygonDifference(poly, offsetPathInward(fb.polygon, J, -inwardSignFor(fb.polygon))) || []).filter((p) => p && p.length >= 3)
+          .sort((p, q) => Math.abs(signedArea(q)) - Math.abs(signedArea(p)))[0] || null;
+      }
+      return poly && Math.abs(signedArea(poly)) > CELL_PART.minSqIn ? [poly === b.polygon ? b : { ...b, polygon: poly }] : [];
+    });
     // seat E 2026-10-10 (Fred's "Armor"; advisor's pick A): a quoin is a 1.1 in block, deeper than a thin band stack (two
     // stretcher bands at 1 in: 0.55 in), so it reaches past the stack into the wall's region -- the wall was laid under it
     // and the frame's grout (its hole = this region) painted it dark. The quoins that reach in come out of the region

@@ -11,6 +11,8 @@
  * (e.g. Corners on a band-less frame) hides too, so no title ever stands over an empty body.
  */
 import { themeBrickSection } from './section-themes.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
+import { createDrawerTree } from './drawer-tree.js';
 
 const sec = (id, title, kind, rows, extra = {}) => Object.freeze({ id, title, kind, rows: Object.freeze(rows), ...extra });
 // Fred 2026-10-11 (per-pattern defaults): an element's size and joint (width, depth, profile) -- its pattern's defaults
@@ -62,6 +64,38 @@ export const SHARED_ROWS = Object.freeze((() => {
   for (const def of Object.values(BRICK_TAB_SECTIONS)) for (const s of def.sections) for (const r of s.rows) seen.set(r, (seen.get(r) || 0) + 1);
   return [...seen].filter(([, n]) => n > 1).map(([r]) => r);
 })());
+
+/** Redesign phase 4 (Fred's mockups, shots/seatD/redesign/mock_Brick_*): the Brick drawer is ONE collapse tree. A branch
+ *  holds its declared `hosts` (the element's own section host, the colour sections above inside it, unchanged) under a
+ *  header: a caret, the title, a short `summary`. `armsTool` (advisor 2026-10-14, pick A): an ELEMENT branch opens by
+ *  arming its tool -- an accordion in step with the tool row, because an element's settings (the shared rows above:
+ *  Bricks, Joint) follow the ARMED tool; the free branches (General, Layers) fold on their own and are remembered per
+ *  device. `headerId`: the header keeps a retired control's id (the General tab's), for the brick matrix. */
+const branch = (id, title, summary, hosts, extra = {}) => Object.freeze({ id, title, summary, hosts: Object.freeze(hosts), ...extra });
+export const BRICK_DRAWER_TREE = Object.freeze([
+  branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall' }),
+  branch('frame', FRAME_LABELS.brick, 'bands · fan centre · crumble', ['brickFrameSection'], { armsTool: 'frame' }),
+  branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush' }),
+  branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush' }), // retiring (E: heights move to Select)
+  branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general' }),
+  branch('layers', 'Layers', (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; }, ['brickLayersSlot']),
+]);
+// the free branches a device starts with: Layers open (Fred, phone: "We don't see layers still"), General folded
+export const BRICK_TREE_DEFAULT_OPEN = Object.freeze(['layers']);
+export const BRICK_TREE_OPEN_KEY = 'bspline.brick.drawerOpen';
+export const brickBranchDomId = (id) => `brickBranch_${id}`;
+
+// the tree itself: main/drawer-tree.js (one mechanism for the Brick, Draw and Lattice trees)
+export const BRICK_TREE = createDrawerTree({ id: 'brickDrawerTree', branches: BRICK_DRAWER_TREE, openKey: BRICK_TREE_OPEN_KEY,
+  defaultOpen: BRICK_TREE_DEFAULT_OPEN, branchDomId: brickBranchDomId });
+/** Builds the Brick tree inside `container`; `onArm(toolId)` arms a tool (brick-panel.js selectTool). */
+export const buildBrickDrawerTree = (container, onArm, doc) => BRICK_TREE.build(container, onArm, doc);
+/** Opens branch `id` (an element branch only when its tool is armed) and scrolls it into view. */
+export const openBrickBranch = (id) => BRICK_TREE.open(id);
+/** The caret: folds / unfolds branch `id`. */
+export const toggleBrickBranch = (id) => BRICK_TREE.toggle(id);
+/** Each branch's open state for the armed tool (a tool switch unfolds the new tool's branch). */
+export const syncBrickDrawerTree = (armedTool) => BRICK_TREE.sync(armedTool);
 
 /** Which sections are open is remembered per device -- the SAME store as the main sidebar's sections (the palette's
  *  PANEL_OPEN_KEY), keyed by the section's own `panel-<key>` class. */
@@ -135,7 +169,7 @@ function _rowShown(el) {
   return kids.length === 0 || kids.some((k) => !_isHidden(k));
 }
 
-/** Each section shows only in its own tab, and only while at least one of its rows shows. */
+/** Each section shows only in its own tab (General's always: its own branch), and only while at least one of its rows shows. */
 export function syncBrickSectionVisibility(doc = _state.doc) {
   if (!doc) return;
   _state.syncing = true;
@@ -145,7 +179,8 @@ export function syncBrickSectionVisibility(doc = _state.doc) {
         const shell = doc.getElementById(sectionDomId(tab, s.id));
         if (!shell) continue;
         const body = shell.querySelector(':scope > .panel-body');
-        const show = tab === _state.active && [...body.children].some(_rowShown);
+        // phase 4: General's sections live in the General branch (its fold hides them), shown whatever tool is armed
+        const show = (tab === _state.active || tab === 'general') && [...body.children].some(_rowShown);
         const want = show ? '' : 'none';
         if (shell.style.display !== want) shell.style.display = want;
       }

@@ -15,7 +15,8 @@
  *
  * `set.layoutParams` = the pattern's resolved params (main side: the declared defaults + the user's pick).
  */
-import { clipPolygonToRegion, rectPolygon } from '../geometry.js';
+import { rectPolygon } from '../geometry.js';
+import { clipRegionCellParts, recordCellParts } from '../cell-parts.js';
 
 /** The tile patterns' declared parameters: the options the sheet shows, one default each. */
 export const TILE_PARAMS = Object.freeze({
@@ -31,9 +32,11 @@ const bbox = (outline) => {
 };
 function pushCell(cells, outline, poly, courseIndex) {
   const c = poly.reduce((a, p) => ({ x: a.x + p.x / poly.length, y: a.y + p.y / poly.length }), { x: 0, y: 0 });
-  const clipped = clipPolygonToRegion(poly, outline, c);
+  const { main: clipped, extra } = clipRegionCellParts(poly, outline, c); // every part (cell-parts.js); today's piece first
   if (clipped.length < 3) return;
-  cells.push({ id: cells.length, polygon: clipped, courseIndex, cx: c.x, cy: c.y, neighbors: {} });
+  const cell = { id: cells.length, polygon: clipped, courseIndex, cx: c.x, cy: c.y, neighbors: {} };
+  cells.push(cell);
+  recordCellParts(cells, cell, extra);
 }
 const rect = (x0, y0, w, h) => rectPolygon(x0 + w / 2, y0 + h / 2, w / 2, h / 2, 1, 0);
 

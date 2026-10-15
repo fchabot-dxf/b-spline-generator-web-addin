@@ -39,10 +39,19 @@ export const EDITOR_TABS = [
     tools: [...SHARED_ART_TOOLS, 'toolNode', 'toolDraw', 'toolLine', 'toolRect', 'toolCircle', 'toolExpand', 'toolText'],
     // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js
     // ART_GENERAL_GROUPS); on any other editor tab they are back in the top bar (hidden there by TOOLBAR_TOP_GROUPS_BY_TAB)
+    // phase 4: the Draw drawer is a collapse tree (main/draw-tree.js); the Art-tab strip hides on this tab
+    drawerTree: 'drawDrawerTree',
     panelHosts: [
       { content: 'editorStrokeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
+      // phase 4: the Text and Expand branches hold the mode groups; the Layers branch the ONE Layers component
+      { content: 'editorFontGroup', host: 'artTextBody', panel: 'editorToolbarTop' },
+      { content: 'editorSymbolKeyboardToggle', host: 'artTextBody', panel: 'editorToolbarTop' },
+      { content: 'editorExpandGroup', host: 'artExpandBody', panel: 'editorToolbarTop' },
+      { content: 'editorLayersHeader', host: 'drawLayersBody', panel: 'editorLayersPanel' },
+      { content: 'brickStartHint', host: 'drawLayersBody', panel: 'editorLayersPanel' },
+      { content: 'editorLayersList', host: 'drawLayersBody', panel: 'editorLayersPanel' },
     ] },
   { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
@@ -81,7 +90,9 @@ export const EDITOR_TABS = [
  *  own content). Homes are declared, never remembered, so a rebuilt DOM can't leave a stale one. */
 export function applyModeHosts(tab = _editorTab) {
   const panels = new Set();
-  for (const t of EDITOR_TABS) {
+  // the ACTIVE tab last: two tabs may host the same block (the Layers: Brick and Draw), and an inactive tab's
+  // "back home" must never undo the active tab's move (phase 4, measured)
+  for (const t of [...EDITOR_TABS.filter((x) => x.id !== tab), ...EDITOR_TABS.filter((x) => x.id === tab)]) {
     for (const h of [...Object.values(t.modeHosts || {}), ...(t.panelHosts || [])]) { // item 40: panelHosts move the same way
       panels.add(h.panel);
       const content = document.getElementById(h.content);

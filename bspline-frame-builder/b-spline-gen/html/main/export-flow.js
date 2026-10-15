@@ -16,6 +16,8 @@
 import { P, lastResult, isFusionMode, RESOLUTIONS, flushSessionSave } from '../core/state.js';
 import { resolveGrid } from '../core/terrain.js';
 import { frameSendPayload } from './frame-panel.js';
+import { sendTargetPayload } from './send-targets.js';
+import { currentProjectName } from './cloud-project-manager.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
@@ -433,7 +435,8 @@ export function closeWizard() {
     if (modal) modal.style.display = 'none';
 }
 
-export function onFusionApply(preview) {
+/** `sendTarget` (Send targets, main/send-targets.js): the Send ▾ menu's pick; absent = replace (the button). */
+export function onFusionApply(preview, { sendTarget = undefined } = {}) {
     if (!lastResult) {
         rebuild(preview, updateStampMasks, updatePreviewSculptMode);
         return;
@@ -467,7 +470,7 @@ export function onFusionApply(preview) {
     // the layer's artwork, independent of whether it carves: ship them
     // whenever any shown layer has any.
     const includeSVG = exportableStampLayers().length > 0;
-    const options = { ...defaultExportOptions(hasThicken, hasStamp, includeSVG), isVisible: true };
+    const options = { ...defaultExportOptions(hasThicken, hasStamp, includeSVG), isVisible: true, sendTarget };
 
     if (isFusionMode) {
         (async () => {
@@ -728,6 +731,8 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         // Fred ("send bspline and frame at same time" / "no send frame"): the frame goes with the Send and is built
         // right after the body; the add-in first clears the previous frame + B-Spline Set (b-spline-gen.py)
         frame: isAppend ? null : frameSendPayload(),
+        // Send targets: where it goes (replace / newComponent / newDocument), the project's board, the locked items
+        ...(isAppend ? {} : sendTargetPayload(options && options.sendTarget, { name: currentProjectName() })),
         isVisible: options.isVisible !== undefined ? options.isVisible : true,
         stamp: {
             enabled: options.includeSVG,

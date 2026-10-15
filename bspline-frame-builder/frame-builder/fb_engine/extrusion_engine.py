@@ -18,6 +18,7 @@ gets vandalized.
 import adsk.core, adsk.fusion, traceback
 from fb_engine.timeline_order import FRAME_MEMBER_ATTR
 from fb_engine import declared_profiles
+from fb_engine.board_scope import fusion_name, fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 # Treat any of these spellings as "no start offset". Fusion accepts
@@ -35,7 +36,8 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
-    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None):
+    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None,
+                         cut_context=None):
         """Extrude every closed frame-bar profile in the shape-outline
         sketch and apply the SURROUND trim cut.
 
@@ -43,6 +45,11 @@ class ExtrusionEngine:
         None for a frame without a declared template (bounding-box path).
         Returns the list of new BAR bodies (SURROUND produces no bodies,
         only a cut feature).
+
+        ``cut_context`` (Send targets, fb_engine.board_scope.BoardScope.cut_context): a frame inside an offset BOARD
+        gets its SURROUND cut from (root extrude features, the frame's root-context occurrence) -- MEASURED (probe 2,
+        2026-10-14): from any component's own features Fusion refused it, "body not found to extrude through".
+        None (the legacy root board): unchanged.
         """
         # the bodies the SURROUND cuts actually modified (_finalize_feature) -- the coordinator restores each one's
         # own paint: the to_face body is not always the cut's target (measured live 2026-10-07)
@@ -67,7 +74,7 @@ class ExtrusionEngine:
         new_bodies = []
         for prof, plan, i in to_process:
             new_bodies.extend(
-                self._extrude_one_profile(extrudes, prof, plan, i, prefix, to_face, comp.name)
+                self._extrude_one_profile(extrudes, prof, plan, i, prefix, to_face, comp.name, cut_context=cut_context)
             )
         return new_bodies
 
@@ -137,7 +144,7 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Phase 3 -- single-profile extrusion
     # ------------------------------------------------------------------
-    def _extrude_one_profile(self, extrudes, prof, plan, i, prefix, to_face, frame_comp_name=None):
+    def _extrude_one_profile(self, extrudes, prof, plan, i, prefix, to_face, frame_comp_name=None, cut_context=None):
         """Build one extrude feature (BAR or SURROUND) from its plan, name
         it, clean up its faces, and return any new bodies.
 
@@ -150,6 +157,8 @@ class ExtrusionEngine:
         self.log.log(f"  PROFILE {i}: type={ctype} area={area_str}")
 
         try:
+            if ctype == "SURROUND" and cut_context is not None:  # a board's trim cut: from the root (see extrude_profiles)
+                extrudes, prof = cut_context[0], prof.createForAssemblyContext(cut_context[1])
             op = (
                 adsk.fusion.FeatureOperations.CutFeatureOperation
                 if ctype == "SURROUND"
@@ -179,10 +188,10 @@ class ExtrusionEngine:
             start = (plan["start"] or "0 in").strip()
             if start not in _ZERO_OFFSET_SPELLINGS:
                 ext_in.startExtent = adsk.fusion.OffsetStartDefinition.create(
-                    adsk.core.ValueInput.createByString(start))
+                    adsk.core.ValueInput.createByString(fusion_expr(start)))  # S2b
 
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
-            taper = adsk.core.ValueInput.createByString(plan["taper"])
+            taper = adsk.core.ValueInput.createByString(fusion_expr(plan["taper"]))
             if plan["extent"][0] == "throughAllBothSides":
                 # the trim / window cut (frame_definition): through all on BOTH sides of the sketch plane -- the
                 # panel's underside can dip below it (measured 2026-10-09), and a one-sided cut left that part
@@ -191,7 +200,7 @@ class ExtrusionEngine:
             else:
                 if plan["extent"][0] == "toFace":
                     extent_def = adsk.fusion.ToEntityExtentDefinition.create(
-                        to_face, True, adsk.core.ValueInput.createByString(plan["extent"][1]))
+                        to_face, True, adsk.core.ValueInput.createByString(fusion_expr(plan["extent"][1])))
                 else:
                     extent_def = adsk.fusion.ThroughAllExtentDefinition.create()
                 ext_in.setOneSideExtent(extent_def, positive_dir, taper)
@@ -278,8 +287,8 @@ class ExtrusionEngine:
             self.log.log(diag)
 
             if is_centered:
-                p_w = self.design.userParameters.itemByName("widthIn")
-                p_h = self.design.userParameters.itemByName("heightIn")
+                p_w = self.design.userParameters.itemByName(fusion_name("widthIn"))  # S2b
+                p_h = self.design.userParameters.itemByName(fusion_name("heightIn"))
                 limit_w = (p_w.value * 0.9) if p_w else 15.0
                 limit_h = (p_h.value * 0.9) if p_h else 20.0
 
