@@ -4,7 +4,7 @@
  * dragged, a tap opens the step (the app's opener), an amber dot marks a step cut before one it depends on.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
 
 const $ = (id) => document.getElementById(id);
@@ -16,6 +16,7 @@ beforeEach(() => {
   window.svgEditor = { _layers: [{ id: 'L1', name: 'Red petals' }, { id: 'LA', name: 'A', pattern: {} }, { id: 'L2', name: 'Green stems' }] };
   P.frame = { templateId: 'template_1' };
   P.jobTimeline = null;
+  bootRestore.complete = true; // the strip in use: the page-load restore is done
   opener = vi.fn();
   initJobTimelineStrip({ opener });
 });
@@ -113,5 +114,27 @@ describe('moving steps (pure)', () => {
     const t = P.jobTimeline;
     P.jobTimeline = { order: moveIds(t.order, ['seed'], 0), head: 0 };
     expect(syncJobTimeline().order[0]).toBe('stock');
+  });
+});
+
+// gate 2026-10-15 (every "Persist (reload)" row red): the strip is drawn BEFORE initApp restores the last session, and
+// its write-back then scheduled a save of the DEFAULT P over the session being restored
+describe('before the page-load restore', () => {
+  it('the strip draws but writes nothing: no P.jobTimeline, no session save over the board being restored', () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '<div id="previewArea"></div><div id="editorCanvasContainer"></div>';
+      localStorage.setItem('splineGenLastSession', '{"P":{"seed":7}}');
+      P.jobTimeline = null;
+      bootRestore.complete = false;
+      initJobTimelineStrip({ opener: vi.fn() });
+      vi.advanceTimersByTime(5000);
+      expect($('jobStrip3d')).not.toBeNull();
+      expect(P.jobTimeline).toBeNull();
+      expect(localStorage.getItem('splineGenLastSession')).toBe('{"P":{"seed":7}}');
+      bootRestore.complete = true; // the restore landed: the next draw writes the timeline back
+      document.dispatchEvent(new Event('editorLayersChanged'));
+      expect(P.jobTimeline).not.toBeNull();
+    } finally { vi.useRealTimers(); }
   });
 });

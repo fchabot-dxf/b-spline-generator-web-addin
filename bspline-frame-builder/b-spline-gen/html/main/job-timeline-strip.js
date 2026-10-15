@@ -5,7 +5,7 @@
  * reorder; the head is dragged; a click opens the step's panel or editor. NO locking yet: the head is only shown and
  * saved (P.jobTimeline). A step cut before one it depends on gets an amber dot -- detection only.
  */
-import { P, scheduleSessionSave } from '../core/state.js';
+import { P, scheduleSessionSave, bootRestore } from '../core/state.js';
 import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
@@ -45,10 +45,13 @@ export function currentJobSteps() {
 }
 
 /** The timeline made safe for the project as it is now (a deleted / new layer, a new frame); written back when it
- *  changed. Returns { steps, order, head }. */
+ *  changed -- once the page-load restore is complete (state.js bootRestore). The strip is first drawn BEFORE initApp
+ *  restores the session (main.js), and a write then saved the DEFAULT P over the session the reload was restoring
+ *  (gate 2026-10-15: every brick matrix "Persist (reload)" row). Returns { steps, order, head }. */
 export function syncJobTimeline() {
   const steps = currentJobSteps();
   const t = normalizeJobTimeline(P.jobTimeline, steps);
+  if (!bootRestore.complete) return { steps, ...t };
   if (!P.jobTimeline || JSON.stringify(P.jobTimeline) !== JSON.stringify(t)) { P.jobTimeline = t; scheduleSessionSave(); }
   return { steps, ...t };
 }
