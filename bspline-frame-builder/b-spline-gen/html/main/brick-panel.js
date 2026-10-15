@@ -2996,6 +2996,7 @@ const FRAME_PRESET_LABELS = {
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
   arch_keystone: 'Arch + keystone',
+  greek_key_mosaic: 'Greek key mosaic',
   craftsman_apron: 'Craftsman apron',
   double_soldier: 'Double soldier',
   english_frame: 'English bond frame',
