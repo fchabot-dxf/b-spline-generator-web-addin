@@ -492,7 +492,9 @@ describe('runMigrations: removed-noise-type-to-default (T78 item 10: Biomechanic
     runMigrations(P);
     runMigrations(P);
     // (2026-10-10: 'photo-mirror-mode' decides the photo mirror mode of any board that has none: no photo -> 'whole'; likewise the orientation and 'photo-edge')
-    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } }, photoMirrorMode: 'whole', photoOrientation: 'upright', photoEdge: 'fade' });
+    // (2026-10-14: 'job-timeline' gives a board with no timeline its default order -- here the sections alone, head 0)
+    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } }, photoMirrorMode: 'whole', photoOrientation: 'upright', photoEdge: 'fade',
+      jobTimeline: { order: ['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back'], head: 0 } });
   });
 });
 

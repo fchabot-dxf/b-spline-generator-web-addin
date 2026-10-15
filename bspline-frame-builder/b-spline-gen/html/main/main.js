@@ -50,6 +50,8 @@ import { receiveEditPasswordFromFusion } from './edit-password.js';
 import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } from './frame-panel.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
+import { initJobTimelineStrip } from './job-timeline-strip.js';
+import { openJobStepTarget } from './job-timeline-open.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
@@ -175,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initClearMenu();
     // F35 item 25: the [2D | 3D] pill on the 3D viewport and in the editor
     initViewModeToggle();
+    initJobTimelineStrip({ opener: openJobStepTarget }); // the job timeline along each canvas bottom (main/job-timeline-strip.js)
 
     // 7. Fusion 360 detection. Two RAFs to yield to browser paint so
     //    the palette has settled before we start polling.

@@ -1,5 +1,6 @@
 import { P, DEFAULT, loadLastSession, saveLastSession, markBootRestoreComplete } from '../core/state.js';
 import { encodeLayersAttr, decodeLayersAttr } from '../editor/layers-attr.js';
+import { jobProjectOf, deriveJobSteps, normalizeJobTimeline } from '../core/job-timeline.js';
 import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
@@ -632,6 +633,18 @@ export const MIGRATIONS = [
       const w = b.grout && Number.isFinite(b.grout.widthIn) ? b.grout.widthIn : null;
       b.groutByElement = { wall: w, frame: w, brush: w };
       if (b.grout) delete b.grout.widthIn;
+    },
+  },
+  {
+    id: 'job-timeline',
+    // Fred 2026-10-14 (the job timeline, core/job-timeline.js): a board saved before it (or a new one) gets Fred's
+    // default order of ITS steps -- its layers from the saved roster, its frame -- with the head at the start (nothing done)
+    when: (p) => !p.jobTimeline,
+    apply: (p) => {
+      const m = typeof p.editorSvg === 'string' ? p.editorSvg.match(/data-editor-layers="([^"]*)"/) : null;
+      let roster = [];
+      try { roster = m ? decodeLayersAttr(m[1]) : []; } catch (_) { roster = []; }
+      p.jobTimeline = normalizeJobTimeline(null, deriveJobSteps(jobProjectOf(roster, p.frame)));
     },
   },
   // 'frame-corner-presets' (item 33: a board on butt_frame / quoin_corners became Soldier + a Corners-row pick) is

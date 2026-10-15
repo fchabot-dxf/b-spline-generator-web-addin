@@ -850,3 +850,95 @@ aside {
 .photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
 .photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
 .photo-layer-needs-on { opacity: 0.45; } /* the layer is off: photo-only controls greyed (photo-layer-section.js needsLayer) */
+
+/* The JOB TIMELINE strip (Fred 2026-10-14, main/job-timeline-strip.js; mockups shots/seatD/timeline/): along the bottom
+   of each canvas (the 3D view; the 2D editor above the phone drawer). A chip per step in the kind's colour
+   (core/job-timeline.js JOB_STEP_KINDS), a group's chip folds it, the blue playhead, an amber dot = a step cut before one
+   it depends on (detection only). It sets --job-strip-height on its host: what sits at the canvas bottom stays above it. */
+.job-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 130;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 0 8px 5px;
+    /* the band is the lower --job-band px; the --job-overhang px above it stay clear for the head's tab */
+    background: linear-gradient(to bottom, transparent var(--job-overhang, 0px), var(--cad-border-standard) var(--job-overhang, 0px),
+        var(--cad-border-standard) calc(var(--job-overhang, 0px) + 1px), rgba(255, 255, 255, 0.95) calc(var(--job-overhang, 0px) + 1px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    font: 600 11px sans-serif;
+    touch-action: pan-x;
+}
+.job-strip.job-dragging { cursor: grabbing; }
+.job-strip-title {
+    flex: 0 0 auto;
+    color: var(--cad-text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 2px;
+    align-self: flex-end;
+    line-height: calc(var(--job-band, 34px) - 10px);
+}
+.job-step {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: calc(var(--job-band, 34px) - 10px);
+    padding: 0 9px;
+    border: 1px solid var(--job-color);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--job-color) 12%, #fff);
+    color: var(--cad-text-main);
+    font: inherit;
+    cursor: grab;
+}
+.job-step-sub { padding: 0 7px; border-radius: 4px; background: #fff; }
+.job-step-fixed { cursor: default; }
+.job-step.job-done { opacity: 0.55; }
+.job-icon { color: var(--job-color); }
+.job-caret { color: var(--cad-text-muted); font-size: 10px; }
+.job-dep-mark {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+/* the playhead: a line through the band, its grab tab (a ▼) rising --job-overhang above it (JOB_STRIP, declared);
+   the whole column, --job-head-grab wide, is the touch target */
+.job-head {
+    flex: 0 0 auto;
+    align-self: stretch;
+    position: relative;
+    width: var(--job-head-grab, 14px);
+    margin-bottom: -5px;
+    cursor: ew-resize;
+}
+.job-head::before {
+    content: '';
+    position: absolute;
+    left: calc(50% - 1px);
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #0078d4;
+}
+.job-head::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-left: calc(var(--job-head-grab, 14px) / 2) solid transparent;
+    border-right: calc(var(--job-head-grab, 14px) / 2) solid transparent;
+    border-top: calc(var(--job-overhang, 9px) + 6px) solid #0078d4;
+}
+#previewArea #heightInspector { bottom: calc(10px + var(--job-strip-height, 0px)) !important; }
+

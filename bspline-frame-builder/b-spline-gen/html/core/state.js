@@ -342,6 +342,9 @@ export const DEFAULT = {
     // localStorage on every editor change so reload restores the
     // in-flight drawing.
     editorSvg: null,
+    // the JOB TIMELINE (Fred 2026-10-14, core/job-timeline.js): the order the job's steps are cut / poured in (step ids)
+    // and the playhead. null = not decided yet: the 'job-timeline' migration (main/app-init.js) gives the default order.
+    jobTimeline: null,
 };
 
 export let P = { ...DEFAULT };

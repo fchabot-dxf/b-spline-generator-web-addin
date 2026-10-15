@@ -67,7 +67,11 @@ export function syncCanvasCorner() {
   const c = canvas.getBoundingClientRect(), h = host.getBoundingClientRect(), k = corner.getBoundingClientRect();
   const drawer = $('editorMobileDrawer');
   const dTop = drawer && drawer.getClientRects().length ? drawer.getBoundingClientRect().top : Infinity;
-  const bottom = Math.min(c.bottom, dTop > c.top + 80 ? dTop : c.bottom);
+  const bottom0 = Math.min(c.bottom, dTop > c.top + 80 ? dTop : c.bottom);
+  // the job timeline strip (main/job-timeline-strip.js) runs along the canvas bottom: the corner sits above it
+  const strip = $('jobStrip2d');
+  const sTop = strip && strip.getClientRects().length ? strip.getBoundingClientRect().top : Infinity;
+  const bottom = Math.min(bottom0, sTop > c.top + 80 ? sTop : bottom0);
   corner.style.right = 'auto'; corner.style.bottom = 'auto';
   corner.style.left = `${Math.round(Math.max(4, c.right - h.left - k.width - 10))}px`;
   corner.style.top = `${Math.round(Math.max(4, bottom - h.top - k.height - 10))}px`;
