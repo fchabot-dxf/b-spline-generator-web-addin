@@ -9,6 +9,7 @@ from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
 from fb_engine import timeline_order
 from fb_engine.joined_miters import JOINED_MITERS_ATTR
+from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 # F14 (S6): the template a frame component was built from (stamped by
 # frame_engine._create_incremental_component), so the solid build reads that
@@ -93,7 +94,7 @@ class SolidCoordinator:
         name = "frame_height_offset"
         expr = (expr or "0 in").strip()
         try:
-            params = self.design.userParameters
+            params = board_params(self.design)  # S2b: the board's frame_height_offset in a board build
             p = params.itemByName(name)
             if p is None:
                 p = params.add(
@@ -102,7 +103,7 @@ class SolidCoordinator:
                     "in",
                     "Solid Builder start offset (frame height offset)",
                 )
-            p.expression = expr
+            p.expression = fusion_expr(expr)
             self.log.log(f"OFFSET PARAM: {name} = '{expr}' (value={p.value:.4f} cm)")
             return name if abs(p.value) > 1e-6 else "0 in"
         except Exception as e:

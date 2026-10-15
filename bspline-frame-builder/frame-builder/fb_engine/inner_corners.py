@@ -42,6 +42,7 @@ import math
 
 from fb_engine.t7_roof_eave import circle_circle_corner, line_circle_corner
 from fb_engine.t11_geometry import line_line_inner_corner
+from fb_engine.board_scope import fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 def inner_corner_step(ctx, sketch, s_name, step):
@@ -99,7 +100,7 @@ def inner_corner_step(ctx, sketch, s_name, step):
 
     # Resolve the distance to centimetres (Fusion's database unit).
     try:
-        dist_cm = ctx.design.unitsManager.evaluateExpression(distance_expr, 'cm')
+        dist_cm = ctx.design.unitsManager.evaluateExpression(fusion_expr(distance_expr), 'cm')  # S2b
     except Exception as e:
         ctx.logger.log(
             f"INNER CORNER: failed to evaluate distance '{distance_expr}': {e}",
@@ -333,7 +334,7 @@ def line_circle_corner_step(ctx, sketch, s_name, step):
 
     tolerance = float(step.get('Tolerance', 0.05))
     try:
-        ft_cm = ctx.design.unitsManager.evaluateExpression(step.get('FrameThickness', 'frame_thickness'), 'cm')
+        ft_cm = ctx.design.unitsManager.evaluateExpression(fusion_expr(step.get('FrameThickness', 'frame_thickness')), 'cm')
     except Exception as e:
         ctx.logger.log(f"LINE-CIRCLE CORNER: failed to evaluate frame thickness: {e}", "ERROR")
         return
@@ -444,7 +445,7 @@ def circle_circle_corner_step(ctx, sketch, s_name, step):
 
     tolerance = float(step.get('Tolerance', 0.05))
     try:
-        ft_cm = ctx.design.unitsManager.evaluateExpression(step.get('FrameThickness', 'frame_thickness'), 'cm')
+        ft_cm = ctx.design.unitsManager.evaluateExpression(fusion_expr(step.get('FrameThickness', 'frame_thickness')), 'cm')
     except Exception as e:
         ctx.logger.log(f"CIRCLE-CIRCLE CORNER: failed to evaluate frame thickness: {e}", "ERROR")
         return

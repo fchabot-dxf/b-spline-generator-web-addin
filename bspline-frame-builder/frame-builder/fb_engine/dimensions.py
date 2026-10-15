@@ -5,6 +5,7 @@ Handles EnabledParam toggle logic, snap-seed (soft-seed) mode,
 Radius/Diameter, Source-to-Target distance, and default entity distance.
 """
 import adsk.core, adsk.fusion
+from fb_engine.board_scope import fusion_name, fusion_expr, fusion_dim_name  # Send targets S2b/S2c: the Fusion boundary
 
 
 def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
@@ -90,8 +91,8 @@ def name_dimensions(pending):
     for d, dim_name, _target, _expr, _tgt in pending:
         if dim_name and dim_name != "?":
             try:
-                if d.parameter.name != dim_name:
-                    d.parameter.name = dim_name
+                if d.parameter.name != fusion_dim_name(dim_name):
+                    d.parameter.name = fusion_dim_name(dim_name)  # S2c: the board's dimension name
             except Exception:
                 pass
 
@@ -145,7 +146,7 @@ def delete_dimension_by_name(ctx, sketch, name):
     try:
         found = False
         for d in sketch.sketchDimensions:
-            if d.parameter and d.parameter.name == name:
+            if d.parameter and d.parameter.name == fusion_dim_name(name):  # S2c: as it was named
                 d.deleteMe()
                 ctx.logger.log(f"DIM DELETED (via param name): {name}")
                 found = True
@@ -177,7 +178,7 @@ def _is_disabled(ctx, dim):
                 return False
 
         # Fallback to Fusion User Parameters
-        p = ctx.design.userParameters.itemByName(en_param)
+        p = ctx.design.userParameters.itemByName(fusion_name(en_param))  # S2b
         if p and p.value <= 1e-5:
             return True
         if p:
@@ -239,9 +240,9 @@ def _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_o
     """Drive the dimension with the given expression, optionally deleting after seed."""
     try:
         # Assign semantic name if provided (crucial for DeleteDimension lookups)
-        if dim_name and dim_name != "?" and d.parameter.name != dim_name:
+        if dim_name and dim_name != "?" and d.parameter.name != fusion_dim_name(dim_name):
             try:
-                d.parameter.name = dim_name
+                d.parameter.name = fusion_dim_name(dim_name)  # S2c
             except Exception as e:
                 # Bumped to WARNING because silent rename failure leads to
                 # DeleteDimension misses downstream - the dim keeps its
@@ -250,12 +251,12 @@ def _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_o
                 # why their seed dims don't get cleaned up.
                 ctx.logger.log(f"DIM NAME FAIL: {dim_name} (already exists?): {e}", "WARNING")
 
-        d.parameter.expression = str(expr)
+        d.parameter.expression = fusion_expr(str(expr))  # S2b: the board's names
         # Log BOTH the requested name and the actual parameter name. They
         # differ when the rename silently failed; logging only the requested
         # name makes 'DIM OK' falsely reassuring.
         actual = d.parameter.name
-        if actual == dim_name:
+        if actual == fusion_dim_name(dim_name):
             ctx.logger.log(f"DIM OK: {dim_name} on '{dim_target}' = {expr}")
         else:
             ctx.logger.log(f"DIM OK (renamed): requested={dim_name} actual={actual} on '{dim_target}' = {expr}", "WARNING")

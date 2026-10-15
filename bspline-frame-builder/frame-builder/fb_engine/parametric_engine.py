@@ -43,6 +43,7 @@ from fb_engine.offsets import offset_step, step_step
 from fb_engine.miters import miter_step
 from fb_engine.parameter_schema import ParameterSchema
 from fb_engine.diagnostics import log_arc_audit, assert_no_reflex_arcs
+from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 @contextmanager
@@ -272,7 +273,7 @@ class ParametricSketchBuilder:
             
         try:
             design = ctx.design
-            params = design.userParameters
+            params = board_params(design)  # S2b: plain names in, the board's names at Fusion
             
             for name, val in ui_data.items():
                 # FB-ORDER (Fred: "only Send to Fusion can create"
@@ -314,7 +315,7 @@ class ParametricSketchBuilder:
                             expr = self.resolver.wrap_expression_if_factor(name, val)
                             if expr != str(val):
                                 ctx.logger.log(f"PARAM SYNC: Wrapped UI factor '{name}' => '{expr}'", "DEBUG")
-                        p.expression = str(expr)
+                        p.expression = fusion_expr(str(expr))
                     except Exception:
                         pass
                         

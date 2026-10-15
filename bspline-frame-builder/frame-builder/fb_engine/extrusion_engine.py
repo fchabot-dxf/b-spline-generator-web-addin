@@ -18,6 +18,7 @@ gets vandalized.
 import adsk.core, adsk.fusion, traceback
 from fb_engine.timeline_order import FRAME_MEMBER_ATTR
 from fb_engine import declared_profiles
+from fb_engine.board_scope import fusion_name, fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 # Treat any of these spellings as "no start offset". Fusion accepts
@@ -187,10 +188,10 @@ class ExtrusionEngine:
             start = (plan["start"] or "0 in").strip()
             if start not in _ZERO_OFFSET_SPELLINGS:
                 ext_in.startExtent = adsk.fusion.OffsetStartDefinition.create(
-                    adsk.core.ValueInput.createByString(start))
+                    adsk.core.ValueInput.createByString(fusion_expr(start)))  # S2b
 
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
-            taper = adsk.core.ValueInput.createByString(plan["taper"])
+            taper = adsk.core.ValueInput.createByString(fusion_expr(plan["taper"]))
             if plan["extent"][0] == "throughAllBothSides":
                 # the trim / window cut (frame_definition): through all on BOTH sides of the sketch plane -- the
                 # panel's underside can dip below it (measured 2026-10-09), and a one-sided cut left that part
@@ -199,7 +200,7 @@ class ExtrusionEngine:
             else:
                 if plan["extent"][0] == "toFace":
                     extent_def = adsk.fusion.ToEntityExtentDefinition.create(
-                        to_face, True, adsk.core.ValueInput.createByString(plan["extent"][1]))
+                        to_face, True, adsk.core.ValueInput.createByString(fusion_expr(plan["extent"][1])))
                 else:
                     extent_def = adsk.fusion.ThroughAllExtentDefinition.create()
                 ext_in.setOneSideExtent(extent_def, positive_dir, taper)
@@ -286,8 +287,8 @@ class ExtrusionEngine:
             self.log.log(diag)
 
             if is_centered:
-                p_w = self.design.userParameters.itemByName("widthIn")
-                p_h = self.design.userParameters.itemByName("heightIn")
+                p_w = self.design.userParameters.itemByName(fusion_name("widthIn"))  # S2b
+                p_h = self.design.userParameters.itemByName(fusion_name("heightIn"))
                 limit_w = (p_w.value * 0.9) if p_w else 15.0
                 limit_h = (p_h.value * 0.9) if p_h else 20.0
 

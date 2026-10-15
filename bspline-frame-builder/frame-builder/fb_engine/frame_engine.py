@@ -3,6 +3,7 @@ import os, json
 import importlib
 import inspect
 import time
+from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 # Modular logic import
 #
@@ -129,7 +130,7 @@ class FrameBuilder:
         self.app = adsk.core.Application.get()
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
         self.root = self.design.rootComponent if self.design else None
-        self.user_params = self.design.userParameters if self.design else None
+        self.user_params = board_params(self.design) if self.design else None  # S2b: the board's names in a board build
         self.params_dna = {}
         self.fit = None  # frame_definition.frame_fit result of the last build (FB-FIX F4)
         self.offset_fallbacks = []  # H23 item 28: BuildContext.offset_fallbacks of the last build
@@ -172,7 +173,7 @@ class FrameBuilder:
             self.app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
             self.design = adsk.fusion.Design.cast(self.app.activeProduct)
             self.root = self.design.rootComponent
-            self.user_params = self.design.userParameters
+            self.user_params = board_params(self.design)
             
             # Re-point Resolver and Discovery to the new design
             from fb_engine import fb_value_resolver
@@ -375,7 +376,7 @@ class FrameBuilder:
                     try:
                         self.user_params.add(
                             name,
-                            adsk.core.ValueInput.createByString(expr_str),
+                            adsk.core.ValueInput.createByString(fusion_expr(expr_str)),
                             unit,
                             "Template Master Parameter"
                         )
@@ -402,20 +403,20 @@ class FrameBuilder:
                         # TWO-STEP BIRTH: Create with 0.0, then set expression.
                         # This avoids "missing dependency" errors during createByString.
                         p = self.user_params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Template Parameter")
-                        p.expression = str(val_expr)
+                        p.expression = fusion_expr(str(val_expr))
                         self.logger.log(f"DEPENDENT (Born): {name} = {val_expr} ({unit})")
                     except Exception as e:
                         self.logger.log(f"DEPENDENT FAIL ({name}): {e}. Trying fallback...", "WARNING")
                         try:
                             # Try to evaluate the expression once and save the result
-                            eval_val = self.design.unitsManager.evaluateExpression(val_expr, unit)
+                            eval_val = self.design.unitsManager.evaluateExpression(fusion_expr(val_expr), unit)
                             self.user_params.add(name, adsk.core.ValueInput.createByReal(eval_val), unit, "Template Parameter (Static Fallback)")
                         except Exception as fallback_err:
                             self.logger.log_error(f"CRITICAL: Fallback failed for {name}: {fallback_err}")
                 else:
                     # UPDATE EXISTING: UI should win during a build cycle
                     try:
-                        existing.expression = str(val_expr)
+                        existing.expression = fusion_expr(str(val_expr))
                         self.logger.log(f"DEPENDENT (Updated): {name} -> {val_expr}")
                     except Exception as e:
                         self.logger.log(f"DEPENDENT UPDATE FAIL ({name}): {e}", "WARNING")

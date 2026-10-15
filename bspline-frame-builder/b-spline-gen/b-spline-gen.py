@@ -26,7 +26,7 @@ from panel_finish import apply_panel_finish
 from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
                           new_board_offset_in, BOARD_SPACING_IN)
 from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
-                                   BoardNamer, lattice_layer_prefix)
+                                   BoardNamer, lattice_layer_prefix, naming)
 
 # imports check: removed diagnostic
 
@@ -2294,6 +2294,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview and not data.get('isAppend', False):
                 scope = _resolve_send_scope(des, target, board, data.get('params', {}))
                 _scope_stamp_manifests(data.get('stamp'), scope.namer)
+            self._board_namer = scope.namer if scope is not None else None  # S2c: the layer sketches' dimension names
 
             # Sync User Parameters (if not preview)
             if not is_preview:
@@ -2903,10 +2904,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         if ctx is None:
             ctx = BuildContext(sketch_target, design, logger=None, prefix="SE15")
         try:
-            summary = build_constrained_sketch(
-                sketch_target, design, manifest, placement=plane, log_fn=_log,
-                sketch_name_override=f"Source - {sketch_name} [constrained]",
-                ctx=ctx, kind_to_sketch=kind_to_sketch)
+            namer = getattr(self, '_board_namer', None)
+            layer_namer = namer.child(lattice_layer_prefix(manifest.get('layerId'))) if namer is not None else None
+            with naming(layer_namer, ()):  # S2c: dimension names only (the manifest's names / expressions: S2a)
+                summary = build_constrained_sketch(
+                    sketch_target, design, manifest, placement=plane, log_fn=_log,
+                    sketch_name_override=f"Source - {sketch_name} [constrained]",
+                    ctx=ctx, kind_to_sketch=kind_to_sketch)
             # ADD1 (measured live): this log used to read summary['offsets']
             # inline here — see constrained_sketch_log.py's own module
             # docstring for why that raised KeyError on every SUCCESSFUL

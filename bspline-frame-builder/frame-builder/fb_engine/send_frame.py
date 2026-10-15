@@ -47,7 +47,8 @@ from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPT
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
-from fb_engine.board_scope import BoardScope
+from fb_engine.board_scope import BoardScope, naming, board_params, fusion_expr, FRAME_SEND_PARAMS
+from fb_engine.parameter_schema import ParameterSchema as _Schema
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -119,7 +120,7 @@ def sync_panel_lip_param(design, lip, log, value_input=None):
     (after the previous frame is deleted, the lip offset that used it is gone). Returns what it did.
     `value_input(expr)` builds the adsk ValueInput (injected, so the fake-Fusion tests drive this code)."""
     assert ParameterSchema.is_frame_owned(PANEL_LIP_PARAM)
-    params = design.userParameters
+    params = board_params(design)  # S2b: the board's own panel_lip inside a board's build
     p = params.itemByName(PANEL_LIP_PARAM)
     if lip > 0:
         expr = f"{lip} in"
@@ -130,7 +131,7 @@ def sync_panel_lip_param(design, lip, log, value_input=None):
             p = params.add(PANEL_LIP_PARAM, value_input(expr), "in", "Panel lip: the panel is trimmed this far outside the frame outline")
             action = "created"
         else:
-            p.expression = expr
+            p.expression = fusion_expr(expr)
             action = "updated"
         try:
             if not p.attributes.itemByName(*PARAM_OWNER_ATTR):
@@ -298,6 +299,7 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     (BoardScope(design)): with no tagged board in the design that is exactly the old design-wide behaviour."""
     log = lambda msg, level="INFO": logger.log(msg, level)
     scope = scope if scope is not None else BoardScope(design)
+    board_naming = None
     seeds = dict(payload.get("seeds") or {})
     seed_geometry = payload.get("seedGeometry") or None
     # H23 item 42 (ONE build path, declared): `seeds` is the UI's own normalized handle values
@@ -339,6 +341,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
                 raise SendFrameError(f"The frame shape could not be seeded: {e}")
 
         result["deleted"] = delete_previous_frames(design, log, scope)
+        # S2b: from here on (the panel lip param, both builds) the names this build declares are the board's at the
+        # Fusion boundary -- the legacy board's namer is the identity; closed in the finally below
+        known = (declared_param_names(template) | set(ui_data) | set(_Schema.BOARD_OWNED_PARAMS) | set(FRAME_SEND_PARAMS))
+        board_naming = naming(scope.namer, known)
+        board_naming.__enter__()
         lip = panel_lip_of(payload)
         result["panelLip"] = {"in": lip, "param": sync_panel_lip_param(design, lip, log, value_input)}
         data = {"ui_data": ui_data}
@@ -386,6 +393,8 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         result["error"] = str(e)
         log(f"SEND FRAME refused: {e}", "WARNING")
     finally:
+        if board_naming is not None:
+            board_naming.__exit__(None, None, None)  # S2b: the board's naming never outlives this Send
         sync = getattr(logger, "sync", None)  # the session's one disk sync (fb_logger.DebugLogger.sync)
         if sync:
             sync()

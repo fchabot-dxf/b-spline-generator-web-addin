@@ -15,6 +15,7 @@ ONLY from the ROOT's features with a root-context profile (`cut_context`); every
 """
 
 import re
+from contextlib import contextmanager
 
 BOARD_ATTR = ("Bspline", "board")
 
@@ -109,6 +110,76 @@ def subtree_components(comp):
     except Exception:
         pass
     return out
+
+
+# ---- the Fusion boundary (S2b) ---------------------------------------------------------------------------------
+# The frame builder keeps its PLAIN names everywhere (units by en_/ck_, board-owned checks, the UI's active_vars,
+# the template's own expressions); a board's names are applied only where text reaches Fusion. send_frame opens the
+# context for one frame build with the board's namer and the names that build declares; outside it -- every legacy
+# build, every other caller -- the helpers below are the identity.
+FRAME_SEND_PARAMS = ("frame_height_offset", "panel_lip")  # the literal params a frame Send writes (solid / lip)
+_NAMING = {"namer": None, "known": frozenset(), "mapping": {}}
+
+
+@contextmanager
+def naming(namer, known):
+    """Within: fusion_name / fusion_expr / board_params name `known` through `namer` (nested-safe)."""
+    prev = dict(_NAMING)
+    active = namer is not None and not namer.is_identity
+    _NAMING.update(namer=namer if active else None, known=frozenset(known or ()) if active else frozenset(),
+                   mapping=namer.mapping(known or ()) if active else {})
+    try:
+        yield
+    finally:
+        _NAMING.clear()
+        _NAMING.update(prev)
+
+
+def fusion_name(name):
+    """The name Fusion holds for a frame build's declared `name` (the identity outside a board's build)."""
+    return _NAMING["mapping"].get(name, name) if _NAMING["namer"] is not None and isinstance(name, str) else name
+
+
+def fusion_expr(text):
+    """An expression as Fusion must read it: the build's declared names renamed, nothing else (identity outside)."""
+    if _NAMING["namer"] is None or not isinstance(text, str):
+        return text
+    return BoardNamer.rename(text, _NAMING["mapping"])
+
+
+def fusion_dim_name(name):
+    """A DIMENSION's (model parameter's) name inside a board's build: model params share ONE design-wide namespace
+    too, so a second board's "seed_rad_*" / "dim_*" / "<id>_width" got no name at all (S2c). Every dimension name
+    a board's build gives is the board's; the identity outside (legacy builds unchanged)."""
+    n = _NAMING["namer"]
+    return n.name(name) if n is not None and isinstance(name, str) and name and name != "?" else name
+
+
+class ScopedUserParams:
+    """design.userParameters as the frame builder sees it: itemByName / add take the PLAIN name (fusion_name maps it
+    inside a board's build); everything else passes through."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def itemByName(self, name):
+        return self._real.itemByName(fusion_name(name))
+
+    def add(self, name, *args, **kwargs):
+        return self._real.add(fusion_name(name), *args, **kwargs)
+
+    def __iter__(self):
+        return iter(self._real)
+
+    def __bool__(self):
+        return self._real is not None
+
+    def __getattr__(self, attr):
+        return getattr(self._real, attr)
+
+
+def board_params(design):
+    return ScopedUserParams(design.userParameters) if design is not None else None
 
 
 class BoardScope:

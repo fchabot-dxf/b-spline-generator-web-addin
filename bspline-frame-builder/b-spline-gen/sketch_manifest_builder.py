@@ -67,6 +67,7 @@ _ensure_fb_engine_importable()
 from fb_engine.build_context import BuildContext  # noqa: E402
 from fb_engine.constraints import constraint_step  # noqa: E402
 from fb_engine.dimensions import create_dimension_step, name_dimensions, drive_dimension  # noqa: E402
+from fb_engine.board_scope import fusion_dim_name  # Send targets S2c: dimension names per board
 
 
 class _Logger:
@@ -372,7 +373,7 @@ def _drive_last_dimension(ctx, sketch, expression, semantic_name):
     try:
         if hasattr(d, 'parameter') and d.parameter:
             try:
-                d.parameter.name = semantic_name
+                d.parameter.name = fusion_dim_name(semantic_name)  # S2c: the board / layer's dimension name
             except Exception:
                 pass
             d.parameter.expression = str(expression)
