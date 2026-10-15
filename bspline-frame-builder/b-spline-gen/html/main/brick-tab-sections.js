@@ -11,6 +11,7 @@
  * (e.g. Corners on a band-less frame) hides too, so no title ever stands over an empty body.
  */
 import { themeBrickSection } from './section-themes.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 const sec = (id, title, kind, rows, extra = {}) => Object.freeze({ id, title, kind, rows: Object.freeze(rows), ...extra });
 const JOINT = ['brickGroutWidthRow', 'brickGroutSpacingHint'];
@@ -61,6 +62,114 @@ export const SHARED_ROWS = Object.freeze((() => {
   for (const def of Object.values(BRICK_TAB_SECTIONS)) for (const s of def.sections) for (const r of s.rows) seen.set(r, (seen.get(r) || 0) + 1);
   return [...seen].filter(([, n]) => n > 1).map(([r]) => r);
 })());
+
+/** Redesign phase 4 (Fred's mockups, shots/seatD/redesign/mock_Brick_*): the Brick drawer is ONE collapse tree. A branch
+ *  holds its declared `hosts` (the element's own section host, the colour sections above inside it, unchanged) under a
+ *  header: a caret, the title, a short `summary`. `armsTool` (advisor 2026-10-14, pick A): an ELEMENT branch opens by
+ *  arming its tool -- an accordion in step with the tool row, because an element's settings (the shared rows above:
+ *  Bricks, Joint) follow the ARMED tool; the free branches (General, Layers) fold on their own and are remembered per
+ *  device. `headerId`: the header keeps a retired control's id (the General tab's), for the brick matrix. */
+const branch = (id, title, summary, hosts, extra = {}) => Object.freeze({ id, title, summary, hosts: Object.freeze(hosts), ...extra });
+export const BRICK_DRAWER_TREE = Object.freeze([
+  branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall' }),
+  branch('frame', FRAME_LABELS.brick, 'bands · fan centre · crumble', ['brickFrameSection'], { armsTool: 'frame' }),
+  branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush' }),
+  branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush' }), // retiring (E: heights move to Select)
+  branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general' }),
+  branch('layers', 'Layers', (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; }, ['brickLayersSlot']),
+]);
+// the free branches a device starts with: Layers open (Fred, phone: "We don't see layers still"), General folded
+export const BRICK_TREE_DEFAULT_OPEN = Object.freeze(['layers']);
+export const BRICK_TREE_OPEN_KEY = 'bspline.brick.drawerOpen';
+export const brickBranchDomId = (id) => `brickBranch_${id}`;
+
+const _tree = { doc: null, open: null, folded: new Set(), armed: null };
+const _readTreeOpen = () => {
+  try { const v = JSON.parse(localStorage.getItem(BRICK_TREE_OPEN_KEY)); if (Array.isArray(v)) return v; } catch (_) { /* blocked */ }
+  return [...BRICK_TREE_DEFAULT_OPEN];
+};
+const _writeTreeOpen = (ids) => { try { localStorage.setItem(BRICK_TREE_OPEN_KEY, JSON.stringify(ids)); } catch (_) { /* not remembered */ } };
+
+/** Builds the tree once per document inside `container` (the hosts move into their branches); `onArm(toolId)` arms a
+ *  tool (brick-panel.js selectTool). Returns the declared hosts missing from the page. */
+export function buildBrickDrawerTree(container, onArm, doc = container ? container.ownerDocument : null) {
+  if (!container || !doc) return [];
+  if (_tree.doc === doc && doc.getElementById('brickDrawerTree')) return [];
+  _tree.doc = doc;
+  _tree.open = _readTreeOpen();
+  const missing = [];
+  const tree = doc.createElement('div');
+  tree.id = 'brickDrawerTree';
+  tree.className = 'brick-drawer-tree';
+  container.appendChild(tree);
+  for (const b of BRICK_DRAWER_TREE) {
+    const shell = doc.createElement('div');
+    shell.id = brickBranchDomId(b.id);
+    shell.className = 'brick-branch';
+    shell.dataset.branch = b.id;
+    const head = doc.createElement('button');
+    head.type = 'button';
+    head.id = b.headerId || `${brickBranchDomId(b.id)}_head`;
+    head.className = 'brick-branch-head';
+    const caret = doc.createElement('span');
+    caret.className = 'brick-branch-caret';
+    const title = doc.createElement('span');
+    title.className = 'brick-branch-title';
+    title.textContent = b.title;
+    const summary = doc.createElement('span');
+    summary.className = 'brick-branch-summary';
+    head.append(caret, title, summary);
+    const body = doc.createElement('div');
+    body.className = 'brick-branch-body';
+    shell.append(head, body);
+    tree.appendChild(shell);
+    for (const h of b.hosts) { const el = doc.getElementById(h); if (el) body.appendChild(el); else missing.push(h); }
+    // the caret folds / unfolds; the rest of the header OPENS (an element branch: by arming its tool)
+    caret.addEventListener('click', (e) => { e.stopPropagation(); toggleBrickBranch(b.id); });
+    head.addEventListener('click', () => { if (b.armsTool && _tree.armed !== b.armsTool) onArm(b.armsTool); else openBrickBranch(b.id); });
+  }
+  syncBrickDrawerTree(_tree.armed);
+  return missing;
+}
+
+const _isOpen = (b) => (b.armsTool ? b.armsTool === _tree.armed && !_tree.folded.has(b.id) : _tree.open.includes(b.id));
+
+/** Opens branch `id` (an element branch only when its tool is armed) and scrolls it into view. */
+export function openBrickBranch(id) {
+  const b = BRICK_DRAWER_TREE.find((x) => x.id === id);
+  if (!b || !_tree.doc) return;
+  if (b.armsTool) _tree.folded.delete(id);
+  else if (!_tree.open.includes(id)) { _tree.open = [..._tree.open, id]; _writeTreeOpen(_tree.open); }
+  syncBrickDrawerTree(_tree.armed);
+  _tree.doc.getElementById(brickBranchDomId(id))?.scrollIntoView?.({ block: 'nearest' });
+}
+
+/** The caret: folds / unfolds branch `id` (an unarmed element branch has nothing to unfold: its settings follow the armed tool). */
+export function toggleBrickBranch(id) {
+  const b = BRICK_DRAWER_TREE.find((x) => x.id === id);
+  if (!b || !_tree.doc) return;
+  if (b.armsTool) { if (b.armsTool !== _tree.armed) return; if (_tree.folded.has(id)) _tree.folded.delete(id); else _tree.folded.add(id); }
+  else { _tree.open = _tree.open.includes(id) ? _tree.open.filter((x) => x !== id) : [..._tree.open, id]; _writeTreeOpen(_tree.open); }
+  syncBrickDrawerTree(_tree.armed);
+}
+
+/** Each branch's open state, caret and summary for the armed tool (a tool switch unfolds the new tool's branch). */
+export function syncBrickDrawerTree(armedTool) {
+  const doc = _tree.doc;
+  if (!doc) return;
+  if (armedTool !== _tree.armed) { _tree.folded.clear(); _tree.armed = armedTool; }
+  for (const b of BRICK_DRAWER_TREE) {
+    const shell = doc.getElementById(brickBranchDomId(b.id));
+    if (!shell) continue;
+    const open = _isOpen(b);
+    shell.classList.toggle('open', open);
+    shell.classList.toggle('armed', !!b.armsTool && b.armsTool === armedTool);
+    shell.querySelector(':scope > .brick-branch-body').hidden = !open;
+    shell.querySelector('.brick-branch-caret').textContent = open ? '▾' : '▸';
+    const s = typeof b.summary === 'function' ? b.summary(doc) : b.summary;
+    shell.querySelector('.brick-branch-summary').textContent = s || '';
+  }
+}
 
 /** Which sections are open is remembered per device -- the SAME store as the main sidebar's sections (the palette's
  *  PANEL_OPEN_KEY), keyed by the section's own `panel-<key>` class. */
@@ -134,7 +243,7 @@ function _rowShown(el) {
   return kids.length === 0 || kids.some((k) => !_isHidden(k));
 }
 
-/** Each section shows only in its own tab, and only while at least one of its rows shows. */
+/** Each section shows only in its own tab (General's always: its own branch), and only while at least one of its rows shows. */
 export function syncBrickSectionVisibility(doc = _state.doc) {
   if (!doc) return;
   _state.syncing = true;
@@ -144,7 +253,8 @@ export function syncBrickSectionVisibility(doc = _state.doc) {
         const shell = doc.getElementById(sectionDomId(tab, s.id));
         if (!shell) continue;
         const body = shell.querySelector(':scope > .panel-body');
-        const show = tab === _state.active && [...body.children].some(_rowShown);
+        // phase 4: General's sections live in the General branch (its fold hides them), shown whatever tool is armed
+        const show = (tab === _state.active || tab === 'general') && [...body.children].some(_rowShown);
         const want = show ? '' : 'none';
         if (shell.style.display !== want) shell.style.display = want;
       }

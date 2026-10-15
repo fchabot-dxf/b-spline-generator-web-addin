@@ -56,7 +56,7 @@ import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
-import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
+import { applyBrickTabSections, brickTabOfControl, buildBrickDrawerTree, syncBrickDrawerTree, openBrickBranch } from './brick-tab-sections.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
 import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
 
@@ -128,8 +128,9 @@ const BRICK_TOOLS = [
 // board-wide settings; each element's tab keeps its own Generate (BRICK_TOOLS' `generates`)
 export const BRICK_GENERAL_TAB = Object.freeze({ id: 'general', buttonId: 'brickTab_general', label: 'General', generates: false,
   iconSvg: () => brickToolIconSvg('general'), title: 'General -- the board-wide brick settings (every element)' });
-export const brickTabs = () => [BRICK_GENERAL_TAB, ...BRICK_TOOLS.filter((t) => t.tab).sort((a, b) => a.tab.order - b.tab.order)
-  .map((t) => ({ id: t.id, buttonId: t.buttonId, label: t.tab.label, iconSvg: t.iconSvg, title: `${t.label} -- ${t.hint}` }))];
+// phase 4: the strip is the TOOL row (General is a branch of the drawer tree, main/brick-tab-sections.js BRICK_DRAWER_TREE)
+export const brickTabs = () => BRICK_TOOLS.filter((t) => t.tab).sort((a, b) => a.tab.order - b.tab.order)
+  .map((t) => ({ id: t.id, buttonId: t.buttonId, label: t.tab.label, iconSvg: t.iconSvg, title: `${t.label} -- ${t.hint}` }));
 /** F35 item 43 (each setting's scope declared once): the panel's shared rows. 'global' = board-wide, shown ONLY in the
  *  General tab; 'element' = edits the active tool's element, shown in its tab (not for a tool with sharedRows: false);
  *  'both' = General AND the element tabs. Brick-tab v2 (Fred, 2026-10-07): the grout paint (Colour + Edge) is General's
@@ -140,11 +141,11 @@ export const BRICK_ROW_SCOPES = Object.freeze({
 });
 
 let _activeTool = null;
-let _generalTab = false; // item 43: the General tab is open (the tool stays as it is underneath)
-/** The tab the strip shows active: General when picked or with no tool, else the active tool's (its `tabOf`'s). */
+/** The armed element's tab (its `tabOf`'s), or General with no tool. Phase 4: General is a branch of the drawer tree,
+ *  open beside the armed element's -- no longer a tab that hides it. */
 export function activeBrickTab() {
   const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  if (_generalTab || !tool) return BRICK_GENERAL_TAB.id;
+  if (!tool) return BRICK_GENERAL_TAB.id;
   return tool.tabOf || tool.id;
 }
 let _syncTabs = null;
@@ -157,21 +158,19 @@ export function revealBrickControl(id) {
   // Brick-tab v2: a control in a declared section belongs to that section's tab (a shared row: the active tool's)
   const sectionTab = brickTabOfControl(el);
   if (sectionTab) {
-    const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
-    if (sectionTab === BRICK_GENERAL_TAB.id && !general) pickBrickTab(BRICK_GENERAL_TAB.id);
-    else if (sectionTab !== BRICK_GENERAL_TAB.id && general && _activeTool) { _generalTab = false; syncToolButtons(); }
+    if (sectionTab === BRICK_GENERAL_TAB.id) openBrickBranch(BRICK_GENERAL_TAB.id);
+    else if (sectionTab === activeBrickTab()) openBrickBranch(sectionTab); // a branch the user folded
     return true;
   }
   const block = Object.keys(BRICK_ROW_SCOPES).filter((b) => document.getElementById(b)?.contains(el))
     .sort((a, b) => (document.getElementById(a).contains(document.getElementById(b)) ? 1 : -1))[0]; // the innermost
   const scope = block ? BRICK_ROW_SCOPES[block] : null;
-  const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
-  if (scope === 'global' && !general) pickBrickTab(BRICK_GENERAL_TAB.id);
-  else if (scope === 'element' && general && _activeTool) { _generalTab = false; syncToolButtons(); }
+  if (scope === 'global') openBrickBranch(BRICK_GENERAL_TAB.id);
+  else if (scope === 'element' && _activeTool) openBrickBranch(activeBrickTab());
   return true;
 }
 function pickBrickTab(id) {
-  if (id === BRICK_GENERAL_TAB.id) { _generalTab = true; syncToolButtons(); return; }
+  if (id === BRICK_GENERAL_TAB.id) { openBrickBranch(id); return; }
   selectTool(id);
 }
 /** The panel's PAGE-level event listeners (document), each wired ONCE per page however often initBrickPanel runs (the
@@ -1353,25 +1352,26 @@ function setOrientation(v) {
  *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
  *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
 /** Turn 197 + F35 item 43: the shared rows by their declared scope (BRICK_ROW_SCOPES): global rows in the General
- *  tab only; element rows in a tool's tab unless the tool declares `sharedRows: false`. */
+ *  branch (phase 4: always there, its fold hides them); element rows in the armed tool's branch unless the tool declares
+ *  `sharedRows: false`. */
 function syncToolSections() {
-  const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
   for (const tool of BRICK_TOOLS) {
     if (!tool.settingsSection) continue;
     const el = document.getElementById(tool.settingsSection);
-    if (el) el.style.display = !general && tool.id === _activeTool ? '' : 'none';
+    if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
   }
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  const elementRows = !general && !!active && active.sharedRows !== false;
+  const elementRows = !!active && active.sharedRows !== false;
   for (const [id, scope] of Object.entries(BRICK_ROW_SCOPES)) {
     const el = document.getElementById(id);
-    const on = scope === 'global' ? general : scope === 'element' ? elementRows : general || elementRows;
+    const on = scope === 'element' ? elementRows : true;
     if (el) el.style.display = on ? '' : 'none';
   }
   const hint = document.getElementById('brickToolHint');
-  if (hint) hint.style.display = general ? 'none' : '';
-  // Brick-tab v2: the active tab's own sections (and the shared rows moved into them)
-  applyBrickTabSections(general ? BRICK_GENERAL_TAB.id : _activeTool);
+  if (hint) hint.style.display = active ? '' : 'none';
+  // Brick-tab v2: the armed tool's own sections (and the shared rows moved into them); General's always
+  applyBrickTabSections(_activeTool || BRICK_GENERAL_TAB.id);
+  syncBrickDrawerTree(activeBrickTab()); // phase 4: the armed element's branch opens (an accordion)
 }
 
 /** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */
@@ -2148,6 +2148,9 @@ function renderToolList(container) {
   // F35 item 43: the tools are TABS at the top of the Brick panel (#editorToolbarBrick moved there; the left rail no
   // longer shows for Brick, main/editor-tabs.js), General first
   _syncTabs = renderTabStrip(container, brickTabs(), pickBrickTab, { variant: 'icons' });
+  // phase 4: the drawer is one collapse tree; an element branch opens by arming its tool (main/brick-tab-sections.js)
+  buildBrickDrawerTree(document.getElementById('brickToolHint')?.parentElement, (toolId) => selectTool(toolId));
+  onPageEvent('brickTreeLayerCount', 'editorLayersChanged', () => syncBrickDrawerTree(activeBrickTab())); // the "N layers" summary
   _renderSubTools(); // item 22: the element tools' Select (+ Area) rows
 }
 
@@ -3145,7 +3148,6 @@ function selectTool(id, { keepSelection = false } = {}) {
     showElementSelection(ed, null);
   }
   _activeTool = id;
-  _generalTab = false; // item 43: a tool pick (a tab, a sub-tool or Select on the canvas) shows that tool's tab
   if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint

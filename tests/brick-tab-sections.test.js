@@ -16,7 +16,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ sho
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 
 import { initBrickPanel, revealBrickControl, activeBrickTab, brickTabs } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { BRICK_TAB_SECTIONS, SHARED_ROWS, sectionDomId, applyBrickTabSections, syncBrickSectionVisibility } from '../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js';
+import { BRICK_TAB_SECTIONS, BRICK_DRAWER_TREE, SHARED_ROWS, sectionDomId, applyBrickTabSections, syncBrickSectionVisibility } from '../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js';
 import { BRICK_SECTION_THEMES, themeTokens } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
@@ -38,10 +38,12 @@ describe('the declaration', () => {
   it('every declared host and row is in the real palette', () => {
     expect(applyBrickTabSections('wall')).toEqual([]);
   });
-  it('a title is unique within its tab; tabs are the Brick tab strip\'s own (General + the tools that have settings)', () => {
-    const stripIds = brickTabs().map((t) => t.id);
+  // phase 4: the sections' tabs are the drawer tree's branches (an element branch = its tool's, General its own)
+  it('a title is unique within its tab; tabs are the drawer tree\'s branches (General + the tools that have settings)', () => {
+    const branchTabs = BRICK_DRAWER_TREE.map((b) => b.armsTool || b.id), stripIds = brickTabs().map((t) => t.id);
+    for (const b of BRICK_DRAWER_TREE) if (b.armsTool) expect(stripIds, b.id).toContain(b.armsTool); // an element branch arms a tool of the row
     for (const [tab, def] of Object.entries(BRICK_TAB_SECTIONS)) {
-      expect(stripIds, tab).toContain(tab);
+      expect(branchTabs, tab).toContain(tab);
       const titles = def.sections.map((s) => s.title);
       expect(new Set(titles).size, tab).toBe(titles.length);
     }
@@ -77,10 +79,11 @@ describe('in the panel', () => {
     const titles = [...$('editorBrickPanel').querySelectorAll('.layers-header')].map((h) => h.textContent.trim());
     expect(titles).not.toContain('Brick');
   });
-  it('the Wall tab shows its own sections, in order, each themed by its kind; General\'s sections are hidden', () => {
+  it('the Wall tab shows its own sections, in order, each themed by its kind; General\'s live in their own branch', () => {
     expect(activeBrickTab()).toBe('wall');
     expect(shownSections('wall')).toEqual(['bricks', 'pattern', 'accent', 'height', 'joint']);
-    expect(shownSections('general')).toEqual([]);
+    // phase 4: General's sections are always there, inside the General branch (its fold hides them)
+    for (const id of ['size', 'look', 'crumble', 'random']) expect($('brickBranch_general').contains($(sectionDomId('general', id))), id).toBe(true);
     const shells = [...$('brickWallSection').querySelectorAll(':scope > .brick-sec')].map((s) => s.querySelector('.panel-header').textContent);
     expect(shells).toEqual(['Bricks', 'Pattern', 'Accent relief', 'Height', 'Joint']);
     const joint = $(sectionDomId('wall', 'joint'));
@@ -108,10 +111,12 @@ describe('in the panel', () => {
     syncBrickSectionVisibility();
     expect(shellShown('frame', 'fanCentre')).toBe(true);
   });
-  it('General shows Brick size / Look / Crumble / Randomness and no element section; the paint row lives there only', () => {
+  it('General shows Brick size / Look / Crumble / Randomness, its branch open beside the armed element; the paint row lives there only', () => {
+    const before = shownSections('frame');
     $('brickTab_general').click();
+    expect($('brickBranch_general').classList.contains('open')).toBe(true);
     expect(shownSections('general')).toEqual(['size', 'look', 'crumble', 'random']);
-    expect(shownSections('frame')).toEqual([]);
+    expect(shownSections('frame')).toEqual(before); // phase 4: the armed element's sections stay
     expect($(sectionDomId('general', 'look')).contains($('brickGroutColorSwatch'))).toBe(true);
     expect($('brickSizeLabel').classList.contains('brick-sec-title-label')).toBe(true);
   });
@@ -119,7 +124,8 @@ describe('in the panel', () => {
     revealBrickControl('brickGroutWidth');
     expect(activeBrickTab()).toBe('frame');
     revealBrickControl('brickTopBias');
-    expect(activeBrickTab()).toBe('general');
+    expect($('brickBranch_general').classList.contains('open')).toBe(true); // phase 4: General's branch opens; Frame stays armed
+    expect(activeBrickTab()).toBe('frame');
     revealBrickControl('brickSurroundPresetList');
     expect(activeBrickTab()).toBe('frame');
   });

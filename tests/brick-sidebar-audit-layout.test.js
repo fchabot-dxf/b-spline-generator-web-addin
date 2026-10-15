@@ -87,12 +87,14 @@ describe('BRICK audit layout items', () => {
 });
 
 describe('item 43: revealBrickControl (the brick matrix acts with the tab of the control up)', () => {
-  it('a global control brings General up (the tool stays); an element control the tab of the tool; others change nothing', () => {
+  // phase 4: General is a branch of the drawer tree -- revealing a global control OPENS it, beside the armed tool's
+  it('a global control opens the General branch (the tool stays armed); an element control stays with the armed tool; others change nothing', () => {
     window.svgEditor = { setMode: () => {} };
     $('brickTool_wall').click();
     expect(activeBrickTab()).toBe('wall');
     revealBrickControl('brickSuppression');
-    expect(activeBrickTab()).toBe('general');
+    expect($('brickBranch_general').classList.contains('open')).toBe(true);
+    expect(activeBrickTab()).toBe('wall');
     expect($('brickSec_general_crumble').style.display).toBe(''); // Brick-tab v2: General's Crumble section
     revealBrickControl('brickGroutWidth'); // the Joint width is per element: the tool's tab
     expect(activeBrickTab()).toBe('wall');

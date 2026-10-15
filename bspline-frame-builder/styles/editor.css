@@ -2013,6 +2013,58 @@
     border-left: 4px solid var(--section-stripe);
     gap: 0;
 }
+/* Redesign phase 4 (Fred's mockups, shots/seatD/redesign/mock_Brick_*): the Brick drawer's collapse TREE
+   (main/brick-tab-sections.js BRICK_DRAWER_TREE) -- a card per branch: caret, title, a quiet summary at the right; the
+   open branch holds its colour sections */
+.brick-drawer-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.brick-branch {
+    border: 1px solid var(--cad-border-standard);
+    border-radius: 8px;
+    background: #fff;
+}
+.brick-branch-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: var(--touch-target-min, 32px);
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--cad-text-main);
+}
+.brick-branch.open > .brick-branch-head {
+    background: #f6f8fa;
+    border-bottom: 1px solid var(--cad-border-standard);
+    border-radius: 8px 8px 0 0;
+}
+.brick-branch-caret {
+    width: 14px;
+    color: var(--cad-text-muted);
+    font-size: 11px;
+}
+.brick-branch-title {
+    font-weight: 700;
+    font-size: 14px;
+}
+.brick-branch-summary {
+    margin-left: auto;
+    color: var(--cad-text-muted);
+    font-size: 11px;
+    text-align: right;
+}
+.brick-branch-body {
+    padding: 10px;
+}
+.brick-branch-body[hidden] {
+    display: none;
+}
 /* a label the section's own title replaces (BRICK_TAB_SECTIONS titleOf) */
 .brick-sec-title-label {
     display: none !important;

@@ -458,7 +458,8 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
   const badged = (id) => $(id).hasAttribute('data-brick-pending');
 
   // Fred 2026-10-10: "in the General tab the Generate button has no purpose" -- BRICK_GENERAL_TAB.generates: false
-  it('C9: Generate shows for Wall and Frame, hides for General, Brush, Scissors and Stripe; the strip stays', () => {
+  // phase 4: General is a branch of the drawer tree, open BESIDE the armed element's -- Generate follows the armed tool
+  it('C9: Generate shows for Wall and Frame, hides for Brush, Scissors, Stripe and no tool; opening General changes nothing', () => {
     expect(BRICK_GENERAL_TAB.generates).toBe(false);
     setup('wall');
     expect(slotShown()).toBe(true);
@@ -466,12 +467,12 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
     $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click(); // item 43: Stripe = Brush > Stripe
     expect(slotShown(), 'stripe').toBe(false);
     expect($('editorToolbarBrick').closest('.sticky-actions').style.display).not.toBe('none');
-    $('brickTab_general').click();
-    expect(slotShown(), 'general').toBe(false);
     $('brickTool_frame').click();
     expect(slotShown()).toBe(true);
-    $('brickTab_general').click(); // and back from an element that generates
-    expect(slotShown(), 'general after frame').toBe(false);
+    $('brickTab_general').click(); // the General branch opens; Frame stays armed
+    expect(slotShown(), 'general beside frame').toBe(true);
+    deselectTool();
+    expect(slotShown(), 'no tool').toBe(false);
   });
 
   it('item 27: no pending badge anywhere -- the Brick tab button -- after a change, with or without a tool', () => {
@@ -718,7 +719,10 @@ describe('turn 195: Generate failure, and items 20 + 27 (a brush stroke change r
 
 describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fieldstone walls only)', () => {
   const shown = (id) => $(id).style.display !== 'none';
+  // phase 4: a row can sit in a FOLDED branch of the drawer tree -- on screen = no ancestor hides it
+  const onScreen = (id) => { for (let e = $(id); e; e = e.parentElement) if (e.style.display === 'none' || e.hidden) return false; return true; };
   beforeEach(() => {
+    try { localStorage.removeItem('bspline.brick.drawerOpen'); } catch (_) { /* the tree's first look (BRICK_TREE_OPEN_KEY) */ }
     P.brickSettings.largeStones = 0.5;
     setup('wall');
   });
@@ -727,22 +731,25 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
   it('Stripe declares sharedRows: false -> its tab shows no shared row; the Wall tab shows its element rows only', () => {
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickGroutWidthRow')).toBe(true);
-    expect(shown('brickSizeBlock') || shown('brickSec_general_size')).toBe(false); // Brick-tab v2: General's own sections
+    expect(onScreen('brickSizeBlock') || onScreen('brickSec_general_size')).toBe(false); // phase 4: in the General branch, folded
     $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click();
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(false);
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow']) expect(shown(id), id).toBe(false);
     $('brickTool_wall').click();
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickGroutWidthRow')).toBe(true);
   });
-  it('item 43: General shows the global blocks + the Grout block (not its Width row) and no tool section; the tool stays', () => {
+  // phase 4: General is a branch of the drawer tree -- it opens BESIDE the armed element's branch (no longer a tab that
+  // hides it); the tool stays armed and its rows stay where they are
+  it('phase 4: opening General shows the global blocks beside the armed tool, whose section and rows stay', () => {
+    expect(onScreen('brickSizeBlock')).toBe(false); // folded at first (BRICK_TREE_DEFAULT_OPEN)
     $('brickTab_general').click();
-    for (const id of ['brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(true);
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(shown(id), id).toBe(false);
-    expect($('brickTab_general').classList.contains('active')).toBe(true);
-    expect($('brickTool_wall').classList.contains('active')).toBe(false);
-    $('brickTool_wall').click();
-    expect(shown('brickWallSection')).toBe(true);
-    expect(shown('brickSizeBlock')).toBe(false);
+    for (const id of ['brickSizeBlock', 'brickSec_general_size']) expect(onScreen(id), id).toBe(true);
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(onScreen(id), id).toBe(true);
+    expect($('brickTool_wall').classList.contains('active')).toBe(true);
+    $('brickTab_general').click(); // the header OPENS (a second tap keeps it open; its caret folds)
+    expect(onScreen('brickSizeBlock')).toBe(true);
+    $('brickBranch_general').querySelector('.brick-branch-caret').click();
+    expect(onScreen('brickSizeBlock')).toBe(false);
   });
   it('the Large stones row shows only for a fieldstone wall (item 23: the Fieldstone pattern = the rock set)', () => {
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
@@ -986,7 +993,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N7: Scissors hides the shared rows too (a cut keeps each piece's draw-time settings)", () => {
     setup('wall');
     $('brickTool_scissors').click();
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(false); // item 43: by scope
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow']) expect(shown(id), id).toBe(false); // item 43: by scope (General's global rows sit in its own branch)
   });
 
   // item 66 inverts N9's "no template -> a toast": no template = the bands follow the board rectangle; the toast stays
