@@ -1105,7 +1105,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       // frame motifs: a row-cutting motif sets the row's cut itself (band-motif.js motifRowPlan); every other band as before
       const motifPlan = motifCutsRows(motif)
-        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L, H, J: set.grout.widthIn }) : null;
+        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L, H, J: set.grout.widthIn, bond: band.bond }) : null;
       const pitch = motifPlan ? motifPlan.pitch : patternPitch;
       const rowSequence = motifPlan ? motifPlan.sequence : sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;

@@ -117,7 +117,7 @@ describe('item 9: the Window surround block (Frame tab)', () => {
   });
 });
 
-describe('item 9: Crumble top bias (General tab only)', () => {
+describe('item 9: Crumble top bias (General only)', () => {
   it("lives in General's Crumble section (Brick-tab v2), labelled, with the tooltip naming the wall and frame crumble", () => {
     expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toContain('brickTopBiasRow');
     expect($('brickSec_general_crumble').contains($('brickTopBias'))).toBe(true);
@@ -126,7 +126,7 @@ describe('item 9: Crumble top bias (General tab only)', () => {
     expect(label.title).toMatch(/wall and frame crumble/);
     expect($('brickFrameSection').querySelector('#brickTopBias')).toBeNull();
     revealBrickControl('brickTopBias');
-    expect(activeBrickTab()).toBe('general');
+    expect($('brickBranch_general').classList.contains('open')).toBe(true); // phase 4: General is a branch of the drawer tree
   });
   it('an absent field shows 0.8; an edit writes the value', () => {
     delete P.brickSettings.topBias;

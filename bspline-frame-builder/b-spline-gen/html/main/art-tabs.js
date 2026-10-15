@@ -57,8 +57,12 @@ function _layoutToolRow(top) {
 }
 /** The strip shows the active top tab's own Art tabs only. */
 function _showStripFor(top) {
-  const own = (EDITOR_TABS.find((t) => t.id === top) || {}).artTabs;
+  const def = EDITOR_TABS.find((t) => t.id === top) || {};
+  const own = def.artTabs;
   if (!own) return;
+  // phase 4: a tab whose drawer is a collapse tree (EDITOR_TABS `drawerTree`) shows no strip -- the tree replaced it
+  // (its buttons stay in the page: the brick matrix and the shortcuts still reach them)
+  if (def.drawerTree) { for (const t of ART_TABS) { const b = document.getElementById(`artTab_${t.id}`); if (b) b.style.display = 'none'; } return; }
   for (const t of ART_TABS) { const b = document.getElementById(`artTab_${t.id}`); if (b) b.style.display = own.includes(t.id) ? '' : 'none'; }
 }
 
@@ -79,8 +83,6 @@ export function setArtTab(id, { arm = true } = {}) {
   _tab = id;
   _showStripFor(top || getEditorTab());
   _layoutToolRow(top || getEditorTab());
-  const general = document.getElementById('artGeneralBody');
-  if (general) general.style.display = id === 'general' ? '' : 'none';
   if (_sync) _sync(id);
   if (!arm) return;
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
