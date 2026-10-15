@@ -8,7 +8,7 @@
  * without a motif never reaches this file, so every other lay is unchanged.
  */
 import { BAND_MOTIFS, RELIEF_LEVELS, RELIEF_CHARS } from './library.js';
-import { MIN_CLOSER_FRACTION } from './piece-plan.js';
+import { MIN_CLOSER_FRACTION, CLOSER_MAX_FRACTION } from './piece-plan.js';
 import { signedArea } from './geometry.js';
 
 /** The band's motif (BAND_MOTIFS entry), or null. */
@@ -47,9 +47,15 @@ export function motifRowPlan(motif, { row, d0, d1, bandStart, L, H, J, bond }) {
   // the run's pitch (the closers' and the run merge's base) is one MODULE, joint included: an end closer the mitre cuts to a
   // sliver then merges into its neighbour under the 1.2 ceiling (MEASURED 9x12 at 1 in: on a one-cell pitch the merge was
   // refused at 1.23 and the sliver stayed, 0.17 of a cell)
-  const pitch = unit;
+  // `maxPieceFactor` (Fred 2026-10-15, the short-brick motifs): the closers and the merge are based on the motif's own piece
+  // instead, so no closer or merged piece passes maxPieceFactor x its longest slot (a closer reaches CLOSER_MAX_FRACTION x the
+  // pitch) -- on a whole-brick pitch a third-brick run's end pieces reached 3-4 bricks on short curves. Absent: as before.
+  const pitch = motif.maxPieceFactor ? (motif.maxPieceFactor * (Math.max(...slots.map((s) => s.len)) * unit - J)) / CLOSER_MAX_FRACTION : unit;
   const from = d0 - bandStart;
-  const minEnd = from + J + MIN_CLOSER_FRACTION * (unit - J) + (d1 - d0) / 2;
+  // the start piece's reach past the run's start: a closer's floor plus half the row's depth (a right-angle mitre's triangle);
+  // under maxPieceFactor the floor alone -- a curve run starts on a smooth joint with no triangle, and that half depth made its
+  // start piece 1.7-2x the motif's brick (MEASURED T1 9x12 notch); a mitre-clipped start sliver merges forward (ceiling above)
+  const minEnd = from + J + MIN_CLOSER_FRACTION * (pitch - J) + (motif.maxPieceFactor ? 0 : (d1 - d0) / 2);
   const period = slots.reduce((s, x) => s + x.len, 0) * unit;
   // the boundary at the start of slot 0 of the period just before minEnd, then forward slot by slot
   let b = offset * unit + Math.floor((minEnd - offset * unit) / period - 1) * period, i = 0;

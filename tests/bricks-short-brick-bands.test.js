@@ -17,9 +17,10 @@ import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS, BAND_MOTIFS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { WOOD_FRAME_FAMILIES } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/frame-families.js';
-import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { buildRibbonPrimitives, frameBandsOf, brickLayInput } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rectToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/core/inset-window.js';
 import { tess, bareGround, PATCH_MAX_FACE } from './bare-ground.js';
+import { createHash } from 'node:crypto';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -39,11 +40,12 @@ const lay = (prims, bands, L, W, H) => generateBricks({ boardOutline: [{ x: 0, y
 const lengthsOf = (band) => { const m = BAND_MOTIFS[band.motif]; return m.unit === 'L' ? m.rows[0].seq.map(([len]) => len) : null; };
 
 describe('the short-brick bands are declared', () => {
-  it('each: three mitred one-course bands at the usual size, every band a short-brick motif (1/2 or 1/3 of a brick, or a half-brick soldier)', () => {
+  it('each: three mitred one-course bands, best at 1 in (Fred 2026-10-15), every band a short-brick motif (1/2 or 1/3 of a brick, or a half-brick soldier)', () => {
     for (const id of SHORT) {
       const bands = FRAME_PRESETS[id];
       expect(bands.length, id).toBe(3);
-      expect(bands.bestSize, id).toBe(1.25);
+      expect(bands.bestSize, id).toBe(1);
+        expect(bands.every((b) => BAND_MOTIFS[b.motif].maxPieceFactor === 1.5), `${id}: pieces capped at 1.5 bricks`).toBe(true);
       for (const b of bands) {
         expect(b.cornerStyle, `${id}: mitred`).toBeUndefined();
         expect(b.rows, id).toBe(1);
@@ -71,8 +73,8 @@ describe('the short-brick bands are declared', () => {
   });
 });
 
-describe('the short bricks lay as declared (9x12 rectangle, 1.25 in)', () => {
-  const W = 9, H = 12, L = 1.25, rect = primitivesOf('rect', W, H);
+describe('the short bricks lay as declared (9x12 rectangle, 1 in)', () => {
+  const W = 9, H = 12, L = 1, rect = primitivesOf('rect', W, H);
   const s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn;
   // the top side's run of band k: pieces above both corner mitres, left to right
   const topSide = (bricks, k) => bricks.filter((b) => { const c = centroid(b.polygon); return b.bandIndex === k && c.y < c.x && c.y < W - c.x; })
@@ -148,13 +150,24 @@ describe('the short-brick bands lay cleanly at their best size', () => {
     const bands = FRAME_PRESETS[preset];
     const r = lay(prims, bands, L, W, H), s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, contour = tess(prims);
     expect(r.frameBricks.length).toBeGreaterThan(0);
-    // the stack: the fit rule (contour-bands.js fitBandStack) drops bands from the INSIDE where a neck is too narrow -- as it
-    // does for every deep preset (MEASURED at 1.25 in, 7x9: three_band and soldier_string keep 1 of 3 bands on all six of
-    // these templates); these keep all three on the rectangle and on the roomier 9x12 boards
+    // the stack: the fit rule (contour-bands.js fitBandStack) drops bands from the INSIDE where a neck is too narrow, as it
+    // does for every deep preset. At 1 in (MEASURED 2026-10-15, every template of the five families): all three bands on 7x9
+    // T1 and T6 and on every 9x12 board but T18 / T19 (two bands; the soldier course one); on 7x9 T7 / T10 / T15 only the
+    // soldier course drops its inner band, on T18 every preset does
     const laid = bands.map((_, k) => r.frameBricks.some((b) => b.bandIndex === k));
     expect(laid[0], 'the outer band').toBe(true);
     expect(laid.join(), 'dropped from the inside only').toBe(laid.map((_, k) => k < laid.filter(Boolean).length).join());
-    if (tpl === 'rect' || (H === 12 && ['template_1', 'template_6', 'template_10'].includes(tpl))) expect(laid.every(Boolean), 'all three bands').toBe(true);
+    const allThree = tpl === 'rect' || tpl === 'template_1' || tpl === 'template_6' || (H === 12 && tpl !== 'template_18')
+      || (tpl !== 'template_18' && preset !== 'half_soldier_course');
+    if (allThree) expect(laid.every(Boolean), 'all three bands').toBe(true);
+    // no long piece (Fred 2026-10-15, maxPieceFactor 1.5): a piece's run length (its area over its course depth) is at most
+    // 1.5 of its band's brick, plus a little for a mitre's or a curve's taper (before: up to 4.1 on the hourglass notch)
+    const longest = (b) => { const band = bands[b.bandIndex], m = BAND_MOTIFS[band.motif];
+      const brick = m.unit === 'L' ? Math.max(...lengthsOf(band)) * s.brickLengthIn - J : s.brickHeightIn - J;
+      const depth = (m.rowDepth || 1) * s.brickHeightIn - J + (b.bandIndex === 0 ? J / 2 : 0);
+      return area(b.polygon) / depth / brick; };
+    const long = r.frameBricks.filter((b) => longest(b) > 1.6).map((b) => `${b.id} ${longest(b).toFixed(2)}`);
+    expect(long, 'pieces over 1.5 bricks').toEqual([]);
     for (const b of r.frameBricks) expect(b.relief, b.id).toBeDefined();
     // no sliver: every piece at least 3/4 of its band's floor -- a quarter of its shortest brick x the course face
     const floorOf = (band) => { const m = BAND_MOTIFS[band.motif], along = m.unit === 'L' ? Math.min(...lengthsOf(band)) * s.brickLengthIn : s.brickHeightIn;
@@ -176,5 +189,71 @@ describe('the short-brick bands lay cleanly at their best size', () => {
     expect(r.frameBricks.filter(outside).length, 'frame pieces outside the outline').toBe(0);
     const bare = bareGround(contour, [...r.frameBricks, ...r.bricks], J, { W, H });
     expect(bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), 'largest bare patch, share of one brick face').toBeLessThanOrEqual(PATCH_MAX_FACE);
+  });
+});
+
+// Saved boards lay exactly as before (Fred 2026-10-15): every motif preset that existed before the short-brick bands, on the
+// hourglass (template_1, 7x10) at 1 and 1.25 in, through the app's own path (frameBandsOf -> brickLayInput -> generateBricks):
+// its frame pieces + relief and its wall. Digests taken with origin/main's (2026-10-15) band-motif.js / contour-bands.js (before
+// `bond` and `maxPieceFactor`); a motif without either lays as it always did.
+const HOURGLASS_MOTIF_PINS = {
+  'dentil_corbel 1': '200/87:e3d139dbffb910de:d5f48152dd306675',
+  'dentil_corbel 1.25': '124/60:1598f7dd7cf58d4f:6171fbf826925560',
+  'recessed_panel 1': '176/87:bb6318a53fd89ea1:d5f48152dd306675',
+  'recessed_panel 1.25': '112/60:ee8365b7dd8c3f58:6171fbf826925560',
+  'recessed_panel_quoin 1': '146/80:dd0278be30336c80:4dea69bcb7642678',
+  'recessed_panel_quoin 1.25': '104/56:0997892da974929d:6bd94c23934b599e',
+  'zigzag_band 1': '479/87:cddc0546ed20cb9b:d5f48152dd306675',
+  'zigzag_band 1.25': '292/60:d6b9265f736bb7d0:6171fbf826925560',
+  'diaper_lattice 1': '479/87:ea6e7e35387d6439:d5f48152dd306675',
+  'diaper_lattice 1.25': '292/60:812f311db9c1911e:6171fbf826925560',
+  'soldier_string 1': '148/92:d0f2e4d51dc88f9c:1b6f873402b60592',
+  'soldier_string 1.25': '30/125:445489998bd4185d:2049573017f99ee8',
+  'dentil_cornice 1': '174/94:4831d772823edf59:1703c7d3f3d1f1d7',
+  'dentil_cornice 1.25': '114/71:f48a4bb93c5cd44a:9286457346640f97',
+  'stepped_fret 1': '204/109:d8b202d5e9d21d27:f83a5d10a61d06b1',
+  'stepped_fret 1.25': '164/60:e1a0f2b0ba4982ff:6171fbf826925560',
+  'tudor_frieze 1': '479/87:ea6e7e35387d6439:d5f48152dd306675',
+  'tudor_frieze 1.25': '292/60:812f311db9c1911e:6171fbf826925560',
+  'tudor_frieze_quoin 1': '354/80:5912612fb2bcfe7f:4dea69bcb7642678',
+  'tudor_frieze_quoin 1.25': '228/56:a1a233bec67c1863:6bd94c23934b599e',
+  'corbelled_cornice 1': '214/109:176902b2f57dce56:f83a5d10a61d06b1',
+  'corbelled_cornice 1.25': '166/60:0741df4c993a321c:6171fbf826925560',
+  'corbelled_cornice_quoin 1': '168/102:0e21dbcd6c3cde67:05d8d33790f9891d',
+  'corbelled_cornice_quoin 1.25': '138/56:7d8b57a0479823ee:6bd94c23934b599e',
+  'chicago_dentil 1': '98/156:ee792dc4340a4a71:44d334193a662f6c',
+  'chicago_dentil 1.25': '76/97:28621a349f54b120:38da8f9769460848',
+  'crenellated_battlement 1': '198/134:4b88e41d7de7766c:156c07e4ecbccdd6',
+  'crenellated_battlement 1.25': '156/78:fc9b876d36fe010d:6ac7cc1718b134be',
+  'art_deco_stepped 1': '184/134:e2bcb6da76e52e03:156c07e4ecbccdd6',
+  'art_deco_stepped 1.25': '156/78:25b89ef558a0dca1:6ac7cc1718b134be',
+  'florentine_architrave 1': '150/156:3aba8414c7c86d4e:44d334193a662f6c',
+  'florentine_architrave 1.25': '118/97:242b33dcccccb02b:38da8f9769460848',
+  'venetian_dentil 1': '230/109:a6667d1556353fb6:f83a5d10a61d06b1',
+  'venetian_dentil 1.25': '174/60:f967e359ef373122:6171fbf826925560',
+  'slim_runner 1': '40/186:5ec67cd740381ed5:0f94afd12e21813f',
+  'slim_runner 1.25': '30/125:091be1f72fe7afde:2049573017f99ee8',
+  'checker_tile_runner 1': '250/156:6643e16829f59996:44d334193a662f6c',
+  'checker_tile_runner 1.25': '198/97:04b482244f30b673:38da8f9769460848',
+  'twin_runner 1': '74/156:7d8456c560f57ee3:44d334193a662f6c',
+  'twin_runner 1.25': '62/97:2c53196325a5cd6a:38da8f9769460848',
+};
+describe('a saved motif board on the hourglass re-lays exactly as before', () => {
+  const W = 7, H = 10;
+  const editor = { _mW: W, _mH: H, _sketchLayer: { node: { querySelectorAll: () => [], querySelector: () => null } }, _layers: [] };
+  const sha = (x) => createHash('sha1').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+  const pts = (p) => p.map((q) => [+q.x.toFixed(5), +q.y.toFixed(5)]);
+  it('every motif preset before them, 1 and 1.25 in', () => {
+    const primitives = primitivesOf('template_1', W, H);
+    const got = {};
+    for (const key of Object.keys(HOURGLASS_MOTIF_PINS)) {
+      const [preset, L] = key.split(' ');
+      const settings = { frameBandPreset: preset, brickLengthIn: +L, seed: 1, suppression: 0, clumping: 0, pattern: 'running_bond' };
+      const r = generateBricks(brickLayInput(editor, settings, { primitives, bands: frameBandsOf(settings, 'template_1'), templateId: 'template_1' }));
+      const frame = r.frameBricks.map((b) => [pts(b.polygon), b.relief || null]);
+      got[key] = `${frame.length}/${r.bricks.length}:${sha(frame)}:${sha(r.bricks.map((b) => pts(b.polygon)))}`;
+    }
+    expect(Object.keys(got).length).toBeGreaterThan(30);
+    expect(got).toEqual(HOURGLASS_MOTIF_PINS);
   });
 });
