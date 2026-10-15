@@ -1624,6 +1624,8 @@ function syncGroutPaintRow() {
   document.getElementById('brickGroutColorNone')?.classList.toggle('active', !base.color);
   const edge = document.getElementById('brickGroutEdge');
   if (edge && document.activeElement !== edge) edge.value = String(+(Number(base.paintInsetIn) || 0).toFixed(4));
+  const label = document.getElementById('brickGroutPaintLabel');
+  if (label) label.textContent = ROLE_LABELS.grout; // the row sits in each element's Colour section (Fred 2026-10-15)
   const scope = document.getElementById('brickGroutPaintScope');
   if (scope) scope.textContent = target ? `this ${ELEMENT_LABELS[target] || target}` : 'every element';
 }

@@ -46,7 +46,7 @@ const FIXTURE = `
   <label id="brickGroutDepthLabel">Joint depth (in)</label><input id="brickGroutDepth"></div>
   <div id="brickLookModeRow"><button id="brickLook_colour"></button><button id="brickLook_height"></button></div>
   <div id="brickColourRow"></div>
-  <div id="brickGroutPaintRow"><span id="brickGroutPaintScope"></span><button id="brickGroutColorSwatch"></button>
+  <div id="brickGroutPaintRow"><span id="brickGroutPaintLabel"></span><span id="brickGroutPaintScope"></span><button id="brickGroutColorSwatch"></button>
   <button id="brickGroutColorNone"></button><input id="brickGroutEdge"></div>
   <div id="brickQuickSettings"></div>
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
@@ -129,6 +129,7 @@ describe('the panel', () => {
     expect(groutPaintOf(P.brickSettings, 'frame').color).toBe('#cfc6b4'); // the old global: the fallback
     $('brickTool_frame').click();
     expect($('brickGroutPaintScope').textContent).toContain('Brick frame');
+    expect($('brickGroutPaintLabel').textContent).toBe('Grout'); // not "Colour" under the Colour header (advisor 2026-10-15)
   });
 });
 

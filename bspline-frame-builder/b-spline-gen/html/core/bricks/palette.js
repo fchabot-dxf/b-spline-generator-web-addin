@@ -37,7 +37,7 @@ export const ROLES_FOR_KIND = Object.freeze({
   frame: Object.freeze(['field', 'motif', 'accent', 'stone']),
   brush: Object.freeze(['field', 'accent']),
 });
-export const ROLE_LABELS = Object.freeze({ field: 'Field', motif: 'Motif', accent: 'Accent', stone: 'Stone' });
+export const ROLE_LABELS = Object.freeze({ field: 'Field', motif: 'Motif', accent: 'Accent', stone: 'Stone', grout: 'Grout' }); // grout: its row below the swatches (brick-panel.js syncGroutPaintRow)
 const PAINTED_ROLES = BRICK_COLOUR_ROLES.filter((r) => r !== 'grout');
 
 const _setIdOf = (settings, kind) => {

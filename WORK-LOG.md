@@ -26389,3 +26389,8 @@ Greek key, dentil corbel boards in 2D / 3D).
 
 **Left running (not mine to kill under auto mode):** my scratch serve.py on 9781 (PIDs 12496, 64248) -- the kill was
 denied by the permission classifier; harmless, but the port stays busy until stopped.
+
+**Grout label (advisor, 2026-10-15).** The grout row in each Colour section read "Colour · this Brick frame" under the
+COLOUR header; it now reads "Grout", declared as ROLE_LABELS.grout (palette.js) beside the role labels and written by
+syncGroutPaintRow (the HTML span is empty). Test: brick-colour-ui asserts the label; fails 1/7 on the pre-change
+brick-panel.js. Phone shot: shots/seatA/colour_ui/colour_phone_frame_section_grout_label.png.
