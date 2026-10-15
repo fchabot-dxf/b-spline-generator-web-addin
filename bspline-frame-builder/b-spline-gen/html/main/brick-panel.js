@@ -3012,6 +3012,12 @@ const FRAME_PRESET_LABELS = {
   slim_runner: 'Slim runner',
   checker_tile_runner: 'Checker tile runner',
   twin_runner: 'Twin thin runner',
+  half_running_bond: 'Half bricks · running bond',
+  half_stack_bond: 'Half bricks · stack bond',
+  third_stepped_bond: 'Third bricks · stepped bond',
+  half_slim_third: 'Half bricks + slim thirds',
+  short_alternating: 'Short bricks · alternating',
+  half_soldier_course: 'Half-brick soldiers',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));

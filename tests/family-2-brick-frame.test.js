@@ -123,5 +123,5 @@ describe('Family 2 Brick Frame Adaptation (Arched Head & Vaulted Frames)', () =>
         }
       }
     }
-  });
+  }, 90000); // every conforming preset on every template: 18 s alone with the six short-brick bands (2026-10-14), 30 s+ under a parallel run
 });

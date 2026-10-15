@@ -47,7 +47,9 @@ describe('the narrow runners are declared', () => {
     }
   });
   it('each is at most 0.4 in deep at its best size -- under half the narrowest preset before them', () => {
-    const others = Object.entries(FRAME_PRESETS).filter(([id, b]) => b.length && !RUNNERS.includes(id));
+    // the presets declared before them (the short-brick bands came later: tests/bricks-short-brick-bands.test.js)
+    const LATER = ['half_running_bond', 'half_stack_bond', 'third_stepped_bond', 'half_slim_third', 'short_alternating', 'half_soldier_course'];
+    const others = Object.entries(FRAME_PRESETS).filter(([id, b]) => b.length && !RUNNERS.includes(id) && !LATER.includes(id));
     const narrowestOther = Math.min(...others.map(([, b]) => depthAt(b, b.bestSize || 1.25)));
     expect(narrowestOther).toBeCloseTo(1, 6); // header_band, crenellated_battlement at 1.25 in
     for (const id of RUNNERS) {
