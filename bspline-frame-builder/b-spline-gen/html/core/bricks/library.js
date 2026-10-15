@@ -625,6 +625,18 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
     { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'header' },
   ]),
+  // Fred 2026-10-14 ("some that are NARROWER ... 2 or 3 runners"): slim border runners, 0.2-0.4 in deep at their best size --
+  // the narrowest preset before them is 1 in (header_band at 1.25 in). Every joint a mitre (tests/bricks-narrow-runners.test.js)
+  slim_runner: withBestSize(0.75, [ // one raised course of small stretchers
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'raised' },
+  ]),
+  checker_tile_runner: withBestSize(0.75, [ // two rows of square tiles (header cells), raised checkerboard, solid corner squares
+    { widthIn: 0.4, rows: 2, pattern: 'header', motif: 'checker' },
+  ]),
+  twin_runner: withBestSize(0.375, [ // two very thin courses, the outer raised
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'raised' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+  ]),
 }));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
@@ -685,6 +697,8 @@ export const BAND_MOTIFS = Object.freeze({
   // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
   // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
   diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  // 2026-10-14 (the narrow runners): a two-row checkerboard of square tiles; each corner square solid raised
+  checker: { unit: 'H', grid: { tile: ['R.', '.R'], corner: ['RR', 'RR'] } },
 });
 
 /**
