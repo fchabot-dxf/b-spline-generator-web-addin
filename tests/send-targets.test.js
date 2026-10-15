@@ -26,8 +26,8 @@ describe('the declared targets', () => {
     expect(DEFAULT_SEND_TARGET).toBe('replace');
     for (const t of SEND_TARGETS) expect(t.label && t.title, t.id).toBeTruthy();
   });
-  it('the menu offers only the ready ones (a new component waits for the per-board params)', () => {
-    expect(offeredSendTargets().map((t) => t.id)).toEqual(['replace', 'newDocument']);
+  it('the menu offers every ready target -- a new component too, now each board has its own params (S2)', () => {
+    expect(offeredSendTargets().map((t) => t.id)).toEqual(['replace', 'newComponent', 'newDocument']);
   });
 });
 
@@ -69,7 +69,7 @@ describe('the Send ▾ menu', () => {
   it('lists the offered targets; a pick sends to it and closes the menu', () => {
     const onFusionApply = vi.fn();
     bindSendTargetMenu('preview', onFusionApply);
-    expect([...$('sendTargetMenu').querySelectorAll('button')].map((b) => b.id)).toEqual(['sendTarget_replace', 'sendTarget_newDocument']);
+    expect([...$('sendTargetMenu').querySelectorAll('button')].map((b) => b.id)).toEqual(['sendTarget_replace', 'sendTarget_newComponent', 'sendTarget_newDocument']);
     $('btnSendMenu').click();
     expect($('sendTargetMenu').hidden).toBe(false);
     $('sendTarget_newDocument').click();
