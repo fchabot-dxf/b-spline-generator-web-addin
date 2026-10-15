@@ -66,10 +66,10 @@ describe("migration 'brick-set-per-element'", () => {
   });
   it('a board already per element is left alone', () => {
     const b = migrate({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack' });
-    // (the later 'grout-per-element', 'window-surround-legacy-none' and 'brick-size-per-element' migrations add their own
+    // (the later 'grout-per-element', 'window-surround-legacy-none', 'brick-size-per-element' and 'brick-height-records' migrations add their own
     // fields -- a save with no size laid each element at its set's own length, 0.75 for set 1; this one changes nothing)
     const none = { wall: null, frame: null, brush: null };
     expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: none, windowSurround: { preset: 'none' },
-      sizeByElement: { wall: 0.75, frame: 0.75, brush: 0.75 }, grout: {}, groutDepthByElement: none, groutProfileByElement: none });
+      sizeByElement: { wall: 0.75, frame: 0.75, brush: 0.75 }, grout: {}, groutDepthByElement: none, groutProfileByElement: none, heights: [] });
   });
 });

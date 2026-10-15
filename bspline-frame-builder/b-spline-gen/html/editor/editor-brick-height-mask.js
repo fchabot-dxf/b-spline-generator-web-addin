@@ -23,6 +23,7 @@ import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR, BRICK_TOP_FLAT_ATTR, BRICK_JOIN_RAISED_ATTR } from './editor-brick-tool.js';
 import { accentedBrickIndices, accentedRunIndices, clampAccentLevel, ACCENT_MARK_ATTR } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
+import { heightLevelsFor } from '../core/bricks/height-records.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
 // main thread"): at Masonry/Masonry max resolution this loop runs up to ~525,000 iterations fully
@@ -159,6 +160,9 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     for (const b of all) if (b.kind === 'brush') { const k = b.owner || 'stroke'; if (!strokes.has(k)) strokes.set(k, []); strokes.get(k).push(b); }
     for (const bricks of strokes.values()) runAccent(bricks, opts.brushAccent);
   }
+  // Fred 2026-10-11 (the Raised brush retired): each selected brick's own HEIGHT, a declared record re-matched to the bricks
+  // of THIS lay (core/bricks/height-records.js: a tap's points, a box's region by centroid; the latest record wins)
+  if (opts.heights && opts.heights.length) for (const [k, level] of heightLevelsFor(opts.heights, all)) all[k].heightOffset += level;
   if (!groups.length) return { body, fillet, isStamped, metrics: null, nx, nz, faces: {}, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
