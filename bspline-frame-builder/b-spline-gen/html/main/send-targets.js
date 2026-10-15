@@ -5,15 +5,15 @@
  *   replace       this project's board: its tagged board component in the open design, else the legacy root board
  *   newComponent  a NEW board component beside the others in the open design (the project adopts its new boardId)
  *   newDocument   a new Fusion document; the documents already open are never touched
- * `ready: false` = declared, not offered yet (newComponent waits for the per-board params of the next slice: two
- * boards in one design would share widthIn / heightIn and resize each other until then).
+ * `ready: false` = declared, not offered yet. (newComponent was, until S2's per-board params landed: two boards in one
+ * design shared widthIn / heightIn and resized each other; each board's names are its own since, 2026-10-15.)
  * The board identity is P.boardId (saved with the project; a New project / a Save As copy starts without one).
  */
 import { P } from '../core/state.js';
 
 export const SEND_TARGETS = Object.freeze([
   Object.freeze({ id: 'replace', label: 'Send (replace)', title: "Replace this project's board in the open Fusion design", ready: true }),
-  Object.freeze({ id: 'newComponent', label: 'Send as new component', title: 'A new board beside the others in the open Fusion design', ready: false }),
+  Object.freeze({ id: 'newComponent', label: 'Send as new component', title: 'A new board beside the others in the open Fusion design', ready: true }), // S2 merged: per-board params
   Object.freeze({ id: 'newDocument', label: 'Send as new document', title: 'A new Fusion document (the open ones are untouched)', ready: true }),
 ]);
 export const DEFAULT_SEND_TARGET = 'replace';
