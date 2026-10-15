@@ -482,6 +482,10 @@ function touchesDegenerately(a, b) {
  *  double_herringbone: a 0.06 sq in triangle, a 0.26-face hole). The walk's every loop, held to the one-piece answer's own
  *  reality check (their areas sum to no more than the subject's); a touching input (the shifted path) or any doubt: the
  *  one piece polygonIntersection gives. [] = no overlap. */
+/** A piece of `subject & clip` lies in `subject`: every vertex inside it or on its edge (MEASURED T14 7x9 4 in: the walk's
+ *  no-crossing shortcut, read off one vertex, handed a whole 2.4 sq in region lobe to three cells it only grazed) */
+const withinSubject = (part, subject) => part.every((p) => pointInPolygon(p.x, p.y, subject)
+  || subject.some((q, j) => distSqToSegment(p.x, p.y, subject[(j + subject.length - 1) % subject.length], q) <= 1e-12));
 export function polygonIntersectionParts(subject, clip) {
   const one = polygonIntersection(subject, clip);
   if (one.length < 3) return [];
@@ -489,7 +493,7 @@ export function polygonIntersectionParts(subject, clip) {
   const loops = clipLoops(subject, clip, false);
   if (!Array.isArray(loops[0]) || loops.length < 2) return [one];
   const total = loops.reduce((sum, l) => sum + Math.abs(signedArea(l)), 0);
-  return total > Math.abs(signedArea(subject)) * 1.0001 + 1e-9 ? [one] : loops.filter((l) => l.length >= 3);
+  return total > Math.abs(signedArea(subject)) * 1.0001 + 1e-9 ? [one] : loops.filter((l) => l.length >= 3 && withinSubject(l, subject));
 }
 
 function intersectGeneral(subject, clip) {
@@ -744,8 +748,8 @@ export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
 export function clipPolygonToRegionParts(poly, region, cellRefPoint) {
   if (isConvex(region)) { const one = clipPolygonToBoard(poly, region, cellRefPoint); return one.length >= 3 ? [one] : []; }
   const lobes = lobesCached(region);
-  if (!lobes) return polygonIntersectionParts(poly, region);
-  return lobes.flatMap((lobe) => polygonIntersectionParts(poly, lobe));
+  if (!lobes) return polygonIntersectionParts(poly, region).filter((p) => withinSubject(p, poly));
+  return lobes.flatMap((lobe) => polygonIntersectionParts(poly, lobe)).filter((p) => withinSubject(p, poly));
 }
 
 export function clipPolygonToRegion(poly, region, cellRefPoint) {

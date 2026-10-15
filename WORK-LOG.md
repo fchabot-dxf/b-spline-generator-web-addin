@@ -26303,3 +26303,30 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Expected changes: frame-corner-effect's T18 at 1.25 in case -- Block now cuts its arched top (live), Butt / Lapped still
   greyed; frame-presets-unchanged re-pinned on this code -- exactly T18 quoin_corners 0.75 / 1.25 changed.
 - Main's own failures, not this branch's: GAP_SWEEP_FULL 14 + TIP_FAN_SWEEP_FULL 1 arch_keystone rows fail on origin/main too.
+
+## Main's new presets / patterns, engine fixes: no self-crossing frame piece; every part of a cut wall cell laid (seat E / 61, 2026-10-14)
+
+- (a) corbelled_cornice on T8 9x12 1.25 in laid a frame piece crossing itself: a corbel-table row's start cut meeting the corner
+  fan left a 0.02 in bow tie on a band-1 piece's end (the motif off: clean; isolated by variants). geometry.js
+  untangleMicroLoops cuts a loop no larger than a grout-wide fleck (MOTIF_FLECK_SQIN) off at its crossing; contour-bands.js
+  applies it to self-crossing laid pieces only (every simple piece byte-identical). tests/frame-micro-loop.test.js (the
+  measured piece + the two T8 lays, which fail on main).
+- (b) the 17 pattern-gaps rows (main's windmill / english / monk / double_herringbone): MEASURED + rendered
+  (shots/seatE/newpat) -- a wall cell across a frame corner or tip jutting into the region is cut in TWO;
+  polygonIntersection keeps the larger (largestWithinSubject), the other was never laid. The old patterns' PATTERN_CAPS were
+  the same cause. Fred picked A (every tile2d layout + the bond). core/bricks/cell-parts.js: the cell keeps today's clip and
+  id; each other part (> a fleck) is a new cell appended AFTER the lay, id partCellId(parent, k) in its own range -- its
+  seeds (rng.js seedFor by id) from the parent's id + part index, no other id shifts. A bond cell the non-lobe-aware board
+  clip lost WHOLE (T16 7x9 1.5 in english: a stretcher across a bridged V, 0.07-face hole) lays its lobe parts under
+  orphanParentId(course, column). fill-shape: recut ids continue today's (part ids ignored), the crumble is counted on
+  today's cells and a part follows its parent. engine: tips read today's pieces only (a bond's tips are the band's: an added
+  part never moves the frame), and added parts are cut a joint clear of the band (T10 7x9 1 in herringbone: 0.001 sq in under
+  a fan slice). english / monk: tip-fill.js read only a STRETCHER as a whole piece, so their header courses never made a tip's
+  course front (zone 0.40 sq in deep, 74 % covered by headers -> not filled, apex bare); library.js smallestFace 'header'
+  (english / monk only -- on header and flemish it MEASURED a different frame tip fill, and saved boards re-lay as before).
+- Pin (tests/bricks-cell-parts-pin.test.js, digests from main ac93a1c taken in a temp worktree): T6 / T9 / T14 / T16 / T18 7x9
+  x every wall pattern x 0.75 / 1.25 in -- every one of today's wall pieces identical (id, polygon, sample, flip, height,
+  piece) and the frame identical, but 3 frames the english / monk tip fix changes (T14 english / monk, T16 monk at 1.25:
+  re-pinned). PATTERN_SWEEP_FULL 3344 / 3344; PATTERN_CAPS re-measured: 83 of 95 dropped (under PATCH_MAX_FACE), 4 lowered.
+- Ruled out on the way: a header-sized floor for header bonds (not the T16 cause -- reverted); dropping instead of cutting added
+  parts under the frame.
