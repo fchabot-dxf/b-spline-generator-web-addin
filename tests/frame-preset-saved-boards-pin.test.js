@@ -18,6 +18,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives, frameBandsOf, brickLayInput } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -32,7 +33,11 @@ function digest(templateId, preset, L) {
     ? buildRibbonPrimitives(frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId }), board: { widthIn: W, heightIn: H } }, 0, 0).primitives)
     : buildRibbonPrimitives([{ type: 'line', p0: { x: 0, y: 0 }, p1: { x: W, y: 0 } }, { type: 'line', p0: { x: W, y: 0 }, p1: { x: W, y: H } },
       { type: 'line', p0: { x: W, y: H }, p1: { x: 0, y: H } }, { type: 'line', p0: { x: 0, y: H }, p1: { x: 0, y: 0 } }]);
-  const settings = { frameBandPreset: preset, brickLengthIn: L, seed: 1, suppression: 0, clumping: 0, pattern: 'running_bond' };
+  // a SAVED board loads through the app's migrations (main/app-init.js runMigrations: since 2026-10-11 the one saved size
+  // becomes every element's own, 'brick-size-per-element'), as the app reads it
+  const saved = { brickSettings: { frameBandPreset: preset, brickLengthIn: L, seed: 1, suppression: 0, clumping: 0, pattern: 'running_bond' } };
+  runMigrations(saved);
+  const settings = saved.brickSettings;
   // resolveFrameGeom's shape (main/brick-panel.js): the bands for these settings on this template
   const geom = { primitives, bands: frameBandsOf(settings, templateId), templateId };
   const r = generateBricks(brickLayInput(editor, settings, geom));
