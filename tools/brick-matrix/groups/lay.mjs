@@ -65,6 +65,9 @@ export const CARVE_UNDER_FLAT = {
 export const GREY_BY_HEIGHT = {
   // accent: Checkerboard, a Stretcher wall's own preset (0b04ee2: a pattern offers its own; Course bands is not one)
   template: 'template_1', accent: 'brickAccent_checker', wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
+  // Fred 2026-10-15: a NEW board opens in the Colour look -- the download is checked in it first, then in Height grey
+  // (General's 2D look switch, the real control) for the greys below
+  heightLook: 'brickLook_height',
   repaintBudgetMs: 250, // MEASURED unthrottled at 1366 on the mock (3 layers, 141 x 181): 24-187 ms with a full re-encode
 };
 
@@ -263,6 +266,22 @@ async function runGreyByHeight() {
   for (let t = 0; t < 30 && b.grey < b.n; t++) { await sleep(1000); b = await jsJSON(GREY_FILLS); }
   checkRow('lay', 'Grey by height: once the masks land every brick shows its own layer’s height greys (a real image)', b.n > 0 && b.grey === b.n && b.imgsOk && b.textures === 0,
     `${b.grey}/${b.n} bricks on their layer's greys; images ok ${b.imgsOk}; photo patterns ${b.textures}`);
+  // the Colour look (a new board's): every brick path is its element's palette colour for its role (an accent-flagged one
+  // the accent), as core/bricks/palette.js declares it; the grout stays its own paths
+  const c = await jsJSON(`(async () => { const ed = window.svgEditor; const pal = await import('./core/bricks/palette.js'); const { P } = await import('./core/state.js');
+    const svg = await ed.saveSvgDownload(); const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const want = new Map([...ed._sketchLayer.node.querySelectorAll('[data-brick][data-brick-role]')].map((n) => { const kind = n.getAttribute('data-brick');
+      const role = n.getAttribute('data-brick-accent') === '1' ? 'accent' : n.getAttribute('data-brick-role');
+      return [(n.getAttribute('data-brick-owner') || kind) + ':' + n.getAttribute('data-brick-id'), (pal.paletteOf(P.brickSettings, kind)[role] || '').toLowerCase()]; }));
+    const fills = [...doc.querySelectorAll('g[id^="bricks:"] path')].map((p) => [p.id, (p.getAttribute('fill') || '').toLowerCase()]);
+    const known = fills.filter(([id]) => want.has(id)), off = known.filter(([id, f]) => f !== want.get(id));
+    return JSON.stringify({ look: pal.lookModeOf(P.brickSettings), n: fills.length, known: known.length, off: off.length, sample: off.slice(0, 3), colours: [...new Set(known.map(([, f]) => f))].length,
+      grout: doc.querySelectorAll('g[id^="grout:"] path').length }); })()`);
+  checkRow('lay', 'Colour look: a new board\u2019s SVG download paints each brick its element\u2019s palette colour (by role, the accents the accent), the grout its own paths',
+    c.look === 'colour' && c.n > 0 && c.known === c.n && c.off === 0 && c.colours > 1 && c.grout > 0,
+    `look ${c.look}; ${c.n} brick paths, ${c.known} matched to a brick, ${c.off} off the palette ${JSON.stringify(c.sample)}; ${c.colours} colours; ${c.grout} grout paths`);
+  await js(`import('./main/brick-panel.js').then((m) => (m.revealBrickControl ? m.revealBrickControl(${JSON.stringify(G.heightLook)}) : 0, 1), () => 1)`);
+  await click(G.heightLook, 800);
   const d = await jsJSON(`(async () => { const ed = window.svgEditor; const svg = await ed.saveSvgDownload(); const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
     const fills = [...doc.querySelectorAll('g[id^="bricks:"] path')].map((p) => [p.id, p.getAttribute('fill')]);
     const lvl = (f) => { const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(f || ''); return m && m[1] === m[2] && m[2] === m[3] ? parseInt(m[1], 16) : null; };
@@ -277,7 +296,7 @@ async function runGreyByHeight() {
       .some((sub) => !sub.trim().endsWith('Z') || sub.split('L').length < 3)).length;
     return JSON.stringify({ n: fills.length, notGrey: fills.filter(([, f]) => lvl(f) == null).length, urls: svg.split('url(#').length - 1, acc: acc.length, accMin: Math.min(...acc), plainMedian: plain[Math.floor(plain.length / 2)],
       repaints: ms.length, repaintMaxMs: ms.length ? Math.round(Math.max(...ms)) : null, grout: grout.length, groutNotGrey: grout.filter((v) => v == null).length, groutMax: Math.max(...grout), inches, open, size: top.getAttribute('width') + ' x ' + top.getAttribute('height') }); })()`);
-  checkRow('lay', 'Grey by height: the SVG download is one flat grey per brick, the raised accents lighter than the plain wall, the grout its own darker grey',
+  checkRow('lay', 'Grey by height: in the Height look the SVG download is one flat grey per brick, the raised accents lighter than the plain wall, the grout its own darker grey',
     d.n > 0 && d.notGrey === 0 && d.urls === 0 && d.acc > 0 && d.accMin > d.plainMedian && d.grout > 0 && d.groutNotGrey === 0 && d.groutMax < d.plainMedian && d.inches && d.open === 0,
     `${d.n} brick paths, ${d.notGrey} not grey, url refs ${d.urls}; ${d.acc} accented, plain median ${d.plainMedian} < darkest accent ${d.accMin}; ${d.grout} grout paths (not grey ${d.groutNotGrey}), lightest ${d.groutMax}; ${d.size}, open / degenerate paths ${d.open}`);
   checkRow('lay', `Grey by height: the repaint on a mask update stays under ${G.repaintBudgetMs} ms`, d.repaints > 0 && d.repaintMaxMs <= G.repaintBudgetMs,

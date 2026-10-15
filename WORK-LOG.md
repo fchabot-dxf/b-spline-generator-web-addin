@@ -26401,3 +26401,10 @@ break the auto-merge hid: _groutPaintTarget read _generalTab, which the tree rem
 the tab-sections file). The tree keeps the armed tool, and the grout row now lives only in an element's Colour section,
 so the target is the selected element, else the armed tool. Touched files 61/61; matrix layout 92, grout 5,
 sidebar-quick 8, migration 5 -- 0 FAIL.
+
+**Lay row (advisor, gate 99730df).** "Grey by height: the SVG download..." downloaded a fresh board, which now opens in
+Colour: 147 coloured paths. Fixed the ROW: it first checks the new Colour look (new sibling row: every brick path is its
+element's palette colour by role, the accents the accent, grout separate -- 147/147 matched, 2 colours, 2 grout paths),
+then switches to Height grey through General's 2D look button (revealBrickControl + click) and runs the grey check
+unchanged: 147 flat greys, accents lighter, grout darker. lay group alone: 17 rows, 0 FAIL. The repaint row read 248 ms
+against its 250 budget (252 once while my other vitest ran) -- near the line, not touched here.
