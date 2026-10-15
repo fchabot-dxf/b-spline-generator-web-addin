@@ -22,7 +22,8 @@
  * pairs, the construction above already leaves exactly `grout` between every adjacent brick; an
  * extra shrink would double the joint.
  */
-import { clipPolygonToRegion, rectPolygon } from '../geometry.js';
+import { rectPolygon } from '../geometry.js';
+import { clipRegionCellParts, recordCellParts } from '../cell-parts.js';
 
 const ROTATION_DEG = 45; // the "classic" chevron look; see this file's own header
 
@@ -68,8 +69,8 @@ export function herringboneLayout(boardOutline, set, _zones) {
         const wcx = ct * cx - st * cy, wcy = st * cx + ct * cy;
         const wdx = ct * dx - st * dy, wdy = st * dx + ct * dy;
         const poly = rectPolygon(wcx, wcy, L / 2, W / 2, wdx, wdy);
-        const clipped = clipPolygonToRegion(poly, boardOutline, { x: wcx, y: wcy });
-        if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} });
+        const { main: clipped, extra } = clipRegionCellParts(poly, boardOutline, { x: wcx, y: wcy }); // every part (cell-parts.js)
+        if (clipped.length >= 3) { const cell = { id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} }; cells.push(cell); recordCellParts(cells, cell, extra); }
       }
     }
   }
@@ -111,8 +112,8 @@ export function doubleHerringboneLayout(boardOutline, set, _zones) {
           const wcx = ct * cx - st * cy, wcy = st * cx + ct * cy;
           const wdx = ct * dx - st * dy, wdy = st * dx + ct * dy;
           const poly = rectPolygon(wcx, wcy, L / 2, W / 2, wdx, wdy);
-          const clipped = clipPolygonToRegion(poly, boardOutline, { x: wcx, y: wcy });
-          if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} });
+          const { main: clipped, extra } = clipRegionCellParts(poly, boardOutline, { x: wcx, y: wcy }); // every part (cell-parts.js)
+          if (clipped.length >= 3) { const cell = { id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} }; cells.push(cell); recordCellParts(cells, cell, extra); }
         }
       }
     }

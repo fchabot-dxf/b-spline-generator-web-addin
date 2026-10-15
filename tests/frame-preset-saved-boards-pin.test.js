@@ -7,6 +7,8 @@
  * then, on the arched templates + the plain board, at 0.75 and 1.25 in. PIN=1 re-pins (fixtures/frame-preset-saved-boards.json).
  * Re-pinned (seat E, curve-quoin, Fred picked the curved quoin): the 5 quoin presets (quoin_corners + the _quoin variants)
  * on T10 / T16 / T18 only -- 30 of 200 rows; T19, the plain board and every other preset unchanged.
+ * Re-pinned (seat E, cell-parts.js, Fred's pick A): the WALL half of T18 / T19 at 1.25 in, every preset -- one piece ADDED (a
+ * stretcher the board clip lost whole across a bridge), every piece laid before identical (id, sample, flip, height, polygon).
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';

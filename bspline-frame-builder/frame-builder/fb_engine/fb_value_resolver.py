@@ -17,6 +17,7 @@ from fb_engine.parameter_schema import (
     default_unit_for,
     determine_unit,
 )
+from fb_engine.board_scope import fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 class FBValueResolver:
@@ -95,7 +96,7 @@ class FBValueResolver:
         Returns the resolved metric value for logging/verification.
         """
         try:
-            resolved_cm = self.units_manager.evaluateExpression(str(expression), "cm")
+            resolved_cm = self.units_manager.evaluateExpression(fusion_expr(str(expression)), "cm")  # S2b
             if target_unit == "cm":
                 if self.logger:
                     self.logger.log(f"[UNIT GUARD] '{name}' = {expression} -> {resolved_cm:.3f} cm")

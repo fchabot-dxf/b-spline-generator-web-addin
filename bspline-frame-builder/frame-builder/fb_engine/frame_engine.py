@@ -3,6 +3,7 @@ import os, json
 import importlib
 import inspect
 import time
+from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 # Modular logic import
 #
@@ -103,6 +104,7 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
 
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
+    builder.scope = data_dict.get('frame_scope') if isinstance(data_dict, dict) else None  # Send targets: the board
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry,
                             panel_lip=panel_lip, inset_window=inset_window, joined_miters=joined_miters)
     return builder.fit
@@ -128,10 +130,11 @@ class FrameBuilder:
         self.app = adsk.core.Application.get()
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
         self.root = self.design.rootComponent if self.design else None
-        self.user_params = self.design.userParameters if self.design else None
+        self.user_params = board_params(self.design) if self.design else None  # S2b: the board's names in a board build
         self.params_dna = {}
         self.fit = None  # frame_definition.frame_fit result of the last build (FB-FIX F4)
         self.offset_fallbacks = []  # H23 item 28: BuildContext.offset_fallbacks of the last build
+        self.scope = None  # Send targets (fb_engine.board_scope): the board the frame goes into; None = the root
         
         if external_logger:
             self.logger = external_logger
@@ -170,7 +173,7 @@ class FrameBuilder:
             self.app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
             self.design = adsk.fusion.Design.cast(self.app.activeProduct)
             self.root = self.design.rootComponent
-            self.user_params = self.design.userParameters
+            self.user_params = board_params(self.design)
             
             # Re-point Resolver and Discovery to the new design
             from fb_engine import fb_value_resolver
@@ -244,7 +247,7 @@ class FrameBuilder:
             # this DOES vs. what "NO FUSION" leaves for the advisor to
             # verify live).
             if frame_comp:
-                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger, getattr(self, 'scope', None))
         except Exception as e:
             self.logger.log_error(f"CRASH in run_sketch_only: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -281,7 +284,7 @@ class FrameBuilder:
             # so the moved block includes everything full synthesis just
             # built from the frame, not only its sketches.
             if frame_comp:
-                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger, getattr(self, 'scope', None))
         except Exception as e:
             self.logger.log_error(f"CRASH in run_full_synthesis: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -293,7 +296,14 @@ class FrameBuilder:
     def _create_incremental_component(self, style_id=None):
         # Scan all existing components in the root for the highest Frame_N index
         # We check comp.name instead of occ.name to avoid issues with ":1" suffixes
-        existing_names = [occ.component.name for occ in self.root.occurrences if occ.component.name.startswith("Frame_")]
+        # Send targets (2026-10-14): a board's frame goes under the BOARD (its scope's host), and its name is unique
+        # in the whole design -- the timeline reorder finds a frame's items by that name
+        scope = getattr(self, 'scope', None)
+        parent = scope.host if scope is not None else self.root
+        if scope is not None and (scope.is_board or scope.has_boards()):
+            existing_names = [c.name for c in self.design.allComponents if c.name.startswith("Frame_")]
+        else:
+            existing_names = [occ.component.name for occ in self.root.occurrences if occ.component.name.startswith("Frame_")]
         
         index = 1
         while True:
@@ -301,7 +311,7 @@ class FrameBuilder:
             if name not in existing_names: break
             index += 1
             
-        occ = self.root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+        occ = parent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
         comp = occ.component
         comp.name = name
         
@@ -366,7 +376,7 @@ class FrameBuilder:
                     try:
                         self.user_params.add(
                             name,
-                            adsk.core.ValueInput.createByString(expr_str),
+                            adsk.core.ValueInput.createByString(fusion_expr(expr_str)),
                             unit,
                             "Template Master Parameter"
                         )
@@ -393,20 +403,20 @@ class FrameBuilder:
                         # TWO-STEP BIRTH: Create with 0.0, then set expression.
                         # This avoids "missing dependency" errors during createByString.
                         p = self.user_params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Template Parameter")
-                        p.expression = str(val_expr)
+                        p.expression = fusion_expr(str(val_expr))
                         self.logger.log(f"DEPENDENT (Born): {name} = {val_expr} ({unit})")
                     except Exception as e:
                         self.logger.log(f"DEPENDENT FAIL ({name}): {e}. Trying fallback...", "WARNING")
                         try:
                             # Try to evaluate the expression once and save the result
-                            eval_val = self.design.unitsManager.evaluateExpression(val_expr, unit)
+                            eval_val = self.design.unitsManager.evaluateExpression(fusion_expr(val_expr), unit)
                             self.user_params.add(name, adsk.core.ValueInput.createByReal(eval_val), unit, "Template Parameter (Static Fallback)")
                         except Exception as fallback_err:
                             self.logger.log_error(f"CRITICAL: Fallback failed for {name}: {fallback_err}")
                 else:
                     # UPDATE EXISTING: UI should win during a build cycle
                     try:
-                        existing.expression = str(val_expr)
+                        existing.expression = fusion_expr(str(val_expr))
                         self.logger.log(f"DEPENDENT (Updated): {name} -> {val_expr}")
                     except Exception as e:
                         self.logger.log(f"DEPENDENT UPDATE FAIL ({name}): {e}", "WARNING")

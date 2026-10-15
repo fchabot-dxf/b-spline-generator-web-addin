@@ -9,6 +9,7 @@ from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
 from fb_engine import timeline_order
 from fb_engine.joined_miters import JOINED_MITERS_ATTR
+from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 # F14 (S6): the template a frame component was built from (stamped by
 # frame_engine._create_incremental_component), so the solid build reads that
@@ -28,7 +29,9 @@ def build_solid_logic_v3(comp_name=None, to_face=None,
                       start_offset_expr="0 in",
                       appearance_name=None,
                       external_logger=None,
-                      appearance_strategy=None):
+                      appearance_strategy=None,
+                      frame_comp=None,
+                      scope=None):
     """
     Public entry point (v3) for the frame synthesis operation.
     """
@@ -39,6 +42,9 @@ def build_solid_logic_v3(comp_name=None, to_face=None,
         external_logger,
         appearance_strategy=appearance_strategy,
     )
+    # Send targets (2026-10-14): a design with boards names the frame to build (discovery takes the FIRST tagged one)
+    # and its board scope (the trim cut, the timeline reorder)
+    coordinator.frame_comp, coordinator.scope = frame_comp, scope
     coordinator.log.log(f"--- SOLID V3 ENTRY POINT TRIGGERED (FB_VERSION: {FB_VERSION}) ---")
     coordinator.run(comp_name)
 
@@ -88,7 +94,7 @@ class SolidCoordinator:
         name = "frame_height_offset"
         expr = (expr or "0 in").strip()
         try:
-            params = self.design.userParameters
+            params = board_params(self.design)  # S2b: the board's frame_height_offset in a board build
             p = params.itemByName(name)
             if p is None:
                 p = params.add(
@@ -97,7 +103,7 @@ class SolidCoordinator:
                     "in",
                     "Solid Builder start offset (frame height offset)",
                 )
-            p.expression = expr
+            p.expression = fusion_expr(expr)
             self.log.log(f"OFFSET PARAM: {name} = '{expr}' (value={p.value:.4f} cm)")
             return name if abs(p.value) > 1e-6 else "0 in"
         except Exception as e:
@@ -142,9 +148,11 @@ class SolidCoordinator:
             # a variable visible/editable in the Parameters table. The box
             # wins: every build overwrites the parameter with the typed value.
             start_expr = self._sync_offset_param(self.start_offset_expr)
+            scope = getattr(self, 'scope', None)
             bodies = self.extrusion_engine.extrude_profiles(
                 comp, sketch, prefix, self.to_face, start_expr, self.offset_expr,
                 declared=self._declared_frame(comp),
+                cut_context=scope.cut_context(comp) if scope is not None else None,
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
 
@@ -172,7 +180,7 @@ class SolidCoordinator:
             # reorder the sketch build ends with, so the whole frame block
             # sits before the inlay (measured live in F2: without this they
             # stayed after it).
-            timeline_order.ensure_frame_before_inlay(self.design, comp.name, self.log)
+            timeline_order.ensure_frame_before_inlay(self.design, comp.name, self.log, getattr(self, 'scope', None))
             self.log.log(f"SOLID SYNTHESIS FINISHED OK (Total: {time.time() - start_time:.2f}s)")
 
         except Exception:
@@ -239,6 +247,8 @@ class SolidCoordinator:
         and is name-agnostic. Kept as a thin pass-through so the rest of
         the coordinator's call sites stay unchanged.
         """
+        if getattr(self, 'frame_comp', None) is not None:
+            return self.frame_comp  # Send targets: the board's own frame, named by send_frame
         return self.discovery.find_frame_component()
 
     def _find_sketch(self, target_comp):

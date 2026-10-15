@@ -9,6 +9,7 @@ direction, falling back to sketch.offset() with proper direction point.
 """
 import adsk.core, adsk.fusion, traceback
 from fb_engine.parameter_schema import ResolveError
+from fb_engine.board_scope import fusion_expr, fusion_name  # Send targets S2b: the Fusion boundary
 
 
 def offset_step(ctx, sketch, s_name, off):
@@ -198,7 +199,7 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
     Returns the resulting curve collection or None.
     """
     try:
-        val_input = adsk.core.ValueInput.createByString(str(d_expr))
+        val_input = adsk.core.ValueInput.createByString(fusion_expr(str(d_expr)))  # S2b
         # FB-FIX (F4): createOffsetInput takes a Python LIST of SketchCurve
         # (SWIG std::vector<Ptr<SketchCurve>>), not an ObjectCollection.
         # Passing `coll` failed on every build ("argument 2 of type
@@ -227,7 +228,7 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name, side="inward"):
                 dim = offset_constraint.dimension
                 if dim and dim.parameter:
                     # Link the expression to the parameter instead of the name.
-                    dim.parameter.expression = d_expr
+                    dim.parameter.expression = fusion_expr(d_expr)
                     ctx.logger.log(f"OFFSET LINK SUCCESS: Dimension linked to '{d_expr}'")
             except Exception as name_e:
                 ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
@@ -324,7 +325,7 @@ def _ensure_side(ctx, offset_constraint, source, result, d_expr, s_name, side="i
         ctx.logger.log(f"OFFSET SIDE CHECK: {s_name} declared {side}, source span {src}, result span {res}")
         if offset_went_wrong_side(src, res, side):
             flipped = f"-({d_expr})"
-            offset_constraint.dimension.parameter.expression = flipped
+            offset_constraint.dimension.parameter.expression = fusion_expr(flipped)
             ctx.logger.log(f"OFFSET SIDE: {s_name} landed on the wrong side (declared {side}); driving expression flipped to '{flipped}'")
     except Exception as e:
         ctx.logger.log(f"OFFSET SIDE CHECK FAILED in {s_name}: {e}", "WARNING")
@@ -396,7 +397,7 @@ def _link_offset_dimension(ctx, sketch, offset_curves, d_expr, s_name):
             if not c.objectType.endswith('OffsetConstraint'):
                 continue
             if any(k == first for k in c.childCurves):
-                c.dimension.parameter.expression = d_expr
+                c.dimension.parameter.expression = fusion_expr(d_expr)
                 ctx.logger.log(f"OFFSET LINK SUCCESS: {s_name} direction-point offset driven by '{d_expr}'")
                 return True
         ctx.logger.log(f"OFFSET LINK MISSING: no OffsetConstraint owns the new curves in {s_name}", "WARNING")
@@ -855,11 +856,11 @@ def _force_rename_offset_dim(sketch, p_name):
             dim = dims.item(dims.count - 1)
             if hasattr(dim, 'parameter'):
                 curr_name = dim.parameter.name
-                if curr_name != p_name:
+                if curr_name != fusion_name(p_name):
                     try:
-                        dim.parameter.name = p_name
+                        dim.parameter.name = fusion_name(p_name)  # S2b: the board's name (best-effort, as before)
                         # Force the expression to link to the variable name (parametric)
-                        dim.parameter.expression = str(p_name)
+                        dim.parameter.expression = fusion_expr(str(p_name))
                     except Exception:
                         pass
     except Exception:

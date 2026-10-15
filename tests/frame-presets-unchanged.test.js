@@ -7,6 +7,7 @@
  * -- the four quoin_corners 0.75 in digests changed in their WALL half only (frame halves identical).
  * Re-pinned again (seat E, curve-quoin): T18 quoin_corners 0.75 / 1.25 only -- its arched top now takes the curved block
  * (and again for Fred's resize: the curved block matches the square quoin's area, CURVE_QUOIN_ARC.areaOfSquare).
+ * Re-pinned (seat E, cell-parts.js): the WALL half of T18 at 1.25 in -- one piece added, every piece laid before identical.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
