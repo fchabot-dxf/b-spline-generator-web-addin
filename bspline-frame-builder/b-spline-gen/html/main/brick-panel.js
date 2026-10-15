@@ -2959,6 +2959,9 @@ const FRAME_PRESET_LABELS = {
   art_deco_stepped: 'Art Deco stepped',
   florentine_architrave: 'Florentine architrave',
   venetian_dentil: 'Venetian dentil',
+  slim_runner: 'Slim runner',
+  checker_tile_runner: 'Checker tile runner',
+  twin_runner: 'Twin thin runner',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
