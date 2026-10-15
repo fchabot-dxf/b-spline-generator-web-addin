@@ -383,7 +383,11 @@ try {
   await openBrickTool('wall');
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   for (const pin of GROUP_SETUP[arg('group')] || []) { // a group's declared setup (its groups/<group>.mjs `setup`), before the baseline lay
-    const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500);
+    // `brickSizes`: each element's size (per element since 2026-10-11, brick-panel.js setBrickSize), else one field's value
+    const r = pin.brickSizes
+      ? await js(`import('./main/brick-panel.js').then((m) => { for (const [k, v] of Object.entries(${JSON.stringify(pin.brickSizes)})) m.setBrickSize(v, 'generate', k); return 'ok'; })`)
+      : await setValue(pin.set, pin.value, pin.event);
+    console.log(`setup pin ${pin.brickSizes ? 'brickSizes=' + JSON.stringify(pin.brickSizes) : `${pin.set}=${pin.value}`}: ${r} (${pin.why})`); await sleep(1500);
   }
   await click('brickGenerate', 1800);
   await openBrickTool('frame'); await click('brickGenerate', 1800);

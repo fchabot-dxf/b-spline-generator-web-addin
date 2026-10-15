@@ -18,6 +18,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', ()
 
 import { initBrickPanel } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { elementGroutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
@@ -32,7 +33,8 @@ beforeAll(() => {
 
 describe('fresh boot: the sidebar shows the declared brick defaults', () => {
   it('grout is Recessed: Recessed active, Flush not', () => {
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    // per element since 2026-10-11: none overridden, each element on its pattern's default (Recessed)
+    for (const k of ['wall', 'frame', 'brush']) expect(elementGroutProfile(P.brickSettings, k), k).toBe('recessed');
     expect(active('brickBtnGroutRecessed')).toBe(true);
     expect(active('brickBtnGroutFlush')).toBe(false);
   });
