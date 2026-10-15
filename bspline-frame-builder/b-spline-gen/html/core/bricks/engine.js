@@ -85,7 +85,8 @@ export function generateBricks(input) {
   let frameBoard = null; // the frame's own board outline (contour-bands `board`): the wall is clipped to it below
   let frameBricks = [];
   let bandsReduced; // T86 item 28: contour-bands' fit-rule note, when the requested stack did not fit
-  let frameLay = null; // T86 item 16f: how the frame was laid, to lay it again into the wall's bare tips
+  let frameLay = null;
+  let frameBlocksSkipped = null; // Fred 2026-10-15: mid-course blocks that placed nothing (frame-blocks.js), a note // T86 item 16f: how the frame was laid, to lay it again into the wall's bare tips
   // T86 item 14 (Fred: a Wall with no Frame bands was filling `boardOutline` -- in the live app,
   // ALWAYS a plain bounding rectangle (editor-brick-tool.js's own `boardPolygon`), never the
   // template's own true (often non-rectangular: hourglass waists, tapered sides, arched tops)
@@ -178,8 +179,10 @@ export function generateBricks(input) {
   const todays = bricks.filter((b) => !isPartCellId(b.id));
   const tips = frameLay && frameLay.bands.length && todays.length ? bareTips(interiorOutline, todays, wallSet, { wholeFaceSqIn }) : [];
   if (frameLay) {
-    const laidFrame = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) });
+    const laidFrame = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}),
+      ...(frame.blocks && frame.blocks.length ? { blocks: frame.blocks } : {}) }); // Fred 2026-10-15: mid-course blocks (frame-blocks.js)
     frameBricks = laidFrame.bricks;
+    frameBlocksSkipped = laidFrame.blocksSkipped || null; // a block that placed nothing, and why (frame-blocks.js)
     // an added wall part (cell-parts.js) is cut clear of the band (a joint off: a tip the band took, a piece reaching past the
     // stack -- MEASURED T10 7x9 1 in herringbone, 0.001 sq in under a fan slice), the id kept; a fleck left of it drops
     const J = wallSet.grout.widthIn;
@@ -226,7 +229,7 @@ export function generateBricks(input) {
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks } : {}),
     ...(arch ? { archBricks, archRegion: arch.region, archOpening: arch.opening, archStep: arch.step } : {}), ...(archLay && archLay.fit ? { archFit: archLay.fit } : {}),
-    ...(cuts.length ? { groutCutApplied: cuts.length } : {}) };
+    ...(cuts.length ? { groutCutApplied: cuts.length } : {}), ...(frameBlocksSkipped ? { blocksSkipped: frameBlocksSkipped } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
   // the grout shape (grout-shape.js); every other field is as before
   if (Array.isArray(input.exclusions)) return { bricks: wallBricks, frameBricks, seed, exclusionsApplied: true, ...notes, interiorOutline };

@@ -124,6 +124,9 @@ export const DEFAULT = {
       // Fred 2026-10-11 (EDGE TAPER, core/bricks/library.js EDGE_TAPER): a shoulder width per element, in inches; null =
       // that element's set's own heightProfile.edgeRadiusIn. 3D only (the height mask); a saved board without it = null
       edgeByElement: { wall: null, frame: null, brush: null },
+      // Fred 2026-10-15 (MID-COURSE BLOCKS, core/bricks/frame-blocks.js): blocks placed along the Frame's run, each a board point
+      // with a stable id -- [{ id, x, y }]; the engine snaps each to the outer band's joints and lays it as a quoin
+      frameBlocks: [],
       // F35 item 55: the grout's PAINT (2D + the 3D drape only; geometry, the height mask, Send and CAM never read it):
       // `color` null = none (the board shows through) or a hex; `paintInsetIn` >= 0 = each brick's painted face inset
       // from its polygon (the visible joint = joint + 2 x inset). Board-wide here; groutPaintByElement[kind] = that

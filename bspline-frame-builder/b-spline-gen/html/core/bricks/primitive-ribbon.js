@@ -444,7 +444,10 @@ function jointFor(joint, idx) {
   return joint;
 }
 
-const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already declared for exactly
+const QUOIN_SET = brickSetById(3);
+/** the quoin unit (in): a corner's block, a curved block, a mid-course block (frame-blocks.js) -- read from QUOIN_SET, declared once */
+export const QUOIN_BLOCK_IN = QUOIN_SET.brickLengthIn;
+// (QUOIN_SET's own note follows) // "White rocks" (library.js:181) -- already declared for exactly
 // this purpose (its own comment: "this item's own earlier Set-3 comment already earmarked THIS slot
 // for exactly this ashlar/stone follow-up"). `ribbonPieces`/`contour-bands.js` never read
 // `set.shape`/`set.layout` (grepped: no hits) -- only `brickLengthIn`/grout/samples/heightProfile,
