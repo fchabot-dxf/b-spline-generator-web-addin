@@ -23,6 +23,10 @@ from constrained_sketch_log import format_constrained_sketch_log
 from param_ownership import compute_stale_params
 # 2026-10-10: the panel's matte per-component finish (Fred) -- declared in panel_finish.py, a sibling module too.
 from panel_finish import apply_panel_finish
+from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
+                          new_board_offset_in, BOARD_SPACING_IN)
+from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
+                                   BoardNamer, lattice_layer_prefix, naming)
 
 # imports check: removed diagnostic
 
@@ -694,17 +698,34 @@ def _in_active_design(des, entity):
         return False
 
 
-def _remove_last_import():
+def _registry_base(namer, name):
+    """A param's declared registry name: the board prefix off, then a lattice layer's "L<n>_" (S2)."""
+    base = namer.base(name)
+    return re.sub(r'^L\d+_', '', base) if not namer.is_identity else base
+
+
+def _owned_by(scope, occ):
+    """Send targets: True when `occ` belongs to `scope`'s board (always True without a scope)."""
+    if scope is None:
+        return True
+    try:
+        return scope.owns(occ.component)
+    except Exception:
+        return False
+
+
+def _remove_last_import(scope=None):
     """Delete every occurrence added by the last Apply/generate action, but ONLY the ones that still belong to
     the CURRENTLY ACTIVE document -- the in-memory `last_imported_occurrences` / `current_import_group` are
     document-blind (set by whichever document was active at Send time), so they must never be trusted as the
-    deletion source on their own; each one is checked against the active design first (_in_active_design)."""
+    deletion source on their own; each one is checked against the active design first (_in_active_design).
+    Send targets: and to `scope`'s board -- the last Send may have built ANOTHER board of this design."""
     global last_imported_occurrences, current_import_group
     des = _active_design()
 
     if 'current_import_group' in globals() and current_import_group:
         try:
-            if _in_active_design(des, current_import_group):
+            if _in_active_design(des, current_import_group) and _owned_by(scope, current_import_group):
                 current_import_group.deleteMe()
         except Exception: pass
         current_import_group = None
@@ -713,7 +734,7 @@ def _remove_last_import():
         _log(f'Removing {len(last_imported_occurrences)} previous occurrence(s)...')
     for occ in last_imported_occurrences:
         try:
-            if _in_active_design(des, occ):
+            if _in_active_design(des, occ) and _owned_by(scope, occ):
                 occ.deleteMe()
         except Exception as e:
             _log(f'  deleteMe failed: {e}')
@@ -728,10 +749,21 @@ def _remove_last_import():
 BSPLINE_SET_ATTR = ('Bspline', 'set')
 
 
-def _bspline_set_occurrences(des):
+def _bspline_set_occurrences(des, scope=None):
     """Every B-Spline Set this add-in built: tagged components, plus untagged ones from before the tag (a root
-    occurrence named "B-Spline Set")."""
+    occurrence named "B-Spline Set"). Send targets: with a `scope`, only the Sets directly under ITS board's host
+    (the root for the legacy board -- never one inside a tagged board)."""
     occs = []
+    if scope is not None:
+        try:
+            for occ in scope.host.occurrences:
+                comp = occ.component
+                tagged = comp.attributes.itemByName(*BSPLINE_SET_ATTR) is not None
+                if (tagged or comp.name.startswith('B-Spline Set')) and occ not in occs:
+                    occs.append(occ)
+        except Exception as e:
+            _log(f'_bspline_set_occurrences (scoped) failed: {e}')
+        return occs
     try:
         comps = []
         for a in des.findAttributes(*BSPLINE_SET_ATTR) or []:
@@ -749,10 +781,14 @@ def _bspline_set_occurrences(des):
     return occs
 
 
-def _delete_bspline_sets(des):
-    """Delete every B-Spline Set (see _bspline_set_occurrences). Returns how many were deleted."""
+def _delete_bspline_sets(des, scope=None, locked=None):
+    """Delete every B-Spline Set (see _bspline_set_occurrences) -- `scope`'s only when given; a LOCKED one (the job
+    timeline's playhead) is kept. Returns how many were deleted."""
     n = 0
-    for occ in _bspline_set_occurrences(des):
+    for occ in _bspline_set_occurrences(des, scope):
+        if is_locked(occ.component.name, locked):
+            _log(f'  B-Spline Set "{occ.component.name}" is locked -- kept')
+            continue
         try:
             if occ.isValid:
                 occ.deleteMe()
@@ -762,11 +798,12 @@ def _delete_bspline_sets(des):
     return n
 
 
-def _delete_frames(des):
-    """Delete every frame the add-in built (fb_engine.send_frame, by its own attribute). Returns their names."""
+def _delete_frames(des, scope=None):
+    """Delete every frame the add-in built (fb_engine.send_frame, by its own attribute) -- `scope`'s board's only
+    when given. Returns their names."""
     try:
         from fb_engine import send_frame as fb_send
-        return fb_send.delete_previous_frames(des, lambda msg, level='INFO': _log(msg))
+        return fb_send.delete_previous_frames(des, lambda msg, level='INFO': _log(msg), scope)
     except Exception as e:
         _log(f'_delete_frames failed: {e}')
         return []
@@ -1044,7 +1081,7 @@ def _find_stamped_component(import_group):
         return None
     for occ in targets:
         try:
-            if (occ.component.name or '') == 'Stamped':
+            if _base_component_name(occ.component.name) == 'Stamped':  # "Stamped (1)" in a second board
                 return occ.component
         except Exception:
             continue
@@ -1291,7 +1328,7 @@ def _expression_is_numeric(expr):
         return False
 
 
-def _sync_user_parameters(design, params):
+def _sync_user_parameters(design, params, namer=None):
     """
     Creates or updates Fusion 360 User Parameters based on generator settings.
     Prefixes names with 'BSG_' to avoid collisions.
@@ -1315,6 +1352,8 @@ def _sync_user_parameters(design, params):
     EPS_IN = 0.001  # inch tolerance for "values match"
 
     for key, (f_name, unit) in param_map.items():
+        if namer is not None:
+            f_name = namer.name(f_name)  # Send targets S2: "<boardId>_widthIn" in a tagged board; the legacy board: as is
         if key in params:
             val = params[key]
             try:
@@ -1393,6 +1432,34 @@ def _layer_manifest(layer):
     here so `_svg_layer_import_plan` (the ONLY other reader) and the
     payload-names loop can never diverge on the key name again."""
     return layer.get('sketchManifest')
+
+
+# Send targets S2: the board params a lattice expression may name, beside the lattice's own (declared once)
+BOARD_PARAM_NAMES = ('widthIn', 'heightIn')
+
+
+def _scoped_manifest(manifest, namer):
+    """A lattice manifest with its parameter names and dimension expressions in the board's namespace: the lattice's
+    own names under "<boardId>_L<layerId>_", widthIn / heightIn under the board's prefix (BoardNamer.rename: only
+    those declared names -- Fred's own params and the functions / units are never touched). Identity for the legacy
+    board (the same dict back: a legacy Send unchanged)."""
+    if not manifest or namer is None or namer.is_identity:
+        return manifest
+    layer = namer.child(lattice_layer_prefix(manifest.get('layerId')))
+    own = [p.get('name') for p in manifest.get('parameters') or [] if p.get('name')]
+    mapping = {**namer.mapping(BOARD_PARAM_NAMES), **layer.mapping(own)}
+    out = dict(manifest)
+    out['parameters'] = [dict(p, name=mapping.get(p.get('name'), p.get('name'))) for p in manifest.get('parameters') or []]
+    out['dimensions'] = [dict(d, expression=BoardNamer.rename(d.get('expression'), mapping)) if d.get('expression') else d
+                         for d in manifest.get('dimensions') or []]
+    return out
+
+
+def _scope_stamp_manifests(stamp_data, namer):
+    """Every layer's manifest named for the board, once (in place on the payload's own layer dicts)."""
+    for layer in (stamp_data or {}).get('layers') or []:
+        if layer.get('sketchManifest'):
+            layer['sketchManifest'] = _scoped_manifest(layer['sketchManifest'], namer)
 
 
 class _LogAdapter:
@@ -1530,18 +1597,112 @@ frame_engine = None
 # _normalize_occurrence build (their own literals, not re-declared there).
 BSPLINE_SET_NAME = "B-Spline Set"
 CLEAN_COMPONENT_NAME = "Clean"
+
+
+def _base_component_name(name):
+    """A component's declared name without the " (N)" Fusion appends to a duplicate. MEASURED live (S1 check,
+    2026-10-14): a second board's Set / Clean arrive as "B-Spline Set (1)" / "Clean (1)" -- names are unique per design."""
+    return re.sub(r' \(\d+\)$', '', name or '')
 PANEL_BODY_NAME = "panel"
 
 
-def _find_bspline_core_body(design):
-    """The B-spline body in assembly context (its occurrence's proxy), or None."""
+def _delete_board_components(des):
+    """Delete every tagged board component's occurrences (Clear Fusion design). Returns their names."""
+    names = []
+    for comp in tagged_board_components(des):
+        try:
+            for occ in list(des.rootComponent.allOccurrencesByComponent(comp) or []):
+                occ.deleteMe()
+            names.append(comp.name)
+        except Exception as e:
+            _log(f'  board delete failed: {e}')
+    return names
+
+
+def _content_max_x_in(design):
+    """The right-most X (inches, world) of every body in the design, or None when it holds none."""
+    xs = []
+    try:
+        root = design.rootComponent
+        for b in root.bRepBodies:
+            xs.append(b.boundingBox.maxPoint.x)
+        for occ in root.allOccurrences:
+            for b in occ.bRepBodies:
+                xs.append(b.boundingBox.maxPoint.x)
+    except Exception as e:
+        _log(f'[SEND TARGET] content extent failed: {e}')
+    return max(xs) / 2.54 if xs else None
+
+
+def _create_board(design, board, width_in):
+    """Send as new component: a new board occurrence at the root, tagged BOARD_ATTR = its boardId, named by the
+    project, offset +X past the right-most content (send_targets.new_board_offset_in)."""
+    dx_in = new_board_offset_in(_content_max_x_in(design), width_in, BOARD_SPACING_IN)
+    m = adsk.core.Matrix3D.create()
+    m.translation = adsk.core.Vector3D.create(dx_in * 2.54, 0, 0)
+    occ = design.rootComponent.occurrences.addNewComponent(m)
+    occ.component.name = board['name']
+    occ.component.attributes.add(*BOARD_ATTR, board['id'])
+    _log(f'[SEND TARGET] new board "{board["name"]}" ({board["id"]}) at x={dx_in:.3f} in')
+    return occ.component
+
+
+def _new_send_document():
+    """Send as new document: a new Fusion design document, made active. The documents already open are never
+    closed or modified (MEASURED, probe 1 2026-10-14: their names and isModified unchanged)."""
+    doc = app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
+    _log(f'[SEND TARGET] new document "{doc.name}"')
+    return adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType'))
+
+
+def _set_occurrence_in_root_context(scope, occ):
+    """A board's B-Spline Set occurrence, in ROOT context. MEASURED live (S1 check, 2026-10-14): the native occurrence
+    addNewComponent returns inside a board fails _in_active_design (findEntityByToken knows only root-context
+    entities), so every import target fell back to the ROOT -- the board stayed empty. Its proxy through the board's
+    own root occurrence is the Set every later step (import, consolidation, sketches, delete) expects."""
+    if scope is None or not scope.is_board:
+        return occ
+    board_occ = scope.root_occurrence_of(scope.host)
+    return occ.createForAssemblyContext(board_occ) if board_occ is not None else occ
+
+
+def _resolve_send_scope(des, target, board, params):
+    """The board this Send builds into (fb_engine.board_scope.BoardScope): a new board (newComponent), the project's
+    tagged board (replace, when the design has it), else the legacy root board."""
+    if target == 'newComponent':
+        return BoardScope(des, _create_board(des, board, float(params.get('widthIn') or 0)))
+    if target == 'replace':
+        comp = find_board_component(des, board['id'], tagged_board_components)
+        if comp is not None:
+            return BoardScope(des, comp)
+    return BoardScope(des)
+
+
+def _find_bspline_core_body(design, scope=None):
+    """The B-spline body in assembly context (its occurrence's proxy), or None. Send targets: a tagged board's
+    (`scope`) is looked up under that board, still in ROOT context."""
     if design is None:
         return None
+    if scope is not None and scope.is_board:
+        for occ in design.rootComponent.allOccurrences:
+            try:
+                parent = occ.assemblyContext
+            except Exception:
+                parent = None
+            if _base_component_name(occ.component.name) != BSPLINE_SET_NAME or parent is None or parent.component != scope.host:
+                continue
+            for child in occ.childOccurrences:
+                if _base_component_name(child.component.name) != CLEAN_COMPONENT_NAME:
+                    continue
+                for body in child.bRepBodies:
+                    if body.name == PANEL_BODY_NAME and body.isSolid:
+                        return body
+        return None
     for occ in design.rootComponent.occurrences:
-        if occ.component.name != BSPLINE_SET_NAME:
+        if _base_component_name(occ.component.name) != BSPLINE_SET_NAME:  # the legacy Set may be "(1)" beside boards
             continue
         for child in occ.childOccurrences:
-            if child.component.name != CLEAN_COMPONENT_NAME:
+            if _base_component_name(child.component.name) != CLEAN_COMPONENT_NAME:
                 continue
             for body in child.bRepBodies:
                 if body.name == PANEL_BODY_NAME and body.isSolid:
@@ -1663,7 +1824,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             # ── delete_frame — F26 item 2 (b): only the frame(s) Send built ─────
             if action == 'delete_frame':
-                self._handle_delete_frame()
+                try:
+                    df_data = json.loads(args.data or '{}')
+                except Exception:
+                    df_data = {}
+                self._handle_delete_frame(df_data)
                 return
 
             # ── send_frame — FB-APP S5 (F10): the frame on its own ───────────
@@ -1808,17 +1973,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if ui:
                 ui.messageBox('Palette HTML event failed:\n{}'.format(tb))
 
-    def _handle_delete_frame(self):
+    def _handle_delete_frame(self, data=None):
         """F26 item 2 (b), Fred ("add a delete frame button"): delete ONLY the frame(s) this add-in built -- the same
         ones a Send replaces (_delete_frames -> fb_engine.send_frame.delete_previous_frames, found by their own
         attribute). The B-spline, the artwork and anything Fred made stay. Reports delete_frame_result
-        {ok, frames, error}."""
+        {ok, frames, error}. Send targets (2026-10-14): the PROJECT's board's frame only (`data.board`, resolved like a
+        replace: its tagged board, else the legacy root board) -- another board's frame stays."""
         result = {'ok': False, 'frames': [], 'error': None}
         try:
             des = _active_design()
             if not des:
                 raise RuntimeError('No active Fusion design.')
-            result['frames'] = _delete_frames(des)
+            scope = _resolve_send_scope(des, 'replace', board_of(data or {}), {})
+            result['frames'] = _delete_frames(des, scope)
             result['ok'] = True
         except Exception as e:
             _log(f'DELETE FRAME failed: {e}\n{traceback.format_exc()}')
@@ -1846,6 +2013,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             result['frames'] = _delete_frames(des)
             _remove_last_import()
             result['bsplineSets'] = _delete_bspline_sets(des)
+            # Send targets: everything = every board too -- their (now empty) board components go
+            result['boards'] = _delete_board_components(des)
             last_imported_occurrences = []
             current_import_group = None
             result['ok'] = True
@@ -2028,7 +2197,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             result['error'] = str(e)
         return result
 
-    def _handle_send_frame(self, payload):
+    def _handle_send_frame(self, payload, scope=None):
         """FB-APP S5 (F10): fb_engine.send_frame does the work (delete the
         previous frame by attribute, rebuild through the palettes' own entry
         points); this finds the B-spline body this add-in created, records the
@@ -2039,10 +2208,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             from fb_utils.fb_logger import DebugLogger
             design = _active_design()
             result = _send_timed('frame', fb_send.send_frame,
-                design, payload, lambda: _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
+                design, payload, lambda: _find_bspline_core_body(design, scope), DebugLogger(_frame_builder_dir()),
                 resolve_template=resolve_template,
                 build_sketch=frame_engine.build_sketch_logic_v3,
-                build_solid=solid_coordinator.build_solid_logic_v3)
+                build_solid=solid_coordinator.build_solid_logic_v3,
+                scope=scope)
         except Exception as e:
             _log(f'SEND FRAME crashed: {e}\n{traceback.format_exc()}')
             result = {'ok': False, 'error': f'Send frame failed: {e}', 'deleted': [], 'frame': None,
@@ -2099,6 +2269,15 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             else:
                 _log(f'[SINGLE-STEP] Legacy single-stepText path.')
 
+            # Send targets (2026-10-14): the payload's declared target; a new document comes first (it is the
+            # design everything below builds into -- the documents already open are never touched)
+            target = send_target_of(data) if not is_preview else 'replace'
+            board, locked = board_of(data), locked_of(data)
+            if not is_preview:
+                _log(f'[SEND TARGET] target={target} board={board} locked={sorted(locked)}')
+                if target == 'newDocument':
+                    _new_send_document()
+
             # 1. Check for active design (H23 item 99b: from the active document; a Send from Manufacture switches
             #    to the Design workspace first)
             if not is_preview:
@@ -2109,10 +2288,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if not is_preview: _send_import_failed('No active Fusion design -- open or create a design, then Send again.')
                 return
 
+            # Send targets: the board this Send builds into, resolved FIRST -- its params are named through its namer
+            global current_import_group
+            scope = None
+            if not is_preview and not data.get('isAppend', False):
+                scope = _resolve_send_scope(des, target, board, data.get('params', {}))
+                _scope_stamp_manifests(data.get('stamp'), scope.namer)
+            self._board_namer = scope.namer if scope is not None else None  # S2c: the layer sketches' dimension names
+
             # Sync User Parameters (if not preview)
             if not is_preview:
                 params = data.get('params', {})
-                _sync_user_parameters(des, params)
+                _sync_user_parameters(des, params, scope.namer if scope is not None else None)
 
             _log(f'Design: {des.parentDocument.name}, type={des.designType}')
             root_comp     = des.rootComponent
@@ -2126,18 +2313,24 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             is_append = data.get('isAppend', False)
             is_visible = data.get('isVisible', True)
             
-            global current_import_group
             if not is_preview and not is_append:
-                # One Send = the whole design: the previous frame goes first (it is extruded to the B-spline body,
-                # so it would break), then every B-Spline Set -- tagged, so a set from before a Fusion restart
-                # goes too -- and the fresh set is tagged. The frame is rebuilt at the end when one is chosen.
-                _send_stage('fusionClearCam')
-                _clear_cam_build(des)
-                deleted_frames = _delete_frames(des)
-                _remove_last_import()
-                n_sets = _delete_bspline_sets(des)
-                _log(f'[SEND] cleared: frames={deleted_frames} bspline_sets={n_sets}')
-                current_import_group = root_comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+                # One Send = the whole BOARD (Send targets 2026-10-14): replace clears its own board only -- the
+                # previous frame goes first (it is extruded to the B-spline body, so it would break), then its
+                # B-Spline Set (tagged, so a set from before a Fusion restart goes too) -- and the fresh set is
+                # tagged. A new component / document clears nothing. The frame is rebuilt at the end when chosen.
+                if target == 'replace':
+                    _send_stage('fusionClearCam')
+                    if not scope.is_board:
+                        # the job-timeline lock work replaces this: today it deletes the 4 named setups + MMs (and
+                        # Fred's own ops in them); a board's Send does NOT extend it to boards
+                        _clear_cam_build(des)
+                    deleted_frames = _delete_frames(des, scope)
+                    _remove_last_import(scope)
+                    n_sets = _delete_bspline_sets(des, scope, locked)
+                    _log(f'[SEND] cleared: frames={deleted_frames} bspline_sets={n_sets} '
+                         f'(board: {scope.host.name if scope.is_board else "legacy root"})')
+                current_import_group = _set_occurrence_in_root_context(
+                    scope, scope.host.occurrences.addNewComponent(adsk.core.Matrix3D.create()))
                 current_import_group.component.name = "B-Spline Set"
                 try:
                     current_import_group.component.attributes.add(*BSPLINE_SET_ATTR, '1')
@@ -2469,6 +2662,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
+                # Send targets S2: the pass sees only THIS board's namespace (BoardNamer.owns) and judges a name by its
+                # declared base (BoardNamer.base) -- another board's params, and Fred's own, are never candidates
                 # STALE-PARAMS R4 item 4 (ruling 7, "ONE call ... after
                 # geometry"): board + lattice params created/updated by
                 # THIS Send are already synced (params sync ran near the
@@ -2480,13 +2675,15 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # function: a failure here is logged, never shown to Fred,
                 # never blocks the Send that already succeeded.
                 try:
-                    payload_names = set(params.keys())
+                    namer = scope.namer if scope is not None else BoardNamer()
+                    payload_names = {namer.name(k) for k in params.keys()}
                     for layer in (stamp_data.get('layers', []) if stamp_data else []):
                         manifest = _layer_manifest(layer) or {}
                         for p in manifest.get('parameters', []) or []:
                             if p.get('name'):
                                 payload_names.add(p['name'])
-                    stale = compute_stale_params(des.userParameters, payload_names, logger=_LogAdapter())
+                    stale = compute_stale_params(des.userParameters, payload_names, logger=_LogAdapter(),
+                                                 owns=namer.owns, base=lambda n: _registry_base(namer, n))
                     _merge_last_send_key('stale_params', stale)
                     if stale['deleted'] or stale['failed']:
                         _log(f'[STALE PARAMS] deleted={stale["deleted"]} adopted={stale["adopted"]} '
@@ -2500,13 +2697,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if frame_payload:
                     _send_stage('fusionFrame')
                     _send_progress('Building the frame...')
-                    self._handle_send_frame(frame_payload)
+                    self._handle_send_frame(frame_payload, scope)
                 importing_done = True
                 _send_stage('fusionFinalize', is_preview)
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')
 
-            if _post_to_palette('import_success', {}):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
+            done = {} if is_preview else {'target': target, 'boardId': board['id'] if (scope is not None and scope.is_board) else None}
+            if _post_to_palette('import_success', done):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
                 _import_success_at = time.monotonic()
             if not is_preview:
                 # 2026-10-10 (Fred, via the advisor): and after it -- a Send leaves ~0.55 GB inside Fusion, so the line the
@@ -2706,10 +2904,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         if ctx is None:
             ctx = BuildContext(sketch_target, design, logger=None, prefix="SE15")
         try:
-            summary = build_constrained_sketch(
-                sketch_target, design, manifest, placement=plane, log_fn=_log,
-                sketch_name_override=f"Source - {sketch_name} [constrained]",
-                ctx=ctx, kind_to_sketch=kind_to_sketch)
+            namer = getattr(self, '_board_namer', None)
+            layer_namer = namer.child(lattice_layer_prefix(manifest.get('layerId'))) if namer is not None else None
+            with naming(layer_namer, ()):  # S2c: dimension names only (the manifest's names / expressions: S2a)
+                summary = build_constrained_sketch(
+                    sketch_target, design, manifest, placement=plane, log_fn=_log,
+                    sketch_name_override=f"Source - {sketch_name} [constrained]",
+                    ctx=ctx, kind_to_sketch=kind_to_sketch)
             # ADD1 (measured live): this log used to read summary['offsets']
             # inline here — see constrained_sketch_log.py's own module
             # docstring for why that raised KeyError on every SUCCESSFUL

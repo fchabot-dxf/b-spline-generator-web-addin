@@ -366,6 +366,27 @@ aside {
     background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
 }
 
+/* Send targets (seat A 2026-10-14): the Send ▾ menu -- Fusion mode only (body.fusion-mode, main.js onFusionDetected) */
+.send-menu-wrap { display: none; position: relative; }
+body.fusion-mode .send-menu-wrap { display: inline-flex; }
+#btnSendMenu {
+    background: linear-gradient(180deg, #1d4ed8, #2563eb) !important;
+    color: #ffffff !important;
+    border-color: #1e40af !important;
+    height: 32px !important;
+    min-width: 26px !important;
+    padding: 0 6px !important;
+    margin-left: -4px;
+}
+.send-target-menu {
+    position: absolute; top: 36px; right: 0; z-index: 10002;
+    display: flex; flex-direction: column; min-width: 200px; padding: 4px;
+    background: var(--panel-bg, #fff); border: 1px solid var(--border, #ccc); border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.send-target-menu[hidden] { display: none; }
+.send-target-menu .cad-btn { justify-content: flex-start; text-align: left; margin: 1px 0; }
+
 /* =========================================================================
    7. Preview area
    ========================================================================= */

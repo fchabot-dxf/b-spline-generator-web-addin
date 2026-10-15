@@ -61,11 +61,11 @@ def test_a_send_from_manufacture_finds_the_design_and_switches_to_design(monkeyp
     monkeypatch.setattr(bsg, '_log', lambda m: logged.append(m))
     seen = {}
 
-    def _sync(des, params):  # the first thing the Send does with the design: record it, stop there
-        seen['des'] = des
+    def _first(des, target, board, params):  # Send targets: the first thing the Send does with the design is resolving
+        seen['des'] = des                     # its board scope (legacy here): record it, stop there
         seen['active_product_then'] = fake.activeProduct
         raise _Stop()
-    monkeypatch.setattr(bsg, '_sync_user_parameters', _sync)
+    monkeypatch.setattr(bsg, '_resolve_send_scope', _first)
 
     bsg.PaletteHTMLEventHandler()._handle_generate({'stepVariants': [], 'frame': None, 'isPreview': False})
 

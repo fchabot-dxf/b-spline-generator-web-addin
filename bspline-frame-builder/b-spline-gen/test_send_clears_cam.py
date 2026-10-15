@@ -118,11 +118,11 @@ def test_the_send_clears_cam_as_its_own_declared_step_before_removing_the_old_im
     body = src[src.index('    def _handle_generate('):]
     i_stage = body.index("_send_stage('fusionClearCam')")
     i_clear = body.index('_clear_cam_build(des)')
-    i_frames = body.index('_delete_frames(des)')
+    i_frames = body.index('_delete_frames(des, scope)')  # scoped to the Send's board (Send targets)
     assert i_stage < i_clear < i_frames
     # inside the non-preview, non-append branch only
     guard = body.rindex('if not is_preview and not is_append:', 0, i_clear)
-    assert body.index('_delete_frames(des)', guard) == i_frames
+    assert body.index('_delete_frames(des, scope)', guard) == i_frames
     ids = bsg._fusion_send_stage_ids()
     assert ids.index('fusionClearCam') == ids.index('fusionPrepare') + 1
 

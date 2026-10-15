@@ -269,7 +269,7 @@ export function deleteFrame() {
   editFrameNow({ templateId: null, params: {} }, 'Delete frame');
   if (isFusionMode) {
     try {
-      adsk.fusionSendData('delete_frame', '{}');
+      adsk.fusionSendData('delete_frame', JSON.stringify({ board: { id: P.boardId || '' } })); // the project's board's frame only
       setFusionStatus('Deleting the frame in Fusion...', 'busy');
     } catch (_) { /* not in Fusion */ }
   }

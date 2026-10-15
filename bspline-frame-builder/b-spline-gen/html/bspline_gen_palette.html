@@ -565,6 +565,11 @@
         <span class="cad-nav-label">Add-in</span>
       </button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
+      <!-- Send targets (seat A 2026-10-14): Fusion only -- the Send ▾ menu (main/send-targets.js SEND_TARGETS) -->
+      <span class="send-menu-wrap">
+        <button class="cad-btn cad-btn-primary" id="btnSendMenu" title="Send options" aria-haspopup="menu" aria-expanded="false">▾</button>
+        <div id="sendTargetMenu" class="send-target-menu" role="menu" hidden></div>
+      </span>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="settings-btn" title="Settings">
         <span style="font-size:18px; line-height:1;">⚙️</span>
         <span class="cad-nav-label">Settings</span>

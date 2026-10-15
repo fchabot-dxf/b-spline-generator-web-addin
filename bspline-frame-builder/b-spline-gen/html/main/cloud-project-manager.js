@@ -72,6 +72,12 @@ function captureThumbnail(preview, w = 256, h = 192, quality = 0.7) {
   }
 }
 
+/** The open project's own name (its leaf, without folders), or null when none is associated -- the board's name in
+ *  Fusion (Send targets). */
+export function currentProjectName() {
+  return _currentFile ? _currentFile.split('/').pop() : null;
+}
+
 function buildSnapshot() {
   const cleanP = persistableP();
   if (cleanP.points && Array.isArray(cleanP.points)) {
@@ -894,6 +900,8 @@ async function onSaveAs() {
   // Save audit #7: never overwrite a DIFFERENT existing project without asking
   if (fullName !== _currentFile && _projectExists(fullName)
       && !(await confirmDialog(`"${fullName}" already exists. Replace it?`))) return;
+  // Send targets: a copy under a new name is a different project -- its own board in Fusion, never the original's
+  if (fullName !== _currentFile) P.boardId = null;
   return _saveTo(fullName);
 }
 
@@ -910,6 +918,7 @@ export async function newProject() {
   const snapP = JSON.parse(JSON.stringify(persistableP()));
   snapP.editorSvg = null;
   snapP.seed = Math.floor(Math.random() * 99999);
+  snapP.boardId = null; // Send targets: a new project gets its own board in Fusion
   await applySnapshot({ P: snapP }, _preview, { source: 'load', historyLabel: 'New project' }); // no deltas in the snapshot: sculpt cleared
   setCurrentFile(null);
   markClean();

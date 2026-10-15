@@ -7,6 +7,7 @@ and keeps every module independently testable.
 """
 import adsk.core, adsk.fusion
 from fb_engine.parameter_schema import ParameterSchema, ResolveError
+from fb_engine.board_scope import fusion_expr  # Send targets S2b: the Fusion boundary
 
 
 class BuildContext:
@@ -82,7 +83,7 @@ class BuildContext:
                     # parses "a number or a unit-suffixed string", never a multi-term expression).
                     self.logger.log(f"SHADOW STATE '{val}' is a formula, not a value -- falling through to Fusion's own expression engine", "INFO")
             try:
-                resolved = self.design.unitsManager.evaluateExpression(val, "cm")
+                resolved = self.design.unitsManager.evaluateExpression(fusion_expr(val), "cm")  # S2b
             except Exception as e:
                 # Never a silent 0: the sketch-level handler in
                 # parametric_engine.build_template reports it (CRASH in Sketch).

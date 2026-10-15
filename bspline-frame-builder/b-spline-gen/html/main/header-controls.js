@@ -18,6 +18,7 @@ import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
 import { onClearFusionDesign } from './export-flow.js';
 import { copyLogToClipboard } from './copy-log.js';
 import { pullSketchFromFusion } from '../core/fusion-bridge.js';
+import { offeredSendTargets } from './send-targets.js';
 
 const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
 
@@ -27,6 +28,8 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
         if (isFusionMode) onFusionApply(preview);
         else              onGenerate(preview);
     });
+
+    bindSendTargetMenu(preview, onFusionApply);
 
     const btnWizardExport = document.getElementById('btnWizardExport');
     if (btnWizardExport) btnWizardExport.addEventListener('click', onWizardExport);
@@ -87,4 +90,32 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
             setHapticEnabled(hapticCheckbox.checked);
         });
     }
+}
+
+/** Send targets (seat A 2026-10-14): the Send ▾ menu -- one entry per offered target (main/send-targets.js), each a
+ *  Send to that target; the Send button itself stays "replace". Closes on a pick, a click outside or Escape. */
+export function bindSendTargetMenu(preview, onFusionApply) {
+    const toggle = document.getElementById('btnSendMenu');
+    const menu = document.getElementById('sendTargetMenu');
+    if (!toggle || !menu) return;
+    menu.innerHTML = '';
+    const close = () => { menu.hidden = true; toggle.setAttribute('aria-expanded', 'false'); };
+    for (const t of offeredSendTargets()) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'cad-btn';
+        b.id = `sendTarget_${t.id}`;
+        b.setAttribute('role', 'menuitem');
+        b.textContent = t.label;
+        b.title = t.title;
+        b.addEventListener('click', () => { close(); onFusionApply(preview, { sendTarget: t.id }); });
+        menu.appendChild(b);
+    }
+    toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+        toggle.setAttribute('aria-expanded', String(!menu.hidden));
+    });
+    document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== toggle) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 }

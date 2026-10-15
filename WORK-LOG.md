@@ -26330,3 +26330,36 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   re-pinned). PATTERN_SWEEP_FULL 3344 / 3344; PATTERN_CAPS re-measured: 83 of 95 dropped (under PATCH_MAX_FACE), 4 lowered.
 - Ruled out on the way: a header-sized floor for header bonds (not the T16 cause -- reverted); dropping instead of cutting added
   parts under the frame.
+## 2026-10-14 -- seat A (77): Send targets S1 + S2 (branch send-targets)
+
+**What.** One Send menu (main/send-targets.js SEND_TARGETS: replace / newComponent / newDocument; py SEND_TARGET_PLAN).
+A board = a root occurrence tagged Bspline.board = the project's P.boardId; every design-wide lookup goes through ONE
+fb_engine.board_scope.BoardScope; every name a board gives Fusion through ONE BoardNamer ("<boardId>_", a lattice
+layer "<boardId>_L<n>_"; the legacy root board = the identity). newComponent stays ready:false until the gate is green.
+
+**Why it is shaped this way.**
+- The frame builder keeps PLAIN names inside (units by en_/ck_, board-owned checks, the UI's active_vars); the board's
+  names are applied only where text reaches Fusion (fusion_name / fusion_expr / board_params / fusion_dim_name), in ONE
+  naming context send_frame opens. A data-rename of the template was the first idea -- dropped: it would have needed
+  every name-meaning site (default_unit, is_board_owned, active_vars) taught the prefix.
+- Lattice manifests ARE renamed as data (S2a): nothing in them reads a name for its meaning.
+- frame_tilt_deg stays design-wide (the app never sets it; ensured at palette open, outside any board).
+
+**Measured live (scratch docs; probes 1-4 + the S1 / S2 checks; main redeployed after each).**
+- An offset sub-assembly: the outline must project its OWN component's axes (the root's crashed T1's reflex arc at +12 X
+  and (-10, +6); T7, with no Y_AXIS constraint, did not) and the trim cut must come from the ROOT's features with a
+  root-context profile (every component's own features refused it, T1 and T7). Both in fusion360-quirks (10f9bb0).
+- Three bugs only the live check could find: a board's Set occurrence came back native (the import fell to the root);
+  Fusion's per-design unique names ("B-Spline Set (1)"); BoardScope cached ownership before the frame existed.
+- S2: legacy + lattice identical to main (params, bodies, timeline 13, 51 model params); boards A (T1) and B (T7) fully
+  prefixed incl. T7's 30 derived expressions and 34 dimension names each; a replace of A at widthIn 8 kept the same
+  names and left B's and legacy's params AND bodies byte-identical.
+
+**Known Send behaviour (legacy too, NOT a Send-targets bug; the advisor will raise it with Fred -- Pull resizing may hit it).**
+- A frame payload whose seedGeometry was computed for 7x9, sent at widthIn 8: T1's outline solves a reflex arc
+  (232.1 deg). The app always sends the seeds for the board's current size; a stale payload would not.
+- A panel narrower than its frame (7 in panel, 8 in frame): every bar fails "the extrusion profile falls outside the
+  face" and only the trim is built.
+
+**Process slip (mine).** One unguarded full vitest overlapped the S1 background vitest + matrix: 4 timing failures there
+and a layout run that straddled a merge (15 rows read main's pre-pattern-defaults layout). Re-run guarded.
