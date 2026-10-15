@@ -50,6 +50,7 @@ import { receiveEditPasswordFromFusion } from './edit-password.js';
 import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } from './frame-panel.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
+import { applyCanvasCorners } from './canvas-corners.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
@@ -175,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initClearMenu();
     // F35 item 25: the [2D | 3D] pill on the 3D viewport and in the editor
     initViewModeToggle();
+    applyCanvasCorners(); // the toggle and the heights readout stacked in their declared corner (main/canvas-corners.js)
 
     // 7. Fusion 360 detection. Two RAFs to yield to browser paint so
     //    the palette has settled before we start polling.
