@@ -116,13 +116,16 @@ export function panelSurface(positions, index, W, H, nx, nz) {
   const ci = (x) => Math.floor((x + W / 2) / cw), cj = (y) => Math.floor((y + H / 2) / ch);
   const P = positions, E = 1e-9, nt = index.length / 3;
   // each triangle's cell box, then the cells' triangle lists as one flat array (count, then fill in triangle order)
-  const box = new Int32Array(nt * 4);
+  const box = new Int32Array(nt * 4), xy = new Float64Array(nt * 4);
   let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
   for (let f = 0, t = 0; f < nt; f++, t += 3) {
     const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
     const i0 = ci(Math.min(P[a], P[b], P[c]) - E), i1 = ci(Math.max(P[a], P[b], P[c]) + E);
     const j0 = cj(Math.min(P[a + 1], P[b + 1], P[c + 1]) - E), j1 = cj(Math.max(P[a + 1], P[b + 1], P[c + 1]) + E);
     box[4 * f] = i0; box[4 * f + 1] = i1; box[4 * f + 2] = j0; box[4 * f + 3] = j1;
+    const x0 = Math.min(P[a], P[b], P[c]), x1 = Math.max(P[a], P[b], P[c]), y0 = Math.min(P[a + 1], P[b + 1], P[c + 1]), y1 = Math.max(P[a + 1], P[b + 1], P[c + 1]);
+    const m = 1e-6 * (x1 - x0 + y1 - y0) + 1e-12; // a hit within the 1e-7 barycentric tolerance lies far inside this
+    xy[4 * f] = x0 - m; xy[4 * f + 1] = x1 + m; xy[4 * f + 2] = y0 - m; xy[4 * f + 3] = y1 + m;
     if (i0 < gi0) gi0 = i0; if (i1 > gi1) gi1 = i1; if (j0 < gj0) gj0 = j0; if (j1 > gj1) gj1 = j1;
   }
   const gw = nt ? gi1 - gi0 + 1 : 0, gh = nt ? gj1 - gj0 + 1 : 0;
@@ -131,6 +134,7 @@ export function panelSurface(positions, index, W, H, nx, nz) {
   for (let k = 0; k < gw * gh; k++) start[k + 1] += start[k];
   const fill = start.slice(0, gw * gh), tris = new Int32Array(start[gw * gh]);
   for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) tris[fill[(i - gi0) * gh + (j - gj0)]++] = 3 * f;
+  const missesBox = (t, x, y) => { const q = (t / 3) * 4; return x < xy[q] || x > xy[q + 1] || y < xy[q + 2] || y > xy[q + 3]; };
   return {
     // 2026-10-09 (seat A): the frame bars ask this ~16k times a rebuild; the candidates' hits are compared as
     // numbers and only the winning lo / hi become objects (the same object when one hit is both, as before).
@@ -140,13 +144,27 @@ export function panelSurface(positions, index, W, H, nx, nz) {
       if (!(i >= 0 && i < gw && j >= 0 && j < gh)) return null;
       for (let r = start[i * gh + j], r1 = start[i * gh + j + 1]; r < r1; r++) {
         const t = tris[r];
-        if (!_baryInto(P, index, t, x, y, 1e-7, _hit)) continue;
+        if (missesBox(t, x, y) || !_baryInto(P, index, t, x, y, 1e-7, _hit)) continue;
         if (loT < 0 || _hit.z < loZ) { loT = t; loU = _hit.u; loV = _hit.v; loW = _hit.w; loZ = _hit.z; }
         if (hiT < 0 || _hit.z > hiZ) { hiT = t; hiU = _hit.u; hiV = _hit.v; hiW = _hit.w; hiZ = _hit.z; }
       }
       if (loT < 0) return null;
       const lo = { t: loT, u: loU, v: loV, w: loW, z: loZ };
       return { lo, hi: hiT === loT ? lo : { t: hiT, u: hiU, v: hiV, w: hiW, z: hiZ } };
+    },
+    /** at(x, y).lo.z without the hit objects; throws where at() finds nothing (as reading .lo of its null did). */
+    loZ(x, y) {
+      let found = false, loZ = 0;
+      const i = ci(x) - gi0, j = cj(y) - gj0;
+      if (i >= 0 && i < gw && j >= 0 && j < gh) {
+        for (let r = start[i * gh + j], r1 = start[i * gh + j + 1]; r < r1; r++) {
+          const t = tris[r];
+          if (missesBox(t, x, y) || !_baryInto(P, index, t, x, y, 1e-7, _hit)) continue;
+          if (!found || _hit.z < loZ) { found = true; loZ = _hit.z; }
+        }
+      }
+      if (!found) throw new TypeError(`panelSurface: no panel surface at (${x}, ${y})`);
+      return loZ;
     },
   };
 }
@@ -741,6 +759,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
     const at = (p) => { let h = hits.get(p); if (h === undefined) hits.set(p, (h = surf.at(p.x, p.y))); return h; };
     const top = (p) => at(p).hi.z;
     const bot = (p) => at(p).lo.z;
+    const barTop = (p) => surf.loZ(p.x, p.y); // the bars' fresh row points: no cache entry nothing re-reads
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     // H23 item 67b: a finer, colour-only sampling of the SAME boundary `panel` traces (its own
@@ -790,7 +809,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
         side: THREE.DoubleSide, shininess: 12, specular: 0x0a0a0a });
       capFrameBrightness(barMat);
       if (inner) {
-        const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, bot, cell), barMat);
+        const bars = _mesh(THREE, ringArrays(outer, inner, spec.frameBottomZ, barTop, cell), barMat);
         bars.name = 'frame-bars';
         extra.push(bars);
       }
@@ -806,7 +825,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
         // where the terrain dips deeper), which is correct and intended; only its top follows the terrain.
         const winPaired = samplePairedOutlines(rectToPrimitives(win.outer), rectToPrimitives(win.inner), cell);
         const winBars = _mesh(THREE,
-          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, bot, cell), barMat);
+          ringArrays(toWorld(winPaired.outer, W, H), toWorld(winPaired.inner, W, H), spec.frameBottomZ, barTop, cell), barMat);
         winBars.name = 'frame-window-bars';
         extra.push(winBars);
       }
