@@ -60,7 +60,8 @@ export const BRICK_SECTIONS_LAYOUT = {
     { name: 'phone 390x844', width: 390, height: 844, mobile: true },
   ],
   tabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush'],
-  outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings',
+  // phase 4: the drawer tree's branch headers (main/brick-tab-sections.js BRICK_DRAWER_TREE) are tree controls, not settings
+  outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings, .drawer-branch-head',
 };
 
 // ---- 2026-10-07 (seat A): at phone width the sidebar's board size stays reachable WHILE the editor is open; the open
@@ -246,10 +247,13 @@ const BRICK_SECTIONS_PROBE = (outside) => `JSON.stringify((()=>{
   const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
   const secs = [...panel.querySelectorAll('.brick-sec')].filter(shown);
   const titles = secs.map((s) => s.querySelector('.panel-header').textContent.trim());
+  // phase 4: a title is unique within its BRANCH (General opens beside an element: two Crumbles, one per branch)
+  const byBranch = {}; secs.forEach((s, i) => { const b = (s.closest('.drawer-branch') || {}).dataset?.branch || '-'; (byBranch[b] = byBranch[b] || []).push(titles[i]); });
+  const dupes = Object.entries(byBranch).filter(([, t]) => new Set(t).size !== t.length).map(([b]) => b);
   const stray = [...panel.querySelectorAll('input, select, button, textarea')].filter(shown)
     .filter((c) => !c.closest(${JSON.stringify(outside)}) && !c.closest('.brick-sec')).map((c) => c.id || c.textContent.trim().slice(0, 20));
   const spill = secs.filter((s) => s.getBoundingClientRect().right > pr.right + 1).map((s) => s.id);
-  return { titles, stray, spill };
+  return { titles, stray, spill, dupes };
 })())`;
 async function runBrickSections() {
   const L = BRICK_SECTIONS_LAYOUT;
@@ -260,7 +264,7 @@ async function runBrickSections() {
     for (const tab of L.tabs) {
       await click(tab, 900);
       const r = await jsJSON(BRICK_SECTIONS_PROBE(L.outside));
-      const unique = new Set(r.titles).size === r.titles.length;
+      const unique = r.dupes.length === 0;
       const ok = r.titles.length > 0 && unique && r.stray.length === 0 && r.spill.length === 0;
       checkRow('layout', `Brick sections ${vp.name}: ${tab.replace(/^brick(Tab|Tool)_/, '')} -- unique titles, every control in a section, none past the edge`, ok,
         `titles: ${r.titles.join(' / ')}${r.stray.length ? `; outside a section: ${r.stray.join(', ')}` : ''}${r.spill.length ? `; past the edge: ${r.spill.join(', ')}` : ''}`);

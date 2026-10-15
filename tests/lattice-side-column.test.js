@@ -13,6 +13,7 @@ import {
   initLatticeSideColumn,
   sectionKindForTitle,
   SECTION_KIND_BY_TITLE,
+  LATTICE_DRAWER_TREES,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/lattice-side-column.js';
 
 describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
@@ -54,8 +55,8 @@ describe('sectionKindForTitle / SECTION_KIND_BY_TITLE', () => {
 // the panel/body/footer/generate/unprotectAll ids it looks up by id, and
 // the layers panel's own header+list.
 // ---------------------------------------------------------------------
-function section(title, extraHtml = '') {
-  return `<div><span style="font-weight:600;">${title}</span>${extraHtml}</div>`;
+function section(title, extraHtml = '', id = '') {
+  return `<div${id ? ` id="${id}"` : ''}><span style="font-weight:600;">${title}</span>${extraHtml}</div>`;
 }
 
 function buildFixture() {
@@ -76,11 +77,11 @@ function buildFixture() {
         <div data-no-collapse>
           <span style="font-weight:600;">Seed</span>
         </div>
-        ${section('Grid & rails')}
-        ${section('Ties')}
-        ${section('Nodes')}
-        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>')}
-        ${section('Widths')}
+        ${section('Grid & rails', '', 'latticeSec_rails')}
+        ${section('Ties', '', 'latticeSec_ties')}
+        ${section('Nodes', '', 'latticeSec_nodes')}
+        ${section('Colors', '<button id="latticeColorRails" style="background:#c62828;"></button><button id="latticeColorTies" style="background:#f9c80e;"></button><button id="latticeColorNodes" style="background:#1a237e;"></button>', 'latticeSec_colors')}
+        ${section('Widths', '', 'latticeSec_widths')}
         <div data-no-collapse>
           <span style="font-weight:600;">Add</span>
           <div role="group" id="latticeAddKindGroup" class="segmented-group">
@@ -100,12 +101,12 @@ function buildFixture() {
       <div id="editorShapeLatticePanelBody">
         ${section('Shape')}
         ${section('Segments')}
-        ${section('Grid & rails')}
-        ${section('Ties')}
-        ${section('Nodes')}
-        ${section('Colors', '<button id="shapeLatticeColorRails" style="background:#c62828;"></button><button id="shapeLatticeColorTies" style="background:#f9c80e;"></button><button id="shapeLatticeColorNodes" style="background:#1a237e;"></button>')}
-        ${section('Widths')}
-        ${section('Boundary')}
+        ${section('Grid & rails', '', 'shapeSec_rails')}
+        ${section('Ties', '', 'shapeSec_ties')}
+        ${section('Nodes', '', 'shapeSec_nodes')}
+        ${section('Colors', '<button id="shapeLatticeColorRails" style="background:#c62828;"></button><button id="shapeLatticeColorTies" style="background:#f9c80e;"></button><button id="shapeLatticeColorNodes" style="background:#1a237e;"></button>', 'shapeSec_colors')}
+        ${section('Widths', '', 'shapeSec_widths')}
+        ${section('Boundary', '', 'shapeSec_boundary')}
         ${section('Fill seed', '<input id="shapeLatticeSeed">')}
       </div>
       <div id="editorShapeLatticePanelFooter">
@@ -159,15 +160,13 @@ describe('initLatticeSideColumn', () => {
     // not by DOM order, so this holds regardless of where Add sits relative
     // to Seed/Fill seed, both ALSO `[data-no-collapse]`), and as the very
     // first child of the Shape Lattice panel (which has no Add row at all).
-    const latticeBody = document.getElementById('editorLatticePanelBody');
-    const kinds = Array.from(latticeBody.children).map((c) => c.dataset.latticeSection);
-    expect(kinds).toEqual(['neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'neutral', undefined]);
-
-    const shapeBody = document.getElementById('editorShapeLatticePanelBody');
-    const shapeKinds = Array.from(shapeBody.children).map((c) => c.dataset.latticeSection);
-    // T81 item 2: the LAST 'contour' here is the Boundary section -- now its
-    // own 'boundary' kind, not an alias for Shape's 'contour' (index 1).
-    expect(shapeKinds).toEqual([undefined, 'contour', 'neutral', 'rails', 'ties', 'nodes', 'neutral', 'neutral', 'boundary', 'neutral']);
+    // phase 4: the sections now sit in their panel's collapse tree, so each kind is read by the section's title
+    const kindsOf = (bodyId) => Object.fromEntries([...document.getElementById(bodyId).querySelectorAll('[data-lattice-section]')]
+      .map((c) => [c.firstElementChild.textContent.trim(), c.dataset.latticeSection]));
+    expect(kindsOf('editorLatticePanelBody')).toEqual({ Seed: 'neutral', 'Grid & rails': 'rails', Ties: 'ties', Nodes: 'nodes', Colors: 'neutral', Widths: 'neutral', Add: 'neutral' });
+    // T81 item 2: Boundary is its own 'boundary' kind, not an alias for Shape's 'contour'
+    expect(kindsOf('editorShapeLatticePanelBody')).toEqual({ Shape: 'contour', Segments: 'neutral', 'Grid & rails': 'rails', Ties: 'ties', Nodes: 'nodes',
+      Colors: 'neutral', Widths: 'neutral', Boundary: 'boundary', 'Fill seed': 'neutral' });
   });
 
   it("T81 item 4 (Fred screenshot: the OLD 'Add [Rail|Tie|Node]' row was still visible alongside the new icon row): the REAL Add row is hidden even though Seed ALSO carries data-no-collapse and comes first in the DOM", () => {
@@ -397,98 +396,62 @@ describe('lattice mounts are scoped to the Lattice tab (redesign phase 2; it was
   });
 });
 
-// UI3 (Fred: "like in main side bar, make lattice section collapsible") —
-// same key prefix editor-drawer.js's own former mobile-only mechanism
-// declared (bspline.editor.drawerSection.<title>), now wired here on
-// BOTH desktop and mobile.
+// UI3 (Fred: "like in main side bar, make lattice section collapsible") -> redesign phase 4: each lattice tool's panel is
+// ONE collapse tree (editor/lattice-side-column.js LATTICE_DRAWER_TREES on main/drawer-tree.js): still foldable, now as
+// the tree every editor tab uses. The Layers label and the Shape / Segments sub-blocks keep UI3's own fold.
 const SECTION_STATE_PREFIX = 'bspline.editor.drawerSection.';
+const branchOf = (prefix, id) => document.getElementById(`${prefix}${id}`);
+const isOpenB = (prefix, id) => branchOf(prefix, id).classList.contains('open');
 
-describe('UI3 — collapsible sections', () => {
-  beforeEach(() => {
-    buildFixture();
-    setDesktop(true);
-    localStorage.clear();
-  });
+describe('phase 4: each lattice panel is a collapse tree', () => {
+  beforeEach(() => { buildFixture(); setDesktop(true); localStorage.clear(); });
+  afterEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
 
-  afterEach(() => {
-    document.body.innerHTML = '';
-    localStorage.clear();
-  });
-
-  it('a section starts open, and clicking its label collapses it, rotating the chevron and hiding its body', () => {
+  it('the declared branches hold their sections; Look holds Colors and Widths (one branch, advisor 2026-10-15)', () => {
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    const tiesSection = Array.from(document.getElementById('editorLatticePanelBody').children)
-      .find((c) => c.textContent.trim().startsWith('Ties'));
-    const label = tiesSection.firstElementChild;
-    const chevron = label.querySelector('.lattice-section-chevron');
-    expect(chevron.style.transform).toBe('rotate(0deg)');
-
-    label.click();
-
-    expect(chevron.style.transform).toBe('rotate(-90deg)');
-    // Every OTHER child of the section (i.e. its body, not the label
-    // itself) is hidden -- Ties has no extra body content in the fixture,
-    // so this section only proves the label survives untouched; the
-    // Layers-list test below proves an actual body element toggling.
-    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'Ties')).toBe('0');
+    expect(LATTICE_DRAWER_TREES.lattice.branches.map((b) => b.id)).toEqual(['boundary', 'rails', 'ties', 'nodes', 'look']);
+    expect(branchOf('latticeBranch_', 'ties').contains(document.getElementById('latticeSec_ties'))).toBe(true);
+    for (const id of ['latticeSec_colors', 'latticeSec_widths']) expect(branchOf('latticeBranch_', 'look').contains(document.getElementById(id)), id).toBe(true);
   });
-
-  it('clicking a collapsed section again re-expands it and restores its ORIGINAL inline display (not a bare "")', () => {
+  it('a one-section branch hides the section\'s own title (the branch says it); Look keeps its two titles', () => {
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    const colorsSection = Array.from(document.getElementById('editorLatticePanelBody').children)
-      .find((c) => c.textContent.trim().startsWith('Colors'));
-    const label = colorsSection.firstElementChild;
-    const swatch = document.getElementById('latticeColorRails');
-    const originalDisplay = swatch.style.display; // '' in the fixture -- a real row would carry an inline flex
-
-    label.click(); // collapse
-    expect(swatch.style.display).toBe('none');
-    label.click(); // re-expand
-    expect(swatch.style.display).toBe(originalDisplay);
-
-    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'Colors')).toBe('1');
+    expect(document.getElementById('latticeSec_ties').firstElementChild.classList.contains('drawer-host-title')).toBe(true);
+    expect(document.getElementById('latticeSec_colors').firstElementChild.classList.contains('drawer-host-title')).toBe(false);
   });
-
-  it('honours a PRE-EXISTING collapsed state from localStorage on init', () => {
-    localStorage.setItem(SECTION_STATE_PREFIX + 'Nodes', '0');
+  it('desktop: every branch starts open; the caret folds one and the open set is remembered', () => {
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    const nodesSection = Array.from(document.getElementById('editorLatticePanelBody').children)
-      .find((c) => c.textContent.trim().startsWith('Nodes'));
-    const chevron = nodesSection.firstElementChild.querySelector('.lattice-section-chevron');
-    expect(chevron.style.transform).toBe('rotate(-90deg)');
+    expect(isOpenB('latticeBranch_', 'ties')).toBe(true);
+    branchOf('latticeBranch_', 'ties').querySelector('.drawer-branch-caret').click();
+    expect(isOpenB('latticeBranch_', 'ties')).toBe(false);
+    expect(JSON.parse(localStorage.getItem(LATTICE_DRAWER_TREES.lattice.openKey))).not.toContain('ties');
   });
-
-  it('data-no-collapse sections (the Add wrapper, and AMEND 1\'s new icon row) get no chevron at all', () => {
+  it('Add (the icon row) and the hidden Seed stay out of the tree', () => {
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    const body = document.getElementById('editorLatticePanelBody');
-    const oldAddRow = body.querySelector('[data-no-collapse]');
-    expect(oldAddRow.querySelector('.lattice-section-chevron')).toBeNull();
+    const tree = document.getElementById(LATTICE_DRAWER_TREES.lattice.treeId);
+    for (const n of document.querySelectorAll('#editorLatticePanelBody [data-no-collapse]')) expect(tree.contains(n)).toBe(false);
   });
-
-  it('the Layers block is collapsible too, and never disturbs #editorAddLayer\'s own click handler', () => {
+  it('the Layers block keeps its own fold, and never disturbs #editorAddLayer\'s own click handler', () => {
     const addLayerSpy = vi.fn();
     document.getElementById('editorAddLayer').addEventListener('click', addLayerSpy);
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-
     const label = document.querySelector('#editorLayersPanel .layers-header span');
     const list = document.getElementById('editorLayersList');
     label.click();
     expect(list.style.display).toBe('none');
     expect(localStorage.getItem(SECTION_STATE_PREFIX + 'Layers')).toBe('0');
-
     document.getElementById('editorAddLayer').click();
-    expect(addLayerSpy).toHaveBeenCalledTimes(1); // untouched by the label's own click wiring
+    expect(addLayerSpy).toHaveBeenCalledTimes(1);
   });
 });
 
-// Item 13 (Fred: the Shape Lattice panel was ~4 screens tall on a phone): Boundary, Widths and the
-// Segments sub-block start folded on a phone, remembered under Shape-Lattice-only keys; desktop and the
-// box Lattice panel keep today's open default.
-describe('Item 13 — Shape Lattice folds its rarely used sections (and the Shape sub-block) on a phone', () => {
+// Item 13 (Fred: the Shape Lattice panel was ~4 screens tall on a phone): its rarely used Boundary and Look (Widths)
+// start folded on a phone; the Shape / Segments sub-blocks fold under their own keys (UI3's fold, unchanged); desktop
+// and the box Lattice keep everything open.
+describe('Item 13 -- the Shape Lattice tree folds its rarely used branches on a phone', () => {
   const addSegmentsBlock = () => {
     const body = document.getElementById('editorShapeLatticePanelBody');
     body.insertAdjacentHTML('beforeend', `
-      <div><span style="font-weight:600;">Contour</span>
+      <div id="shapeSec_contour"><span style="font-weight:600;">Contour</span>
         <div id="shapeLatticeShapeBlock"><span>Shape</span>
           <div id="shapeLatticeShapeFoldBody" style="display:flex;"><button id="shapePresetHourglass"></button></div>
         </div>
@@ -497,20 +460,18 @@ describe('Item 13 — Shape Lattice folds its rarely used sections (and the Shap
         </div>
       </div>`);
   };
-  const sectionIn = (bodyId, title) => Array.from(document.getElementById(bodyId).children)
-    .find((c) => c.firstElementChild && c.firstElementChild.textContent.trim().startsWith(title));
-  const isOpen = (sectionEl) => sectionEl.firstElementChild.querySelector('.lattice-section-chevron').style.transform === 'rotate(0deg)';
-
   beforeEach(() => { buildFixture(); addSegmentsBlock(); localStorage.clear(); });
   afterEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
 
-  it('on a phone: Boundary, Widths and Segments start folded; everyday sections stay open; the box Lattice is untouched', () => {
+  it('on a phone: Boundary and Look start folded, the everyday branches open; the box Lattice keeps all open', () => {
     setDesktop(false);
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(false);
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Widths'))).toBe(false);
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Ties'))).toBe(true);
-    expect(isOpen(sectionIn('editorLatticePanelBody', 'Widths'))).toBe(true);
+    expect(LATTICE_DRAWER_TREES.shapeLattice.foldedOnPhone).toEqual(['boundary', 'look']);
+    expect(isOpenB('shapeLatticeBranch_', 'boundary')).toBe(false);
+    expect(isOpenB('shapeLatticeBranch_', 'look')).toBe(false);
+    expect(isOpenB('shapeLatticeBranch_', 'ties')).toBe(true);
+    expect(isOpenB('latticeBranch_', 'look')).toBe(true);
+    // the sub-blocks keep UI3's own fold, under their own keys
     const shapeFold = document.getElementById('shapeLatticeShapeFoldBody');
     expect(shapeFold.style.display).toBe('none');
     document.querySelector('#shapeLatticeShapeBlock > span').click();
@@ -518,30 +479,21 @@ describe('Item 13 — Shape Lattice folds its rarely used sections (and the Shap
     expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Shape')).toBe('1');
     const foldBody = document.getElementById('shapeLatticeSegmentsFoldBody');
     expect(foldBody.style.display).toBe('none');
-    expect(foldBody.classList.contains('lattice-section-folded')).toBe(true);
-    // Opening it restores its own inline display and remembers it under its own key.
     document.querySelector('#shapeLatticeSegmentsBlock > span').click();
     expect(foldBody.style.display).toBe('flex');
-    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Segments')).toBe('1');
-    sectionIn('editorShapeLatticePanelBody', 'Widths').firstElementChild.click();
-    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'shapeLattice.Widths')).toBe('1');
-    expect(localStorage.getItem(SECTION_STATE_PREFIX + 'Widths')).toBeNull();
   });
-
-  it('on desktop they start open, as before', () => {
+  it('on desktop every branch starts open, as before', () => {
     setDesktop(true);
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(true);
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Widths'))).toBe(true);
+    for (const id of ['boundary', 'look', 'ties']) expect(isOpenB('shapeLatticeBranch_', id), id).toBe(true);
     expect(document.getElementById('shapeLatticeSegmentsFoldBody').style.display).toBe('flex');
-    expect(document.getElementById('shapeLatticeShapeFoldBody').style.display).toBe('flex');
   });
-
-  it('a remembered open state wins over the phone default', () => {
+  it('a remembered open set wins over the phone default', () => {
     setDesktop(false);
-    localStorage.setItem(SECTION_STATE_PREFIX + 'shapeLattice.Boundary', '1');
+    localStorage.setItem(LATTICE_DRAWER_TREES.shapeLattice.openKey, JSON.stringify(['boundary', 'ties']));
     initLatticeSideColumn({ _lattice: { drawKind: 'select' } });
-    expect(isOpen(sectionIn('editorShapeLatticePanelBody', 'Boundary'))).toBe(true);
+    expect(isOpenB('shapeLatticeBranch_', 'boundary')).toBe(true);
+    expect(isOpenB('shapeLatticeBranch_', 'nodes')).toBe(false);
   });
 });
 

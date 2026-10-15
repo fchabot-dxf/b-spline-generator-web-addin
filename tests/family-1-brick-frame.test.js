@@ -102,7 +102,7 @@ describe('Family 1 Brick Frame Adaptation (Straight Top/Bottom & Hourglass / Nec
         }
       }
     }
-  });
+  }, 90000); // every conforming preset on every template: 18 s alone with the six short-brick bands (2026-10-14), 30 s+ under a parallel run
 
   it('engine: quoin_corners places exactly 4 quoin blocks at the 4 square corners on every Family 1 template', () => {
     const set = brickSetById(1);

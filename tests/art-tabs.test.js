@@ -32,7 +32,8 @@ describe('Art tabs: the declaration against the real markup', () => {
     expect(doc.querySelector('aside.editor-sidebar #editorToolbarArtwork')).toBeNull();
   });
   it("General's groups are the Artwork tab's declared panelHosts (home: the top bar)", () => {
-    const hosts = EDITOR_TABS.find((t) => t.id === 'artwork').panelHosts;
+    // phase 4: the Draw tab hosts its other branches too (Text, Expand, Layers): General's are the ones hosted in its body
+    const hosts = EDITOR_TABS.find((t) => t.id === 'artwork').panelHosts.filter((h) => h.host === 'artGeneralBody');
     expect(hosts.map((h) => h.content)).toEqual([...ART_GENERAL_GROUPS]);
     for (const h of hosts) { expect(h.host).toBe('artGeneralBody'); expect(h.panel).toBe('editorToolbarTop'); }
     for (const g of ART_GENERAL_GROUPS) expect(doc.getElementById(g)?.closest('#editorToolbarTop'), g).not.toBeNull();

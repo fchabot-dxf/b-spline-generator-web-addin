@@ -2013,6 +2013,63 @@
     border-left: 4px solid var(--section-stripe);
     gap: 0;
 }
+/* Redesign phase 4 (Fred's mockups, shots/seatD/redesign/mock_Brick_*): the Brick drawer's collapse TREE
+   (main/brick-tab-sections.js BRICK_DRAWER_TREE) -- a card per branch: caret, title, a quiet summary at the right; the
+   open branch holds its colour sections */
+.drawer-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.drawer-branch {
+    border: 1px solid var(--cad-border-standard);
+    border-radius: 8px;
+    background: #fff;
+}
+.drawer-branch-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: var(--touch-target-min, 32px);
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--cad-text-main);
+}
+.drawer-branch.open > .drawer-branch-head {
+    background: #f6f8fa;
+    border-bottom: 1px solid var(--cad-border-standard);
+    border-radius: 8px 8px 0 0;
+}
+.drawer-branch-caret {
+    width: 14px;
+    color: var(--cad-text-muted);
+    font-size: 11px;
+}
+.drawer-branch-title {
+    font-weight: 700;
+    font-size: 14px;
+}
+.drawer-branch-summary {
+    margin-left: auto;
+    color: var(--cad-text-muted);
+    font-size: 11px;
+    text-align: right;
+}
+.drawer-branch-body {
+    padding: 8px; /* measured: 10 px pushed a Shape segment-style field 1 px past the panel (layout Panel fit) */
+}
+.drawer-branch-body[hidden] {
+    display: none;
+}
+/* a one-section branch's own bold title: the branch header says it (editor/lattice-side-column.js) */
+.drawer-host-title { display: none !important; }
+/* the Layers block inside a tree: its branch folds it -- the label's own fold (UI3) would be a second control */
+.drawer-tree .layers-header .lattice-section-chevron { display: none; }
+.drawer-tree .layers-header > span:first-child { pointer-events: none; }
 /* a label the section's own title replaces (BRICK_TAB_SECTIONS titleOf) */
 .brick-sec-title-label {
     display: none !important;
