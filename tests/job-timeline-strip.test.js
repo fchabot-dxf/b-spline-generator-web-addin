@@ -65,6 +65,16 @@ describe('the strip', () => {
   });
 });
 
+describe('one playhead', () => {
+  it('drawn once, also where it falls at an open group (its chip does not count as a step)', () => {
+    const order = P.jobTimeline.order;
+    const g = order.findIndex((id) => id.startsWith('lattice:'));
+    P.jobTimeline = { order, head: g }; // the head right before the lattice group
+    renderJobStrips();
+    for (const h of JOB_STRIP_HOSTS) expect($(h.id).querySelectorAll('.job-head').length, h.id).toBe(1);
+  });
+});
+
 describe('the playhead sticks out above the strip (Fred: "like Fusion’s marker")', () => {
   it('declared: an overhang above the band and a grab width, at least 28 px on a phone; the bar carries them', () => {
     expect(JOB_STRIP.headOverhangPx.desktop).toBeGreaterThan(0);

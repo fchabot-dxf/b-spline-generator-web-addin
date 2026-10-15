@@ -106,7 +106,10 @@ export function renderJobStrips(doc = typeof document !== 'undefined' ? document
     label.textContent = 'Job';
     bar.appendChild(label);
     let index = 0; // steps drawn so far: the head sits before step `head`
+    let headDrawn = false; // ONE head: a group's own chip does not advance `index` (measured: drawn twice at an open group)
     const putHead = () => {
+      if (headDrawn) return;
+      headDrawn = true;
       const k = doc.createElement('div');
       k.className = 'job-head';
       k.dataset.jobHead = '1';

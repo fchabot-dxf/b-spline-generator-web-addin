@@ -900,7 +900,8 @@ aside {
     cursor: grab;
 }
 .job-step-sub { padding: 0 7px; border-radius: 4px; background: #fff; }
-.job-step-fixed { cursor: default; }
+/* Stock (JOB_STEP_KINDS fixed: 'first'): pinned as step 1 -- a dashed edge, no grab; not a lock */
+.job-step-fixed { cursor: default; border-style: dashed; }
 .job-step.job-done { opacity: 0.55; }
 .job-icon { color: var(--job-color); }
 .job-caret { color: var(--cad-text-muted); font-size: 10px; }
