@@ -205,7 +205,10 @@ export function generateBricks(input) {
     // cut pieces with their remnants merged into a neighbour made ragged pieces (a two-brick M across a gable top, T11
     // 9x12 3/4 in); filling the wall again into the new outline re-aligned every course and dropped a gable's flank
     // triangle (0.038 sq in bare). A quoin inside the stack changes nothing.
-    const reaching = (laidFrame.quoins || []).filter((q) => Math.abs(signedArea(polygonIntersection(q, interiorOutline)) || 0) > QUOIN_REACH_SQIN);
+    // ... or that a laid wall brick overlaps: the region test alone misses a curved block's wedge against a concave region
+    // (MEASURED T18 7x9 1 in, a mid-course block on the arched head: the clip came back empty, 7 wall bricks under it)
+    const reaching = (laidFrame.quoins || []).filter((q) => Math.abs(signedArea(polygonIntersection(q, interiorOutline)) || 0) > QUOIN_REACH_SQIN
+      || wallBricks.some((w) => overlapsMoreThan(q, w.polygon, QUOIN_REACH_SQIN)));
     if (reaching.length) {
       const J = scaledSet(set, scale).grout.widthIn;
       const largest = (parts) => (parts && !parts.holeIgnored ? parts : []).filter((p) => p && p.length >= 3).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0] || null;
