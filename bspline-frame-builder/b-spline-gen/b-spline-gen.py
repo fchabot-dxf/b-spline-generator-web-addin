@@ -25,7 +25,8 @@ from param_ownership import compute_stale_params
 from panel_finish import apply_panel_finish
 from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
                           new_board_offset_in, BOARD_SPACING_IN)
-from fb_engine.board_scope import BoardScope, BOARD_ATTR, tagged_board_components  # noqa: E402
+from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
+                                   BoardNamer, lattice_layer_prefix)
 
 # imports check: removed diagnostic
 
@@ -697,8 +698,10 @@ def _in_active_design(des, entity):
         return False
 
 
-class _SkipStalePass(Exception):
-    """A board component's Send skips the design-wide stale-param pass (Send targets S1)."""
+def _registry_base(namer, name):
+    """A param's declared registry name: the board prefix off, then a lattice layer's "L<n>_" (S2)."""
+    base = namer.base(name)
+    return re.sub(r'^L\d+_', '', base) if not namer.is_identity else base
 
 
 def _owned_by(scope, occ):
@@ -1325,7 +1328,7 @@ def _expression_is_numeric(expr):
         return False
 
 
-def _sync_user_parameters(design, params):
+def _sync_user_parameters(design, params, namer=None):
     """
     Creates or updates Fusion 360 User Parameters based on generator settings.
     Prefixes names with 'BSG_' to avoid collisions.
@@ -1349,6 +1352,8 @@ def _sync_user_parameters(design, params):
     EPS_IN = 0.001  # inch tolerance for "values match"
 
     for key, (f_name, unit) in param_map.items():
+        if namer is not None:
+            f_name = namer.name(f_name)  # Send targets S2: "<boardId>_widthIn" in a tagged board; the legacy board: as is
         if key in params:
             val = params[key]
             try:
@@ -1427,6 +1432,34 @@ def _layer_manifest(layer):
     here so `_svg_layer_import_plan` (the ONLY other reader) and the
     payload-names loop can never diverge on the key name again."""
     return layer.get('sketchManifest')
+
+
+# Send targets S2: the board params a lattice expression may name, beside the lattice's own (declared once)
+BOARD_PARAM_NAMES = ('widthIn', 'heightIn')
+
+
+def _scoped_manifest(manifest, namer):
+    """A lattice manifest with its parameter names and dimension expressions in the board's namespace: the lattice's
+    own names under "<boardId>_L<layerId>_", widthIn / heightIn under the board's prefix (BoardNamer.rename: only
+    those declared names -- Fred's own params and the functions / units are never touched). Identity for the legacy
+    board (the same dict back: a legacy Send unchanged)."""
+    if not manifest or namer is None or namer.is_identity:
+        return manifest
+    layer = namer.child(lattice_layer_prefix(manifest.get('layerId')))
+    own = [p.get('name') for p in manifest.get('parameters') or [] if p.get('name')]
+    mapping = {**namer.mapping(BOARD_PARAM_NAMES), **layer.mapping(own)}
+    out = dict(manifest)
+    out['parameters'] = [dict(p, name=mapping.get(p.get('name'), p.get('name'))) for p in manifest.get('parameters') or []]
+    out['dimensions'] = [dict(d, expression=BoardNamer.rename(d.get('expression'), mapping)) if d.get('expression') else d
+                         for d in manifest.get('dimensions') or []]
+    return out
+
+
+def _scope_stamp_manifests(stamp_data, namer):
+    """Every layer's manifest named for the board, once (in place on the payload's own layer dicts)."""
+    for layer in (stamp_data or {}).get('layers') or []:
+        if layer.get('sketchManifest'):
+            layer['sketchManifest'] = _scoped_manifest(layer['sketchManifest'], namer)
 
 
 class _LogAdapter:
@@ -2255,10 +2288,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if not is_preview: _send_import_failed('No active Fusion design -- open or create a design, then Send again.')
                 return
 
+            # Send targets: the board this Send builds into, resolved FIRST -- its params are named through its namer
+            global current_import_group
+            scope = None
+            if not is_preview and not data.get('isAppend', False):
+                scope = _resolve_send_scope(des, target, board, data.get('params', {}))
+                _scope_stamp_manifests(data.get('stamp'), scope.namer)
+
             # Sync User Parameters (if not preview)
             if not is_preview:
                 params = data.get('params', {})
-                _sync_user_parameters(des, params)
+                _sync_user_parameters(des, params, scope.namer if scope is not None else None)
 
             _log(f'Design: {des.parentDocument.name}, type={des.designType}')
             root_comp     = des.rootComponent
@@ -2272,14 +2312,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             is_append = data.get('isAppend', False)
             is_visible = data.get('isVisible', True)
             
-            global current_import_group
-            scope = None
             if not is_preview and not is_append:
                 # One Send = the whole BOARD (Send targets 2026-10-14): replace clears its own board only -- the
                 # previous frame goes first (it is extruded to the B-spline body, so it would break), then its
                 # B-Spline Set (tagged, so a set from before a Fusion restart goes too) -- and the fresh set is
                 # tagged. A new component / document clears nothing. The frame is rebuilt at the end when chosen.
-                scope = _resolve_send_scope(des, target, board, params)
                 if target == 'replace':
                     _send_stage('fusionClearCam')
                     if not scope.is_board:
@@ -2624,8 +2661,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
-                # Send targets: a tagged board's Send skips the stale pass below (its params get their prefix and the
-                # pass its scope in the next slice -- unscoped it could delete another board's lattice params)
+                # Send targets S2: the pass sees only THIS board's namespace (BoardNamer.owns) and judges a name by its
+                # declared base (BoardNamer.base) -- another board's params, and Fred's own, are never candidates
                 # STALE-PARAMS R4 item 4 (ruling 7, "ONE call ... after
                 # geometry"): board + lattice params created/updated by
                 # THIS Send are already synced (params sync ran near the
@@ -2637,21 +2674,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # function: a failure here is logged, never shown to Fred,
                 # never blocks the Send that already succeeded.
                 try:
-                    if scope is not None and scope.is_board:
-                        raise _SkipStalePass()
-                    payload_names = set(params.keys())
+                    namer = scope.namer if scope is not None else BoardNamer()
+                    payload_names = {namer.name(k) for k in params.keys()}
                     for layer in (stamp_data.get('layers', []) if stamp_data else []):
                         manifest = _layer_manifest(layer) or {}
                         for p in manifest.get('parameters', []) or []:
                             if p.get('name'):
                                 payload_names.add(p['name'])
-                    stale = compute_stale_params(des.userParameters, payload_names, logger=_LogAdapter())
+                    stale = compute_stale_params(des.userParameters, payload_names, logger=_LogAdapter(),
+                                                 owns=namer.owns, base=lambda n: _registry_base(namer, n))
                     _merge_last_send_key('stale_params', stale)
                     if stale['deleted'] or stale['failed']:
                         _log(f'[STALE PARAMS] deleted={stale["deleted"]} adopted={stale["adopted"]} '
                              f'kept_referenced={[k["name"] for k in stale["kept_referenced"]]} failed={stale["failed"]}')
-                except _SkipStalePass:
-                    _log('[STALE PARAMS] skipped: a board component Send (scoped in the next slice)')
                 except Exception as e:
                     _log(f'[STALE PARAMS] cleanup pass failed (Send itself unaffected): {e}')
                 # Fred ("lets try to send bspline and frame at same time" / "no send frame"): the frame is built by

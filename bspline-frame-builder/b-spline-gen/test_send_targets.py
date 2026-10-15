@@ -167,7 +167,7 @@ def test_a_new_document_is_made_before_the_design_is_read():
 
 
 def test_only_replace_clears_and_only_the_legacy_board_clears_cam():
-    i_scope = _GEN.index('scope = _resolve_send_scope(des, target, board, params)')
+    i_scope = _GEN.index("scope = _resolve_send_scope(des, target, board, data.get('params', {}))")
     i_replace = _GEN.index("if target == 'replace':", i_scope)
     i_cam = _GEN.index('_clear_cam_build(des)')
     assert i_scope < i_replace < _GEN.index('if not scope.is_board:', i_replace) < i_cam
