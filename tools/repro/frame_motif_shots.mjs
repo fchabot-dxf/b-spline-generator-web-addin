@@ -3,6 +3,8 @@
 // lighter = higher) and a 3D shot (window.__preview.getSnapshot). Plus one hourglass (template_1) board.
 //
 // Usage: node tools/repro/frame_motif_shots.mjs <outDir> <paletteUrl> [cdpPort]
+//   SHOTS='[["tag","preset","template_1",1.25],...]' replaces the list below; PREFIX (default app_) starts each file name;
+//   BOARD (default 7x10) is the board size.
 //   serve bspline-frame-builder/ with tools/brick-matrix/serve.py so ../../styles resolve.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync } from 'node:fs';
@@ -25,7 +27,9 @@ const SHOTS = [
   ['soldier_string', 'soldier_string', '', 1.25],
   ['dentil_cornice', 'dentil_cornice', '', 1],
   ['hourglass_dentil_corbel', 'dentil_corbel', 'template_1', 1],
-].filter((s) => !BOARDS || BOARDS.includes(s[0]));
+];
+const SHOT_LIST = (process.env.SHOTS ? JSON.parse(process.env.SHOTS) : SHOTS).filter((s) => !BOARDS || BOARDS.includes(s[0]));
+const PREFIX = process.env.PREFIX || 'app_';
 
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
   '--no-first-run', '--no-default-browser-check', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
@@ -64,11 +68,12 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, de
 await sleep(2000);
 if (process.env.DEBUG) console.error('booted', Date.now() - T0, await js(`JSON.stringify({ boot: 0, splash: document.getElementById('app-splash')?.className ?? 'gone', modal: getComputedStyle(document.getElementById('svgEditorModal')).display, ed: !!window.svgEditor, w: document.getElementById('widthIn')?.value })`));
 await splashGone();
-await setValue('widthIn', 7); await setValue('heightIn', 10); await settle();
+const [BW, BH] = (process.env.BOARD || '7x10').split('x').map(Number);
+await setValue('widthIn', BW); await setValue('heightIn', BH); await settle();
 if (process.env.DEBUG) console.error('board', Date.now() - T0, await js(`JSON.stringify({ boot: 0, splash: document.getElementById('app-splash')?.className ?? 'gone', modal: getComputedStyle(document.getElementById('svgEditorModal')).display, ed: !!window.svgEditor, w: document.getElementById('widthIn')?.value })`));
 const report = [];
 try {
-for (const [tag, preset, template, size] of SHOTS) {
+for (const [tag, preset, template, size] of SHOT_LIST) {
   await splashGone();
   if (!(await editorOpen())) await click('btnStampEdit', 3000);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
@@ -97,9 +102,9 @@ for (const [tag, preset, template, size] of SHOTS) {
     if (typeof p.updateFrustum === 'function') p.updateFrustum(); else if (typeof o.updateFrustum === 'function') o.updateFrustum();
     p._needsRender = true; await new Promise((r) => setTimeout(r, 2500)); return 1; })()`);
   await view(0.55, 0.35, 17, 0, 0); // the whole board, from above at a slight rake
-  await snap(`${OUT}/app_${tag}_3d.png`);
+  await snap(`${OUT}/${PREFIX}${tag}_3d.png`);
   await view(0.95, 0.6, 6, -2.2, -3.6); // one corner, raking light across the relief
-  await snap(`${OUT}/app_${tag}_3d_corner.png`);
+  await snap(`${OUT}/${PREFIX}${tag}_3d_corner.png`);
   // 2D: the editor's canvas, the whole board fitted, each laid piece tinted by its relief (data-brick-height-offset:
   // lighter = raised, darker = recessed -- the mockups' convention; display only, this throwaway session is never saved)
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 1700, deviceScaleFactor: 1, mobile: false }); await sleep(1500);
@@ -110,7 +115,7 @@ for (const [tag, preset, template, size] of SHOTS) {
   const box = JSON.parse(await js(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement || window.svgEditor._sketchLayer.node.closest('svg'); const c=svg.parentElement.getBoundingClientRect(), r=svg.getBoundingClientRect();
     const x=Math.max(c.x,r.x), y=Math.max(c.y,r.y); return JSON.stringify({x, y, w: Math.min(c.right,r.right)-x, h: Math.min(c.bottom,r.bottom)-y}); })()`));
   const s2 = await send('Page.captureScreenshot', { format: 'png', clip: { x: box.x, y: box.y, width: box.w, height: box.h, scale: 1 } });
-  writeFileSync(`${OUT}/app_${tag}_2d.png`, Buffer.from(s2.result.data, 'base64'));
+  writeFileSync(`${OUT}/${PREFIX}${tag}_2d.png`, Buffer.from(s2.result.data, 'base64'));
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false }); await sleep(1000);
   await click('editorApply', 2500); await settle();
   report.push({ tag, tpl, presetClick: p, ...info });

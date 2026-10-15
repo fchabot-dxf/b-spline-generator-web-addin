@@ -637,6 +637,42 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
     { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'raised' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ]),
+  // Fred 2026-10-14 ("3 more brick frames that use smaller bricks but not tiles, over 3 bands" -> six, more varied): three
+  // courses of SHORT bricks (BAND_MOTIFS half_ / third_: the course's height, 1/2 or 1/3 of the brick length) at the usual
+  // size. `bond` (motif units, from the board's corner line): equal = joints stacked across bands. Every joint a mitre
+  // (tests/bricks-short-brick-bands.test.js)
+  half_running_bond: withBestSize(1.25, [ // half bricks in running bond, the middle course raised
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course', bond: 0 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course_raised', bond: 1 / 4 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course', bond: 0 },
+  ]),
+  // half bricks, joints stacked through all three courses, the outer course raised (halves, not thirds: stacked thirds are
+  // nearly square and read as a tile grid -- shots/advisor/frames, first render)
+  half_stack_bond: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course_raised', bond: 0 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course', bond: 0 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course', bond: 0 },
+  ]),
+  third_stepped_bond: withBestSize(1.25, [ // third bricks, each course a third of a brick on (the joints step), the inner raised
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course', bond: 0 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course', bond: 1 / 9 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course_raised', bond: 2 / 9 },
+  ]),
+  half_slim_third: withBestSize(1.25, [ // raised half-brick courses either side of a slim course of thirds
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course_raised', bond: 0 },
+    { widthIn: 0.12, rows: 1, pattern: 'stretcher', motif: 'slim_third_course', bond: 1 / 6 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course_raised', bond: 1 / 4 },
+  ]),
+  short_alternating: withBestSize(1.25, [ // every brick alternates raised / flush: thirds, halves, thirds a brick on (a checker)
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course_alternating', bond: 0 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'half_course_alternating', bond: 1 / 4 },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course_alternating', bond: 1 / 3 },
+  ]),
+  half_soldier_course: withBestSize(1.25, [ // half bricks standing as raised soldiers between two courses of thirds
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course', bond: 0 },
+    { widthIn: 0.375, rows: 1, pattern: 'stretcher', motif: 'half_soldier_raised' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'third_course', bond: 1 / 6 },
+  ]),
 }));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
@@ -699,6 +735,19 @@ export const BAND_MOTIFS = Object.freeze({
   diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
   // 2026-10-14 (the narrow runners): a two-row checkerboard of square tiles; each corner square solid raised
   checker: { unit: 'H', grid: { tile: ['R.', '.R'], corner: ['RR', 'RR'] } },
+  // 2026-10-14 (Fred: "smaller bricks but not tiles ... small as in not as long"): SHORT bricks, the course's own height and
+  // 1/2 or 1/3 of the brick length -- the seq length (unit 'L') IS that length factor. Bond across bands: the band's `bond`
+  // (FRAME_PRESETS, band-motif.js motifRowPlan)
+  half_course: { unit: 'L', rows: [{ seq: [[1 / 2, 'flush']] }] },
+  half_course_raised: { unit: 'L', rows: [{ seq: [[1 / 2, 'raised']] }], ends: 'raised' },
+  half_course_alternating: { unit: 'L', rows: [{ seq: [[1 / 2, 'raised'], [1 / 2, 'flush']] }] },
+  third_course: { unit: 'L', rows: [{ seq: [[1 / 3, 'flush']] }] },
+  third_course_raised: { unit: 'L', rows: [{ seq: [[1 / 3, 'raised']] }], ends: 'raised' },
+  third_course_alternating: { unit: 'L', rows: [{ seq: [[1 / 3, 'raised'], [1 / 3, 'flush']] }] },
+  // a slim course, 0.6 of a course deep (the thinner middle band)
+  slim_third_course: { unit: 'L', rowDepth: 0.6, rows: [{ seq: [[1 / 3, 'flush']] }] },
+  // half bricks standing as soldiers across the band: one course height along, half a Set 1 brick length deep (0.375 / 0.2)
+  half_soldier_raised: { unit: 'H', rowDepth: 1.875, rows: [{ seq: [[1, 'raised']] }], ends: 'raised' },
 });
 
 /**

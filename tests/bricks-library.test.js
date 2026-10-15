@@ -109,6 +109,8 @@ describe('FRAME_PRESETS', () => {
       'crenellated_battlement', 'art_deco_stepped', 'florentine_architrave', 'venetian_dentil',
       // Fred 2026-10-14: the narrow runners (tests/bricks-narrow-runners.test.js)
       'slim_runner', 'checker_tile_runner', 'twin_runner',
+      // Fred 2026-10-14: the short-brick bands (tests/bricks-short-brick-bands.test.js)
+      'half_running_bond', 'half_stack_bond', 'third_stepped_bond', 'half_slim_third', 'short_alternating', 'half_soldier_course',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
       'craftsman_apron_quoin', 'double_soldier_quoin',
