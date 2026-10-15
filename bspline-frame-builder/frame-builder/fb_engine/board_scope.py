@@ -57,7 +57,6 @@ class BoardScope:
         self.root = design.rootComponent
         self.host = host if host is not None else self.root
         self.is_board = not _same(self.host, self.root)
-        self._owned = None
 
     def _boards(self):
         return [b for b in tagged_board_components(self.design) if not _same(b, self.root)]
@@ -70,13 +69,11 @@ class BoardScope:
         """True if `comp` belongs to this board: inside it (a tagged board), or outside every tagged board (legacy)."""
         if comp is None:
             return False
+        # read LIVE every time, never cached: a Send asks before AND after it builds (MEASURED live, S1 check: a cache
+        # taken at the delete step missed the frame built right after -- "the frame sketch build created no frame")
         if self.is_board:
-            if self._owned is None:
-                self._owned = subtree_components(self.host)
-            return any(_same(comp, c) for c in self._owned)
-        if self._owned is None:
-            self._owned = [c for b in self._boards() for c in subtree_components(b)]  # here: what the legacy board does NOT own
-        return not any(_same(comp, c) for c in self._owned)
+            return any(_same(comp, c) for c in subtree_components(self.host))
+        return not any(_same(comp, c) for b in self._boards() for c in subtree_components(b))
 
     def is_direct_child(self, comp):
         """True if `comp` occurs directly under this board's host (where its Set and its Frame_N live)."""

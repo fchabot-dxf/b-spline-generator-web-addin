@@ -1078,7 +1078,7 @@ def _find_stamped_component(import_group):
         return None
     for occ in targets:
         try:
-            if (occ.component.name or '') == 'Stamped':
+            if _base_component_name(occ.component.name) == 'Stamped':  # "Stamped (1)" in a second board
                 return occ.component
         except Exception:
             continue
@@ -1564,6 +1564,12 @@ frame_engine = None
 # _normalize_occurrence build (their own literals, not re-declared there).
 BSPLINE_SET_NAME = "B-Spline Set"
 CLEAN_COMPONENT_NAME = "Clean"
+
+
+def _base_component_name(name):
+    """A component's declared name without the " (N)" Fusion appends to a duplicate. MEASURED live (S1 check,
+    2026-10-14): a second board's Set / Clean arrive as "B-Spline Set (1)" / "Clean (1)" -- names are unique per design."""
+    return re.sub(r' \(\d+\)$', '', name or '')
 PANEL_BODY_NAME = "panel"
 
 
@@ -1616,6 +1622,17 @@ def _new_send_document():
     return adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType'))
 
 
+def _set_occurrence_in_root_context(scope, occ):
+    """A board's B-Spline Set occurrence, in ROOT context. MEASURED live (S1 check, 2026-10-14): the native occurrence
+    addNewComponent returns inside a board fails _in_active_design (findEntityByToken knows only root-context
+    entities), so every import target fell back to the ROOT -- the board stayed empty. Its proxy through the board's
+    own root occurrence is the Set every later step (import, consolidation, sketches, delete) expects."""
+    if scope is None or not scope.is_board:
+        return occ
+    board_occ = scope.root_occurrence_of(scope.host)
+    return occ.createForAssemblyContext(board_occ) if board_occ is not None else occ
+
+
 def _resolve_send_scope(des, target, board, params):
     """The board this Send builds into (fb_engine.board_scope.BoardScope): a new board (newComponent), the project's
     tagged board (replace, when the design has it), else the legacy root board."""
@@ -1639,20 +1656,20 @@ def _find_bspline_core_body(design, scope=None):
                 parent = occ.assemblyContext
             except Exception:
                 parent = None
-            if occ.component.name != BSPLINE_SET_NAME or parent is None or parent.component != scope.host:
+            if _base_component_name(occ.component.name) != BSPLINE_SET_NAME or parent is None or parent.component != scope.host:
                 continue
             for child in occ.childOccurrences:
-                if child.component.name != CLEAN_COMPONENT_NAME:
+                if _base_component_name(child.component.name) != CLEAN_COMPONENT_NAME:
                     continue
                 for body in child.bRepBodies:
                     if body.name == PANEL_BODY_NAME and body.isSolid:
                         return body
         return None
     for occ in design.rootComponent.occurrences:
-        if occ.component.name != BSPLINE_SET_NAME:
+        if _base_component_name(occ.component.name) != BSPLINE_SET_NAME:  # the legacy Set may be "(1)" beside boards
             continue
         for child in occ.childOccurrences:
-            if child.component.name != CLEAN_COMPONENT_NAME:
+            if _base_component_name(child.component.name) != CLEAN_COMPONENT_NAME:
                 continue
             for body in child.bRepBodies:
                 if body.name == PANEL_BODY_NAME and body.isSolid:
@@ -2274,7 +2291,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     n_sets = _delete_bspline_sets(des, scope, locked)
                     _log(f'[SEND] cleared: frames={deleted_frames} bspline_sets={n_sets} '
                          f'(board: {scope.host.name if scope.is_board else "legacy root"})')
-                current_import_group = scope.host.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+                current_import_group = _set_occurrence_in_root_context(
+                    scope, scope.host.occurrences.addNewComponent(adsk.core.Matrix3D.create()))
                 current_import_group.component.name = "B-Spline Set"
                 try:
                     current_import_group.component.attributes.add(*BSPLINE_SET_ATTR, '1')

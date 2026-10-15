@@ -231,3 +231,13 @@ def test_a_boards_frame_component_goes_under_the_board_with_a_design_unique_name
     fb.scope = types.SimpleNamespace(host=board_c, is_board=True, has_boards=lambda: True)
     comp = fb._create_incremental_component("template_1")
     assert added == [comp] and comp.name == "Frame_4"  # Frame_1..3 exist somewhere in the design
+
+
+def test_the_scope_reads_live_a_frame_built_after_the_first_question_is_owned(two_boards):
+    """MEASURED live (S1 check): the scope answered the delete step, then the build added Frame_N -- a cached answer
+    missed it and the Send reported "the frame sketch build created no frame"."""
+    w = two_boards
+    a = BoardScope(w.design, w.board_a)
+    assert send_frame.find_frames(w.design, a) == [w.frame_a]
+    later = frame(w.design, w.board_a, "Frame_4")
+    assert send_frame.find_frames(w.design, a) == [w.frame_a, later]

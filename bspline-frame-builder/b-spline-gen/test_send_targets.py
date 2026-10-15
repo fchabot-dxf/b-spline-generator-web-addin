@@ -144,8 +144,9 @@ def test_a_new_component_creates_its_tagged_board(design, monkeypatch):
 
 def test_a_boards_core_body_is_found_under_that_board_in_root_context(design):
     panel = types.SimpleNamespace(name=bsg.PANEL_BODY_NAME, isSolid=True)
-    clean = Occ(Comp(bsg.CLEAN_COMPONENT_NAME))
+    clean = Occ(Comp(bsg.CLEAN_COMPONENT_NAME + ' (1)'))  # MEASURED live: a second board's names get " (N)"
     clean.bRepBodies = [panel]
+    design.a_set.name = 'B-Spline Set (1)'
     a_set_occ = Occ(design.a_set, ctx=Occ(design.a))
     a_set_occ.childOccurrences = [clean]
     other = Occ(Comp(bsg.BSPLINE_SET_NAME), ctx=Occ(Comp('Another board')))
@@ -174,5 +175,23 @@ def test_only_replace_clears_and_only_the_legacy_board_clears_cam():
 
 
 def test_the_set_is_built_inside_the_boards_host_and_the_frame_gets_the_scope():
-    assert 'current_import_group = scope.host.occurrences.addNewComponent(' in _GEN
+    assert 'current_import_group = _set_occurrence_in_root_context(' in _GEN
+    assert 'scope, scope.host.occurrences.addNewComponent(' in _GEN
     assert 'self._handle_send_frame(frame_payload, scope)' in _GEN
+
+
+def test_a_boards_set_occurrence_is_used_in_root_context():
+    """MEASURED live (S1 check): the native occurrence inside a board failed _in_active_design, so the STEP import
+    fell back to the root and the board stayed empty."""
+    native = types.SimpleNamespace(createForAssemblyContext=lambda occ: ('proxy through', occ))
+    board = types.SimpleNamespace(is_board=True, host='board-comp', root_occurrence_of=lambda c: f'root occ of {c}')
+    assert bsg._set_occurrence_in_root_context(board, native) == ('proxy through', 'root occ of board-comp')
+    legacy = types.SimpleNamespace(is_board=False)
+    assert bsg._set_occurrence_in_root_context(legacy, native) is native  # the legacy root board: unchanged
+
+
+def test_fusions_duplicate_suffix_is_not_part_of_the_declared_name():
+    assert bsg._base_component_name('B-Spline Set (1)') == 'B-Spline Set'
+    assert bsg._base_component_name('Clean (12)') == 'Clean'
+    assert bsg._base_component_name('Clean') == 'Clean'
+    assert bsg._base_component_name('Frame (A)') == 'Frame (A)'
