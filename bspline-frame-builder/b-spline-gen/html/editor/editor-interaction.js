@@ -36,7 +36,7 @@ import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './edi
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover, snapToGrid, SNAP_POLICY } from './editor-grid.js';
 import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
-import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX, beginSnapGesture, endSnapGesture } from './editor-snap-resolver.js';
+import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX, beginSnapGesture, endSnapGesture, watchSnapTargets } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
@@ -129,6 +129,7 @@ export function initInteraction(editor) {
     // early-return in handleStart is gone; see handlePointerDown below.
     editor._activePointers = new Map();
     editor._pointerType = 'mouse';
+    watchSnapTargets(editor); // the snap targets are warmed in idle slices, so a press starts on them (editor-snap-resolver.js)
     on(svgNode, 'pointerdown', (e) => handlePointerDown(editor, e), { passive: false });
     on(window,  'pointermove', (e) => handlePointerMove(editor, e), { passive: false });
     on(window,  'pointerup',   (e) => handlePointerUp(editor, e));
@@ -177,6 +178,7 @@ function handlePointerDown(editor, e) {
     // hold, so it can never cancel itself.
     cancelMultiSelectHold();
     cancelContextMenuHold(); // H6: same reasoning, own timer — see its own doc comment.
+    watchSnapTargets(editor); // the idle-warm targets follow the CURRENT sketch layer (a fresh artwork replaces it)
     if (!editor._snapGesture) beginSnapGesture(editor); // the press's snap targets, built once (editor-snap-resolver.js)
     editor._pointerType = e.pointerType || 'mouse';
     editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
