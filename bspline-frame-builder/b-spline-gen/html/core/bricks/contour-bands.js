@@ -35,7 +35,8 @@
  */
 import { isSimplePolygon, untangleMicroLoops, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt, longArcDropsAt } from './primitive-ribbon.js';
+import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt, longArcDropsAt, QUOIN_BLOCK_IN } from './primitive-ribbon.js';
+import { placeFrameBlocks } from './frame-blocks.js'; // Fred 2026-10-15: mid-course blocks
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
@@ -1168,6 +1169,15 @@ export function bricksContourBands(primitives, bands, opts) {
   // the smallest piece the yield / the board clip may leave: the floor of the layout that laid the stack (piece-floor.js --
   // a stone ring's is its smallest stone's, not a quarter brick; every band of a set with a band pattern lays with it)
   const minArea = minPieceAreaOf(set, setBandPattern(opts.set, closed) || LAID_BY_COURSES);
+  // Fred 2026-10-15 (mid-course blocks, frame-blocks.js): each declared block replaces whole pieces of the outer band's run and
+  // goes in as a quoin -- cut under (cutUnderQuoins, below) and cleared from the wall (engine.js) as the corners' own; none = as before
+  let blocksSkipped = null;
+  if (closed && opts.blocks && opts.blocks.length) {
+    const placed = placeFrameBlocks({ blocks: opts.blocks, bricks, origins, quoinRibbons, primitives: enriched, sizeIn: QUOIN_BLOCK_IN, quoinSrc: QUOIN });
+    bricks.length = 0; bricks.push(...placed.bricks); origins.length = 0; origins.push(...placed.origins);
+    quoinRibbons.length = 0; quoinRibbons.push(...placed.quoinRibbons);
+    if (placed.skipped.length) blocksSkipped = placed.skipped;
+  }
   const quoinIds = new Set(quoinRibbons.flat().map((q) => bricks[q.at].id)); // the result's `quoins` (below)
   // nothing lays under a quoin (cutUnderQuoins) -- a stack of 2+ quoin ribbons only: a one-band quoin lays as before.
   // A second lay (opts.blockOff) is a multi-band stack whose inner ribbons may have mitred every corner: still cut
@@ -1199,6 +1209,7 @@ export function bricksContourBands(primitives, bands, opts) {
     // seat E 2026-10-10: the laid quoins' polygons, additive -- the engine clears the wall from any that reach past the
     // stack into the wall's region (a 1.1 in block on a thinner stack) and leaves them out of that region
     ...(quoinIds.size ? { quoins: laid.filter((b) => quoinIds.has(b.id)).map((b) => b.polygon) } : {}),
+    ...(blocksSkipped ? { blocksSkipped } : {}), // a block with no run of the outer band under it (frame-blocks.js), additive
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }

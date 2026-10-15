@@ -1427,6 +1427,9 @@ function _layInput(editor, settings, frameGeom) {
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
+  // Fred 2026-10-15: the Frame's mid-course blocks (core/bricks/frame-blocks.js) -- sent only when there are some (none = the lay
+  // byte-identical); no Frame element, none
+  if (frameGeom && !frameGeom.noFrameElement && Array.isArray(settings.frameBlocks) && settings.frameBlocks.length) input.frame.blocks = settings.frameBlocks;
   // T86 item 16e: the frame's fan centre -- sent only off the default (Needle = absent = the lay byte-identical)
   if (frameGeom && frameFanCentreOf(settings) !== FAN_CENTRE_DEFAULT) input.fanCentre = frameFanCentreOf(settings);
   applyWallPattern(input, wallSettings);

@@ -623,6 +623,13 @@ export const MIGRATIONS = [
     },
   },
   {
+    id: 'frame-blocks',
+    // Fred 2026-10-15: the Frame's mid-course blocks (core/state.js frameBlocks). A board saved before has none -- a load replaces
+    // brickSettings whole, so it says so explicitly and lays exactly as before.
+    when: (p) => p.brickSettings && !Array.isArray(p.brickSettings.frameBlocks),
+    apply: (p) => { p.brickSettings.frameBlocks = []; },
+  },
+  {
     id: 'grout-per-element',
     // the one board-wide joint width -> a joint per element (groutByElement). A saved board keeps its exact width
     // on every element (it lays as before); a new board starts at each element's set's joint (null).
