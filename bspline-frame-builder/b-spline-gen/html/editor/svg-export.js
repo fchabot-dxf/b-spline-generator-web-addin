@@ -29,6 +29,9 @@ import { greyOfHeight, NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY } from '../core/br
 import { frameVectorParts } from './editor-frame-profile.js';
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
+import { brickPaintOf } from '../core/bricks/palette.js';
+import { BRICK_ROLE_ATTR } from '../core/bricks/colour-roles.js';
+import { P } from '../core/state.js';
 
 /** The brick styles a download can take. `available: false` = declared, not built yet. */
 export const SVG_BRICK_EXPORT = Object.freeze({
@@ -120,14 +123,17 @@ function _groutGrey(editor, layerId) {
   return Number.isFinite(j) ? greyOfHeight((Number(l._brickDepth) < 0 ? -1 : 1) * j) : NEUTRAL_GROUT_GREY;
 }
 
-function _brickPath(n, inset, style, faceHeights) {
+function _brickPath(n, inset, style, faceHeights, settings) {
   const face = insetFace(_points(n), inset);
   if (!face) return ''; // an Edge that swallows the brick: no face, all joint
   const owner = n.getAttribute(BRICK_OWNER_ATTR) || n.getAttribute('data-brick');
   const brickId = n.getAttribute('data-brick-id') || '';
   const setId = n.getAttribute('data-brick-set') || '';
   const h = faceHeights.get(`${owner}:${brickId}`);
-  const paint = style.fill === 'heightGrey'
+  // the Colour look: the piece's role colour (core/bricks/palette.js), the same as the 2D view and the 3D drape
+  const colour = style.fill === 'heightGrey' ? brickPaintOf(settings, n.getAttribute('data-brick'),
+    n.getAttribute('data-brick-accent') === '1' ? 'accent' : (n.getAttribute(BRICK_ROLE_ATTR) || 'field')) : null; // an uncut accent too
+  const paint = colour ? `fill="${colour}"` : style.fill === 'heightGrey'
     ? `fill="${h === undefined ? NEUTRAL_BRICK_GREY : greyOfHeight(h)}"`
     : `fill="none" stroke="${style.stroke}" stroke-width="${style.strokeWidthIn}"`;
   return `<path id="${_esc(`${owner}:${brickId}`)}" data-brick-id="${_esc(brickId)}" data-brick-set="${_esc(setId)}" d="${_pathD(face)}" ${paint}/>`;
@@ -148,7 +154,7 @@ export function svgDownloadGroups(editor, styleId = SVG_BRICK_EXPORT.default) {
     },
     bricks: (layer) => elements.filter((e) => layerOf(e) === String(layer.id)).map((e) => {
       const inset = e.grout ? Number(e.grout.getAttribute(GROUT_INSET_ATTR)) || 0 : 0;
-      return layerGroup(`bricks:${e.id}`, e.label, e.bricks.map((n) => _brickPath(n, inset, style, faceHeights)).join(''));
+      return layerGroup(`bricks:${e.id}`, e.label, e.bricks.map((n) => _brickPath(n, inset, style, faceHeights, editor._brickSettings || P.brickSettings)).join(''));
     }),
     grout: (layer) => elements.filter((e) => e.grout && layerOf(e) === String(layer.id)).map((e) => {
       const g = e.grout;

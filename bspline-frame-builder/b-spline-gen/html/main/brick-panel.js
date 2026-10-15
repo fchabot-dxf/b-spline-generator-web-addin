@@ -52,6 +52,7 @@ import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.j
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
+import { applyBrickPalette } from '../editor/brick-palette-style.js';
 import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -1575,6 +1576,7 @@ function _resetJointsOnSetChange() {
 export function commitBrickSetting(commit = 'generate', phase = 'onRelease', strokeValues = null) {
   if (phase === 'onRelease') for (const cancel of [..._pendingSettles]) cancel(); // item 68: this release is the commit
   _resetJointsOnSetChange();
+  applyBrickPalette(P.brickSettings); // the Colour look's rules (paint only; '' in the Height look)
   // A6: the drawn strokes follow the global settings (STROKE_FOLLOWS_GLOBAL, the brick size) -- plus, from the one control
   // that applies to ALL elements (the quick Set), `strokeValues`; they regenerate with the re-lay's own commit -- or,
   // with no Wall / Frame on the board to re-lay, their own one
@@ -3432,6 +3434,7 @@ export function initBrickPanel() {
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
     // the Area brush width (its own undo step, seat D 2026-10-09): the brush's live width and its chips follow too
     if (editor) editor._brickAreaWidthIn = Number(P.brickSettings.wallAreaWidthIn) || 1;
+    applyBrickPalette(P.brickSettings);
     renderWallAreaRow();
     syncControlsFromState();
   });

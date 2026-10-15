@@ -209,3 +209,25 @@ describe('the download: one file, named groups, flat bricks', () => {
     expect(art.some((g) => g.querySelector('[data-brick-gen], [data-brick-record]'))).toBe(false);
   });
 });
+
+describe('the Colour look (seat A 2026-10-15, brick palettes: paint only)', () => {
+  it('each brick path takes its role’s palette colour; the Height look keeps the greys', async () => {
+    const { paletteOf } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/palette.js');
+    const ed = laidBoard();
+    const fills = () => [...parse(`<svg xmlns="http://www.w3.org/2000/svg">${svgDownloadGroups(ed)}</svg>`)
+      .querySelectorAll('g[id^="bricks:"] path')].map((p) => p.getAttribute('fill'));
+    const grey = fills();
+    const before = P.brickSettings.lookMode;
+    try {
+      P.brickSettings.lookMode = 'colour';
+      const colour = fills();
+      const field = new Set([paletteOf(P.brickSettings, 'wall').field, paletteOf(P.brickSettings, 'frame').field]);
+      expect(colour.length).toBe(grey.length);
+      expect(colour.every((f) => field.has(f) || Object.values(paletteOf(P.brickSettings, 'frame')).includes(f))).toBe(true);
+      expect(colour.some((f) => grey.includes(f))).toBe(false);
+    } finally {
+      if (before === undefined) delete P.brickSettings.lookMode; else P.brickSettings.lookMode = before;
+    }
+    expect(fills()).toEqual(grey);
+  });
+});

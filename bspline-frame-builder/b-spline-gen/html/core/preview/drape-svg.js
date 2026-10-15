@@ -44,7 +44,7 @@ function elementColor(el) {
  *   coloured elements, or "" when nothing qualifies (caller treats that
  *   as "no drape" — the model looks exactly as today).
  */
-export function buildDrapeSvg(editorLayers, sketchSvg) {
+export function buildDrapeSvg(editorLayers, sketchSvg, { css = '' } = {}) {
   if (!sketchSvg) return '';
 
   let doc;
@@ -75,7 +75,8 @@ export function buildDrapeSvg(editorLayers, sketchSvg) {
   const width = root.getAttribute('width') || '1';
   const height = root.getAttribute('height') || '1';
   const serializer = new XMLSerializer();
-  const inner = kept.map(el => serializer.serializeToString(el)).join('');
+  // the brick palette (core/bricks/palette.js paletteCss, the Colour look): the same rules as the 2D view's, in this SVG
+  const inner = (css ? `<style>${css}</style>` : '') + kept.map(el => serializer.serializeToString(el)).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="none">${inner}</svg>`;
 }
 

@@ -28,6 +28,7 @@ import { syncFramePanel } from './frame-panel.js';
 import { adoptStoredPhoto } from './photo-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
+import { paletteCss } from '../core/bricks/palette.js';
 import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
@@ -758,7 +759,7 @@ export async function refreshDrape(preview) {
     const svg = window.svgEditor.save();
     const layers = window.svgEditor._layers || [];
     _drapeLog(`called: layers=${layers.length} savedSvgLen=${svg ? svg.length : 0}`);
-    const drapeSvg = buildDrapeSvg(layers, svg);
+    const drapeSvg = buildDrapeSvg(layers, svg, { css: paletteCss(P.brickSettings) }); // the Colour look's palette (3D = 2D)
     _drapeLog(`buildDrapeSvg returned length=${drapeSvg.length}`);
     if (!drapeSvg) {
         _drapeLog('no qualifying/coloured elements - clearing drape texture');
