@@ -375,9 +375,13 @@ export const BRICK_PATTERNS = Object.freeze({
   // flemish: see layouts/bond.js's own flemishRow for the exact repeat-unit/stagger construction --
   // the textbook alternating-stretcher-and-header bond, no further parameters needed here (the unit
   // sequence itself isn't user-tunable, matching how stretcher/soldier/etc. have no exposed knobs).
+  // smallestFace 'header' (seat E 2026-10-14): the bond's header courses are whole pieces -- a tip's course front reads them
+  // (tip-fill.js bareTips: a piece of half a WHOLE piece is a course; english / monk left a T14 tip bare when only a stretcher
+  // counted). Declared on english / monk only: on header and flemish it MEASURED a different frame tip fill (T14 / T16 1.25
+  // in), and a saved board re-lays as before (Fred 2026-10-14) -- they keep the stretcher rule
   flemish: { kind: 'course-alternating' },
-  english: { kind: 'course-alternating', subtype: 'english' },
-  monk: { kind: 'course-alternating', subtype: 'monk' },
+  english: { kind: 'course-alternating', subtype: 'english', smallestFace: 'header' },
+  monk: { kind: 'course-alternating', subtype: 'monk', smallestFace: 'header' },
   herringbone: { kind: 'tile2d' },
   double_herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
@@ -565,6 +569,12 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
   // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
   arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
+  // 2026-10-11 (Fred, ref5): a mosaic -- ONE band of 12 square-tile rows (BAND_MOTIFS.greek_key), every tile the same size
+  // (one brick height); widthIn = 12 rows at Set 1's own size. Best at the 0.75 in chip (Fred 2026-10-11 picked it): a 0.2
+  // in tile pitch (0.166 in tiles), the band 2.4 in deep (at 0.375 in the 0.066 in tiles were a third grout)
+  greek_key_mosaic: withBestSize(0.75, [
+    { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key' },
+  ]),
   craftsman_apron: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'header' },
     { widthIn: 0.75, rows: 1, pattern: 'soldier' },
@@ -642,7 +652,7 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
  *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */
 export const FRAME_PRESET_SIZES = Object.freeze(Object.fromEntries(
-  ['dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice'].map((id) => [id, FRAME_PRESETS[id].bestSize])));
+  ['dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'greek_key_mosaic'].map((id) => [id, FRAME_PRESETS[id].bestSize])));
 
 /**
  * Frame motifs phase 1 (2026-10-10, Fred's approved mockups shots/advisor/frames/mock_ref1-3.png, lighter = raised): every
@@ -697,6 +707,28 @@ export const BAND_MOTIFS = Object.freeze({
   // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
   // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
   diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  // Greek key MOSAIC (Fred 2026-10-11, shots/advisor/frames/ref5_greek_key_mosaic.jpg: "one more frame with this spiral
+  // mosaic", "so much smaller tiles"): square tiles, green = raised, white = flush. Rows 3-8 are the photo's meander read
+  // cell by cell (period 6: a top bar, a spiral hook hanging from it, a full-height stem, the solid baseline); a white /
+  // green / white strip either side of it. Corner: the strips turn as an L; the key's corner is a concentric square (ring +
+  // 2x2 centre), symmetric about the diagonal (both runs read it). Flat raised tops with the joints between raised neighbours
+  // filled (as the zigzag / diaper): the key reads as continuous strokes, not a scatter of green tiles.
+  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: {
+    tile: ['......', 'RRRRRR', '......', 'RRRR.R', '...R.R', '.R.R.R', '.RRR.R', '.....R', 'RRRRRR', '......', 'RRRRRR', '......'],
+    corner: [
+      '............',
+      '.RRRRRRRRRRR',
+      '.R..........',
+      '.R.RRRRRRRRR',
+      '.R.R....R...',
+      '.R.R.RR.R...',
+      '.R.R.RR.R...',
+      '.R.R....R...',
+      '.R.RRRRRRRRR',
+      '.R.R....R...',
+      '.R.R....R.RR',
+      '.R.R....R.R.',
+    ] } },
   // 2026-10-14 (the narrow runners): a two-row checkerboard of square tiles; each corner square solid raised
   checker: { unit: 'H', grid: { tile: ['R.', '.R'], corner: ['RR', 'RR'] } },
 });

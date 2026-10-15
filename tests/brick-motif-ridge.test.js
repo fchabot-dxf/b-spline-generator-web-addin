@@ -20,13 +20,14 @@ import { rectToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/cor
 import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 const W = 7, H = 10, SET = BRICK_SETS[0];
-const RIDGE = ['zigzag_band', 'diaper_lattice'];
+// [preset, brick size in]: each ridge preset at its own best size (2026-10-11: the Greek key mosaic joins, Fred's 0.75 in)
+const RIDGE = [['zigzag_band', 1.25], ['diaper_lattice', 1.25], ['greek_key_mosaic', 0.75]];
 const OTHERS = ['dentil_corbel', 'recessed_panel', 'soldier_string', 'dentil_cornice'];
 // the app's recessed grout, so a plain joint is cut down and a joined one visibly is not
 const GROUT = { groutProfile: 'recessed', groutDepthIn: 0.05 };
 
-const lay = (preset) => generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1,
-  scale: 1.25 / SET.brickLengthIn, suppression: 0, clumping: 0,
+const lay = (preset, L = 1.25) => generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1,
+  scale: L / SET.brickLengthIn, suppression: 0, clumping: 0,
   frame: { primitives: tool.buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: W, y2: H })), bands: FRAME_PRESETS[preset] } }).frameBricks;
 
 /** the laid frame written as drawBrick writes it (its attributes, the raised look's two included when exported) */
@@ -53,18 +54,31 @@ async function mask(bricks, nx, nz) {
   const f = fixture(bricks);
   try { return await rasterizeBrickHeightMask(f.editor, { id: 'L' }, nx, nz, W, H, GROUT); } finally { f.cleanup(); }
 }
+/** bricks.find((p) => pointInPolygon(x, y, p.polygon)), bucketed (the same first hit in lay order): the Greek key's
+ *  1,500 tiles made the plain scan time out */
+function finder(bricks, cell = 0.25) {
+  const buckets = new Map(), key = (i, j) => `${i},${j}`;
+  bricks.forEach((b, k) => {
+    const xs = b.polygon.map((q) => q.x), ys = b.polygon.map((q) => q.y);
+    for (let i = Math.floor(Math.min(...xs) / cell); i <= Math.floor(Math.max(...xs) / cell); i++) for (let j = Math.floor(Math.min(...ys) / cell); j <= Math.floor(Math.max(...ys) / cell); j++) {
+      if (!buckets.has(key(i, j))) buckets.set(key(i, j), []);
+      buckets.get(key(i, j)).push(k);
+    }
+  });
+  return (x, y) => { const ks = buckets.get(key(Math.floor(x / cell), Math.floor(y / cell))) || []; for (const k of ks) if (pointInPolygon(x, y, bricks[k].polygon)) return bricks[k]; return undefined; };
+}
 const pt = (m, i, j) => ({ x: (i / (m.nx - 1)) * W, y: H * (1 - j / (m.nz - 1)) });
 
 describe('the ridge look is declared data', () => {
-  it('zigzag and diaper declare a flat raised top joined to its raised neighbours; no other motif does', () => {
+  it('zigzag, diaper and the Greek key declare a flat raised top joined to its raised neighbours; no other motif does', () => {
     for (const [id, m] of Object.entries(BAND_MOTIFS)) {
-      const ridge = id === 'zigzag' || id === 'diaper';
+      const ridge = id === 'zigzag' || id === 'diaper' || id === 'greek_key';
       expect([m.raisedTop, m.joinRaised], id).toEqual(ridge ? ['flat', true] : [undefined, undefined]);
     }
   });
   it('the lay carries it on exactly the raised pieces of those motifs', () => {
-    for (const preset of RIDGE) {
-      const bricks = lay(preset);
+    for (const [preset, L] of RIDGE) {
+      const bricks = lay(preset, L);
       const raised = bricks.filter((b) => b.relief === 'raised');
       expect(raised.length, preset).toBeGreaterThan(20);
       expect(raised.every((b) => b.topFlat === true && b.joinRaised === true), preset).toBe(true);
@@ -76,13 +90,13 @@ describe('the ridge look is declared data', () => {
 
 describe('the height mask: flat plateaus, one ridge', () => {
   it('a raised piece\'s top is flat at the declared level (reliefIn + its heightOffset, within the cap) everywhere inside it', async () => {
-    for (const preset of RIDGE) {
-      const bricks = lay(preset);
-      const m = await mask(bricks, 141, 201);
+    for (const [preset, L] of RIDGE) {
+      const bricks = lay(preset, L);
+      const m = await mask(bricks, 141, 201), at = finder(bricks);
       let checked = 0, off = 0;
       for (let j = 0; j < m.nz; j++) for (let i = 0; i < m.nx; i++) {
         const { x, y } = pt(m, i, j);
-        const b = bricks.find((p) => pointInPolygon(x, y, p.polygon));
+        const b = at(x, y);
         if (!b || b.relief !== 'raised') continue;
         const level = Math.min(SET.reliefMaxIn, SET.reliefIn + (b.heightOffset || 0));
         checked++;
@@ -94,16 +108,16 @@ describe('the height mask: flat plateaus, one ridge', () => {
   });
   it('a joint between raised neighbours is filled to their lower face; a joint touching any other piece stays cut', async () => {
     const reach = SET.grout.widthIn;
-    for (const preset of RIDGE) {
-      const bricks = lay(preset);
-      const m = await mask(bricks, 281, 401);
+    for (const [preset, L] of RIDGE) {
+      const bricks = lay(preset, L);
+      const m = await mask(bricks, 281, 401), at = finder(bricks);
       const cut = -GROUT.groutDepthIn / SET.reliefIn;
       let joined = 0, joinedWrong = 0, plain = 0, plainWrong = 0;
       for (let j = 0; j < m.nz; j++) for (let i = 0; i < m.nx; i++) {
         const { x, y } = pt(m, i, j);
-        if (bricks.some((p) => pointInPolygon(x, y, p.polygon))) continue;
+        if (at(x, y)) continue;
         const hits = [[x + reach, y], [x - reach, y], [x, y + reach], [x, y - reach]]
-          .map(([px, py]) => bricks.find((p) => pointInPolygon(px, py, p.polygon))).filter(Boolean);
+          .map(([px, py]) => at(px, py)).filter(Boolean);
         if (!hits.length) continue;
         const v = m.body[j * m.nx + i];
         if (hits.every((b) => b.relief === 'raised') && new Set(hits).size >= 2) {

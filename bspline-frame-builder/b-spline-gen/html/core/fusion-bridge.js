@@ -33,6 +33,9 @@ export function fusionActionButton() { return document.getElementById('btnDownlo
 export function setFusionActionState(text, disabled) {
     const b = fusionActionButton(); if (!b) return;
     b.textContent = text; b.disabled = !!disabled;
+    // Send targets: the Send ▾ menu is the same action -- busy with it (a second Send mid-import is the hazard item 70 names)
+    const menu = document.getElementById('btnSendMenu');
+    if (menu) menu.disabled = !!disabled;
 }
 
 let _statusGen = 0;

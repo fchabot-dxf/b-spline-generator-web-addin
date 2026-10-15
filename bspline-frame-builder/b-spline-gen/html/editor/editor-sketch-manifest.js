@@ -586,6 +586,9 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     parameters.push({ name: 'node_diameter', value: widths.nodeDiameter, unit: 'in' });
     groups.nodes.forEach((id) => dimensions.push({ type: 'Diameter', target: id, expression: 'node_diameter' }));
   }
+  // Send targets step 0 (Fred 2026-10-14, the Pull must-work cases: "spacing"): the lattice spacing as a named user
+  // parameter. Nothing in the sketch is driven by it (the pieces are placed); Pull reads it back into the pattern.
+  if (pieceCount) parameters.push({ name: 'lattice_spacing', value: spacing, unit: 'in' });
 
   return { entities, constraints, parameters, dimensions, groups, pieceCount, constrained };
 }

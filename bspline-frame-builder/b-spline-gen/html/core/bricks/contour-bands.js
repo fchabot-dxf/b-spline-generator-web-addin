@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { isSimplePolygon, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
+import { isSimplePolygon, untangleMicroLoops, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt, longArcDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
@@ -41,7 +41,7 @@ import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
-import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow, motifFloorKeep } from './band-motif.js'; // frame motifs
+import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow, motifFloorKeep, MOTIF_FLECK_SQIN } from './band-motif.js'; // frame motifs
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
@@ -1189,7 +1189,10 @@ export function bricksContourBands(primitives, bands, opts) {
   }
   const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
   const split = yielded === bricks ? bricks : splitSharedSideFans(yielded, new Map(bricks.map((b, k) => [b.id, origins[k]])), enriched, set);
-  const laid = fitBoard ? clipPiecesToBoard(split, fitBoard, minArea) : bricks;
+  const clipped = fitBoard ? clipPiecesToBoard(split, fitBoard, minArea) : bricks;
+  // a piece whose outline crosses itself in a grout-wide fleck of a loop has the loop cut off (geometry.js untangleMicroLoops,
+  // MEASURED T8 9x12 1.25 in corbelled_cornice); every simple piece as laid
+  const laid = clipped.map((b) => (isSimplePolygon(b.polygon) ? b : { ...b, polygon: untangleMicroLoops(b.polygon, MOTIF_FLECK_SQIN) }));
   return { bricks: laid, innerPath, ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
     // the board's own outline as the band clip reads it (fine tessellation), additive: the engine clips the wall to it
     ...(fitBoard ? { board: fitBoard } : {}),
