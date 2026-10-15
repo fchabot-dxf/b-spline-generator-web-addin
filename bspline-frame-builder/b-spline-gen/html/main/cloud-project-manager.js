@@ -273,6 +273,8 @@ function wireModalListeners() {
   _btnDelete?.addEventListener('click', onDelete);
   _btnNewFolder?.addEventListener('click', onNewFolder);
   document.getElementById('fmBtnNew')?.addEventListener('click', async () => { if (await newProject()) closeModal(); });
+  // the header's Pull from Fusion, here for the phone (its header drops it): the header button's own handler
+  document.getElementById('fmBtnPullFromFusion')?.addEventListener('click', () => { closeModal(); document.getElementById('btnPullFromFusion')?.click(); });
 
   // View toggle
   _viewBtnTiles?.addEventListener('click', () => setViewMode('tiles'));

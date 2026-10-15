@@ -579,13 +579,15 @@ describe('runMigrations: contour-from-frame-outer-edge', () => {
   });
 });
 
+// (the chain ends in 'brick-size-per-element', Fred 2026-10-11: the one size becomes every element's own -- read it there)
+const sizesOf = (P) => P.brickSettings.sizeByElement;
 describe('runMigrations: brick-scale-to-brickLengthIn (F35 item 16)', () => {
   it('converts a legacy scale into brickLengthIn, relative to the active set\'s own declared length, and strips both legacy fields', () => {
     // Set 1's own declared brickLengthIn is 0.75 (core/bricks/library.js) -- scale 2 on Set 1 means
     // the board was showing 1.5in bricks; that's what must survive the migration unchanged.
     const P = { brickSettings: { setId: 1, scale: 2, frameBrickLengthIn: 1.1, grout: { widthIn: 0.06 } } };
     runMigrations(P);
-    expect(P.brickSettings.brickLengthIn).toBeCloseTo(1.5, 9);
+    for (const v of Object.values(sizesOf(P))) expect(v).toBeCloseTo(1.5, 9);
     expect(P.brickSettings.scale).toBeUndefined();
     expect(P.brickSettings.frameBrickLengthIn).toBeUndefined();
   });
@@ -593,19 +595,47 @@ describe('runMigrations: brick-scale-to-brickLengthIn (F35 item 16)', () => {
   it('uses Set 3\'s own declared length (1.1) when that was the active set, not Set 1\'s', () => {
     const P = { brickSettings: { setId: 3, scale: 0.5, grout: { widthIn: 0.06 } } };
     runMigrations(P);
-    expect(P.brickSettings.brickLengthIn).toBeCloseTo(0.55, 9);
+    for (const v of Object.values(sizesOf(P))) expect(v).toBeCloseTo(0.55, 9);
   });
 
   it('a save that already has brickLengthIn is left completely alone (not re-derived from a stale scale)', () => {
     const P = { brickSettings: { setId: 1, scale: 2, brickLengthIn: 3, grout: { widthIn: 0.06 } } };
     runMigrations(P);
-    expect(P.brickSettings.brickLengthIn).toBe(3);
+    expect(sizesOf(P)).toEqual({ wall: 3, frame: 3, brush: 3 });
   });
 
   it('a fresh save with no brickSettings at all, or no legacy scale field, is a safe no-op', () => {
     expect(() => runMigrations({})).not.toThrow();
     const P = { brickSettings: { setId: 1, brickLengthIn: 0.75, grout: { widthIn: 0.06 } } };
     runMigrations(P);
-    expect(P.brickSettings.brickLengthIn).toBe(0.75);
+    expect(sizesOf(P)).toEqual({ wall: 0.75, frame: 0.75, brush: 0.75 });
+  });
+});
+
+describe("runMigrations: brick-size-per-element (Fred 2026-10-11, per-pattern defaults)", () => {
+  it('a saved board copies its own size, joint depth and profile into EVERY element as overrides; the board-wide keys go', () => {
+    const P = { brickSettings: { setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, brickLengthIn: 1.5, grout: { depthIn: 0.07, profile: 'flush' }, groutByElement: { wall: null, frame: 0.05, brush: null } } };
+    runMigrations(P);
+    const b = P.brickSettings;
+    expect(b.sizeByElement).toEqual({ wall: 1.5, frame: 1.5, brush: 1.5 });
+    expect(b.groutDepthByElement).toEqual({ wall: 0.07, frame: 0.07, brush: 0.07 });
+    expect(b.groutProfileByElement).toEqual({ wall: 'flush', frame: 'flush', brush: 'flush' });
+    expect(b.brickLengthIn).toBeUndefined();
+    expect(b.grout).toEqual({});
+    expect(b.groutByElement).toEqual({ wall: null, frame: 0.05, brush: null }); // the joint widths were per element already
+  });
+  it('a save with no size at all laid at scale 1 -- each element at ITS set’s own length -- and keeps exactly that', () => {
+    const P = { brickSettings: { setIds: { wall: 1, frame: 3, brush: 1, raisedBrush: 1 }, grout: {}, groutByElement: { wall: null, frame: null, brush: null } } };
+    runMigrations(P);
+    expect(P.brickSettings.sizeByElement).toEqual({ wall: 0.75, frame: 1.1, brush: 0.75 });
+    expect(P.brickSettings.groutDepthByElement).toEqual({ wall: null, frame: null, brush: null }); // none saved: the defaults
+  });
+  it("a surface style's remembered profile becomes one per element; a second run changes nothing", () => {
+    const P = { brickSettings: { brickLengthIn: 1, grout: { depthIn: 0.05, profile: 'recessed' }, groutProfileBeforeStyle: 'flush', groutByElement: { wall: null, frame: null, brush: null } } };
+    runMigrations(P);
+    expect(P.brickSettings.groutProfileBeforeStyle).toEqual({ wall: 'flush', frame: 'flush', brush: 'flush' });
+    const once = JSON.stringify(P);
+    runMigrations(P);
+    expect(JSON.stringify(P)).toBe(once);
   });
 });

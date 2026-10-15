@@ -43,7 +43,7 @@ import {
   initBrickPanel, renderFramePresetList, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor, elementSize, elementGroutProfile, elementGroutDepth } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
@@ -78,7 +78,7 @@ const FIXTURE = `
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
   <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
-  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutWidthRow"></div></div>
+  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutWidthRow"></div><div id="brickGroutDepthRow"></div></div>
   <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
@@ -98,6 +98,7 @@ const FIXTURE = `
 
 const $ = (id) => document.getElementById(id);
 const fire = (id, value, type) => { $(id).value = String(value); $(id).dispatchEvent(new Event(type)); };
+const pickSize = (selId, id) => { const s = document.getElementById(selId); s.value = id; s.dispatchEvent(new Event('change')); };
 const firstInactive = (sel) => [...document.querySelectorAll(sel)].find((b) => !b.disabled && !b.classList.contains('active'));
 const pending = () => $('brickGenerate').classList.contains('pending');
 
@@ -151,6 +152,12 @@ function expectReLaidAtOnce(check) {
   expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);
 }
 
+// Fred 2026-10-11 (per-pattern defaults): the size and the joint depth / profile are per element -- these read and set
+// the active element's (the Wall's unless told), each override ?? its pattern's default
+const prof = (k = 'wall') => elementGroutProfile(P.brickSettings, k);
+const setProf = (v) => { P.brickSettings.groutProfileByElement = { wall: v, frame: v, brush: v }; };
+const depthOf = (k = 'wall') => elementGroutDepth(P.brickSettings, k);
+
 describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at once, never pending', () => {
   beforeEach(() => setup('wall'));
   afterEach(() => vi.useRealTimers());
@@ -161,10 +168,10 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
     expectReLaidAtOnce((call) => expect(call[1].pattern).toBe('herringbone'));
   });
   it('the set picker (item 23: the Wall element\'s set)', () => { $('brickSet_1').click(); expectReLaidAtOnce((c) => expect(c[1].setIds.wall).toBe(1)); });
-  it('a brick-size preset button', () => { firstInactive('[id^=brickSizePreset_]').click(); expectReLaidAtOnce(); });
+  it('a brick-size dropdown pick', () => { pickSize('brickSizeSelect', 'three'); expectReLaidAtOnce(); });
   it('the brick-size stepper, drag and release', () => {
     fire('brickSize', 1.5, 'input'); fire('brickSize', 1.5, 'change');
-    expectReLaidAtOnce((c) => expect(c[1].brickLengthIn).toBe(1.5));
+    expectReLaidAtOnce((c) => expect(elementSize(c[1], 'wall')).toBe(1.5)); // the Wall's own size
   });
   it('Generate is "re-lay now": the same settings, one more lay', () => {
     $('brickGenerate').click();
@@ -175,10 +182,10 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
   it('the grout profile toggle and the grout depth field are 3D-only', () => {
     const notify = vi.fn();
     window.svgEditor._notifyChange = notify;
-    const other = P.brickSettings.grout.profile === 'flush' ? 'brickBtnGroutRecessed' : 'brickBtnGroutFlush';
+    const other = prof() === 'flush' ? 'brickBtnGroutRecessed' : 'brickBtnGroutFlush';
     $(other).click();
     fire('brickGroutDepth', 0.07, 'input'); // typing: saved, no re-mask yet (turn 189)
-    expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(depthOf()).toBe(0.07);
     expect(notify).toHaveBeenCalledTimes(1);
     fire('brickGroutDepth', 0.07, 'change'); // settled: re-mask
     expect(notify).toHaveBeenCalledTimes(2);
@@ -222,7 +229,7 @@ describe('Editor Brick tab (Frame tool)', () => {
     $('brickFramePreset_soldier_stretcher').click();
     expectReLaidAtOnce((c) => expect(c[2].bands.length).toBe(2));
   });
-  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectReLaidAtOnce(); });
+  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button[id^=brickFrameBandPattern_]') /* the options, not the picker's chip */.click(); expectReLaidAtOnce(); });
 });
 
 describe('Generate with nothing to re-lay', () => {
@@ -316,16 +323,16 @@ describe("F35 item 18 (2): the Surface style (Clean | Weathered) is a 3D-only ('
 describe('turn 207: Recessed is the new-board start -- Weathered keeps it, Clean leaves it Recessed', () => {
   beforeEach(() => {
     P.brickSettings.surfaceStyle = 'clean';
-    P.brickSettings.grout.profile = 'recessed';
+    setProf('recessed');
     delete P.brickSettings.groutProfileBeforeStyle;
     setup('wall');
   });
   it('nothing to restore: Weathered stores no "before", Clean keeps Recessed', () => {
     $('brickSurfaceStyle_weathered').click();
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(prof()).toBe('recessed');
     expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
     $('brickSurfaceStyle_clean').click();
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(prof()).toBe('recessed');
     expect($('brickBtnGroutRecessed').classList.contains('active')).toBe(true);
   });
 });
@@ -334,7 +341,7 @@ describe('turn 183: Weathered switches the grout to Recessed; Clean restores wha
   let notify;
   beforeEach(() => {
     P.brickSettings.surfaceStyle = 'clean';
-    P.brickSettings.grout.profile = 'flush';
+    setProf('flush');
     delete P.brickSettings.groutProfileBeforeStyle;
     setup('wall');
     notify = vi.fn();
@@ -342,10 +349,10 @@ describe('turn 183: Weathered switches the grout to Recessed; Clean restores wha
   });
   it('Weathered -> Recessed (button shows it); Clean -> back to Flush; one re-mask each, never pending', () => {
     $('brickSurfaceStyle_weathered').click();
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(prof()).toBe('recessed');
     expect($('brickBtnGroutRecessed').classList.contains('active')).toBe(true);
     $('brickSurfaceStyle_clean').click();
-    expect(P.brickSettings.grout.profile).toBe('flush');
+    expect(prof()).toBe('flush');
     expect($('brickBtnGroutFlush').classList.contains('active')).toBe(true);
     expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
     expect(notify).toHaveBeenCalledTimes(2);
@@ -356,14 +363,14 @@ describe('turn 183: Weathered switches the grout to Recessed; Clean restores wha
     $('brickBtnGroutFlush').click();
     $('brickBtnGroutRecessed').click();
     $('brickSurfaceStyle_clean').click();
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(prof()).toBe('recessed');
   });
   it('already Recessed: Weathered changes nothing to restore, Clean leaves Recessed', () => {
-    P.brickSettings.grout.profile = 'recessed';
+    setProf('recessed');
     setSurfaceStyle('weathered');
     expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
     setSurfaceStyle('clean');
-    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(prof()).toBe('recessed');
   });
 });
 
@@ -408,10 +415,10 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect(runBricks).toHaveBeenCalledTimes(1);
   });
   it('quick brick size re-lays at once', () => {
-    $('brickQuick_size_three').click();
-    expect(P.brickSettings.brickLengthIn).toBe(3);
+    pickSize('brickQuickSelect_size', 'three');
+    expect(elementSize(P.brickSettings, 'wall')).toBe(3); // the sidebar quick row sets the Wall's size (Fred 2026-10-11)
     expect(runBricks).toHaveBeenCalledTimes(1);
-    expect($('brickQuick_size_three').classList.contains('active')).toBe(true);
+    expect($('brickQuickSelect_size').value).toBe('three');
   });
 });
 
@@ -727,29 +734,29 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     setup('wall');
   });
   // item 43 changes turn 197's "Set and Brick size..Seed show for a tool": each block shows by its declared SCOPE --
-  // global (size, suppression..seed) only in General, element (Set, grout width) in a tool's tab, the Grout block in both
+  // global (suppression..seed) only in General, element (Set, size + joint since 2026-10-11) in a tool's tab
   it('Stripe declares sharedRows: false -> its tab shows no shared row; the Wall tab shows its element rows only', () => {
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickGroutWidthRow')).toBe(true);
-    expect(onScreen('brickSizeBlock') || onScreen('brickSec_general_size')).toBe(false); // phase 4: in the General branch, folded
+    expect(shown('brickSizeBlock')).toBe(true); // per element since 2026-10-11 (the Wall's Size & joint)
     $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click();
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow']) expect(shown(id), id).toBe(false);
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickGroutDepthRow']) expect(shown(id), id).toBe(false);
     $('brickTool_wall').click();
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickGroutWidthRow')).toBe(true);
   });
   // phase 4: General is a branch of the drawer tree -- it opens BESIDE the armed element's branch (no longer a tab that
-  // hides it); the tool stays armed and its rows stay where they are
-  it('phase 4: opening General shows the global blocks beside the armed tool, whose section and rows stay', () => {
-    expect(onScreen('brickSizeBlock')).toBe(false); // folded at first (BRICK_TREE_DEFAULT_OPEN)
+  // hides it); since 2026-10-11 it holds no element row (the size + joint are per element): those stay the armed tool's
+  it('phase 4: opening General shows its sections beside the armed tool, whose section and element rows stay', () => {
+    expect(onScreen('brickSharedLayout')).toBe(false); // General's host, folded at first (BRICK_TREE_DEFAULT_OPEN)
     $('brickTab_general').click();
-    for (const id of ['brickSizeBlock', 'brickSec_general_size']) expect(onScreen(id), id).toBe(true);
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(onScreen(id), id).toBe(true);
+    expect(onScreen('brickSharedLayout')).toBe(true);
+    for (const id of ['brickSharedSet', 'brickSizeBlock', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(onScreen(id), id).toBe(true);
     expect($('brickTool_wall').classList.contains('active')).toBe(true);
     $('brickTab_general').click(); // the header OPENS (a second tap keeps it open; its caret folds)
-    expect(onScreen('brickSizeBlock')).toBe(true);
+    expect(onScreen('brickSharedLayout')).toBe(true);
     $('brickBranch_general').querySelector('.brick-branch-caret').click();
-    expect(onScreen('brickSizeBlock')).toBe(false);
+    expect(onScreen('brickSharedLayout')).toBe(false);
   });
   it('the Large stones row shows only for a fieldstone wall (item 23: the Fieldstone pattern = the rock set)', () => {
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
@@ -774,7 +781,7 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
 describe("audit (88's matrix): controls grey out while their declared requirement is unmet", () => {
   beforeEach(() => {
     P.brickSettings.suppression = 0;
-    P.brickSettings.grout.profile = 'flush';
+    setProf('flush');
     setup('wall');
   });
   it('Clumping (both inputs) is disabled at Suppression 0, with the reason; Suppression > 0 enables it', () => {
@@ -819,11 +826,11 @@ describe('turn 197 (88): a number box applies while typing, once the typing paus
     vi.useFakeTimers();
     const notify = vi.fn();
     window.svgEditor._notifyChange = notify;
-    P.brickSettings.grout.profile = 'recessed';
+    setProf('recessed');
     fire('brickGroutDepth', 0.06, 'input');
     vi.advanceTimersByTime(200);
     fire('brickGroutDepth', 0.07, 'input');
-    expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(depthOf()).toBe(0.07);
     expect(notify).not.toHaveBeenCalled();
     vi.advanceTimersByTime(399);
     expect(notify).not.toHaveBeenCalled();
@@ -854,7 +861,8 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
   it('the plain Brush clears the Raised brush\'s overrides (item 23: only its own set is frozen in)', () => {
     $('brickTool_raisedBrush').click();
     $('brickTool_brush').click();
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, grout: expect.objectContaining({ widthIn: 0.034 }) }); // item 29: + Rustic; + its joint
+    // item 29: + Rustic; + its joint; + (2026-10-11) the Brush's size, which every stroke follows
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, brickLengthIn: elementSize(P.brickSettings, 'brush'), grout: expect.objectContaining({ widthIn: 0.034 }) });
   });
   it('Grout mode shows and is pickable now the engine lists groutCut (T86 item 10); hidden + refused without it', () => {
     const resync = () => document.dispatchEvent(new CustomEvent('brickSettingsRestored')); // the panel's full re-sync
@@ -950,7 +958,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N2: P.brickSettings REPLACED (reload / project load) -> the panel shows the board's values, editor + sidebar", () => {
     setup('brush');
     const before = P.brickSettings;
-    P.brickSettings = { ...JSON.parse(JSON.stringify(before)), pattern: 'fieldstone', brickLengthIn: 1.5, surfaceStyle: 'weathered' };
+    P.brickSettings = { ...JSON.parse(JSON.stringify(before)), pattern: 'fieldstone', sizeByElement: { wall: 1.5, frame: 1.5, brush: 1.5 }, surfaceStyle: 'weathered' };
     window.svgEditor._brickSettings = before; // an armed Brush still holds the old object
     document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
     expect($('brickPattern_fieldstone').classList.contains('active')).toBe(true);
@@ -965,7 +973,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
 
   it('N4: a brush-only board never shows a Generate dot (nothing for Generate to re-lay)', () => {
     setup('brush');
-    firstInactive('[id^=brickSizePreset_]').click();
+    pickSize('brickSizeSelect', 'three');
     $('brickSet_1').click();
     expect(pending()).toBe(false);
     expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);
@@ -993,7 +1001,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N7: Scissors hides the shared rows too (a cut keeps each piece's draw-time settings)", () => {
     setup('wall');
     $('brickTool_scissors').click();
-    for (const id of ['brickSharedSet', 'brickGroutWidthRow']) expect(shown(id), id).toBe(false); // item 43: by scope (General's global rows sit in its own branch)
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickGroutDepthRow']) expect(shown(id), id).toBe(false); // item 43: by scope
   });
 
   // item 66 inverts N9's "no template -> a toast": no template = the bands follow the board rectangle; the toast stays
@@ -1336,5 +1344,15 @@ describe('Fred 2026-10-14 ("suggest, don\'t hide"): a wood-frame family orders t
     expect($('brickFramePreset_arch_keystone').title).toMatch(/fits this frame/);
     expect($('brickFramePresetGroup_fits')).not.toBeNull();
     expect($('brickFramePresetGroup_other')).not.toBeNull();
+  });  it('inside the picker (main/icon-select.js): the headings span the grid, the chip names the preset alone', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    P.brickSettings.frameBandPreset = 'arch_keystone';
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    expect(list.closest('.icon-grid-picker')).not.toBeNull();
+    for (const id of ['brickFramePresetGroup_fits', 'brickFramePresetGroup_other']) expect($(id).style.gridColumn, id).toBe('1 / -1');
+    const name = $('brickFramePresetTriggerName').textContent;
+    expect(name).toBe($('brickFramePreset_arch_keystone').dataset.name);
+    expect(name).not.toMatch(/fits this frame/); // the tooltip says it; the chip names the preset
   });
 });

@@ -155,6 +155,8 @@ async function doAct(a) {
 // app code ran before the card and in their longest tasks (blame.mjs). Every row still runs, in order: a row's state is
 // what the rows before it left (a filtered run skipped the row that opens the editor -- measured: setup control missing).
 const PROFILE = process.env.BLIND_PROFILE ? new RegExp(process.env.BLIND_PROFILE, 'i') : null;
+// the tasks a profiled row blames on their own (BLIND_PROFILE_TASK_MS, default 100): 40 names a pointerdown's 60 ms one
+const PROFILE_TASK_MS = Number(process.env.BLIND_PROFILE_TASK_MS || 100);
 
 async function runBlindBudget() {
   const B = BLIND_BUDGET;
@@ -195,7 +197,7 @@ async function runBlindBudget() {
         const p = (await send('Profiler.stop')).result?.profile;
         if (p && m) {
           const end = m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0);
-          const w = [['before card', t0, t0 + (m.cardMs ?? end)], ...m.tasks.filter(([, d]) => d >= 100).map(([s, d]) => [`task @${s} ${d}ms`, t0 + s, t0 + s + d])];
+          const w = [['before card', t0, t0 + (m.cardMs ?? end)], ...m.tasks.filter(([, d]) => d >= PROFILE_TASK_MS).map(([s, d]) => [`task @${s} ${d}ms`, t0 + s, t0 + s + d])];
           console.log(`  PROFILE ${row.name}: card ${m.cardMs ?? 'never'} ms, blind ${m.blindMs} ms`);
           for (const b of blame(p, w, markT, 6)) console.log(`   ${b.w}: ${b.top.map(([ms, c]) => ms + 'ms ' + c).join(' || ')}`);
         }

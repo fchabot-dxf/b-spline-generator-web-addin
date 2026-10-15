@@ -29,6 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, elementEdgeRadius, JOINT_ELEMENT, patternParamsFor,
+  elementSize, elementGroutDepth, elementGroutProfile, elementOverride, elementPatternDefaults, ELEMENT_LOOK_MAPS, GROUT_PROFILES,
   topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
@@ -58,7 +59,7 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl, buildBrickDrawerTree, syncBrickDrawerTree, openBrickBranch } from './brick-tab-sections.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
-import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
+import { mountIconSelect, refreshIconSelect, mountIconGrid, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -137,7 +138,7 @@ export const brickTabs = () => BRICK_TOOLS.filter((t) => t.tab).sort((a, b) => a
  *  own "Look" section and Suppression .. Seed its Crumble / Randomness sections (main/brick-tab-sections.js), so the
  *  Grout and Scatter blocks -- the only 'both' and the other 'global' scope -- are gone. */
 export const BRICK_ROW_SCOPES = Object.freeze({
-  brickSharedSet: 'element', brickSizeBlock: 'global', brickGroutWidthRow: 'element',
+  brickSharedSet: 'element', brickSizeBlock: 'element', brickGroutWidthRow: 'element', brickGroutDepthRow: 'element', // Fred 2026-10-11: size + joint per element
 });
 
 let _activeTool = null;
@@ -231,12 +232,9 @@ function syncSetPicker() {
  *  0.12in vs Set 1's measured 0.06in) -- otherwise the slider would silently
  *  keep showing/using the PREVIOUS set's own width after a switch, which
  *  `toBrickOpts` always applies verbatim regardless of which set is active.
- *  F35 item 16: brickLengthIn is now a GLOBAL, absolute real-world size --
- *  deliberately NOT reset here (unlike the old Frame-only frameBrickLengthIn
- *  it replaced, which WAS force-synced to the new set on every switch): a
- *  user who picked "2 inch bricks" means 2 inches regardless of which photo
- *  texture is applied, the same way Wall/Brush's own old relative Scale
- *  multiplier never needed a reset either. */
+ *  The SIZE (per element since 2026-10-11: sizeByElement, absolute inches) is
+ *  deliberately NOT reset here: a user who picked "2 inch bricks" means 2
+ *  inches regardless of which photo texture is applied. */
 export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { strokes = false } = {}) {
   const set = brickSetById(setId);
   if (!set || !kinds.every((k) => setsOfferedFor(k).includes(setId))) return;
@@ -268,96 +266,144 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { st
  *  5 values that actually span the control's own min/max, matching the measured resolution grid's
  *  own columns (shots/seatC/resolution_scale_grid.png) -- "Life size" is a real US brick's own
  *  actual length (8in x 2.25in). */
-const BRICK_SIZE_PRESETS = [
+export const BRICK_SIZE_PRESETS = [
   { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
+  { id: 'half', label: '½″', lengthIn: 0.5 }, // Fred 2026-10-14: more precision (+ ½, 1¾, 2)
   { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
   { id: 'one', label: '1″', lengthIn: 1 },
   { id: 'one_quarter1', label: '1¼″', lengthIn: 1.25 }, // Fred (2026-10-05): the new-board default, so it shows as picked
   { id: 'half1', label: '1½″', lengthIn: 1.5 },
+  { id: 'three_quarter1', label: '1¾″', lengthIn: 1.75 },
+  { id: 'two', label: '2″', lengthIn: 2 },
   { id: 'three', label: '3″', lengthIn: 3 },
   { id: 'life', label: 'Life 8″', lengthIn: 8 },
 ];
-const BRICK_SIZE_MIN_IN = 0.375;
-const BRICK_SIZE_MAX_IN = 8;
+/** Fred 2026-10-14: any size can be typed. The field's range is the one the size control has always clamped to (the
+ *  engine itself declares no limit on brickLengthIn); the step is the stepper's, a typed value is kept as typed. */
+export const BRICK_SIZE_FIELD = Object.freeze({ minIn: 0.375, maxIn: 8, stepIn: 0.025 });
+const BRICK_SIZE_MIN_IN = BRICK_SIZE_FIELD.minIn;
+const BRICK_SIZE_MAX_IN = BRICK_SIZE_FIELD.maxIn;
 
-/** UX refine (Fred, 2026-10-10): a Frame preset's declared `bestSize` (core/bricks/library.js FRAME_PRESETS) is a
- *  SUGGESTION -- a "best" mark on that Size chip wherever the chips appear, and a one-line hint with a Use-it button
- *  under each frame picker. Only the button changes the size (brick size is one global value). Declared: the words,
- *  where the chips are, where the hints go and how each one commits (as its own chips do). */
-export const BEST_SIZE_HINT = Object.freeze({
-  text: 'Reads best at {size}',
-  button: 'Use it',
-  mark: 'best',
-  markTitle: 'The frame preset reads best at this size',
-  undoLabel: 'Bricks: Brick size',
-});
-const BEST_SIZE_CHIP_IDS = Object.freeze([
-  (chip) => `brickSizePreset_${chip.id}`, // the Brick editor (renderBrickSizePresetList)
-  (chip) => `brickQuick_size_${chip.id}`, // the sidebar quick settings (BRICK_QUICK_SETTINGS 'size')
+/** Fred 2026-10-11 (per-pattern defaults): every pattern declares its default size and joint (core/bricks/library.js
+ *  patternDefaultsOf; a frame preset's bestSize is its default size) and an element lays at them unless the user overrides
+ *  a value in its Size & joint section. The old Best-size hint and its [Use it] are retired: a default applies itself.
+ *  Fred 2026-10-14: the size is a DROPDOWN (a <select> showing the current size, the presets + Custom…) with a typed
+ *  field beside it, in the editor's Size & joint (the active element) and the sidebar quick row (the Wall,
+ *  QUICK_SIZE_ELEMENT). The element's default is said in the list ("1¼″ · default") and marked on the select (a dot,
+ *  CSS .pattern-default) whenever the current size equals it -- picked or typed. */
+export const PATTERN_DEFAULT_MARK = Object.freeze({ cls: 'pattern-default', title: "This element's pattern default", suffix: ' · default' });
+export const QUICK_SIZE_ELEMENT = 'wall'; // Fred 2026-10-11: the sidebar quick Size row sets the Wall's size
+/** The list's last entry: picking it focuses the typed field; it reads the current size when that is no preset. */
+export const BRICK_SIZE_CUSTOM = Object.freeze({ id: 'custom', label: 'Custom…' });
+export const SIZE_SELECT_HOSTS = Object.freeze([
+  { selectId: 'brickSizeSelect', numberId: 'brickSize', kind: () => _jointKind() }, // the Brick editor (renderBrickSizePresetList)
+  { selectId: 'brickQuickSelect_size', numberId: 'brickQuickSize', kind: () => QUICK_SIZE_ELEMENT }, // the sidebar quick settings
 ]);
-const BEST_SIZE_HINT_HOSTS = Object.freeze([
-  { id: 'editor', anchor: 'brickFramePresetList', commit: 'generate', stage: null },
-  { id: 'quick', anchor: 'brickQuickRow_frameBands', commit: 'auto', stage: 'bricks' },
-]);
-export const bestSizeHintId = (hostId) => `brickBestSizeHint_${hostId}`;
-
-/** The Size chip the current Frame preset reads best at, or null: none declared, not a chip, or already the size. */
-export function suggestedBrickSize(settings) {
-  const best = FRAME_PRESETS[settings && settings.frameBandPreset]?.bestSize;
-  const chip = BRICK_SIZE_PRESETS.find((p) => p.lengthIn === best);
-  return chip && chip.lengthIn !== settings.brickLengthIn ? chip : null;
-}
-
-/** [Use it]: the suggested size, as ONE undo step (the sidebar: a global step; in the editor, the editor's own). */
-function useSuggestedBrickSize(host) {
-  const chip = suggestedBrickSize(P.brickSettings);
-  if (!chip) return;
-  const run = () => recordBoardStep(BEST_SIZE_HINT.undoLabel, () => setBrickSize(chip.lengthIn, host.commit));
-  if (host.stage) withLoadingStageShownFirst(host.stage, run); else run();
-}
-
-function _bestSizeHintEl(host) {
-  const anchor = document.getElementById(host.anchor);
-  if (!anchor || !anchor.parentNode) return null;
-  let el = document.getElementById(bestSizeHintId(host.id));
-  if (el && el.previousElementSibling === anchor) return el;
-  el?.remove();
-  el = document.createElement('div');
-  el.id = bestSizeHintId(host.id);
-  el.className = 'brick-best-size-hint';
-  el.style.cssText = 'display:none; align-items:center; gap:8px; margin:-4px 0 10px; font-size:11px;';
-  const text = document.createElement('span');
-  text.className = 'brick-best-size-text';
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'cad-btn';
-  btn.id = `brickBestSizeUse_${host.id}`;
-  btn.textContent = BEST_SIZE_HINT.button;
-  btn.style.cssText = 'min-width:0; height:auto; padding:2px 10px; white-space:nowrap; flex:none;';
-  btn.addEventListener('click', () => useSuggestedBrickSize(host));
-  el.append(text, btn);
-  anchor.after(el);
-  return el;
-}
-
-/** The "best" marks on the Size chips and the hints under the frame pickers, from suggestedBrickSize. */
-function syncBestSize() {
-  const best = suggestedBrickSize(P.brickSettings);
-  for (const chip of BRICK_SIZE_PRESETS) {
-    for (const idOf of BEST_SIZE_CHIP_IDS) {
-      const el = document.getElementById(idOf(chip));
-      if (!el) continue;
-      const on = chip === best;
-      el.classList.toggle('best-size', on);
-      if (on) { el.dataset.best = BEST_SIZE_HINT.mark; el.title = BEST_SIZE_HINT.markTitle; }
-      else if (el.dataset.best) { delete el.dataset.best; el.removeAttribute('title'); }
-    }
+const _inches = (v) => `${+Number(v).toFixed(3)}″`;
+/** A size <select>: one option per preset (its value the preset's id) + Custom…; synced by syncSizeSelects. */
+function _buildSizeSelect(id) {
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.className = 'brick-size-select';
+  for (const c of [...BRICK_SIZE_PRESETS, BRICK_SIZE_CUSTOM]) {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.label;
+    sel.appendChild(o);
   }
-  for (const host of BEST_SIZE_HINT_HOSTS) {
-    const el = best ? _bestSizeHintEl(host) : document.getElementById(bestSizeHintId(host.id));
-    if (!el) continue;
-    el.style.display = best ? 'flex' : 'none';
-    if (best) el.querySelector('.brick-best-size-text').textContent = BEST_SIZE_HINT.text.replace('{size}', best.label);
+  return sel;
+}
+/** A typed size field carries the declared range (BRICK_SIZE_FIELD). */
+function _applySizeField(input) {
+  if (!input) return;
+  input.min = String(BRICK_SIZE_FIELD.minIn);
+  input.max = String(BRICK_SIZE_FIELD.maxIn);
+  input.step = String(BRICK_SIZE_FIELD.stepIn);
+}
+/** The picked preset of a size <select> (Custom… = null: the typed field takes it). */
+function _sizeSelectPick(sel, host) {
+  const preset = BRICK_SIZE_PRESETS.find((c) => c.id === sel.value);
+  if (preset) return preset;
+  const field = document.getElementById(host.numberId);
+  syncSizeSelects(); // the select keeps showing the current size
+  field?.focus();
+  field?.select?.();
+  return null;
+}
+function syncSizeSelects() {
+  for (const host of SIZE_SELECT_HOSTS) {
+    const sel = document.getElementById(host.selectId);
+    if (!sel) continue;
+    const kind = host.kind();
+    const size = elementSize(P.brickSettings, kind), def = elementPatternDefaults(P.brickSettings, kind).sizeIn;
+    const cur = BRICK_SIZE_PRESETS.find((c) => c.lengthIn === size);
+    for (const o of sel.options) {
+      const c = BRICK_SIZE_PRESETS.find((p) => p.id === o.value);
+      const lengthIn = c ? c.lengthIn : (cur ? null : size); // Custom… reads the current size when that is no preset
+      const label = c ? c.label : (cur ? BRICK_SIZE_CUSTOM.label : _inches(size));
+      o.textContent = label + (lengthIn === def ? PATTERN_DEFAULT_MARK.suffix : '');
+    }
+    sel.value = cur ? cur.id : BRICK_SIZE_CUSTOM.id;
+    const on = size === def;
+    sel.classList.toggle(PATTERN_DEFAULT_MARK.cls, on);
+    sel.title = on ? PATTERN_DEFAULT_MARK.title : '';
+    const field = document.getElementById(host.numberId);
+    if (field && document.activeElement !== field) field.value = String(size);
+  }
+}
+/** The Size & joint section's resets (Fred: an icon only, the tweak rows' own ↺): each shown only while the active
+ *  element overrides one of its values, beside its row's label; a click clears those overrides (the
+ *  element is back on its pattern's defaults) and commits as the row's own control does. */
+export const ELEMENT_LOOK_RESETS = Object.freeze([
+  Object.freeze({ id: 'brickLookReset_size', label: 'brickSizeLabel', looks: Object.freeze(['size']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutWidth', label: 'brickGroutWidthLabel', looks: Object.freeze(['groutWidth']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutDepth', label: 'brickGroutDepthLabel', looks: Object.freeze(['groutDepth', 'groutProfile']), commit: 'surface' }),
+]);
+export const LOOK_RESET_TITLE = 'Reset to pattern default';
+/** Writes the active element's value (null = back to the pattern's default) into a per-element map. */
+function _setElementLook(look, value, kind = _jointKind()) {
+  const map = ELEMENT_LOOK_MAPS[look];
+  P.brickSettings[map] = { ...(P.brickSettings[map] || {}), [JOINT_ELEMENT[kind] || kind]: value };
+}
+function _renderLookResets() {
+  for (const r of ELEMENT_LOOK_RESETS) {
+    if (document.getElementById(r.id)) continue;
+    const anchor = document.getElementById(r.label);
+    if (!anchor) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = r.id;
+    btn.className = 'tweak-reset';
+    btn.textContent = '↺';
+    btn.title = LOOK_RESET_TITLE;
+    btn.setAttribute('aria-label', LOOK_RESET_TITLE);
+    btn.addEventListener('click', () => {
+      for (const look of r.looks) _setElementLook(look, null);
+      syncElementLook();
+      commitBrickSetting(r.commit);
+    });
+    // a label row: the label, then its ↺ beside it (.cad-label is a column flex box -- inside it the icon would stack
+    // under the text, MEASURED); the row takes the label's place, so a label beside a stepper keeps its layout
+    const row = document.createElement('div');
+    row.className = 'brick-look-label-row';
+    row.style.cssText = 'display:flex; align-items:center; gap:6px;';
+    anchor.replaceWith(row);
+    row.append(anchor, btn);
+  }
+}
+/** The active element's size and joint shown in its section, the default chip marked, each reset shown iff overridden. */
+function syncElementLook() {
+  const s = P.brickSettings, kind = _jointKind();
+  syncBrickSizeControls(elementSize(s, kind));
+  syncBrickSizePresetButtons();
+  syncGroutWidthBox();
+  const depth = document.getElementById('brickGroutDepth');
+  if (depth) depth.value = String(elementGroutDepth(s, kind));
+  _syncGroutProfileToggle(elementGroutProfile(s, kind));
+  for (const r of ELEMENT_LOOK_RESETS) {
+    const btn = document.getElementById(r.id);
+    // inline-flex: the tweak-reset class is a flex box, which would put it on a line of its own inside the label
+    if (btn) btn.style.display = r.looks.some((look) => elementOverride(s, ELEMENT_LOOK_MAPS[look], kind) != null) ? 'inline-flex' : 'none';
   }
 }
 
@@ -381,29 +427,22 @@ export function sliderPosToBrickSize(pos) {
 function renderBrickSizePresetList(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const preset of BRICK_SIZE_PRESETS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cad-btn';
-    btn.id = `brickSizePreset_${preset.id}`;
-    btn.textContent = preset.label;
-    btn.addEventListener('click', () => setBrickSize(preset.lengthIn));
-    container.appendChild(btn);
-  }
+  const host = SIZE_SELECT_HOSTS[0];
+  const sel = _buildSizeSelect(host.selectId);
+  sel.addEventListener('change', () => { const c = _sizeSelectPick(sel, host); if (c) setBrickSize(c.lengthIn); });
+  container.appendChild(sel);
+  _applySizeField(document.getElementById(host.numberId));
 }
 
 function syncBrickSizePresetButtons() {
-  for (const preset of BRICK_SIZE_PRESETS) {
-    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
-  }
-  syncQuickSettings();
+  syncQuickSettings(); // ends with syncSizeSelects (both dropdowns)
 }
 
-export function setBrickSize(lengthIn, commit = 'generate') {
+/** An element's size (Fred 2026-10-11: per element, its override; `kind` the active element unless given). */
+export function setBrickSize(lengthIn, commit = 'generate', kind = _jointKind()) {
   const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
-  P.brickSettings.brickLengthIn = v;
-  syncBrickSizeControls(v);
-  syncBrickSizePresetButtons();
+  _setElementLook('size', v, kind);
+  syncElementLook();
   commitBrickSetting(commit);
 }
 
@@ -417,13 +456,20 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-function _writeGroutProfile(profile) {
-  P.brickSettings.grout.profile = profile;
+function _syncGroutProfileToggle(profile) {
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
 }
+/** An element's joint profile (Fred 2026-10-11: per element); the active element's unless `kind` is given. */
+function _writeGroutProfile(profile, kind = _jointKind()) {
+  _setElementLook('groutProfile', profile, kind);
+  if ((JOINT_ELEMENT[kind] || kind) === (JOINT_ELEMENT[_jointKind()] || _jointKind())) _syncGroutProfileToggle(profile);
+  syncElementLook();
+}
 
-export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
+/** The per-element looks' elements (the Raised brush shares the Brush's). */
+const GROUT_LOOK_KINDS = Object.freeze(['wall', 'frame', 'brush']);
+export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess); the active element's
   _writeGroutProfile(profile);
   delete P.brickSettings.groutProfileBeforeStyle; // the user's own pick wins over a style's restore
   commitBrickSetting(commit);
@@ -469,135 +515,44 @@ export const accentChoicesForPattern = (patternId) => [
   ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
 ];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
+/** The Wall grid's choices: the pattern's own (0b04ee2), PLUS the board's saved preset when the pattern no longer offers
+ *  it (advisor 2026-10-14: a saved Stretcher Course bands still lays -- accentPresetById -- so the grid shows it, active,
+ *  instead of a chip with no name). Custom / tile / none are not presets: never appended. */
+export const wallAccentChoices = (patternId, presetId) => {
+  const own = accentChoicesForPattern(patternId);
+  const saved = typeof presetId === 'string' && !own.some((c) => c.id === presetId) ? accentPresetById(presetId) : null;
+  return saved ? [...own, saved] : own;
+};
 let _accentClickArmed = false;
-
-let _popoverGlobalWired = false;
-function _wirePopoverGlobal() {
-  if (_popoverGlobalWired || typeof document === 'undefined') return;
-  _popoverGlobalWired = true;
-  document.addEventListener('click', (e) => {
-    for (const list of document.querySelectorAll('.brick-popover-list')) {
-      if (list.style.display !== 'none') {
-        const triggerId = list.dataset.triggerId;
-        const trigger = triggerId ? document.getElementById(triggerId) : null;
-        if ((!trigger || !trigger.contains(e.target)) && !list.contains(e.target)) {
-          list.style.display = 'none';
-        }
-      }
-    }
-  });
-  window.addEventListener('scroll', (e) => {
-    for (const list of document.querySelectorAll('.brick-popover-list')) {
-      if (list.style.display !== 'none' && !list.contains(e.target)) {
-        list.style.display = 'none';
-      }
-    }
-  }, true);
-}
-
-function _togglePopover(triggerEl, popoverEl, maxWidth = 320) {
-  const open = popoverEl.style.display !== 'none';
-  for (const list of document.querySelectorAll('.brick-popover-list')) {
-    list.style.display = 'none';
-  }
-  if (open) return;
-  popoverEl.style.display = popoverEl.dataset.popoverDisplay || 'flex';
-  const r = triggerEl.getBoundingClientRect();
-  const w = maxWidth;
-  const maxW = window.innerWidth || 320;
-  const left = Math.max(4, Math.min(r.left, maxW - w - 4));
-  popoverEl.style.left = `${left}px`;
-  popoverEl.style.top = `${r.bottom + 4}px`;
-  popoverEl.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
-}
 
 export function renderAccentList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickWallAccentTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickWallAccentTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickWallAccentTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickWallAccentTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 280);
-    });
-  }
-
   container.innerHTML = '';
-  container.classList.add('brick-popover-list');
-  container.dataset.triggerId = 'brickWallAccentTriggerWrap';
-  container.dataset.popoverDisplay = 'grid';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-  container.style.gap = '4px';
-  container.style.maxWidth = '280px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
-
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, _accent().preset);
 
   for (const choice of choices) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon';
+    btn.className = 'cad-btn brick-accent-icon' + (_accent().preset === choice.id ? ' active' : '');
     btn.id = `brickAccent_${choice.id}`;
     btn.title = choice.label;
     btn.setAttribute('aria-label', choice.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0, bond: pattern }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
-    btn.addEventListener('click', () => {
-      setAccentPreset(choice.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setAccentPreset(choice.id));
     container.appendChild(btn);
   }
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Accent', ids: { wrap: 'brickWallAccentTriggerWrap', chip: 'brickWallAccentTrigger', name: 'brickWallAccentTriggerName' } });
 }
 
 export function syncAccentControls() {
   const a = _accent();
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, a.preset);
   for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
-  const triggerBtn = document.getElementById('brickWallAccentTrigger');
-  const triggerName = document.getElementById('brickWallAccentTriggerName');
-  if (triggerBtn && triggerName) {
-    const choice = choices.find((c) => c.id === a.preset)
-      || ACCENT_CHOICES.find((c) => c.id === a.preset)
-      || { id: a.preset, label: a.preset === 'none' ? 'None' : (accentPresetById(a.preset)?.label || a.preset) };
-    const isSunk = a.levelIn < 0;
-    triggerBtn.innerHTML = choice.id === 'none'
-      ? '<span style="font-size:11px; font-weight:600; opacity:0.8;">None</span>'
-      : (accentIconSvg(choice.id, 30, { sunk: isSunk, bond: pattern }) || choice.label);
-    triggerName.textContent = choice.label;
-    triggerBtn.title = `Accent: ${choice.label}`;
-  }
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
@@ -992,56 +947,9 @@ function renderAccentRowFor(container, target, iconPx) {
   label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
   row.appendChild(label);
 
-  const triggerWrap = document.createElement('div');
-  triggerWrap.id = `brickAccentTriggerWrap_${key}`;
-  triggerWrap.className = 'icon-select';
-  triggerWrap.style.cssText = 'position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer;';
-
-  const triggerBtn = document.createElement('button');
-  triggerBtn.type = 'button';
-  triggerBtn.id = `brickAccentTrigger_${key}`;
-  triggerBtn.className = 'cad-btn icon-select-button';
-  triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:40px; height:28px; padding:2px; overflow:hidden;';
-
-  const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
-  const isSunk = a.levelIn < 0;
-  triggerBtn.innerHTML = choice.id === 'none'
-    ? '<span style="font-size:10px; font-weight:600; opacity:0.8;">None</span>'
-    : (accentIconSvg(choice.id, Math.max(22, iconPx), { sunk: isSunk }) || choice.label);
-
-  const triggerName = document.createElement('span');
-  triggerName.id = `brickAccentTriggerName_${key}`;
-  triggerName.className = 'icon-select-name';
-  triggerName.textContent = choice.label;
-  triggerName.style.cssText = 'font-size:11px; opacity:0.85; font-weight:500;';
-
-  triggerWrap.append(triggerBtn, triggerName);
-  row.appendChild(triggerWrap);
-
-  const popover = document.createElement('div');
+  const popover = document.createElement('div'); // the accent buttons: the picker's grid (Click and the level stay in the row)
   popover.id = `brickAccentPopover_${key}`;
-  popover.className = 'icon-select-grid brick-popover-list';
-  popover.dataset.triggerId = `brickAccentTriggerWrap_${key}`;
-  popover.dataset.popoverDisplay = 'flex';
-  popover.style.display = 'none';
-  popover.style.position = 'fixed';
-  popover.style.zIndex = '10001';
-  popover.style.background = '#fff';
-  popover.style.border = '1px solid #ccc';
-  popover.style.borderRadius = '4px';
-  popover.style.padding = '8px';
-  popover.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  popover.style.flexDirection = 'row';
-  popover.style.flexWrap = 'wrap';
-  popover.style.gap = '4px';
-  popover.style.maxWidth = '280px';
-  popover.style.overflowY = 'auto';
-
-  triggerWrap.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _togglePopover(triggerBtn, popover, 280);
-  });
-
+  row.appendChild(popover);
   for (const c of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1051,14 +959,10 @@ function renderAccentRowFor(container, target, iconPx) {
     btn.setAttribute('aria-label', c.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = c.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(c.id, iconPx, { sunk: a.levelIn < 0 }) || c.label);
-    btn.addEventListener('click', () => {
-      setElementAccent(target, { preset: c.id });
-      popover.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setElementAccent(target, { preset: c.id }));
     popover.appendChild(btn);
   }
-  row.appendChild(popover);
-  _wirePopoverGlobal();
+  mountIconGrid(popover, { label: 'Accent', ids: { wrap: `brickAccentTriggerWrap_${key}`, chip: `brickAccentTrigger_${key}`, name: `brickAccentTriggerName_${key}` } });
 
   const click = document.createElement('button');
   click.type = 'button';
@@ -1279,13 +1183,14 @@ export function setSurfaceStyle(styleId, commit = 'surface') {
   P.brickSettings.surfaceStyle = style.id;
   // the style's declared grout profile (Weathered -> Recessed); a style without one restores what it replaced
   const s = P.brickSettings;
+  // per element since 2026-10-11: each element's own value (its override, null = its pattern's default) is remembered
   if (style.groutProfile) {
-    if (s.grout.profile !== style.groutProfile) {
-      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = s.grout.profile;
-      _writeGroutProfile(style.groutProfile);
+    if (GROUT_LOOK_KINDS.some((k) => elementGroutProfile(s, k) !== style.groutProfile)) {
+      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = Object.fromEntries(GROUT_LOOK_KINDS.map((k) => [k, elementOverride(s, ELEMENT_LOOK_MAPS.groutProfile, k)]));
+      for (const k of GROUT_LOOK_KINDS) _writeGroutProfile(style.groutProfile, k);
     }
   } else if (s.groutProfileBeforeStyle != null) {
-    _writeGroutProfile(s.groutProfileBeforeStyle);
+    for (const k of GROUT_LOOK_KINDS) _writeGroutProfile(s.groutProfileBeforeStyle[k] ?? null, k);
     delete s.groutProfileBeforeStyle;
   }
   syncSurfaceStyleToggle();
@@ -1426,15 +1331,10 @@ function syncControlsFromState() {
   syncWallPatternButtons();
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  syncBrickSizeControls(s.brickLengthIn);
-  syncBrickSizePresetButtons();
-  syncGroutWidthBox();
+  syncElementLook(); // the active element's size + joint, its default chip, its resets
   syncEdgeTaperRow();
   syncGroutPaintRow(); // item 55
   syncFrameOffsetControl();
-  document.getElementById('brickGroutDepth').value = s.grout.depthIn;
-  document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
-  document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
   syncControlRequires();
   syncRaisedSection();
@@ -1667,7 +1567,7 @@ function _resetJointsOnSetChange() {
     }
   }
   _jointSets = now;
-  syncGroutWidthBox();
+  syncElementLook();
   syncEdgeTaperRow(); // an untouched taper follows the new set's own
 }
 
@@ -1680,7 +1580,8 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   // with no Wall / Frame on the board to re-lay, their own one
   const editor = phase === 'onRelease' && typeof window !== 'undefined' ? window.svgEditor : null;
   const strokeKeys = [...STROKE_FOLLOWS_GLOBAL, ...Object.keys(strokeValues || {})];
-  const strokesMoved = editor ? strokesFollowGlobals(editor, { ...P.brickSettings, ...(strokeValues || {}) }, strokeKeys) : 0;
+  // the size a stroke follows is the BRUSH element's (per-pattern defaults: override ?? the brush preset's default)
+  const strokesMoved = editor ? strokesFollowGlobals(editor, { ...P.brickSettings, brickLengthIn: elementSize(P.brickSettings, 'brush'), ...(strokeValues || {}) }, strokeKeys) : 0;
   const relayCommits = strokesMoved > 0 && _kindsToLay(editor, resolveFrameGeom(editor)).length > 0;
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
   if (strokesMoved && !relayCommits) commitEdit(editor);
@@ -1744,7 +1645,7 @@ function syncControlRequires() {
     whys.add(rule.why);
     const met = requirementMet(rule.requires, document.getElementById(rule.requires.control), ctx);
     const own = [...rule.controls.map((id) => document.getElementById(id)),
-      ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input') || [])])];
+      ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input, select') || [])])]; // + the size dropdown (2026-10-14)
     // A2 (3D-panel audit): a number field's -/+ stepper (ui-bindings.js attachNumberSteppers, buttons with no ids) is
     // part of that control -- greyed with it, or + still changed a greyed Grout depth (0.05 -> 0.055, no effect)
     const els = own.flatMap((el) => [el, ...(el && el.closest ? el.closest('.cad-stepper')?.querySelectorAll('button') || [] : [])]);
@@ -1777,7 +1678,7 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'edgeByElement'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
@@ -2114,7 +2015,8 @@ function bindBrickSizeControls(commit = 'generate') {
     const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
     if (slider) slider.value = String(brickSizeToSliderPos(clamped));
     if (number) number.value = String(clamped);
-    P.brickSettings.brickLengthIn = clamped;
+    _setElementLook('size', clamped);
+    syncSizeSelects(); // the dropdown follows a typed / dragged size (Custom… or the preset it equals)
     return true;
   };
   const drag = (v) => { if (apply(v)) commitBrickSetting(commit, 'onDrag'); };
@@ -2125,11 +2027,13 @@ function bindBrickSizeControls(commit = 'generate') {
   number?.addEventListener('change', (e) => release(parseFloat(e.target.value)));
 }
 
-function bindGroutField(id, key, commit = 'generate') {
+/** A per-element look's number field (the joint depth): the active element's value (ELEMENT_LOOK_MAPS[look]). */
+function bindGroutField(id, look, commit = 'generate') {
   const write = (e, phase) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
-    P.brickSettings.grout[key] = v;
+    _setElementLook(look, v);
+    if (phase === 'onRelease') syncElementLook();
     commitBrickSetting(commit, phase);
   };
   const settle = settleAfterTyping(commit);
@@ -2219,52 +2123,7 @@ export function deselectTool() {
 
 export function renderFramePresetList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickFramePresetTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickFramePresetTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickFramePresetTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickFramePresetTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 320);
-    });
-  }
-
   container.innerHTML = '';
-  container.classList.add('brick-popover-list');
-  container.dataset.triggerId = 'brickFramePresetTriggerWrap';
-  container.dataset.popoverDisplay = 'flex';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.flexDirection = 'row';
-  container.style.flexWrap = 'wrap';
-  container.style.gap = '4px';
-  container.style.maxWidth = '320px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
 
   const tplId = P.frame && P.frame.templateId;
   // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset, the frame's family's first under "Fits this frame"
@@ -2284,18 +2143,20 @@ export function renderFramePresetList(container) {
     const label = preset.fits ? `${preset.label} · ${FITS_FRAME_LABEL}` : preset.label;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : ''); // item 33 (audit N10): the band stack as an icon, the name as the tooltip
+    // item 33 (audit N10): the band stack as an icon, the name as the tooltip; E 2026-10-14: fits-frame marks the frame family's presets
+    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : '') + (preset.id === P.brickSettings.frameBandPreset ? ' active' : '');
     btn.id = `brickFramePreset_${preset.id}`;
+    btn.dataset.name = preset.label; // the chip's name: the preset alone (the tooltip adds "fits this frame")
     btn.title = label;
     btn.setAttribute('aria-label', label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
-    btn.addEventListener('click', () => {
-      setFrameBandPreset(preset.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   });
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system); E's headings span its rows
+  mountIconGrid(container, { label: `${FRAME_LABELS.brick} preset`, nameOf: (o) => o.dataset.name,
+    ids: { wrap: 'brickFramePresetTriggerWrap', chip: 'brickFramePresetTrigger', name: 'brickFramePresetTriggerName' } });
 }
 
 /** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
@@ -2346,20 +2207,8 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
 }
 
 export function syncFramePresetButtons() {
-  const tplId = P.frame && P.frame.templateId;
-  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
-  }
-  const triggerBtn = document.getElementById('brickFramePresetTrigger');
-  const triggerName = document.getElementById('brickFramePresetTriggerName');
-  if (triggerBtn && triggerName) {
-    const active = presets.find((p) => p.id === P.brickSettings.frameBandPreset) || presets[0] || FRAME_PRESET_LIST[0];
-    if (active) {
-      triggerBtn.innerHTML = framePresetIconSvg(active.id, 30) || active.label;
-      triggerName.textContent = active.label;
-      triggerBtn.title = `Brick frame preset: ${active.label}`;
-    }
   }
   syncFrameFanCentreRow();
   syncQuickSettings();
@@ -2506,6 +2355,7 @@ function renderBrushPresetList(container) {
     });
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Brush preset' }); // Fred: one chip + its name, tap opens the grid
 }
 
 function syncBrushPresetButtons() {
@@ -2561,80 +2411,12 @@ function wallPatternFamilies() {
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 
-let _mosaicGlobalWired = false;
-
-function syncWallPatternTrigger() {
-  const triggerBtn = document.getElementById('brickPatternTrigger');
-  const triggerName = document.getElementById('brickPatternTriggerName');
-  if (!triggerBtn || !triggerName) return;
-  const a = _accent();
-  if (a.preset === ACCENT_TILE.id && a.tile && a.tile.userId) {
-    const u = _userPatterns().find((x) => x.id === a.tile.userId);
-    if (u) {
-      triggerBtn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-      triggerName.textContent = u.label;
-      triggerBtn.title = `Wall pattern: ${u.label}`;
-      return;
-    }
-  }
-  const id = P.brickSettings.pattern || DEFAULT_WALL_PATTERN;
-  const label = _patternLabel(id);
-  triggerBtn.innerHTML = wallPatternIconSvg(id, 30) || label;
-  triggerName.textContent = label;
-  triggerBtn.title = `Wall pattern: ${label}`;
-}
-
 export function renderWallPatternList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickPatternTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickPatternTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickPatternTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickPatternTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 320);
-    });
-  }
-
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
-  container.className = 'icon-select-grid brick-pattern-mosaic brick-popover-list';
-  container.dataset.triggerId = 'brickPatternTriggerWrap';
-  container.dataset.popoverDisplay = 'flex';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.flexDirection = 'row';
-  container.style.flexWrap = 'wrap';
-  container.style.gap = '4px';
-  container.style.maxWidth = '320px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
-
+  container.classList.add('brick-pattern-mosaic');
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
       const h = document.createElement('div');
@@ -2646,16 +2428,13 @@ export function renderWallPatternList(container) {
     }
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-pattern-icon';
+    btn.className = 'cad-btn brick-pattern-icon' + (id === P.brickSettings.pattern ? ' active' : '');
     btn.id = `brickPattern_${id}`;
     btn.title = _patternLabel(id);
     btn.setAttribute('aria-label', _patternLabel(id));
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
-    btn.addEventListener('click', () => {
-      setWallPattern(id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setWallPattern(id));
     container.appendChild(btn);
   }
   // item 31d: each SAVED custom pattern is a pattern of its own here (its icon drawn on its bond with its accents)
@@ -2668,13 +2447,12 @@ export function renderWallPatternList(container) {
     btn.setAttribute('aria-label', u.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-    btn.addEventListener('click', () => {
-      applyUserPattern(u.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => applyUserPattern(u.id));
     container.appendChild(btn);
   }
-  syncWallPatternTrigger();
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Wall pattern', preferActive: '.brick-user-pattern',
+    ids: { wrap: 'brickPatternTriggerWrap', chip: 'brickPatternTrigger', name: 'brickPatternTriggerName' } });
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2694,8 +2472,6 @@ export function setWallPattern(patternId, commit = 'generate') {
     }
   }
   P.brickSettings.pattern = patternId;
-  const list = document.getElementById('brickPatternList');
-  if (list) list.style.display = 'none';
   renderAccentList(document.getElementById('brickAccentList'));
   syncAccentControls();
   syncWallPatternButtons();
@@ -2707,7 +2483,6 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
-  syncWallPatternTrigger();
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
@@ -2854,9 +2629,7 @@ function renderFrameBandPatternList(container) {
       label: `Band ${i + 1}`,
       iconFor: (v) => wallPatternIconSvg(v, 22),
       optionId: (v) => `brickFrameBandPattern_${i}_${v}`,
-      pickSame: true,
-      tilePx: 44,
-      columns: { phone: 4, desktop: 4 },
+      pickSame: true, // PICKER_TILE's size (the advisor: the frame bands get the bigger tiles too)
     });
     if (wrap) {
       const trigger = wrap.querySelector('.icon-select-button');
@@ -3150,7 +2923,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   _activeTool = id;
   if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
-  syncGroutWidthBox(); // the Grout box follows the active element's joint
+  syncElementLook(); // the Size & joint section follows the active element (its size, joint, default mark, resets)
   syncEdgeTaperRow(); // the Edge taper row, the active element's shoulder
   syncGroutPaintRow();
   syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
@@ -3164,6 +2937,7 @@ function selectTool(id, { keepSelection = false } = {}) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
     // turn 201: a variant's own stroke fields; item 23: + the tool's own set, frozen into each stroke
     editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), rustic: _rustic('brush'),
+      brickLengthIn: elementSize(P.brickSettings, tool.id), // the Brush's size (it follows it: STROKE_FOLLOWS_GLOBAL)
       grout: { ...P.brickSettings.grout, widthIn: elementGroutWidth(P.brickSettings, tool.id) }, // its own joint, frozen
       ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
@@ -3234,6 +3008,9 @@ const FRAME_PRESET_LABELS = {
   art_deco_stepped: 'Art Deco stepped',
   florentine_architrave: 'Florentine architrave',
   venetian_dentil: 'Venetian dentil',
+  slim_runner: 'Slim runner',
+  checker_tile_runner: 'Checker tile runner',
+  twin_runner: 'Twin thin runner',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
@@ -3259,8 +3036,8 @@ export const BRICK_QUICK_SETTINGS = [
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
       when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
-  { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
-    isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
+  { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS, select: SIZE_SELECT_HOSTS[1], // a dropdown + typed field
+    isCurrent: (c) => c.lengthIn === elementSize(P.brickSettings, QUICK_SIZE_ELEMENT), apply: (c) => setBrickSize(c.lengthIn, 'auto', QUICK_SIZE_ELEMENT) },
   { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternTileSvg(c.id, PICKER_ICON_PX), picker: true,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
@@ -3303,6 +3080,19 @@ function renderQuickSettings(container) {
     list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;';
     // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
     const pick = (choice) => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
+    if (row.select) { // Fred 2026-10-14: the size dropdown + its typed field (SIZE_SELECT_HOSTS)
+      const sel = _buildSizeSelect(row.select.selectId);
+      sel.addEventListener('change', () => { const c = _sizeSelectPick(sel, row.select); if (c) pick(c); });
+      const field = document.createElement('input');
+      field.type = 'number';
+      field.id = row.select.numberId;
+      field.style.width = '64px';
+      _applySizeField(field);
+      field.addEventListener('change', () => { const v = parseFloat(field.value); if (Number.isFinite(v)) pick({ id: BRICK_SIZE_CUSTOM.id, lengthIn: v }); });
+      list.append(sel, field);
+      container.appendChild(list);
+      continue;
+    }
     if (row.picker) {
       // the shared picker over a <select>; its grid items keep the chip ids (brickQuick_<row>_<choice>: the matrix, the
       // control-requires greying and the active sync address them), a pick of the current one still applies (a lay)
@@ -3359,7 +3149,7 @@ function syncQuickSettings() {
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
-  syncBestSize(); // both chip sets + both hints (every size or frame-preset sync ends here)
+  syncSizeSelects(); // both size dropdowns: the current size, the default said and marked (every size or pattern sync ends here)
 }
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
@@ -3466,7 +3256,7 @@ const BRICK_HINT_MAX_SIZE_IN = 1.5;
 function updateSpacingHint(groutWidthIn) {
   const gw = groutWidthIn ?? Math.min(...BRICK_KINDS.map((k) => elementGroutWidth(P.brickSettings, k)));
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
-  const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
+  const smallEnoughToHelp = Math.min(...BRICK_KINDS.map((k) => elementSize(P.brickSettings, k))) <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
   const exportSpacing = effectiveExportSpacing();
   const show = bricksExist && smallEnoughToHelp && targetSpacing != null && exportSpacing > targetSpacing;
@@ -3546,7 +3336,8 @@ export function initBrickPanel() {
   document.getElementById('brickGroutColorNone')?.addEventListener('click', () => setGroutPaint({ color: null }));
   document.getElementById('brickGroutEdge')?.addEventListener('change', (e) => setGroutPaint({ paintInsetIn: e.target.value }));
   syncGroutPaintRow();
-  bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
+  bindGroutField('brickGroutDepth', 'groutDepth', 'surface'); // F35 item 18: the joint recess depth, height-only (per element)
+  _renderLookResets(); // the Size & joint section's ↺ (ELEMENT_LOOK_RESETS)
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   // F35 item 18 (3): Relief + Max Height moved to the main sidebar -- 'auto' there (re-lay at once)

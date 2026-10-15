@@ -18,7 +18,7 @@ export const PATTERN_PARAM_PERSIST = { pattern: 'brickPattern_octagon_square', c
 
 export const PERSIST_BOARD = {
   setup: [
-    { tool: 'wall' }, decl.click('brickPattern_fieldstone'), decl.click('brickSizePreset_quarter3'),
+    { tool: 'wall' }, decl.click('brickPattern_fieldstone'), decl.set('brickSizeSelect', 'quarter3'),
     decl.set('brickLevel_wall', 0.0625), decl.click('brickGenerate'),
     { tool: 'frame' }, decl.click('brickFramePreset_three_band'), decl.click('brickGenerate'),
     { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },
@@ -27,7 +27,7 @@ export const PERSIST_BOARD = {
   ],
   panel: [
     { name: 'Wall pattern: Fieldstone', active: 'brickPattern_fieldstone' },
-    { name: 'Brick size 0.75', value: ['brickSize', 0.75] },
+    { name: 'Brick size 0.75 (the Wall\'s)', tool: 'wall', value: ['brickSize', 0.75] }, // per element since 2026-10-11
     { name: 'Wall Level 1/16', value: ['brickLevel_wall', 0.0625] },
     { name: 'Frame preset: 3-band', active: 'brickFramePreset_three_band' },
     { name: 'Surface: Weathered', active: 'brickSurfaceStyle_weathered' },
@@ -233,10 +233,11 @@ async function checkPersisted(phase) {
   await openBrickTab();
   // evidence: what the app's STATE holds -- a FAIL with the right state here means the panel/canvas lost it
   const st = await js(`(async()=>{ const { P } = await import('./core/state.js'); const s=P.brickSettings||{};
-    return JSON.stringify({ setId: s.setId, pattern: s.pattern, brickLengthIn: s.brickLengthIn, frameBandPreset: s.frameBandPreset,
+    return JSON.stringify({ setId: s.setId, pattern: s.pattern, sizeByElement: s.sizeByElement, frameBandPreset: s.frameBandPreset,
       surfaceStyle: s.surfaceStyle, reliefIn: s.reliefIn, elementLevelIn: s.elementLevelIn }); })()`);
   console.log(`state after ${phase}: ${st}`);
   for (const p of PERSIST_BOARD.panel) {
+    if (p.tool) await click(`brickTool_${p.tool}`, 600); // an element's own field shows that element's value
     const shown = p.active
       ? await js(`!!document.getElementById(${JSON.stringify(p.active)})?.classList.contains('active')`)
       : await js(`(()=>{ const e=document.getElementById(${JSON.stringify(p.value[0])}); return !!e && Math.abs(Number(e.value) - ${p.value[1]}) < 1e-6; })()`);

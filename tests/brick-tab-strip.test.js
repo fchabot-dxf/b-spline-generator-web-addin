@@ -58,7 +58,8 @@ describe('item 43: the Brick tab strip', () => {
     // Brick-tab v2: a row is declared by its scope or by the Brick-tab section that holds it
     const sectionRows = new Set(Object.values(BRICK_TAB_SECTIONS).flatMap((t) => t.sections.flatMap((s) => s.rows)));
     for (const b of blocks) expect(BRICK_ROW_SCOPES[b.id] || sectionRows.has(b.id), b.id || b.outerHTML.slice(0, 60)).toBeTruthy();
-    expect(new Set(Object.values(BRICK_ROW_SCOPES))).toEqual(new Set(['element', 'global']));
+    // Fred 2026-10-11: the size went per element -- every shared row is an element row now (General's rows are its sections')
+    expect(new Set(Object.values(BRICK_ROW_SCOPES))).toEqual(new Set(['element']));
   });
 
   it('the Stripe section carries the Brush sub-tool row (Draw / Select / Stripe stay in view while striping)', () => {

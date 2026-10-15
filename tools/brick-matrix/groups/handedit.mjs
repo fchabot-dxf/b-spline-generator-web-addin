@@ -4,15 +4,15 @@
 // ---- F35 item 65 (seat D): a brick moved BY HAND (Select tool, a real drag) follows in the 3D and survives Apply +
 // reopen. Measured before the fix: the move was stored as a transform the height mask never read -- 3D unchanged.
 export const HAND_EDIT = {
-  template: 'template_1', size: 'brickSizePreset_half1', selectTool: 'toolSelect',
+  template: 'template_1', size: 'half1', // a BRICK_SIZE_PRESETS id, picked in the size dropdown selectTool: 'toolSelect',
   dragBrickWidths: 0.6, // drag the middle wall brick right by this share of its own width
   introducedBy: 'item 65',
 };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, drag;
-export function bind(ctx) { ({ js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, drag } = ctx); }
+let js, jsJSON, click, setValue, sleep, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, drag;
+export function bind(ctx) { ({ js, jsJSON, click, setValue, sleep, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, drag } = ctx); }
 export async function run() { await runHandEdit(); }
 
 // F35 item 65: a wall brick dragged by hand with the Select tool -> the 3D follows; the move survives Apply + reopen
@@ -20,7 +20,7 @@ async function runHandEdit() {
   const H = HAND_EDIT;
   await openEditorTab('editorTabBrick');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(H.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-  await click('brickTool_wall', 800); await click(H.size, 2000); await click('brickGenerate', 2500);
+  await click('brickTool_wall', 800); await setValue('brickSizeSelect', H.size, 'change'); await sleep(2000); await click('brickGenerate', 2500);
   await apply(); const z0 = await heightsSettled(null);
   await openEditorTab('editorTabBrick');
   if (!(await exists(H.selectTool))) { checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', false, '', H.introducedBy); return; }

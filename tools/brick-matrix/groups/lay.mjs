@@ -10,8 +10,8 @@ export const LAY_WARNING = {
   // item 28: a stack too deep for the board is reduced first, so "no room for the wall" is now a board too narrow
   // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall). T86 item 30: there the single
   // band is now NARROWED to fill the web -- still no wall, so the warning still shows, beside the band-fit note
-  tooManySize: 'brickSizePreset_half1',
-  fitsSize: 'brickSizePreset_quarter3',
+  tooManySize: 'half1', // a BRICK_SIZE_PRESETS id, picked in the size dropdown (brickSizeSelect)
+  fitsSize: 'quarter3',
   tooMany: 'brickQuick_frameBands_three_band',
   fits: 'brickQuick_frameBands_single_soldier',
   notes: { sidebar: 'brickLayWarnings', editor: 'brickEditorLayWarnings' },
@@ -70,16 +70,16 @@ export const GREY_BY_HEIGHT = {
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage;
+let sleep, send, js, jsJSON, click, setValue, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage;
 // ---- audit A6 (seat E, on seat D's draft): a drawn Brush stroke follows the GLOBAL brick size (Fred: single size), and the
 // sidebar's quick Set (apply to all). A real drag on a board with no Wall / Frame, then the size preset: the stroke re-lays at
 // the new size; then a Wall and the quick Set: the stroke takes the set. FAILS (not skips) without the fix.
 export const STROKES_FOLLOW = {
-  stroke: [[1.2, 4.5], [5.8, 4.5]], sizePreset: 'brickSizePreset_quarter3', sizeIn: 0.75,
+  stroke: [[1.2, 4.5], [5.8, 4.5]], sizePreset: 'quarter3', sizeIn: 0.75,
   quickSet: 'brickQuick_set_4', setId: 4, wallTool: 'brickTool_wall', generate: 'brickGenerate',
 };
 
-export function bind(ctx) { ({ sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage } = ctx); }
+export function bind(ctx) { ({ sleep, send, js, jsJSON, click, setValue, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage } = ctx); }
 export async function run() { await runGreyByHeight(); await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); await runStrokesFollow(); }
 
 async function noteState(id) {
@@ -144,8 +144,8 @@ async function runLayWarnings() {
   await apply(); await heightsSettled(null);
   await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
-  const size = async (id) => { // the Wall tool's brick size, then back to the sidebar
-    await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); await click(id, 2500);
+  const size = async (id) => { // the Brick frame's size (the bands fit by it; per element since 2026-10-11), then the sidebar
+    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await setValue('brickSizeSelect', id, 'change'); await sleep(2500);
     await apply(); await heightsSettled(null);
     await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   };
@@ -227,9 +227,9 @@ async function runStrokesFollow() {
   await openEditorTab('editorTabBrick'); await click('brickTool_brush', 800);
   await dragIn(F.stroke); await sleep(1500);
   const a = await read();
-  await click(F.sizePreset, 2500);
+  await setValue('brickSizeSelect', F.sizePreset, 'change'); await sleep(2500);
   const b = await read();
-  checkRow('lay', 'A6: a stroke follows the global Brick size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
+  checkRow('lay', 'A6: a stroke follows the Brush\'s size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
     `pieces ${a.pieces} -> ${b.pieces}, snapshot size ${a.size} -> ${b.size}`);
   await click(F.wallTool, 800); await click(F.generate, 2500);
   await click(F.quickSet, 2500);

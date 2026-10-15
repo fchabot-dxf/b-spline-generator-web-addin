@@ -17,11 +17,12 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
 
 import {
   initBrickPanel,
+  BRICK_SIZE_FIELD,
   brickSizeToSliderPos,
   sliderPosToBrickSize,
   BRICK_SIZE_SLIDER_STEPS,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, elementSize } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const MIN_IN = 0.375;
 const MAX_IN = 8;
@@ -91,7 +92,8 @@ beforeEach(() => {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   window.svgEditor = { setMode: () => {} };
-  P.brickSettings.brickLengthIn = 1.25; // the new-board default (core/state.js DEFAULT)
+  // Fred 2026-10-11: the size is per element -- the Wall back on its pattern's default (1 1/4 in)
+  P.brickSettings.sizeByElement = { wall: null, frame: null, brush: null };
   initBrickPanel();
   $('brickTool_wall').click();
   vi.clearAllMocks();
@@ -103,7 +105,7 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
     const pos = brickSizeToSliderPos(3);
     $('brickSizeSlider').value = String(pos);
     $('brickSizeSlider').dispatchEvent(new Event('change'));
-    expect(P.brickSettings.brickLengthIn).toBeCloseTo(3, 1);
+    expect(elementSize(P.brickSettings, 'wall')).toBeCloseTo(3, 1);
     // F35 item 27 (Fred): the editor's Brick-tab controls re-lay at once again -- release re-lays.
     expect(runBricks).toHaveBeenCalledTimes(1);
   });
@@ -111,7 +113,7 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
   it('the number box stays in EXACT real inches, independent of the slider\'s own quantization', () => {
     $('brickSize').value = '2.2';
     $('brickSize').dispatchEvent(new Event('change'));
-    expect(P.brickSettings.brickLengthIn).toBe(2.2); // exact, not round-tripped through the slider's log position
+    expect(elementSize(P.brickSettings, 'wall')).toBe(2.2); // exact, not round-tripped through the slider's log position
   });
 
   it('setting via the number box also re-syncs the slider\'s own raw position (not left stale)', () => {
@@ -121,32 +123,55 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
   });
 });
 
-describe('brick size presets (F35 item 16 follow-up: widened from 3 to 5 points)', () => {
-  it('renders exactly the 7 declared presets, one button each (2026-10-05: + 1 1/4 in, the new default, beside 1 in)', () => {
-    const buttons = document.querySelectorAll('#brickSizePresetList button');
-    expect(buttons.length).toBe(7);
-    expect(document.getElementById('brickSizePreset_one').textContent).toBe('1″');
-    expect(document.getElementById('brickSizePreset_one_quarter1').textContent).toBe('1¼″');
-    expect(document.getElementById('brickSizePreset_one').nextElementSibling.id).toBe('brickSizePreset_one_quarter1');
+const pickSize = (selId, id) => { const s = document.getElementById(selId); s.value = id; s.dispatchEvent(new Event('change')); };
+const optionTexts = () => [...$('brickSizeSelect').options].map((o) => o.textContent);
+describe('brick size dropdown (Fred 2026-10-14: a dropdown + a typed field; + 1/2, 1 3/4, 2 in)', () => {
+  it('lists the 10 declared presets in order, then Custom; no chip buttons', () => {
+    expect([...$('brickSizeSelect').options].map((o) => o.value)).toEqual([
+      'eighth3', 'half', 'quarter3', 'one', 'one_quarter1', 'half1', 'three_quarter1', 'two', 'three', 'life', 'custom']);
+    expect(optionTexts()).toEqual(['⅜″', '½″', '¾″', '1″', '1¼″ · default', '1½″', '1¾″', '2″', '3″', 'Life 8″', 'Custom…']);
+    expect(document.querySelectorAll('#brickSizePresetList button')).toHaveLength(0);
   });
-  it('the 1 1/4 in new-board default (core/state.js DEFAULT) shows as the picked preset', async () => {
+  it('the 1 1/4 in new-board default (the Wall pattern default) shows as the picked size', async () => {
     const { DEFAULT } = await import('../bspline-frame-builder/b-spline-gen/html/core/state.js');
-    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1.25);
-    expect(document.getElementById('brickSizePreset_one_quarter1').classList.contains('active')).toBe(true); // setup: the default
-    expect([...document.querySelectorAll('#brickSizePresetList .active')]).toHaveLength(1);
+    expect(elementSize(DEFAULT.brickSettings, 'wall')).toBe(1.25); // no override: the stretcher's declared default
+    expect($('brickSizeSelect').value).toBe('one_quarter1');
   });
 
-  it('clicking a preset sets the exact inches value, both controls, and highlights only that preset', () => {
-    document.getElementById('brickSizePreset_three').click();
-    expect(P.brickSettings.brickLengthIn).toBe(3);
+  it('picking a preset sets the exact inches value and both controls; the dropdown shows it', () => {
+    pickSize('brickSizeSelect', 'three');
+    expect(elementSize(P.brickSettings, 'wall')).toBe(3);
     expect($('brickSize').value).toBe('3');
     expect(Number($('brickSizeSlider').value)).toBe(brickSizeToSliderPos(3));
-    expect(document.getElementById('brickSizePreset_three').classList.contains('active')).toBe(true);
-    expect(document.getElementById('brickSizePreset_life').classList.contains('active')).toBe(false);
+    expect($('brickSizeSelect').value).toBe('three');
   });
 
-  it('the Life-size preset is the control\'s own max (8in)', () => {
-    document.getElementById('brickSizePreset_life').click();
-    expect(P.brickSettings.brickLengthIn).toBe(8);
+  it('the Life-size preset is the control max (8in)', () => {
+    pickSize('brickSizeSelect', 'life');
+    expect(elementSize(P.brickSettings, 'wall')).toBe(8);
+  });
+
+  it('a typed size that is no preset: the dropdown shows it as its Custom entry; one equal to a preset shows that preset', () => {
+    $('brickSize').value = '1.3';
+    $('brickSize').dispatchEvent(new Event('change'));
+    expect(elementSize(P.brickSettings, 'wall')).toBe(1.3);
+    expect($('brickSizeSelect').value).toBe('custom');
+    expect(optionTexts().at(-1)).toBe('1.3″');
+    $('brickSize').value = '1.75';
+    $('brickSize').dispatchEvent(new Event('change'));
+    expect($('brickSizeSelect').value).toBe('three_quarter1');
+    expect(optionTexts().at(-1)).toBe('Custom…');
+  });
+
+  it('picking Custom focuses the typed field and changes nothing', () => {
+    pickSize('brickSizeSelect', 'custom');
+    expect(elementSize(P.brickSettings, 'wall')).toBe(1.25);
+    expect($('brickSizeSelect').value).toBe('one_quarter1');
+    expect(document.activeElement).toBe($('brickSize'));
+  });
+
+  it('the typed field carries the declared range (BRICK_SIZE_FIELD)', () => {
+    expect([$('brickSize').min, $('brickSize').max, $('brickSize').step]).toEqual(
+      [BRICK_SIZE_FIELD.minIn, BRICK_SIZE_FIELD.maxIn, BRICK_SIZE_FIELD.stepIn].map(String));
   });
 });

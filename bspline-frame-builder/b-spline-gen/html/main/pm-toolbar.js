@@ -3,13 +3,15 @@
  * the manager's ONE toolbar, at the top, declared once. Order: New Folder, New, Save As, Save | Load, Rename, Delete.
  * `needsSelection`: 'project' (a project, not a folder) / 'any' (a project or a folder) -- the button is enabled only
  * then (main/cloud-project-manager.js updateButtons reads it). `danger`: red, at the right end past a divider. The ids
- * are the ones the manager, the brick matrix and the cloud tests always used.
+ * are the ones the manager, the brick matrix and the cloud tests always used. `headerTwin`: the header button this one
+ * stands for where the phone header drops it (.cad-nav-phone-hidden, styles/layout-app.css); Fred 2026-10-14.
  */
 export const PM_TOOLBAR = Object.freeze([
   Object.freeze({ id: 'fmBtnNewFolder', label: 'New Folder', icon: 'create_new_folder', title: 'Create a new (virtual) folder here' }),
-  Object.freeze({ id: 'fmBtnNew', label: 'New', icon: 'note_add', title: 'New project: empty drawing, keeps the stock size and frame' }),
+  Object.freeze({ id: 'fmBtnNew', label: 'New', icon: 'note_add', title: 'New project: empty drawing, keeps the stock size and frame', headerTwin: 'btnNewProject' }),
   Object.freeze({ id: 'fmBtnSaveAs', label: 'Save As…', icon: 'save_as', title: 'Save current state under a new name (Save As…)' }),
   Object.freeze({ id: 'fmBtnSave', label: 'Save…', icon: 'save', title: 'Save current state — prompts for a name', primary: true, labelClass: 'pm-save-label' }),
+  Object.freeze({ id: 'fmBtnPullFromFusion', label: 'From Fusion', icon: 'sync', title: 'Pull constrained sketch from Fusion', headerTwin: 'btnPullFromFusion' }),
   Object.freeze({ id: 'fmBtnLoad', label: 'Load', icon: 'folder_open', title: 'Load the selected project (or double-click)', needsSelection: 'project', group: 'selection' }),
   Object.freeze({ id: 'fmBtnRename', label: 'Rename', icon: 'edit', title: 'Rename selected', needsSelection: 'any', group: 'selection' }),
   Object.freeze({ id: 'fmBtnDelete', label: 'Delete', icon: 'delete', title: 'Delete selected (no undo)', needsSelection: 'any', group: 'selection', danger: true }),
