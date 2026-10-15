@@ -52,8 +52,8 @@ async function runEdgeBand() {
     if (!has) { checkRow('grout', name, false, '', E.introducedBy); continue; }
     if (!(await editorOpen())) await openEditorTab('editorTabBrick');
     await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s || s.value===${JSON.stringify(E.template)}) return 1; s.value=${JSON.stringify(E.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-    await click('brickTab_general', 600); await setValue('brickSize', size, 'change');
-    await click(E.wallTool, 800); await click(E.pattern, 1500); await click('brickGenerate', 3000);
+    await click(E.wallTool, 800); await setValue('brickSize', size, 'change'); // the Wall's size (per element, 2026-10-11)
+    await click(E.pattern, 1500); await click('brickGenerate', 3000);
     const g0 = await js(`import('./core/state.js').then((m) => m.lastResultGeneration)`);
     await apply(); await heightsSettled(null, 60000, 1500, g0); // settled AND rebuilt since this lay's Apply
     const m = await jsJSON(edgeBandProbe(E));

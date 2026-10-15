@@ -941,5 +941,4 @@ aside {
     border-right: calc(var(--job-head-grab, 14px) / 2) solid transparent;
     border-top: calc(var(--job-overhang, 9px) + 6px) solid #0078d4;
 }
-#previewArea #heightInspector { bottom: calc(10px + var(--job-strip-height, 0px)) !important; }
 

@@ -34,6 +34,8 @@ import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear 
 // setTimeout (this file stays within the existing editor/-never-imports-core/state.js boundary).
 const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
 const YIELD_EVERY_N_ROWS = 32;
+/** The per-element look a piece's kind reads (the Raised brush paints the Brush's joint). */
+const LOOK_KIND = Object.freeze({ raisedBrush: 'brush' });
 
 /** A brick's FACE: the plateau its shoulder rises to (heightProfile: reliefIn x (1 - surfaceShare)) + its own
  *  offset (Level, accent, style jitter) -- no crown dome, photo detail or chip, which ride on the face. Clamped
@@ -186,12 +188,27 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     };
   });
 
-  const jointDepthIn = opts.groutProfile === 'recessed' && opts.groutDepthIn > 0
-    ? opts.groutDepthIn * (style.jointDepthScale || 1) : 0;
-  const flush = opts.groutProfile !== 'recessed';
+  // Fred 2026-10-11 (per-pattern defaults): the joint's depth + profile are PER ELEMENT (opts.groutByKind[kind] =
+  // { depthIn, profile }, the Raised brush's the Brush's). A joint takes the DEEPEST recess among the elements whose bricks
+  // it touches, and is flush only when every one of them is flush -- with one value for every element (any board saved
+  // before) that is exactly the one-profile rule below. Without groutByKind (a caller from before): one profile, as ever.
+  const byKind = opts.groutByKind || null;
+  const recessOf = (look) => (look && look.profile === 'recessed' && look.depthIn > 0 ? look.depthIn * (style.jointDepthScale || 1) : 0);
+  const lookOf = (kind) => (byKind ? byKind[LOOK_KIND[kind] || kind] || byKind.wall : null);
+  const jointDepthIn = byKind ? Math.max(0, ...Object.values(byKind).map(recessOf))
+    : (opts.groutProfile === 'recessed' && opts.groutDepthIn > 0 ? opts.groutDepthIn * (style.jointDepthScale || 1) : 0);
+  const flush = byKind ? Object.values(byKind).some((l) => l && l.profile !== 'recessed') : opts.groutProfile !== 'recessed';
   const reach = opts.groutWidthIn > 0 ? opts.groutWidthIn : ((built[0].set.grout && built[0].set.grout.widthIn) || 0.034);
   const inAnyBrick = (px, py) => built.some((g) => g.index.query(px, py).some((c) => pointInPolygon(px, py, c.polygon)));
   const isJoint = (x, y) => inAnyBrick(x + reach, y) || inAnyBrick(x - reach, y) || inAnyBrick(x, y + reach) || inAnyBrick(x, y - reach);
+  // per element: the looks of the elements whose bricks the 4 probes reach
+  const touchedLooks = (x, y) => {
+    const out = [];
+    for (const [px, py] of [[x + reach, y], [x - reach, y], [x, y + reach], [x, y - reach]]) {
+      for (const g of built) for (const c of g.index.query(px, py)) if (pointInPolygon(px, py, c.polygon)) out.push(lookOf(c.kind));
+    }
+    return out;
+  };
   // Flush: the lowest face (as a body value, normalised like the bricks' own) among the bricks the 4 probes reach
   const flushBody = (x, y) => {
     let low = Infinity;
@@ -250,10 +267,18 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       if (joined !== null) {
         body[k] = joined;
         isStamped[k] = 1;
-      } else if (jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
+      } else if (byKind && !isStamped[k] && (jointDepthIn > 0 || flush)) {
+        const looks = touchedLooks(x, y);
+        const recess = looks.length ? Math.max(...looks.map(recessOf)) : 0;
+        if (recess > 0) { body[k] = -recess / depthNorm; isStamped[k] = 1; }
+        else if (looks.some((l) => l && l.profile !== 'recessed')) {
+          const face = flushBody(x, y);
+          if (face > 0 && face < Infinity) { body[k] = face; isStamped[k] = 1; }
+        }
+      } else if (!byKind && jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
         body[k] = -jointDepthIn / depthNorm;
         isStamped[k] = 1;
-      } else if (flush && !isStamped[k]) {
+      } else if (!byKind && flush && !isStamped[k]) {
         const face = flushBody(x, y);
         if (face > 0 && face < Infinity) { body[k] = face; isStamped[k] = 1; }
       }
@@ -262,6 +287,7 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   // the JOINTS' height (the SVG download's grout grey): a recess sits jointDepthIn below the ground; a flush joint fills up
   // to the lowest face it touches -- the lowest face on the layer stands for them all (one flat grey per grout)
   const faceList = Object.values(faces);
+  // (per element: the deepest recess stands for them all; none recessed = the lowest face)
   const jointIn = jointDepthIn > 0 ? -jointDepthIn : (faceList.length ? Math.min(...faceList) : null);
   return { body, fillet, isStamped, metrics: null, nx, nz, faces, jointIn, ...(flat ? { flatTop: { brickOf, count: brickCount } } : {}) };
 }
