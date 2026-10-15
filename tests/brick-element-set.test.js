@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId, elementSettings, elementGroutWidth, isRockFrame } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId, elementSettings, elementGroutWidth, isRockFrame, elementSize, elementGroutDepth, elementGroutProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { MIGRATIONS, runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 describe('rock vs brick sets, from the declared layouts', () => {
@@ -37,7 +37,9 @@ describe('elementSetId', () => {
   it('a pre-item-23 settings object (one setId) still resolves; elementSettings carries the element\'s set', () => {
     expect(elementSetId({ setId: 1, pattern: 'stretcher' }, 'frame')).toBe(1);
     // + its own joint (grout per element): none set -> the element's set's declared one
-    expect(elementSettings(base, 'frame')).toEqual({ ...base, setId: 5, grout: { ...(base.grout || {}), widthIn: elementGroutWidth(base, 'frame') } });
+    // + (Fred 2026-10-11, per-pattern defaults) its own size and joint depth / profile: none set -> its pattern's defaults
+    expect(elementSettings(base, 'frame')).toEqual({ ...base, setId: 5, brickLengthIn: elementSize(base, 'frame'),
+      grout: { ...(base.grout || {}), widthIn: elementGroutWidth(base, 'frame'), depthIn: elementGroutDepth(base, 'frame'), profile: elementGroutProfile(base, 'frame') } });
   });
 });
 
@@ -64,7 +66,10 @@ describe("migration 'brick-set-per-element'", () => {
   });
   it('a board already per element is left alone', () => {
     const b = migrate({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack' });
-    // (the later 'grout-per-element' and 'window-surround-legacy-none' migrations add their own fields; this one changes nothing)
-    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: { wall: null, frame: null, brush: null }, windowSurround: { preset: 'none' } });
+    // (the later 'grout-per-element', 'window-surround-legacy-none' and 'brick-size-per-element' migrations add their own
+    // fields -- a save with no size laid each element at its set's own length, 0.75 for set 1; this one changes nothing)
+    const none = { wall: null, frame: null, brush: null };
+    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: none, windowSurround: { preset: 'none' },
+      sizeByElement: { wall: 0.75, frame: 0.75, brush: 0.75 }, grout: {}, groutDepthByElement: none, groutProfileByElement: none });
   });
 });

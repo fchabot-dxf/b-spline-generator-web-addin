@@ -33,10 +33,10 @@ const presetsCornered = (style) => Object.keys(FRAME_PRESETS).filter((id) => FRA
 export const FAN_CENTRE_NO_FAN = 'This frame has no fan corner at this brick size';
 export const FAN_FACT = 'frameHasFan';
 
-// Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
+// Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks. (The joint
+// depth + Recessed / Flush left them 2026-10-11: per element in the editor's Size & joint section, like the joint width.)
 const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
-  'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider', 'brickGroutDepth',
-  'brickBtnGroutRecessed', 'brickBtnGroutFlush'];
+  'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider'];
 
 export const BRICK_CONTROL_REQUIRES = [
   // item 9: Clumping also shapes the frame's crumble ("Crumble frame too")
