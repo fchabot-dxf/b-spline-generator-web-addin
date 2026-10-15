@@ -60,12 +60,12 @@ const lobesOf = (P) => lobesOfRegion(P, MIN_ZONE_SQIN);
  * @param {Array} wallBricks the wall as laid
  * @param {object} set the (scaled) set the wall was laid with
  */
-export function bareTips(region, wallBricks, set) {
+export function bareTips(region, wallBricks, set, { wholeFaceSqIn } = {}) {
   if (!region || region.length < 3) return [];
-  return lobesOf(region).flatMap((lobe) => lobeTips(lobe, wallBricks, set));
+  return lobesOf(region).flatMap((lobe) => lobeTips(lobe, wallBricks, set, wholeFaceSqIn));
 }
 
-function lobeTips(P, wallBricks, set) {
+function lobeTips(P, wallBricks, set, wholeFaceSqIn) {
   const n = P.length, J = set.grout.widthIn, course = set.brickHeightIn + J;
   const orient = Math.sign(signedArea(P)) || 1;
   const cand = [];
@@ -96,7 +96,8 @@ function lobeTips(P, wallBricks, set) {
     // the zone reaches down to the wall itself: its first real course (pieces of at least WALL_PIECE_SHARE of a brick) across
     // the tip, less a joint -- the wall's courses sit on their own grid, so a course-width base alone left a strip
     const halfSpan = widthAcross(P, { x: V.x + dir.x * depthIn, y: V.y + dir.y * depthIn }, dir) / 2 + J;
-    const nx = -dir.y, ny = dir.x, real = WALL_PIECE_SHARE * set.brickLengthIn * set.brickHeightIn;
+    // a whole piece = the wall pattern's smallest whole face (a header for a bond that lays headers: library.js smallestFace)
+    const nx = -dir.y, ny = dir.x, real = WALL_PIECE_SHARE * (wholeFaceSqIn ?? set.brickLengthIn * set.brickHeightIn);
     let front = Infinity;
     const slabSide = (k) => ({ point: { x: V.x + nx * k * halfSpan, y: V.y + ny * k * halfSpan }, dirX: dir.x, dirY: dir.y });
     for (const w of wallBricks) {

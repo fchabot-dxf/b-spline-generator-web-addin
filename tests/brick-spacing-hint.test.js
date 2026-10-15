@@ -55,7 +55,7 @@ beforeEach(() => {
   P.exportSpacing = 0.05;
   P.sameAsDisplayResolution = true;
   P.brickSettings.grout.widthIn = 0.06;
-  P.brickSettings.brickLengthIn = 0.75; // <= 1.5in: the hint's own "small enough to help" gate
+  P.brickSettings.sizeByElement = { wall: 0.75, frame: 0.75, brush: 0.75 }; // <= 1.5in: the hint's own "small enough to help" gate (per element)
   initBrickPanel();
 });
 afterEach(() => { root.remove(); });
@@ -113,7 +113,7 @@ describe('Brick tab / Resolution panel: the grout-vs-export-resolution hint', ()
   });
 
   it('is silent above 1.5in bricks even when resolution is coarse -- finer resolution does not fix the measured "reads as terrain" issue at that size', () => {
-    P.brickSettings.brickLengthIn = 3;
+    P.brickSettings.sizeByElement = { wall: 3, frame: 3, brush: 3 };
     P.spacing = 0.5; // would otherwise trigger the hint
     fireBricksGenerated(0.06);
     expect(shown('spacingGroutHint')).toBe(false);

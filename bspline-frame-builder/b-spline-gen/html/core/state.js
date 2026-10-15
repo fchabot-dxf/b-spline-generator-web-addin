@@ -2,12 +2,10 @@ import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
 import { fusDebug } from './fusion-log.js';
-import { brickSetById } from './bricks/library.js';
 
 // Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
 // default used to repeat it with a different grout (0.06 vs the set's 0.034, its 17% joint rule), so
 // re-picking Red Brick changed the joints. Copied, never referenced (the set is frozen data).
-const DEFAULT_BRICK_SET = brickSetById(1);
 /**
  * state.js — Application state and persistence logic.
  */
@@ -108,25 +106,21 @@ export const DEFAULT = {
     brickSettings: {
       // F35 item 23: the brick SET per element (keyed by Brick tool: wall / frame / brush / raisedBrush) -- a
       // BRICK set (editor-brick-tool.js BRICK_SET_IDS); the ROCK set is never stored here, the Fieldstone pattern
-      // implies it. Brick size and grout stay global. A save from before item 23 carries one `setId` instead
+      // implies it. A save from before item 23 carries one `setId` instead
       // (main/app-init.js MIGRATIONS 'brick-set-per-element' converts it).
       setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 },
-      // F35 item 16 (Fred: "I'd rather they all have the same size" -- replacing the old 0.5-2x
-      // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
-      // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
-      // Brush. Fred (turn 207): a NEW board starts at 1 in (it used to start at Set 1's own declared
-      // 0.75); a saved board keeps its own. A set switch keeps it (F35 item 16: a real-world size the
-      // user picked; main/brick-panel.js selectSet).
-      // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
-      // length x that scale, once, on load (main/brick-panel.js).
-      // Fred (2026-10-05, the v3 size sheet): a NEW board now starts at 1 1/4 in; a saved board keeps its own.
-      brickLengthIn: 1.25,
-      // width/depth from Set 1 (audit C4). Fred (turn 207): a NEW board's joints are RECESSED (depth 0.05 in,
-      // Set 1's); a saved board keeps its own profile (the session/project load replaces brickSettings whole).
-      // the joint WIDTH is per element (groutByElement, below); depth + profile stay board-wide (the 3D recess)
-      grout: { depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
-      // advisor (Fred: rubble gets wider joints): a joint width per element; null = that element's set's own
+      // Fred 2026-10-11 (per-pattern defaults: "patterns aren't all bricks"): the brick SIZE (real inches) and the
+      // joint's width / depth / profile are PER ELEMENT, each null = the element's pattern's declared default
+      // (core/bricks/library.js patternDefaultsOf; editor-brick-tool.js elementSize / elementGroutWidth / ...). A number
+      // (a profile name) = the user's override in that element's Size & joint section. They replace the one global
+      // brickLengthIn and the board-wide grout depth / profile; a saved board's own values become every element's
+      // overrides on load (main/app-init.js MIGRATIONS 'brick-size-per-element'), so it lays as before.
+      sizeByElement: { wall: null, frame: null, brush: null },
+      grout: {},
+      // advisor (Fred: rubble gets wider joints): a joint width per element; null = the pattern's default, else the set's
       groutByElement: { wall: null, frame: null, brush: null },
+      groutDepthByElement: { wall: null, frame: null, brush: null },
+      groutProfileByElement: { wall: null, frame: null, brush: null },
       // Fred 2026-10-11 (EDGE TAPER, core/bricks/library.js EDGE_TAPER): a shoulder width per element, in inches; null =
       // that element's set's own heightProfile.edgeRadiusIn. 3D only (the height mask); a saved board without it = null
       edgeByElement: { wall: null, frame: null, brush: null },
@@ -321,6 +315,9 @@ export const DEFAULT = {
     // FB-APP S2 (F6): the persisted frame record (core/frame-record.js).
     // null = no frame (Fred, Q2); every read goes through normalizeFrameRecord.
     frame: null,
+    // Send targets (seat A 2026-10-14): this project's board in Fusion (main/send-targets.js mints it at a Send; a
+    // replace targets the board component tagged with it). null = none yet; a New project / Save As copy drops it.
+    boardId: null,
     // Vector Stamping (Multi-Layer Support)
     // SE4c: .svg/.mask retired from this shape — content lives only on
     // P.editorSvg / editor._layers[i]._mask now (SE4-MIRROR-RETIREMENT-

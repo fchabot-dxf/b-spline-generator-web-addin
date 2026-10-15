@@ -9,51 +9,21 @@
       "key": "seatA",
       "name": "Seat A",
       "station": "home-pc",
-      "branch": "cam-82",
+      "branch": "pattern-defaults",
       "task": "NEXT-SESSION.md",
-      "checkout": "-wt?",
+      "checkout": "-wt\\77-pd",
       "session": "b-spline-generator-web-addin-77",
       "shots": [
-        "seatA",
-        "advisor",
-        "fred"
-      ]
-    },
-    {
-      "key": "seatB",
-      "name": "Seat B",
-      "station": "home-pc",
-      "branch": "neck-medial",
-      "task": "NEXT-SESSION-lane-b.md",
-      "checkout": "-wt\fc",
-      "session": "b-spline-generator-web-addin-fc",
-      "shots": [
-        "seatB",
-        "seat88",
-        "seatfc"
-      ]
-    },
-    {
-      "key": "seatC",
-      "name": "Seat C",
-      "station": "home-pc",
-      "branch": "pattern-builder",
-      "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\u0002",
-      "session": "b-spline-generator-web-addin-02",
-      "shots": [
-        "seatC",
-        "seat37",
-        "seat02"
+        "seatA"
       ]
     },
     {
       "key": "seatD",
       "name": "Seat D",
       "station": "home-pc",
-      "branch": "brick-3d-bugs",
+      "branch": "editor-pickers",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\bb",
+      "checkout": "-wt\\bb-pk",
       "session": "b-spline-generator-web-addin-bb",
       "shots": [
         "seatD",
@@ -64,24 +34,12 @@
       "key": "seatE",
       "name": "Seat E",
       "station": "home-pc",
-      "branch": "grout-svg",
+      "branch": "curve-quoin",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\61",
+      "checkout": "-wt\\61-cq",
       "session": "b-spline-generator-web-addin-61",
       "shots": [
         "seatE"
-      ]
-    },
-    {
-      "key": "seatF",
-      "name": "Seat F",
-      "station": "home-pc",
-      "branch": "load-stages",
-      "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\fa",
-      "session": "b-spline-generator-web-addin-fa",
-      "shots": [
-        "seatF"
       ]
     }
   ]

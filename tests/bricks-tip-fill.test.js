@@ -65,7 +65,9 @@ const key = (b) => JSON.stringify(b.polygon.map((p) => [+p.x.toFixed(5), +p.y.to
 describe('T86 16f: the band fills the bare tips it can', () => {
   // [template, size, the filled tip's bare area today (sq in, measured on main), the most it may keep after]; T14 1.5 keeps
   // 0.022: the side whose extension would wrap the wall's sliver is not extended (advisor (c), 2026-10-07)
-  const FILLED = [['template_14', 1.5, 0.068, 0.025], ['template_14', 1.25, 0.063, 0.005], ['template_18', 1.25, 0.018, 0.005], ['template_19', 1.25, 0.017, 0.005]];
+  // 2026-10-14 (core/bricks/cell-parts.js, Fred's pick A): T14 1.5 in's tip -- an added wall part (a cell the region cut in two)
+  // now covers part of it before the band: bare 0.042 (was 0.068), and 0 after (the 0.022 the advisor's (c) kept is gone)
+  const FILLED = [['template_14', 1.5, 0.042, 0.005], ['template_14', 1.25, 0.063, 0.005], ['template_18', 1.25, 0.018, 0.005], ['template_19', 1.25, 0.017, 0.005]];
   it.each(FILLED)('%s at %s in: the tip is filled, a joint off every piece, the wall untouched', (tpl, L, today, cap) => {
     const { r, before, tips } = lay(tpl, L);
     const tip = tips.find((t) => Math.abs(t.apex.x - 3.5) < 0.01);

@@ -30,7 +30,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import {
   initBrickPanel, selectBrickElement, selectedBrickElement, restyleSelectedStroke, setRustic, STROKE_FIELDS, STROKE_RESTYLE_SETTLE_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { brickElementAt, showElementSelection, brushStrokeSettings, strokeKindOf } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { brickElementAt, showElementSelection, brushStrokeSettings, strokeKindOf, elementSize } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
@@ -79,7 +79,8 @@ function highlightLayer() {
   const added = [];
   return { added, polygon: (pts) => { const el = { pts, removed: false, fill: () => el, stroke: () => el, attr: () => el, remove: () => { el.removed = true; } }; added.push(el); return el; } };
 }
-const BRUSH = { ...P.brickSettings, setId: 1, rustic: 0, grout: { widthIn: 0.034 }, brushBandPreset: 'stretcher_1', profile: 'bricks', orientation: 'stretcher', brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] } };
+// a stroke drawn today freezes the Brush's size (2026-10-11: per element; brick-panel.js _brickStrokeOverrides)
+const BRUSH = { ...P.brickSettings, brickLengthIn: elementSize(P.brickSettings, 'brush'), setId: 1, rustic: 0, grout: { widthIn: 0.034 }, brushBandPreset: 'stretcher_1', profile: 'bricks', orientation: 'stretcher', brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] } };
 const RAISED = { ...BRUSH, levelIn: 0.1, strokeMode: 'bricks', setId: 4 };
 function stroke(node, id, settings, chains, x0) {
   const spine = document.createElement('line');

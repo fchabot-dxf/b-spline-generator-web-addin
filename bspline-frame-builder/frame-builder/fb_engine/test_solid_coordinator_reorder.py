@@ -59,7 +59,7 @@ def test_solid_build_ends_with_the_frame_before_inlay_reorder(monkeypatch):
     calls = []
     monkeypatch.setattr(
         solid_coordinator.timeline_order, "ensure_frame_before_inlay",
-        lambda design, name, logger=None: calls.append((design, name)) or {"moved": True, "reason": None},
+        lambda design, name, logger=None, scope=None: calls.append((design, name)) or {"moved": True, "reason": None},  # + the board scope (Send targets)
     )
     sc = _coordinator(calls)
     sc.run("Frame_1")

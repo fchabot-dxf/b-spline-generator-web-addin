@@ -341,6 +341,32 @@ export function isSimplePolygon(poly) {
   return true;
 }
 
+/** A polygon whose outline crosses itself in a MICRO loop (seat E 2026-10-14, MEASURED T8 9x12 1.25 in corbelled_cornice:
+ *  a motif row's start cut meeting the corner fan left a 0.02 in bow tie on a band piece's end): at each crossing whose
+ *  smaller side holds no more than `maxLoopArea`, that side is cut off at the crossing point. A simple polygon, or a crossing
+ *  whose both sides are larger (a real fold, not a fleck), is returned as given. */
+export function untangleMicroLoops(poly, maxLoopArea) {
+  let p = poly;
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  for (let pass = 0; pass < poly.length; pass++) {
+    const n = p.length;
+    let cut = null;
+    for (let i = 0; i < n && !cut; i++) for (let j = i + 2; j < n && !cut; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent through the wrap
+      const a = p[i], b = p[(i + 1) % n], c = p[j], d = p[(j + 1) % n];
+      const d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d);
+      if (!((d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0))) continue;
+      const t = d1 / (d1 - d2), X = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const inner = [X, ...p.slice(i + 1, j + 1)], outer = [X, ...p.slice(j + 1), ...p.slice(0, i + 1)];
+      const ai = Math.abs(signedArea(inner)), ao = Math.abs(signedArea(outer));
+      if (Math.min(ai, ao) <= maxLoopArea) cut = ai <= ao ? outer : inner;
+    }
+    if (!cut) return p;
+    p = cut;
+  }
+  return p;
+}
+
 /** Standard convexity test for a simple polygon: every consecutive turn has the same cross-product
  *  sign (collinear/near-zero turns are ignored). Works regardless of winding direction. */
 export function isConvex(poly) {
@@ -449,6 +475,25 @@ const DEGENERACY_DIRECTIONS = [[0.8, 0.6], [-0.6, 0.8], [0.28, -0.96], [-0.96, -
 function touchesDegenerately(a, b) {
   const near = (pts, poly) => pts.some((p) => poly.some((q, j) => distSqToSegment(p.x, p.y, poly[(j + poly.length - 1) % poly.length], q) <= DEGENERACY_TOUCH * DEGENERACY_TOUCH));
   return near(a, b) || near(b, a);
+}
+
+/** `subject & clip` as EVERY piece (seat E 2026-10-14, the pattern gaps: a wall cell across a frame corner or tip that juts
+ *  into the region is cut in TWO; polygonIntersection keeps the larger, the other was never laid -- T9 7x9 1 in
+ *  double_herringbone: a 0.06 sq in triangle, a 0.26-face hole). The walk's every loop, held to the one-piece answer's own
+ *  reality check (their areas sum to no more than the subject's); a touching input (the shifted path) or any doubt: the
+ *  one piece polygonIntersection gives. [] = no overlap. */
+/** A piece of `subject & clip` lies in `subject`: every vertex inside it or on its edge (MEASURED T14 7x9 4 in: the walk's
+ *  no-crossing shortcut, read off one vertex, handed a whole 2.4 sq in region lobe to three cells it only grazed) */
+const withinSubject = (part, subject) => part.every((p) => pointInPolygon(p.x, p.y, subject)
+  || subject.some((q, j) => distSqToSegment(p.x, p.y, subject[(j + subject.length - 1) % subject.length], q) <= 1e-12));
+export function polygonIntersectionParts(subject, clip) {
+  const one = polygonIntersection(subject, clip);
+  if (one.length < 3) return [];
+  if (touchesDegenerately(subject, clip)) return [one];
+  const loops = clipLoops(subject, clip, false);
+  if (!Array.isArray(loops[0]) || loops.length < 2) return [one];
+  const total = loops.reduce((sum, l) => sum + Math.abs(signedArea(l)), 0);
+  return total > Math.abs(signedArea(subject)) * 1.0001 + 1e-9 ? [one] : loops.filter((l) => l.length >= 3 && withinSubject(l, subject));
 }
 
 function intersectGeneral(subject, clip) {
@@ -698,6 +743,15 @@ export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
  *  (seat E, 2026-10-08, every pattern x template x 0.75 - 1.5 in): a cell across the bridge's zero-width corridor came back
  *  EMPTY (T18 7x9 1 in hexagon / square_diamond / basketweave: a 1.2-face bare tip) or across the corridor (35 lays with a
  *  wall piece overlapping another). The bond keeps clipPolygonToBoard: its tips are the band's (tip-fill.js, item 16f). */
+/** clipPolygonToRegion, every piece: a convex region's clip is one piece; a bridged region's, each lobe's pieces; any other
+ *  region's, every piece of the cut (polygonIntersectionParts). The largest piece is clipPolygonToRegion's own answer. */
+export function clipPolygonToRegionParts(poly, region, cellRefPoint) {
+  if (isConvex(region)) { const one = clipPolygonToBoard(poly, region, cellRefPoint); return one.length >= 3 ? [one] : []; }
+  const lobes = lobesCached(region);
+  if (!lobes) return polygonIntersectionParts(poly, region).filter((p) => withinSubject(p, poly));
+  return lobes.flatMap((lobe) => polygonIntersectionParts(poly, lobe)).filter((p) => withinSubject(p, poly));
+}
+
 export function clipPolygonToRegion(poly, region, cellRefPoint) {
   if (isConvex(region)) return clipPolygonToBoard(poly, region, cellRefPoint);
   const lobes = lobesCached(region);

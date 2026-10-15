@@ -1,13 +1,18 @@
 // Brick matrix group 'sidebar-quick': the main sidebar's quick settings and the buttons that open the editor.
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
-import { E, AUTO, click } from './_shared.mjs';
+import { E, AUTO, click, set } from './_shared.mjs';
+
+// the frame's size, declared (2026-10-11: the size is per element and the quick Size row sets the WALL's, Fred) -- the
+// 3-band row needs a frame its three bands fit (T1 7x9 at 3/4 in, as when the one global size reached the frame)
+export const setup = [{ brickSizes: { frame: 0.75 }, why: 'Quick frame bands: 3-band fits at 3/4 in (the quick Size sets the Wall)' }];
 
 export const rows = [
   // ---- main sidebar
   // (item 23: the quick Set row lists the brick sets only -- one choice today, nothing to change)
-  { name: 'Quick size: 1-1/2', kind: 'sidebar', do: click('brickQuick_size_half1'), expect: AUTO },
-  { name: 'Quick size: 3/4', kind: 'sidebar', do: click('brickQuick_size_quarter3'), expect: AUTO },
+  { name: 'Quick size: 1-1/2', kind: 'sidebar', do: set('brickQuickSelect_size', 'half1'), expect: AUTO },
+  { name: 'Quick size: 3/4', kind: 'sidebar', do: set('brickQuickSelect_size', 'quarter3'), expect: AUTO },
+  { name: 'Quick size typed: 1.3 (Custom)', kind: 'sidebar', do: set('brickQuickSize', 1.3), expect: AUTO }, // Fred 2026-10-14: any typed size
   { name: 'Quick pattern: Herringbone', kind: 'sidebar', do: click('brickQuick_pattern_herringbone'), expect: AUTO },
   { name: 'Quick frame bands: 3-band', kind: 'sidebar', do: click('brickQuick_frameBands_three_band'), expect: AUTO },
   { name: 'Quick grout colour: Charcoal (paint only)', kind: 'sidebar', do: click('brickQuick_groutColor_charcoal'), expect: E(false, true, false), introducedBy: '3a10b65' }, // F35 item 55

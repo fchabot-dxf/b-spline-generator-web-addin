@@ -11,7 +11,7 @@ import { frameLoopsWorld } from '../core/preview/frame-mesh.js';
 import { maskEdgeSource } from '../core/bricks/mask-edge.js';
 import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
-import { layerHasBrickPieces, brickDepth, elementGroutWidth, BRICK_KINDS } from '../editor/editor-brick-tool.js';
+import { layerHasBrickPieces, brickDepth, elementGroutWidth, elementGroutDepth, elementGroutProfile, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 
@@ -184,8 +184,9 @@ export async function updateStampMasks(nx, nz) {
             surfaceWear: P.brickSettings && P.brickSettings.surfaceWear, // the Weathered Wear slider (0..1)
             // the joint recess reaches the WIDEST element joint (per-element grout): every joint's gap is covered
             groutWidthIn: P.brickSettings ? Math.max(...BRICK_KINDS.map((k) => elementGroutWidth(P.brickSettings, k))) : undefined,
-            groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
-            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
+            // Fred 2026-10-11: each element's joint depth + Recessed | Flush (its override, else its pattern's default)
+            groutByKind: P.brickSettings ? Object.fromEntries(['wall', 'frame', 'brush'].map((k) => [k,
+              { depthIn: elementGroutDepth(P.brickSettings, k), profile: elementGroutProfile(P.brickSettings, k) }])) : undefined,
             levels: P.brickSettings && P.brickSettings.elementLevelIn, // F35 item 16: per-element Level
             edges: P.brickSettings && P.brickSettings.edgeByElement, // Fred 2026-10-11: per-element EDGE TAPER
             accent: P.brickSettings && P.brickSettings.accent, // F35 item 15: raised accents (Wall)

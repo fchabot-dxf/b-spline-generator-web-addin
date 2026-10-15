@@ -1,0 +1,882 @@
+{
+ "template_6 stretcher 0.75": {
+  "wall": "174:a8728bfd4f2a940c",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 stretcher 1.25": {
+  "wall": "55:edacb4cf03e39a30",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 stack 0.75": {
+  "wall": "174:37a61fb737dfb280",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 stack 1.25": {
+  "wall": "53:faa992f86bb4ce33",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 soldier 0.75": {
+  "wall": "170:c451166ff200b69b",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 soldier 1.25": {
+  "wall": "47:e9cd497c28b8fb29",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 header 0.75": {
+  "wall": "534:16d24c584c7cbdb0",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 header 1.25": {
+  "wall": "151:8b6f3f443622bc0e",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 flemish 0.75": {
+  "wall": "258:e0a990932113a5a5",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 flemish 1.25": {
+  "wall": "73:a98f667694707857",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 english 0.75": {
+  "wall": "359:7bcaf0d1d58b47c7",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 english 1.25": {
+  "wall": "100:835344a79348b75a",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 monk 0.75": {
+  "wall": "215:98fba08eb676a46e",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 monk 1.25": {
+  "wall": "57:aa7bb6a3b46ce531",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 herringbone 0.75": {
+  "wall": "210:403cf455fc86a602",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 herringbone 1.25": {
+  "wall": "60:ac43307a18976ace",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 double_herringbone 0.75": {
+  "wall": "200:9b5c0c9e933d615c",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 double_herringbone 1.25": {
+  "wall": "60:22b3e9d520e119c2",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 basketweave 0.75": {
+  "wall": "171:9607ca41ee5a9454",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 basketweave 1.25": {
+  "wall": "44:319bb2806dff6dba",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 windmill 0.75": {
+  "wall": "147:4b61ad8fc2337b6d",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 windmill 1.25": {
+  "wall": "41:7a28acf27247ae90",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 stacked_horizontal 0.75": {
+  "wall": "167:7c371e427f839f15",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 stacked_horizontal 1.25": {
+  "wall": "45:7cfd4d13afff07b5",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 chevron 0.75": {
+  "wall": "176:cde9c7189dd4ed98",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 chevron 1.25": {
+  "wall": "57:dfa77567ce45c070",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 stacked_variation 0.75": {
+  "wall": "160:8a6bf5b6144956f4",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 stacked_variation 1.25": {
+  "wall": "42:f852dcda0dbbabf6",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 basketweave_variation 0.75": {
+  "wall": "158:cffb3dedfc6d1d93",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 basketweave_variation 1.25": {
+  "wall": "42:dc1b3d782b5df056",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 basketweave_stacked 0.75": {
+  "wall": "154:d56728b497c9fdea",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 basketweave_stacked 1.25": {
+  "wall": "41:079af80dc37335e2",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 square_grid 0.75": {
+  "wall": "55:6b936bc2154f15ca",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 square_grid 1.25": {
+  "wall": "17:0e1d4583e8e5d24f",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 square_diamond 0.75": {
+  "wall": "103:2f332a1338f513a2",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 square_diamond 1.25": {
+  "wall": "33:216763f0fa8f9b7b",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 octagon_square 0.75": {
+  "wall": "113:982cc7ee2b5fa63c",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 octagon_square 1.25": {
+  "wall": "39:c3c745acd0dde980",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 hexagon 0.75": {
+  "wall": "65:ec6d9cb3cb279749",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 hexagon 1.25": {
+  "wall": "23:5766fb07f0f097ed",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 lozenge 0.75": {
+  "wall": "83:da3067cd796d0449",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 lozenge 1.25": {
+  "wall": "23:36fb1fb031a6da20",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_6 framed_square 0.75": {
+  "wall": "120:104ea40ad1d3e564",
+  "frame": "124:bafd8d6f9aeda5d0"
+ },
+ "template_6 framed_square 1.25": {
+  "wall": "27:4d3c0bd7b2cf6d62",
+  "frame": "79:fbc4e612ebfe842c"
+ },
+ "template_9 stretcher 0.75": {
+  "wall": "146:31c7f3a52478bd3f",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 stretcher 1.25": {
+  "wall": "35:70955ee1aa1d265a",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 stack 0.75": {
+  "wall": "146:73ee22283207fc2f",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 stack 1.25": {
+  "wall": "29:29e1a04acd7b9d50",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 soldier 0.75": {
+  "wall": "123:b224fb6282860fa6",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 soldier 1.25": {
+  "wall": "28:5641503963247b32",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 header 0.75": {
+  "wall": "420:4c545f841c557997",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 header 1.25": {
+  "wall": "72:97ddadc3e00f1ea2",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 flemish 0.75": {
+  "wall": "203:31538fa6289ea8e8",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 flemish 1.25": {
+  "wall": "41:9487d5f5270b0ec2",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 english 0.75": {
+  "wall": "283:918087b6ee294567",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 english 1.25": {
+  "wall": "53:93af6f1342b5e2bc",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 monk 0.75": {
+  "wall": "164:4f963ad01849a3f3",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 monk 1.25": {
+  "wall": "29:3d1e59fc5975713b",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 herringbone 0.75": {
+  "wall": "165:be27dc7bf42f2df7",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 herringbone 1.25": {
+  "wall": "46:fe58ff08f7e97a63",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 double_herringbone 0.75": {
+  "wall": "165:20fc1bb26ee78c76",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 double_herringbone 1.25": {
+  "wall": "46:a951f8f9e9dd917c",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 basketweave 0.75": {
+  "wall": "133:11faec056db01cb8",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 basketweave 1.25": {
+  "wall": "24:af28a840f74bd897",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 windmill 0.75": {
+  "wall": "128:59624eb63dd67499",
+  "frame": "162:a237591accef474b"
+ },
+ "template_9 windmill 1.25": {
+  "wall": "29:4b1266be123fef6a",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 stacked_horizontal 0.75": {
+  "wall": "142:bd9d202857c06144",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 stacked_horizontal 1.25": {
+  "wall": "29:fcbe2a1f43736879",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 chevron 0.75": {
+  "wall": "147:100839645fcc952b",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 chevron 1.25": {
+  "wall": "47:21a4168d33759294",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 stacked_variation 0.75": {
+  "wall": "132:fe8f9b030059437e",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 stacked_variation 1.25": {
+  "wall": "27:cf520f7207258dd5",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 basketweave_variation 0.75": {
+  "wall": "120:b8418d396c2df8fb",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 basketweave_variation 1.25": {
+  "wall": "26:487b617edc61c3da",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 basketweave_stacked 0.75": {
+  "wall": "122:40147b65a81ab055",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 basketweave_stacked 1.25": {
+  "wall": "23:d7b7d6c478f99995",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 square_grid 0.75": {
+  "wall": "43:8106cacff10a9e74",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 square_grid 1.25": {
+  "wall": "11:fff9a959cb1891c5",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 square_diamond 0.75": {
+  "wall": "79:f4d1c5e21110b347",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 square_diamond 1.25": {
+  "wall": "13:f4d6fd88d1c43758",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 octagon_square 0.75": {
+  "wall": "97:84184bbd6c12d2a0",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 octagon_square 1.25": {
+  "wall": "33:a3352af8c050f899",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 hexagon 0.75": {
+  "wall": "57:662ed8ca50f6f844",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 hexagon 1.25": {
+  "wall": "20:79c88bbae35769a1",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 lozenge 0.75": {
+  "wall": "73:90bb915ef06a5f17",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 lozenge 1.25": {
+  "wall": "20:d335953ea57fdfa6",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_9 framed_square 0.75": {
+  "wall": "98:2a002f96b1cda82e",
+  "frame": "162:308255df1e3f7e46"
+ },
+ "template_9 framed_square 1.25": {
+  "wall": "15:2aba33c65e8052a7",
+  "frame": "104:9ebc374082780c1a"
+ },
+ "template_14 stretcher 0.75": {
+  "wall": "153:1e22ce53623e660e",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 stretcher 1.25": {
+  "wall": "39:3393bed96f2967dc",
+  "frame": "86:6bf722481f3107a5"
+ },
+ "template_14 stack 0.75": {
+  "wall": "152:abcb30ed5feb1333",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 stack 1.25": {
+  "wall": "38:073540dbde475fdf",
+  "frame": "86:6bf722481f3107a5"
+ },
+ "template_14 soldier 0.75": {
+  "wall": "144:ec5f10f8b08976e3",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 soldier 1.25": {
+  "wall": "37:937fb8937f042255",
+  "frame": "86:fb6d54423eda914c"
+ },
+ "template_14 header 0.75": {
+  "wall": "446:22b9f1e5804cb15e",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 header 1.25": {
+  "wall": "104:44c6bf57ad466eca",
+  "frame": "86:fb6d54423eda914c"
+ },
+ "template_14 flemish 0.75": {
+  "wall": "220:3cec54d65d561398",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 flemish 1.25": {
+  "wall": "53:7acc82bdb4f4bbdd",
+  "frame": "86:13125ab9c24d1820"
+ },
+ "template_14 english 0.75": {
+  "wall": "297:cefe4e2336e31b5f",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 english 1.25": {
+  "wall": "70:eca69587591a6790",
+  "frame": "86:77e7e9f14035a863"
+ },
+ "template_14 monk 0.75": {
+  "wall": "192:7fd0732bd4982169",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 monk 1.25": {
+  "wall": "46:889d32b79dd73716",
+  "frame": "86:6bf722481f3107a5"
+ },
+ "template_14 herringbone 0.75": {
+  "wall": "160:1fedaef82745f27a",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 herringbone 1.25": {
+  "wall": "43:1fe4b15c405e46ee",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 double_herringbone 0.75": {
+  "wall": "161:1fb518f699546acb",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 double_herringbone 1.25": {
+  "wall": "43:0648becb2389e882",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 basketweave 0.75": {
+  "wall": "154:9de64eb4cf3a9eff",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 basketweave 1.25": {
+  "wall": "33:f042ca0c5d8463a2",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 windmill 0.75": {
+  "wall": "133:964f3a4dd3e0ebad",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 windmill 1.25": {
+  "wall": "32:8c1f8c042a6bc7c7",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 stacked_horizontal 0.75": {
+  "wall": "149:8d30a8d4db587ddf",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 stacked_horizontal 1.25": {
+  "wall": "37:7105f9ae0b1d09e6",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 chevron 0.75": {
+  "wall": "160:f84d6e52828d4713",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 chevron 1.25": {
+  "wall": "42:b6971fcdcf72e599",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 stacked_variation 0.75": {
+  "wall": "146:6627c179994627e8",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 stacked_variation 1.25": {
+  "wall": "35:d7a69c0dadaa4f49",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 basketweave_variation 0.75": {
+  "wall": "137:4fcae4dde2f17cf1",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 basketweave_variation 1.25": {
+  "wall": "34:21c767019915006a",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 basketweave_stacked 0.75": {
+  "wall": "144:014265c5c137a99c",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 basketweave_stacked 1.25": {
+  "wall": "38:c2925e094359610f",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 square_grid 0.75": {
+  "wall": "48:c5d8f796108955e2",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 square_grid 1.25": {
+  "wall": "13:cd98566bc0acf09c",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 square_diamond 0.75": {
+  "wall": "95:7218ac8ef3f7c66f",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 square_diamond 1.25": {
+  "wall": "17:20e381bd7aebcebc",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 octagon_square 0.75": {
+  "wall": "93:27c60c19132ffc20",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 octagon_square 1.25": {
+  "wall": "33:eb73121aa4b49255",
+  "frame": "86:06db9292469144c6"
+ },
+ "template_14 hexagon 0.75": {
+  "wall": "59:1cf1ec8c1145cd9c",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 hexagon 1.25": {
+  "wall": "19:74268c47981ddd2f",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 lozenge 0.75": {
+  "wall": "69:9f262970c4e0e4e3",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 lozenge 1.25": {
+  "wall": "17:e8d405eb49870413",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_14 framed_square 0.75": {
+  "wall": "106:f0ca57e9180fe287",
+  "frame": "136:997e7a19ded0e8d3"
+ },
+ "template_14 framed_square 1.25": {
+  "wall": "23:244e3415618d3225",
+  "frame": "86:f8ac542ea08b4666"
+ },
+ "template_16 stretcher 0.75": {
+  "wall": "130:72c006510a5bd3ca",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 stretcher 1.25": {
+  "wall": "35:10c05a6c6ed42540",
+  "frame": "74:1a114cd9fc5676a8"
+ },
+ "template_16 stack 0.75": {
+  "wall": "129:ac4b1f0de4804d33",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 stack 1.25": {
+  "wall": "32:4aa365356e9c02dc",
+  "frame": "74:1a114cd9fc5676a8"
+ },
+ "template_16 soldier 0.75": {
+  "wall": "121:4fb5a085bbfedcf0",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 soldier 1.25": {
+  "wall": "29:3828de2f0e2effcf",
+  "frame": "74:a65c0f11feb5891f"
+ },
+ "template_16 header 0.75": {
+  "wall": "363:ccd8d22ea485da33",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 header 1.25": {
+  "wall": "81:368914cad08347a2",
+  "frame": "74:a65c0f11feb5891f"
+ },
+ "template_16 flemish 0.75": {
+  "wall": "185:5d64ccbe8df410dc",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 flemish 1.25": {
+  "wall": "43:574163ec22ea67c9",
+  "frame": "74:1a114cd9fc5676a8"
+ },
+ "template_16 english 0.75": {
+  "wall": "251:d084fae0456816c5",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 english 1.25": {
+  "wall": "56:f88fb746877a6dd5",
+  "frame": "74:65adf030177777eb"
+ },
+ "template_16 monk 0.75": {
+  "wall": "158:ca366edbf1bc838f",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 monk 1.25": {
+  "wall": "39:f4fa1d7d76ee1c3e",
+  "frame": "74:a65c0f11feb5891f"
+ },
+ "template_16 herringbone 0.75": {
+  "wall": "134:705eb341046f8b3e",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 herringbone 1.25": {
+  "wall": "36:621223aca8c422bd",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 double_herringbone 0.75": {
+  "wall": "134:a89846d0e66d7ffa",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 double_herringbone 1.25": {
+  "wall": "35:b5d23bc11ebe6fc7",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 basketweave 0.75": {
+  "wall": "131:db4017ad86d57e10",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 basketweave 1.25": {
+  "wall": "29:e24b8b638170a370",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 windmill 0.75": {
+  "wall": "113:28dcb77141d93ec6",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 windmill 1.25": {
+  "wall": "28:822c1a785e59c0dc",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 stacked_horizontal 0.75": {
+  "wall": "126:7c623d067ae16998",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 stacked_horizontal 1.25": {
+  "wall": "30:cfc57249a0725ba5",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 chevron 0.75": {
+  "wall": "133:be820518de376391",
+  "frame": "117:962ecc2da10660c4"
+ },
+ "template_16 chevron 1.25": {
+  "wall": "33:e653b43d862a4a10",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 stacked_variation 0.75": {
+  "wall": "122:088fc6137102c45c",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 stacked_variation 1.25": {
+  "wall": "27:a14d7d433c88e001",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 basketweave_variation 0.75": {
+  "wall": "117:7243bf6c75aa85be",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 basketweave_variation 1.25": {
+  "wall": "29:23b403787e891b4c",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 basketweave_stacked 0.75": {
+  "wall": "121:a63a0c581b3da035",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 basketweave_stacked 1.25": {
+  "wall": "30:f3b75a4277b549b1",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 square_grid 0.75": {
+  "wall": "43:37e766c70afa137a",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 square_grid 1.25": {
+  "wall": "12:bb896fa25d728047",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 square_diamond 0.75": {
+  "wall": "75:281d6208ca88f57a",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 square_diamond 1.25": {
+  "wall": "17:f3d96a7d55fd0c58",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 octagon_square 0.75": {
+  "wall": "79:6eafee939dc54fd9",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 octagon_square 1.25": {
+  "wall": "22:7a4d7bc7255d8c47",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 hexagon 0.75": {
+  "wall": "46:7a2141af22d2e2f9",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 hexagon 1.25": {
+  "wall": "15:2c430ff174c667bc",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 lozenge 0.75": {
+  "wall": "60:488a472a8537812c",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 lozenge 1.25": {
+  "wall": "14:780f83831b293aa7",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_16 framed_square 0.75": {
+  "wall": "90:92114dd9a1c638f5",
+  "frame": "117:e4894802421a8303"
+ },
+ "template_16 framed_square 1.25": {
+  "wall": "21:b6784f8166d87bb9",
+  "frame": "74:975c5ef9b2ff3e14"
+ },
+ "template_18 stretcher 0.75": {
+  "wall": "110:023b8349dbd7d63c",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 stretcher 1.25": {
+  "wall": "21:7b87c19041624652",
+  "frame": "89:df1a9256964e1f6d"
+ },
+ "template_18 stack 0.75": {
+  "wall": "111:a61f0d4e152c62c8",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 stack 1.25": {
+  "wall": "20:a4d612e92478e451",
+  "frame": "89:df1a9256964e1f6d"
+ },
+ "template_18 soldier 0.75": {
+  "wall": "105:10c6973803179462",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 soldier 1.25": {
+  "wall": "15:68a5d6c81917e88e",
+  "frame": "89:0108b4a438568254"
+ },
+ "template_18 header 0.75": {
+  "wall": "295:05ed19cbe32f71c7",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 header 1.25": {
+  "wall": "42:0f93b20b35de4d8a",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 flemish 0.75": {
+  "wall": "151:32ff49375ca63504",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 flemish 1.25": {
+  "wall": "26:9aa3c061a47bbff9",
+  "frame": "89:ab116e8f384010e8"
+ },
+ "template_18 english 0.75": {
+  "wall": "205:8a04643680ee731b",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 english 1.25": {
+  "wall": "30:29a6cf8257d8db64",
+  "frame": "89:2bb37ca4f779b160"
+ },
+ "template_18 monk 0.75": {
+  "wall": "134:ef4cb06e6f0d44dd",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 monk 1.25": {
+  "wall": "20:ec69183a3b4524a5",
+  "frame": "89:df1a9256964e1f6d"
+ },
+ "template_18 herringbone 0.75": {
+  "wall": "116:c902b38be8cb7fea",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 herringbone 1.25": {
+  "wall": "18:56732e85e80be0ae",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 double_herringbone 0.75": {
+  "wall": "116:9f99d682750f320f",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 double_herringbone 1.25": {
+  "wall": "21:559f14ec68fa5993",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 basketweave 0.75": {
+  "wall": "103:5bb7247ecf3142a7",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 basketweave 1.25": {
+  "wall": "17:70edb7aa1a6b7a4b",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 windmill 0.75": {
+  "wall": "91:8b819f95124db54a",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 windmill 1.25": {
+  "wall": "13:3a0fb0787aba7d2e",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 stacked_horizontal 0.75": {
+  "wall": "102:175fea38b52eca38",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 stacked_horizontal 1.25": {
+  "wall": "16:15fa684fbca9b6a5",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 chevron 0.75": {
+  "wall": "113:83853600f7569a51",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 chevron 1.25": {
+  "wall": "21:62b4a3238ab65a15",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 stacked_variation 0.75": {
+  "wall": "99:9ae03ababc3034b5",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 stacked_variation 1.25": {
+  "wall": "16:2a1de9bc4d378a76",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 basketweave_variation 0.75": {
+  "wall": "96:af6df44d5a4941f8",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 basketweave_variation 1.25": {
+  "wall": "13:4659b7a23bbbd0dc",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 basketweave_stacked 0.75": {
+  "wall": "106:520bce05fd72fb7c",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 basketweave_stacked 1.25": {
+  "wall": "17:0f3f052b8ec11370",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 square_grid 0.75": {
+  "wall": "38:e33ae40d45973993",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 square_grid 1.25": {
+  "wall": "7:09201f46dda4eefd",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 square_diamond 0.75": {
+  "wall": "63:875bd04aa6e9f7b6",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 square_diamond 1.25": {
+  "wall": "10:576ad156c482ebe7",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 octagon_square 0.75": {
+  "wall": "73:af937fe5b5bb76e1",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 octagon_square 1.25": {
+  "wall": "14:0d506e3bb346b835",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 hexagon 0.75": {
+  "wall": "42:065feec3564e6df0",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 hexagon 1.25": {
+  "wall": "11:9609d0a4fb05acdb",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 lozenge 0.75": {
+  "wall": "53:248bf72ff928f563",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 lozenge 1.25": {
+  "wall": "12:294443f7513b2b1e",
+  "frame": "89:544054f7af539790"
+ },
+ "template_18 framed_square 0.75": {
+  "wall": "68:5267d0d2b987beac",
+  "frame": "125:bf003f1f2047fdb6"
+ },
+ "template_18 framed_square 1.25": {
+  "wall": "9:8bf76d74602f6907",
+  "frame": "89:544054f7af539790"
+ }
+}

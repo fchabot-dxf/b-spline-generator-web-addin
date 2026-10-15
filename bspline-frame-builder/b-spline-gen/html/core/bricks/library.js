@@ -375,9 +375,13 @@ export const BRICK_PATTERNS = Object.freeze({
   // flemish: see layouts/bond.js's own flemishRow for the exact repeat-unit/stagger construction --
   // the textbook alternating-stretcher-and-header bond, no further parameters needed here (the unit
   // sequence itself isn't user-tunable, matching how stretcher/soldier/etc. have no exposed knobs).
+  // smallestFace 'header' (seat E 2026-10-14): the bond's header courses are whole pieces -- a tip's course front reads them
+  // (tip-fill.js bareTips: a piece of half a WHOLE piece is a course; english / monk left a T14 tip bare when only a stretcher
+  // counted). Declared on english / monk only: on header and flemish it MEASURED a different frame tip fill (T14 / T16 1.25
+  // in), and a saved board re-lays as before (Fred 2026-10-14) -- they keep the stretcher rule
   flemish: { kind: 'course-alternating' },
-  english: { kind: 'course-alternating', subtype: 'english' },
-  monk: { kind: 'course-alternating', subtype: 'monk' },
+  english: { kind: 'course-alternating', subtype: 'english', smallestFace: 'header' },
+  monk: { kind: 'course-alternating', subtype: 'monk', smallestFace: 'header' },
   herringbone: { kind: 'tile2d' },
   double_herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
@@ -442,9 +446,9 @@ export const BRICK_PATTERNS = Object.freeze({
  */
 /**
  * UX refine (Fred, 2026-10-10): a preset's optional `bestSize` -- the brick size (inches, one of the Size chips:
- * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. The app only SUGGESTS it (a "best" mark on that chip and a
- * "Reads best at ..." hint with a Use-it button, main/brick-panel.js); brick size stays one global value and nothing
- * changes it on its own. Absent = no suggestion. It rides on the band list as a NON-enumerable property, so every
+ * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. Since 2026-10-11 (Fred: per-pattern defaults) it IS the
+ * preset's DEFAULT size (patternDefaultsOf below): the Brick frame lays at it unless the user overrides the frame's
+ * size. Absent = BRICK_PATTERN_DEFAULTS' size. It rides on the band list as a NON-enumerable property, so every
  * reader of the bands (iteration, spread, map, JSON, the engine) sees exactly the list it always did -- read it as
  * `FRAME_PRESETS[id].bestSize`.
  */
@@ -565,6 +569,12 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
   // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
   arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
+  // 2026-10-11 (Fred, ref5): a mosaic -- ONE band of 12 square-tile rows (BAND_MOTIFS.greek_key), every tile the same size
+  // (one brick height); widthIn = 12 rows at Set 1's own size. Best at the 0.75 in chip (Fred 2026-10-11 picked it): a 0.2
+  // in tile pitch (0.166 in tiles), the band 2.4 in deep (at 0.375 in the 0.066 in tiles were a third grout)
+  greek_key_mosaic: withBestSize(0.75, [
+    { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key' },
+  ]),
   craftsman_apron: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'header' },
     { widthIn: 0.75, rows: 1, pattern: 'soldier' },
@@ -678,7 +688,7 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
  *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */
 export const FRAME_PRESET_SIZES = Object.freeze(Object.fromEntries(
-  ['dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice'].map((id) => [id, FRAME_PRESETS[id].bestSize])));
+  ['dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'greek_key_mosaic'].map((id) => [id, FRAME_PRESETS[id].bestSize])));
 
 /**
  * Frame motifs phase 1 (2026-10-10, Fred's approved mockups shots/advisor/frames/mock_ref1-3.png, lighter = raised): every
@@ -733,6 +743,28 @@ export const BAND_MOTIFS = Object.freeze({
   // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
   // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
   diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  // Greek key MOSAIC (Fred 2026-10-11, shots/advisor/frames/ref5_greek_key_mosaic.jpg: "one more frame with this spiral
+  // mosaic", "so much smaller tiles"): square tiles, green = raised, white = flush. Rows 3-8 are the photo's meander read
+  // cell by cell (period 6: a top bar, a spiral hook hanging from it, a full-height stem, the solid baseline); a white /
+  // green / white strip either side of it. Corner: the strips turn as an L; the key's corner is a concentric square (ring +
+  // 2x2 centre), symmetric about the diagonal (both runs read it). Flat raised tops with the joints between raised neighbours
+  // filled (as the zigzag / diaper): the key reads as continuous strokes, not a scatter of green tiles.
+  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: {
+    tile: ['......', 'RRRRRR', '......', 'RRRR.R', '...R.R', '.R.R.R', '.RRR.R', '.....R', 'RRRRRR', '......', 'RRRRRR', '......'],
+    corner: [
+      '............',
+      '.RRRRRRRRRRR',
+      '.R..........',
+      '.R.RRRRRRRRR',
+      '.R.R....R...',
+      '.R.R.RR.R...',
+      '.R.R.RR.R...',
+      '.R.R....R...',
+      '.R.RRRRRRRRR',
+      '.R.R....R...',
+      '.R.R....R.RR',
+      '.R.R....R.R.',
+    ] } },
   // 2026-10-14 (the narrow runners): a two-row checkerboard of square tiles; each corner square solid raised
   checker: { unit: 'H', grid: { tile: ['R.', '.R'], corner: ['RR', 'RR'] } },
   // 2026-10-14 (Fred: "smaller bricks but not tiles ... small as in not as long"): SHORT bricks, the course's own height and
@@ -771,6 +803,36 @@ export const BRUSH_PRESETS = Object.freeze({
     { widthIn: 0.2, pattern: 'flemish' },
   ],
 });
+
+/**
+ * PATTERN DEFAULTS (Fred 2026-10-11: "patterns aren't all bricks" -- pavers, blocks, mosaics): every pattern declares its
+ * default SIZE (in, the absolute size the element lays at: scaleFor = size / its set's own length) and GROUT (joint width,
+ * depth, profile). An element (Wall / Brick frame / Brush) lays at its pattern's defaults unless the user overrides a value
+ * in that element's Size & joint section (brickSettings.sizeByElement / groutByElement / groutDepthByElement /
+ * groutProfileByElement, null = the default). BRICK_PATTERN_DEFAULTS is the fallback every pattern starts from; each table
+ * below lists only what a pattern changes. groutWidthIn null = the element's brick set's own declared joint.
+ */
+// size: Fred 2026-10-05's new-board 1 1/4 in; the joint depth is Set 1's own declared one (audit C4: never a second guess);
+// a new board's joints are Recessed (Fred, turn 207)
+export const BRICK_PATTERN_DEFAULTS = Object.freeze({ sizeIn: 1.25, groutWidthIn: null, groutDepthIn: BRICK_SETS.find((x) => x.id === 1).grout.depthIn, groutProfile: 'recessed' });
+/** the Wall's patterns (BRICK_PATTERNS ids): none differs yet (non-brick defaults come as rows, Fred 2026-10-11) */
+export const WALL_PATTERN_DEFAULTS = Object.freeze({});
+/** the Brick frame's presets: their size is the preset's bestSize (withBestSize, above); other values per preset here */
+export const FRAME_PRESET_DEFAULTS = Object.freeze({});
+/** the Brush's presets (BRUSH_PRESETS ids): none differs yet */
+export const BRUSH_PRESET_DEFAULTS = Object.freeze({});
+/** Which pattern registry an element reads, and which brickSettings key holds its pick (raisedBrush paints the Brush's). */
+export const ELEMENT_PATTERN = Object.freeze({
+  wall: Object.freeze({ key: 'pattern', table: WALL_PATTERN_DEFAULTS }),
+  frame: Object.freeze({ key: 'frameBandPreset', table: FRAME_PRESET_DEFAULTS }),
+  brush: Object.freeze({ key: 'brushBandPreset', table: BRUSH_PRESET_DEFAULTS }),
+});
+/** A pattern's defaults: the fallback, its bestSize (a frame preset), then its own table row. `kind` wall | frame | brush. */
+export function patternDefaultsOf(kind, id) {
+  const spec = ELEMENT_PATTERN[kind];
+  const best = kind === 'frame' && FRAME_PRESETS[id] && FRAME_PRESETS[id].bestSize;
+  return { ...BRICK_PATTERN_DEFAULTS, ...(best ? { sizeIn: best } : {}), ...((spec && spec.table[id]) || {}) };
+}
 
 export function brickSetById(id) {
   return BRICK_SETS.find((s) => s.id === id) || null;

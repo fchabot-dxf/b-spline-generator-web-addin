@@ -21,6 +21,7 @@ import { buildRibbonPrimitives, frameBandsOf, brickLayInput } from '../bspline-f
 import { rectToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/core/inset-window.js';
 import { tess, bareGround, PATCH_MAX_FACE } from './bare-ground.js';
 import { createHash } from 'node:crypto';
+import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -193,7 +194,8 @@ describe('the short-brick bands lay cleanly at their best size', () => {
 });
 
 // Saved boards lay exactly as before (Fred 2026-10-15): every motif preset that existed before the short-brick bands, on the
-// hourglass (template_1, 7x10) at 1 and 1.25 in, through the app's own path (frameBandsOf -> brickLayInput -> generateBricks):
+// hourglass (template_1, 7x10) at 1 and 1.25 in, through the app's own path (runMigrations -> frameBandsOf -> brickLayInput ->
+// generateBricks):
 // its frame pieces + relief and its wall. Digests taken with origin/main's (2026-10-15) band-motif.js / contour-bands.js (before
 // `bond` and `maxPieceFactor`); a motif without either lays as it always did.
 const HOURGLASS_MOTIF_PINS = {
@@ -248,7 +250,11 @@ describe('a saved motif board on the hourglass re-lays exactly as before', () =>
     const got = {};
     for (const key of Object.keys(HOURGLASS_MOTIF_PINS)) {
       const [preset, L] = key.split(' ');
-      const settings = { frameBandPreset: preset, brickLengthIn: +L, seed: 1, suppression: 0, clumping: 0, pattern: 'running_bond' };
+      // a saved board loads through the app's migrations (main/app-init.js runMigrations: the one saved size becomes every
+      // element's own, 'brick-size-per-element'), as frame-preset-saved-boards-pin.test.js does
+      const saved = { brickSettings: { frameBandPreset: preset, brickLengthIn: +L, seed: 1, suppression: 0, clumping: 0, pattern: 'running_bond' } };
+      runMigrations(saved);
+      const settings = saved.brickSettings;
       const r = generateBricks(brickLayInput(editor, settings, { primitives, bands: frameBandsOf(settings, 'template_1'), templateId: 'template_1' }));
       const frame = r.frameBricks.map((b) => [pts(b.polygon), b.relief || null]);
       got[key] = `${frame.length}/${r.bricks.length}:${sha(frame)}:${sha(r.bricks.map((b) => pts(b.polygon)))}`;

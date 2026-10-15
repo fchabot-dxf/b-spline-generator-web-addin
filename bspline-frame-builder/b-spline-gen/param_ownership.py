@@ -54,7 +54,7 @@ def _dependents(param):
         return None
 
 
-def compute_stale_params(user_params, payload_names, logger=None):
+def compute_stale_params(user_params, payload_names, logger=None, owns=None, base=None):
     """Compute the cleanup decision for every registered parameter NOT in `payload_names`.
 
     `user_params`: an iterable of parameter-like objects (`.name`, `.attributes`,
@@ -68,6 +68,10 @@ def compute_stale_params(user_params, payload_names, logger=None):
     function cannot prove is unreferenced (no `dependentParameters` on the object at all) is treated
     the same as "has dependents" — kept, never deleted, logged with an explicit reason so a caller
     can tell "definitely referenced" apart from "couldn't check" if it ever matters.
+
+    Send targets S2 (several boards in one design): `owns(name)` keeps the pass inside the Send's own board namespace
+    (another board's params are never candidates) and `base(name)` maps a board's "<id>_rail_width" back to the
+    declared registry name it is judged by. Both absent = the legacy behaviour exactly.
     """
     log = logger.log if logger else (lambda *a, **k: None)
     payload = set(payload_names or ())
@@ -75,7 +79,9 @@ def compute_stale_params(user_params, payload_names, logger=None):
 
     for param in user_params or ():
         name = getattr(param, "name", None)
-        if not name or not _is_registered(name) or name in payload:
+        if not name or (owns is not None and not owns(name)):
+            continue  # another board's (or none of this board's namespace)
+        if not _is_registered(base(name) if base else name) or name in payload:
             continue  # unregistered, or this Send is about to touch it — never a candidate
 
         was_stamped = _has_bspline_owner_tag(param)

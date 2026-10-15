@@ -30,6 +30,7 @@ import { pointInPolygon, polygonIntersection, polygonDifference, polygonCentroid
 import { PIECE_CATALOGUE, enabledPieces, scaledSet, BRICK_PATTERNS, RUSTIC } from './library.js';
 import { WALL_REGION_PICK } from './region.js';
 import { minPieceAreaOf } from './piece-floor.js';
+import { appendPartCells, takeCellParts, isPartCellId } from './cell-parts.js';
 import { hashedRandom } from './rng.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
@@ -95,7 +96,8 @@ const boxesOverlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0
  *  neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone. */
 function recutCells(cells, set, cut) {
   const minArea = minPieceAreaOf(set); // the layout's own floor (piece-floor.js: a fieldstone wall's is its smallest stone's)
-  let nextId = cells.reduce((m, c) => Math.max(m, typeof c.id === 'number' ? c.id : 0), 0) + 1;
+  // (a cell's other parts, cell-parts.js, have ids of their own: a recut piece's id continues today's, unshifted)
+  let nextId = cells.reduce((m, c) => Math.max(m, typeof c.id === 'number' && !isPartCellId(c.id) ? c.id : 0), 0) + 1;
   const out = [];
   const gone = new Set();
   for (const cell of cells) {
@@ -278,7 +280,9 @@ export function bricksFillShape(polygon, holes, opts) {
   const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
     ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
     ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
-  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic, accentCuts: opts.accentCuts, customBond: opts.customBond });
+  const { cells: laidCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic, accentCuts: opts.accentCuts, customBond: opts.customBond });
+  // Fred 2026-10-14 (pick A): a cell the region cut in two lays its other parts too, appended after the lay (cell-parts.js)
+  const allCells = appendPartCells(laidCells, takeCellParts(laidCells));
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
@@ -287,7 +291,9 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const catalogue = enabledPieces(PIECE_CATALOGUE);
   const pieceOf = assignPieces(cells, catalogue, seed);
-  const suppressed = computeSuppressedCells(pieceOf, cells, { suppression, topBias, clumping }, seed);
+  // the crumble is counted over today's cells; a cell's other part goes with its parent (cell-parts.js: today's lay unchanged)
+  const suppressed = computeSuppressedCells(pieceOf, cells.filter((c) => c.partOf === undefined), { suppression, topBias, clumping }, seed);
+  for (const c of cells) if (c.partOf !== undefined && suppressed.has(c.partOf)) suppressed.add(c.id);
   const sampleInfo = assignSamples(cells, set, seed);
 
   const bricks = [];
