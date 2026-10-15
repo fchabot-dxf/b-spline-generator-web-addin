@@ -13,7 +13,7 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
   const state = { doc: null, open: null, folded: new Set(), armed: null };
   const read = () => {
     try { const v = JSON.parse(localStorage.getItem(openKey)); if (Array.isArray(v)) return v; } catch (_) { /* blocked */ }
-    return [...defaultOpen];
+    return [...(typeof defaultOpen === 'function' ? defaultOpen() : defaultOpen)]; // a function: read at each build (phone / desktop)
   };
   const write = (ids) => { try { localStorage.setItem(openKey, JSON.stringify(ids)); } catch (_) { /* not remembered */ } };
   const isOpen = (b) => (b.armsTool ? b.armsTool === state.armed && !state.folded.has(b.id) : state.open.includes(b.id));

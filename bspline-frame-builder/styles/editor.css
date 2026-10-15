@@ -2065,6 +2065,11 @@
 .drawer-branch-body[hidden] {
     display: none;
 }
+/* a one-section branch's own bold title: the branch header says it (editor/lattice-side-column.js) */
+.drawer-host-title { display: none !important; }
+/* the Layers block inside a tree: its branch folds it -- the label's own fold (UI3) would be a second control */
+.drawer-tree .layers-header .lattice-section-chevron { display: none; }
+.drawer-tree .layers-header > span:first-child { pointer-events: none; }
 /* a label the section's own title replaces (BRICK_TAB_SECTIONS titleOf) */
 .brick-sec-title-label {
     display: none !important;
