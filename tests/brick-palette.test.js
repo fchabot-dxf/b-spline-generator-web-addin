@@ -20,6 +20,12 @@ describe('the palette, resolved', () => {
     expect(paletteOf(S(), 'frame').field).toBe(BRICK_SET_COLOURS[3]); // White rocks
     expect(paletteOf(S(), 'brush').field).toBe(BRICK_SET_COLOURS[4]);
   });
+  it('a pattern’s declared colours: the Greek key’s green / white are its motif / field', () => {
+    const s = S({ frameBandPreset: 'greek_key_mosaic' });
+    expect(paletteOf(s, 'frame')).toMatchObject({ motif: '#3f8f72', field: '#f2efe6' });
+    expect(paletteOf(s, 'wall').field).toBe(BRICK_SET_COLOURS[1]); // the wall keeps its set's
+    expect(paletteOf({ ...s, colourByElement: { frame: { motif: '#000000' } } }, 'frame').motif).toBe('#000000');
+  });
   it('the user’s own colour wins per role; a malformed one is ignored (null = the default)', () => {
     const s = S({ colourByElement: { frame: { motif: '#123456', field: null, accent: 'red' } } });
     expect(paletteOf(s, 'frame')).toMatchObject({ motif: '#123456', field: BRICK_SET_COLOURS[3], accent: ROLE_DEFAULT_COLOURS.accent });
