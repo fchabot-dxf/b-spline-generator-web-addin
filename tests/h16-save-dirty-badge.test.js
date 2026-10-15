@@ -12,8 +12,7 @@ import { markDirty, markClean } from '../bspline-frame-builder/b-spline-gen/html
 
 function setupDom() {
   document.body.innerHTML = `
-    <button id="btnQuickSave" class="cad-btn cad-btn-secondary cad-nav-btn disabled" title="Saved">
-      <span id="btnQuickSaveLabel">Save…</span>
+    <button id="btnQuickSave" class="cad-btn cad-btn-secondary cad-nav-btn disabled" title="Saved">💾
     </button>
     <button id="btnOpenProjectManager"></button>
   `;

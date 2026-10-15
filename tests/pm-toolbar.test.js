@@ -14,7 +14,7 @@ const doc = new DOMParser().parseFromString(`<!doctype html><html>${BODY}</html>
 
 describe('the Project Manager toolbar, declared once', () => {
   it('the order Fred asked for, the ids unchanged', () => {
-    expect(PM_TOOLBAR.map((b) => b.id)).toEqual(['fmBtnNewFolder', 'fmBtnNew', 'fmBtnSaveAs', 'fmBtnSave', 'fmBtnLoad', 'fmBtnRename', 'fmBtnDelete']);
+    expect(PM_TOOLBAR.map((b) => b.id)).toEqual(['fmBtnNewFolder', 'fmBtnNew', 'fmBtnSaveAs', 'fmBtnSave', 'fmBtnPullFromFusion', 'fmBtnLoad', 'fmBtnRename', 'fmBtnDelete']);
     expect(PM_TOOLBAR.filter((b) => b.needsSelection).map((b) => [b.id, b.needsSelection])).toEqual([['fmBtnLoad', 'project'], ['fmBtnRename', 'any'], ['fmBtnDelete', 'any']]);
     expect(PM_TOOLBAR.filter((b) => b.danger).map((b) => b.id)).toEqual(['fmBtnDelete']);
   });
@@ -31,7 +31,7 @@ describe('rendered and synced', () => {
   const $ = (id) => document.getElementById(id);
   it('in order; a divider before the selection group; Delete red and last; Save keeps its label hook; rendering twice adds nothing', () => {
     const kids = [...$('fmToolbarActions').children];
-    expect(kids.map((k) => k.id || k.className)).toEqual(['fmBtnNewFolder', 'fmBtnNew', 'fmBtnSaveAs', 'fmBtnSave', 'pm-toolbar-divider', 'fmBtnLoad', 'fmBtnRename', 'fmBtnDelete']);
+    expect(kids.map((k) => k.id || k.className)).toEqual(['fmBtnNewFolder', 'fmBtnNew', 'fmBtnSaveAs', 'fmBtnSave', 'fmBtnPullFromFusion', 'pm-toolbar-divider', 'fmBtnLoad', 'fmBtnRename', 'fmBtnDelete']);
     expect($('fmBtnDelete').classList.contains('pm-toolbar-btn-danger')).toBe(true);
     expect($('fmBtnSave').querySelector('.pm-save-label')).not.toBeNull();
     renderPmToolbar($('fmToolbarActions'));

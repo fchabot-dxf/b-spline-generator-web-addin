@@ -91,7 +91,7 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 20 named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
@@ -105,6 +105,8 @@ describe('FRAME_PRESETS', () => {
       // architectural apron & bond presets
       'craftsman_apron', 'double_soldier', 'english_frame', 'stepped_fret',
       'tudor_frieze', 'corbelled_cornice', 'flemish_architrave', 'chicago_dentil',
+      // main 8e57aeb added these four without listing them (the suite was red on main)
+      'crenellated_battlement', 'art_deco_stepped', 'florentine_architrave', 'venetian_dentil',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
       'craftsman_apron_quoin', 'double_soldier_quoin',

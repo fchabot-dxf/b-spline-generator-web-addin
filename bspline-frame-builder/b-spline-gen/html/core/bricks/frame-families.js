@@ -196,16 +196,16 @@ export function isPresetConforming(templateId, presetId) {
 }
 
 /**
- * Filter a preset list (e.g. FRAME_PRESET_LIST) to only those conforming to the given template ID.
- * If the template has no declared family, returns the full preset list.
+ * Fred 2026-10-14 ("suggest, don't hide"): a family SUGGESTS presets, it never hides one. Every preset of the list, the
+ * template's family's first (in the list's own order), then the rest; each a copy carrying `fits` (true = in its family;
+ * false = not; null = the template has no declared family, nothing suggested). Every preset stays pickable everywhere.
  */
 export function framePresetsForTemplate(templateId, allPresetsList) {
   if (!allPresetsList || !allPresetsList.length) return [];
   const family = familyForTemplate(templateId);
-  if (!family || !family.conformingPresetIds) return allPresetsList;
-  const allowed = new Set(family.conformingPresetIds);
-  return allPresetsList.filter((p) => {
-    const baseId = p.id.replace(/_quoin$/, '');
-    return allowed.has(p.id) || allowed.has(baseId);
-  });
+  if (!family || !family.conformingPresetIds) return allPresetsList.map((p) => ({ ...p, fits: null }));
+  const marked = allPresetsList.map((p) => ({ ...p, fits: isPresetConforming(templateId, p.id) }));
+  return [...marked.filter((p) => p.fits), ...marked.filter((p) => !p.fits)];
 }
+/** The words a suggested preset's tooltip carries (the popover's divider says the same) */
+export const FITS_FRAME_LABEL = 'fits this frame';

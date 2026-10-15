@@ -27,8 +27,10 @@ const withCorner = (preset, style) => FRAME_PRESETS[preset].map((b) => ({ ...b, 
 const layKey = (prims, preset, style, L) => JSON.stringify(bricksContourBands(prims, withCorner(preset, style), opts(L)).bricks.map((b) => b.polygon));
 
 describe('frameCornerEffect: the cases Fred was shown', () => {
-  it('T18 at 1.25 in: Butt / Block / Lapped would re-lay the identical frame (greyed); the mitre stays', () => {
-    expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: false, block: false, lapped: false });
+  // 2026-10-11 (the curved block, primitive-ribbon.js buildCurveBlockJoint): T18's arched top corners now take a Block --
+  // Block is live there; Butt / Lapped (line-line only) still re-lay the identical frame
+  it('T18 at 1.25 in: Butt / Lapped would re-lay the identical frame (greyed); Block cuts the arched top; the mitre stays', () => {
+    expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: false, block: true, lapped: false });
   });
   it('T18 at 0.75 in: the band fits the 1.11 in stubs -- Butt is live', () => {
     expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(0.75)).butt).toBe(true);

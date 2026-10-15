@@ -26241,3 +26241,65 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 
 
 
+
+## Saved boards lay as before; wood-frame families suggest, never hide or rewrite (seat E / 61, 2026-10-14)
+
+- Fred (advisor): two live regressions from the outside agent's commits (main 92bccb4 -> ac93a1c), fixed before curve-quoin.
+- 1. d4b2ec1 laid quoin_corners on the arched family (T10 / T16 / T18 / T19) as a new soldier_quoin arch with no bands
+  (frameBandsOf / frameArchOf / _layInput keyed on the template; resolveFrameGeom passed it). Saved quoin boards there
+  re-laid differently, with no migration and no pin. Fred chose the curved quoin there (curve-quoin, on top). Restored
+  the lay path to 92bccb4 exactly (editor-brick-tool.js frameArchOf / frameBandsOf / _layInput; brick-panel.js
+  resolveFrameGeom; arch-surround.js soldier_quoin removed, nothing reads it). No migration needed: a board stores
+  the preset id, so it re-lays as before. Pin: tests/frame-preset-saved-boards-pin.test.js -- the app's own path
+  (frameBandsOf -> brickLayInput -> generateBricks) for every preset that existed at 92bccb4 on T10 / T16 / T18 / T19
+  + no template, 0.75 / 1.25 in, digests taken in a temp worktree at 92bccb4 (fixtures/frame-preset-saved-boards.json).
+- 2. brick-panel.js frameFamilyCheck REWROTE frameBandPreset to the family default whenever a template outside the
+  preset's family loaded. Removed: the handler only re-renders the list. framePresetsForTemplate (frame-families.js)
+  no longer filters: every preset, the family's first, each marked `fits`; the popover heads them "Fits this frame" /
+  "Other presets" (class fits-frame, tooltip "... · fits this frame"); the sidebar quick picker the same order + label.
+  The family tests that asserted hiding (family-1 / 2 / 3) now assert the suggest rule; family-2's 5-stone arch for
+  quoin_corners went with the route. family.defaultPreset is no longer read (declared data, kept).
+- Scan (one-off, not committed): every template x every 92bccb4 preset x 0.75 / 1.25 (760 lays) and 6 templates x every
+  wall pattern (264) through the same path: byte-identical to 92bccb4 -- no other drift from the family commits.
+- Tests: 9 new / rewritten fail on main (4 pins on the arched templates, 3 family orderings, no-rewrite, the popover).
+  bricks-library's preset list gained the 4 presets main 8e57aeb added unlisted (it was red on main). Full vitest:
+  6650 / 6659 -- the 9 failures (sidebar-tabs 7, section-themes 1, open-editor-buttons 1) fail identically on main's
+  own sources (c64a466's permanent layers panel), not this branch. Icons regenerated (main's were stale).
+- greek_key (advisor's list) is not on main -- nothing to check there.
+
+### 2026-10-11 (seat E): the CURVED block -- a quoin where a straight side meets an arc (Fred picked mockup A)
+- Where: MEASURED every template at its defaults + Fred's Armor record: only T10 Arched Hourglass (the arched top meets the
+  tapered sides, a 30 deg turn = 150 inside) and T18 Arched Head (43 deg = 137 inside) have a non-tangent line/arc corner;
+  the hourglass waists meet their arcs tangentially (no corner). Today they took the mitre (a fan) -- buildBlockJoint is
+  line-line only, BUTT_SQUARE_WINDOW_DEG 15 of square.
+- primitive-ribbon.js buildCurveBlockJoint, tried after buildBlockJoint at a line/arc corner (cornerStyle 'block', same
+  blockOff): CURVE_QUOIN_TURN_DEG { min: 20, max: 60 } (data; outside it, a concave corner, a run shorter than the block +
+  a joint, or an inner line that misses the inner arc = the mitre as before -- a fallback, not a clamp, advisor). The block:
+  the ring between a face square to the side (QUOIN_SET's 1.1 in along it) and a face along the arc's radius (1.1 in of
+  arc), 1.1 in deep -- the arc face follows the curve, the inner face the curve's offset (r -/+ 1.1) and the side's
+  offset line, meeting at one point. The side's run is cut square one joint past its face; the arc's run is cut PARALLEL
+  to the radial face one joint off (an even joint, not a radial line that opens with depth). Its polygon starts at the
+  corner (wrapInnerQuoins finds a corner by a block's first vertex).
+- contour-bands.js wrapInnerQuoins measured a block's size by its first edge -- a square's side, but one arc step on a
+  curved block, so band 2's block never matched band 1's, stayed whole, overlapped, and fell back to the mitre (no L).
+  Now the side of a square of its area (identical for a square).
+- The block's arcs: a step about 0.1 in, at most 16 (CURVE_QUOIN_ARC). 16 fixed steps on a short inner arc made the block
+  self-intersect when grown by a joint (a swallowtail at its inner corner): band 2's L came out non-simple and a wall
+  sliver (0.002 sq in) lay under it (T18 7x9 1 in mixed_bands). tests/bricks-quoin-stack.test.js now also pins every frame
+  piece simple.
+- Tests: bricks-quoin-stack.test.js + T10 / T18 cases (FAST) and a pin that the arched top's two corners take the curved
+  block (3 boards).
+- The full sweep (2432 lays: every template x 7x9 / 9x12 x 0.75 - 1.5 x every multi-band preset + the quoin variants + the
+  one-band ones) caught three faults, all fixed:
+  1. a row DEEPER than the 1.1 in block (T10 9x12 at 1.5 in) left the strip past the block's inner face along the side to no
+     run -- the arc's run is cut along the radius, so (unlike a square block's) the other run does not cover it: 0.438 sq in
+     bare. The curved block now spans the whole row: depth max(1.1 in, the row's depth); a row as deep as the arc's radius
+     (no inner arc) takes the mitre.
+  2. cutUnderQuoins ran only for 2+ quoin ribbons; a curved block needs it on ONE (T10 7x9 1.25 in: the short side's last
+     piece 0.003 sq in under it; T16 9x12 0.75 in: band 2's mitred corner under band 1's block). It cuts only a piece truly
+     over a quoin -- a square quoin's lay has none, so it stays byte-identical (the sweep's frame hashes).
+  3. the window catches more corners at other boards / sizes than my census (7x9 defaults): T3, T16, T19 also take it.
+  After: frame overlaps 0 rows, wall under frame 0, non-simple pieces 0, largest bare patch 0.043 = main's.
+- Expected changes: frame-corner-effect's T18 at 1.25 in case -- Block now cuts its arched top (live), Butt / Lapped still
+  greyed; frame-presets-unchanged re-pinned on this code -- exactly T18 quoin_corners 0.75 / 1.25 changed.
+- Main's own failures, not this branch's: GAP_SWEEP_FULL 14 + TIP_FAN_SWEEP_FULL 1 arch_keystone rows fail on origin/main too.

@@ -1,3 +1,4 @@
+// the chips are main/icon-select.js mountIconGrid's (the one picker system): the chip opens the grid
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   renderAccentList,
@@ -69,7 +70,7 @@ describe('BRICK-DROPDOWNS: Wall accent, Frame preset, and Brush accent use singl
     expect(list.style.display).toBe('none');
 
     // Toggle open
-    triggerWrap.click();
+    triggerBtn.click();
     expect(list.style.display).toBe('grid');
 
     // Click an accent preset
@@ -94,8 +95,8 @@ describe('BRICK-DROPDOWNS: Wall accent, Frame preset, and Brush accent use singl
     expect(list.style.display).toBe('none');
 
     // Toggle open
-    triggerWrap.click();
-    expect(list.style.display).toBe('flex');
+    triggerBtn.click();
+    expect(list.style.display).toBe('grid');
 
     // Click three_band preset
     const threeBandBtn = document.getElementById('brickFramePreset_three_band');
@@ -119,8 +120,8 @@ describe('BRICK-DROPDOWNS: Wall accent, Frame preset, and Brush accent use singl
     expect(popover.style.display).toBe('none');
 
     // Toggle open
-    triggerWrap.click();
-    expect(popover.style.display).toBe('flex');
+    triggerBtn.click();
+    expect(popover.style.display).toBe('grid');
 
     // Click checker preset
     const checkerBtn = document.getElementById('brickAccent_brush_checker');
