@@ -26363,3 +26363,29 @@ layer "<boardId>_L<n>_"; the legacy root board = the identity). newComponent sta
 
 **Process slip (mine).** One unguarded full vitest overlapped the S1 background vitest + matrix: 4 timing failures there
 and a layout run that straddled a merge (15 rows read main's pre-pattern-defaults layout). Re-run guarded.
+
+## 2026-10-15 -- seat A (77): brick colour roles + palette + the colour UI (branch colour-roles)
+
+Fred's answers (via the advisor): (1) new boards open in the Colour look, saved boards keep Height; (2) the grout colour
+is per element, in each element's Colour section; (3) a set's natural colour is the field default, pattern-declared
+colours on top; (4) the palette shows on the 2D / 3D view and the SVG download only -- the Fusion decal keeps today's look.
+
+**Shape.** Roles (field / motif / accent / stone) come from the engine's own tags (core/bricks/colour-roles.js) and are
+written as the editor-only attr data-brick-role. ONE ruleset, core/bricks/palette.js paletteCss(), feeds the 2D page
+style, the 3D drape SVG and the SVG download -- never a brick's own fill, so the sketch, the height mask and Send's bytes
+are unchanged. Pattern colours are declared data (FRAME_PRESET_DEFAULTS greek_key_mosaic: motif green, field white).
+UI: General gets the "2D look" switch; wall / frame / brush / raised brush each get a Colour section (role swatches with
+a reset when the user's own differs, then that element's grout colour; an untouched element reads the old board-wide one).
+
+**Saved boards.** MIGRATIONS 'brick-look-mode' sets lookMode 'height' when absent (pinned in brick-colour-ui and the
+existing brick-element-set whole-object pin, updated). The decal strips data-brick-role and passes no CSS:
+byte-identical to a board drawn before the roles (pinned).
+
+**Gate.** Full vitest guarded: 6799 pass, 5 fail -- 1 real (brick-element-set's whole-object pin now carries
+lookMode 'height', updated) + 4 timeouts under load (export-flow grep, frame-gen, frame-undo-step, matrix-introduced);
+the 5 files alone: 90/90 pass. Matrix: layout 92 rows, grout 5, sidebar-quick 8, migration 5 -- 0 FAIL, 0 page errors.
+Shots: ~/.bspline-status/shots/seatA/colour_ui/ (phone + desktop Colour section and General look; Greek key, hourglass
+Greek key, dentil corbel boards in 2D / 3D).
+
+**Left running (not mine to kill under auto mode):** my scratch serve.py on 9781 (PIDs 12496, 64248) -- the kill was
+denied by the permission classifier; harmless, but the port stays busy until stopped.
