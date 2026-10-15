@@ -24,8 +24,8 @@ const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).repl
 const $ = (id) => document.getElementById(id);
 const branch = (id) => $(brickBranchDomId(id));
 const open = (id) => branch(id).classList.contains('open');
-const caret = (id) => branch(id).querySelector('.brick-branch-caret');
-const head = (id) => branch(id).querySelector('.brick-branch-head');
+const caret = (id) => branch(id).querySelector('.drawer-branch-caret');
+const head = (id) => branch(id).querySelector('.drawer-branch-head');
 
 beforeAll(() => {
   localStorage.clear();
@@ -96,6 +96,6 @@ describe('General and Layers fold on their own, remembered per device', () => {
     expect(JSON.parse(localStorage.getItem(BRICK_TREE_OPEN_KEY))).not.toContain('general');
   });
   it('Layers says how many layers it holds', () => {
-    expect(branch('layers').querySelector('.brick-branch-summary').textContent).toMatch(/^\d+ layers?$/);
+    expect(branch('layers').querySelector('.drawer-branch-summary').textContent).toMatch(/^\d+ layers?$/);
   });
 });

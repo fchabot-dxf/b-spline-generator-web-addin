@@ -755,7 +755,7 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect($('brickTool_wall').classList.contains('active')).toBe(true);
     $('brickTab_general').click(); // the header OPENS (a second tap keeps it open; its caret folds)
     expect(onScreen('brickSharedLayout')).toBe(true);
-    $('brickBranch_general').querySelector('.brick-branch-caret').click();
+    $('brickBranch_general').querySelector('.drawer-branch-caret').click();
     expect(onScreen('brickSharedLayout')).toBe(false);
   });
   it('the Large stones row shows only for a fieldstone wall (item 23: the Fieldstone pattern = the rock set)', () => {

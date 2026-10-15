@@ -12,6 +12,7 @@
  */
 import { themeBrickSection } from './section-themes.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
+import { createDrawerTree } from './drawer-tree.js';
 
 const sec = (id, title, kind, rows, extra = {}) => Object.freeze({ id, title, kind, rows: Object.freeze(rows), ...extra });
 // Fred 2026-10-11 (per-pattern defaults): an element's size and joint (width, depth, profile) -- its pattern's defaults
@@ -84,93 +85,17 @@ export const BRICK_TREE_DEFAULT_OPEN = Object.freeze(['layers']);
 export const BRICK_TREE_OPEN_KEY = 'bspline.brick.drawerOpen';
 export const brickBranchDomId = (id) => `brickBranch_${id}`;
 
-const _tree = { doc: null, open: null, folded: new Set(), armed: null };
-const _readTreeOpen = () => {
-  try { const v = JSON.parse(localStorage.getItem(BRICK_TREE_OPEN_KEY)); if (Array.isArray(v)) return v; } catch (_) { /* blocked */ }
-  return [...BRICK_TREE_DEFAULT_OPEN];
-};
-const _writeTreeOpen = (ids) => { try { localStorage.setItem(BRICK_TREE_OPEN_KEY, JSON.stringify(ids)); } catch (_) { /* not remembered */ } };
-
-/** Builds the tree once per document inside `container` (the hosts move into their branches); `onArm(toolId)` arms a
- *  tool (brick-panel.js selectTool). Returns the declared hosts missing from the page. */
-export function buildBrickDrawerTree(container, onArm, doc = container ? container.ownerDocument : null) {
-  if (!container || !doc) return [];
-  if (_tree.doc === doc && doc.getElementById('brickDrawerTree')) return [];
-  _tree.doc = doc;
-  _tree.open = _readTreeOpen();
-  const missing = [];
-  const tree = doc.createElement('div');
-  tree.id = 'brickDrawerTree';
-  tree.className = 'brick-drawer-tree';
-  container.appendChild(tree);
-  for (const b of BRICK_DRAWER_TREE) {
-    const shell = doc.createElement('div');
-    shell.id = brickBranchDomId(b.id);
-    shell.className = 'brick-branch';
-    shell.dataset.branch = b.id;
-    const head = doc.createElement('button');
-    head.type = 'button';
-    head.id = b.headerId || `${brickBranchDomId(b.id)}_head`;
-    head.className = 'brick-branch-head';
-    const caret = doc.createElement('span');
-    caret.className = 'brick-branch-caret';
-    const title = doc.createElement('span');
-    title.className = 'brick-branch-title';
-    title.textContent = b.title;
-    const summary = doc.createElement('span');
-    summary.className = 'brick-branch-summary';
-    head.append(caret, title, summary);
-    const body = doc.createElement('div');
-    body.className = 'brick-branch-body';
-    shell.append(head, body);
-    tree.appendChild(shell);
-    for (const h of b.hosts) { const el = doc.getElementById(h); if (el) body.appendChild(el); else missing.push(h); }
-    // the caret folds / unfolds; the rest of the header OPENS (an element branch: by arming its tool)
-    caret.addEventListener('click', (e) => { e.stopPropagation(); toggleBrickBranch(b.id); });
-    head.addEventListener('click', () => { if (b.armsTool && _tree.armed !== b.armsTool) onArm(b.armsTool); else openBrickBranch(b.id); });
-  }
-  syncBrickDrawerTree(_tree.armed);
-  return missing;
-}
-
-const _isOpen = (b) => (b.armsTool ? b.armsTool === _tree.armed && !_tree.folded.has(b.id) : _tree.open.includes(b.id));
-
+// the tree itself: main/drawer-tree.js (one mechanism for the Brick, Draw and Lattice trees)
+export const BRICK_TREE = createDrawerTree({ id: 'brickDrawerTree', branches: BRICK_DRAWER_TREE, openKey: BRICK_TREE_OPEN_KEY,
+  defaultOpen: BRICK_TREE_DEFAULT_OPEN, branchDomId: brickBranchDomId });
+/** Builds the Brick tree inside `container`; `onArm(toolId)` arms a tool (brick-panel.js selectTool). */
+export const buildBrickDrawerTree = (container, onArm, doc) => BRICK_TREE.build(container, onArm, doc);
 /** Opens branch `id` (an element branch only when its tool is armed) and scrolls it into view. */
-export function openBrickBranch(id) {
-  const b = BRICK_DRAWER_TREE.find((x) => x.id === id);
-  if (!b || !_tree.doc) return;
-  if (b.armsTool) _tree.folded.delete(id);
-  else if (!_tree.open.includes(id)) { _tree.open = [..._tree.open, id]; _writeTreeOpen(_tree.open); }
-  syncBrickDrawerTree(_tree.armed);
-  _tree.doc.getElementById(brickBranchDomId(id))?.scrollIntoView?.({ block: 'nearest' });
-}
-
-/** The caret: folds / unfolds branch `id` (an unarmed element branch has nothing to unfold: its settings follow the armed tool). */
-export function toggleBrickBranch(id) {
-  const b = BRICK_DRAWER_TREE.find((x) => x.id === id);
-  if (!b || !_tree.doc) return;
-  if (b.armsTool) { if (b.armsTool !== _tree.armed) return; if (_tree.folded.has(id)) _tree.folded.delete(id); else _tree.folded.add(id); }
-  else { _tree.open = _tree.open.includes(id) ? _tree.open.filter((x) => x !== id) : [..._tree.open, id]; _writeTreeOpen(_tree.open); }
-  syncBrickDrawerTree(_tree.armed);
-}
-
-/** Each branch's open state, caret and summary for the armed tool (a tool switch unfolds the new tool's branch). */
-export function syncBrickDrawerTree(armedTool) {
-  const doc = _tree.doc;
-  if (!doc) return;
-  if (armedTool !== _tree.armed) { _tree.folded.clear(); _tree.armed = armedTool; }
-  for (const b of BRICK_DRAWER_TREE) {
-    const shell = doc.getElementById(brickBranchDomId(b.id));
-    if (!shell) continue;
-    const open = _isOpen(b);
-    shell.classList.toggle('open', open);
-    shell.classList.toggle('armed', !!b.armsTool && b.armsTool === armedTool);
-    shell.querySelector(':scope > .brick-branch-body').hidden = !open;
-    shell.querySelector('.brick-branch-caret').textContent = open ? '▾' : '▸';
-    const s = typeof b.summary === 'function' ? b.summary(doc) : b.summary;
-    shell.querySelector('.brick-branch-summary').textContent = s || '';
-  }
-}
+export const openBrickBranch = (id) => BRICK_TREE.open(id);
+/** The caret: folds / unfolds branch `id`. */
+export const toggleBrickBranch = (id) => BRICK_TREE.toggle(id);
+/** Each branch's open state for the armed tool (a tool switch unfolds the new tool's branch). */
+export const syncBrickDrawerTree = (armedTool) => BRICK_TREE.sync(armedTool);
 
 /** Which sections are open is remembered per device -- the SAME store as the main sidebar's sections (the palette's
  *  PANEL_OPEN_KEY), keyed by the section's own `panel-<key>` class. */

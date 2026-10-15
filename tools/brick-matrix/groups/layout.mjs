@@ -61,7 +61,7 @@ export const BRICK_SECTIONS_LAYOUT = {
   ],
   tabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush'],
   // phase 4: the drawer tree's branch headers (main/brick-tab-sections.js BRICK_DRAWER_TREE) are tree controls, not settings
-  outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings, .brick-branch-head',
+  outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings, .drawer-branch-head',
 };
 
 // ---- 2026-10-07 (seat A): at phone width the sidebar's board size stays reachable WHILE the editor is open; the open
@@ -248,7 +248,7 @@ const BRICK_SECTIONS_PROBE = (outside) => `JSON.stringify((()=>{
   const secs = [...panel.querySelectorAll('.brick-sec')].filter(shown);
   const titles = secs.map((s) => s.querySelector('.panel-header').textContent.trim());
   // phase 4: a title is unique within its BRANCH (General opens beside an element: two Crumbles, one per branch)
-  const byBranch = {}; secs.forEach((s, i) => { const b = (s.closest('.brick-branch') || {}).dataset?.branch || '-'; (byBranch[b] = byBranch[b] || []).push(titles[i]); });
+  const byBranch = {}; secs.forEach((s, i) => { const b = (s.closest('.drawer-branch') || {}).dataset?.branch || '-'; (byBranch[b] = byBranch[b] || []).push(titles[i]); });
   const dupes = Object.entries(byBranch).filter(([, t]) => new Set(t).size !== t.length).map(([b]) => b);
   const stray = [...panel.querySelectorAll('input, select, button, textarea')].filter(shown)
     .filter((c) => !c.closest(${JSON.stringify(outside)}) && !c.closest('.brick-sec')).map((c) => c.id || c.textContent.trim().slice(0, 20));
