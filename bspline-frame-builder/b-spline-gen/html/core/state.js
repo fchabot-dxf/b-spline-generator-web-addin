@@ -321,6 +321,9 @@ export const DEFAULT = {
     // FB-APP S2 (F6): the persisted frame record (core/frame-record.js).
     // null = no frame (Fred, Q2); every read goes through normalizeFrameRecord.
     frame: null,
+    // Send targets (seat A 2026-10-14): this project's board in Fusion (main/send-targets.js mints it at a Send; a
+    // replace targets the board component tagged with it). null = none yet; a New project / Save As copy drops it.
+    boardId: null,
     // Vector Stamping (Multi-Layer Support)
     // SE4c: .svg/.mask retired from this shape — content lives only on
     // P.editorSvg / editor._layers[i]._mask now (SE4-MIRROR-RETIREMENT-

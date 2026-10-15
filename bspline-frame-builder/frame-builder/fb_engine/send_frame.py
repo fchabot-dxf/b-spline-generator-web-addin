@@ -47,6 +47,7 @@ from fb_engine.frame_definition import DEFAULT_FRAME_BOTTOM_EXPR, APPEARANCE_OPT
 from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
+from fb_engine.board_scope import BoardScope
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
 FRAME_TYPE_VALUE = "Frame"
@@ -166,16 +167,18 @@ def declared_param_names(template):
     return {p["Name"] for s in template.get("Sketches", []) for p in s.get("Parameters", [])}
 
 
-def find_frames(design):
-    """Components tagged as frames, by attribute."""
+def find_frames(design, scope=None):
+    """Components tagged as frames, by attribute -- only the ones `scope` (fb_engine.board_scope) owns when given:
+    a design holding several boards has one frame per board (Send targets, 2026-10-14)."""
     out = []
     for a in design.findAttributes(*FRAME_TYPE_ATTR) or []:
         if getattr(a, "value", None) == FRAME_TYPE_VALUE and a.parent is not None and a.parent not in out:
-            out.append(a.parent)
+            if scope is None or scope.owns(a.parent):
+                out.append(a.parent)
     return out
 
 
-def delete_previous_frames(design, log):
+def delete_previous_frames(design, log, scope=None):
     """Delete every tagged frame: first the features it owns elsewhere (by
     FrameComponent tag), then its occurrences. Returns the deleted names.
 
@@ -191,7 +194,7 @@ def delete_previous_frames(design, log):
     own component. Skip exactly the bars; keep deleting anything the occurrence delete can't
     reach, unchanged."""
     names = []
-    for comp in find_frames(design):
+    for comp in find_frames(design, scope):
         name = comp.name
         for a in list(design.findAttributes(*FRAME_MEMBER_ATTR) or []):
             if getattr(a, "value", None) != name or a.parent is None:
@@ -279,7 +282,8 @@ def underside_face(body, score=_face_downward_z):
     return best_face
 
 
-def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid, value_input=None):
+def send_frame(design, payload, find_core_body, logger, *, resolve_template, build_sketch, build_solid, value_input=None,
+               scope=None):
     """Run [Send frame]. `find_core_body()` returns the B-spline body (or None);
     it is asked TWICE: up front (refuse without one) and again right before the
     solid build. MEASURED live (F11): a BRepFace taken before the delete + sketch
@@ -287,8 +291,13 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     ("InternalValidationError : face" on every bar, 0 bars built), so the target
     face is resolved fresh at the moment it is used.
     Returns {ok, error, deleted, frame, fit, seeds}; never raises for a
-    user-facing reason (it is reported as `error`)."""
+    user-facing reason (it is reported as `error`).
+
+    `scope` (fb_engine.board_scope.BoardScope, Send targets 2026-10-14): the board this frame belongs to -- the frame
+    deleted, built into, found again and put before ITS inlay is that board's only. None = the legacy root board
+    (BoardScope(design)): with no tagged board in the design that is exactly the old design-wide behaviour."""
     log = lambda msg, level="INFO": logger.log(msg, level)
+    scope = scope if scope is not None else BoardScope(design)
     seeds = dict(payload.get("seeds") or {})
     seed_geometry = payload.get("seedGeometry") or None
     # H23 item 42 (ONE build path, declared): `seeds` is the UI's own normalized handle values
@@ -329,7 +338,7 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             except SeedGeometryError as e:
                 raise SendFrameError(f"The frame shape could not be seeded: {e}")
 
-        result["deleted"] = delete_previous_frames(design, log)
+        result["deleted"] = delete_previous_frames(design, log, scope)
         lip = panel_lip_of(payload)
         result["panelLip"] = {"in": lip, "param": sync_panel_lip_param(design, lip, log, value_input)}
         data = {"ui_data": ui_data}
@@ -343,15 +352,16 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         joined = joined_miters_of(payload)
         if joined:
             data["joined_miters"] = joined
+        data["frame_scope"] = scope  # frame_engine: the frame component goes under the board's host
         # H23 item 52: set the marker before the inlay ONCE, covering BOTH build_sketch and
         # build_solid below (Fusion advances the marker itself as each new item lands, confirmed
         # live -- no need to re-set it between the two calls) -- restored in the finally
         # regardless of how this block exits, so a build failure never leaves the marker
         # sitting mid-timeline for whatever comes after.
-        prior_marker = mark_before_inlay(design, logger)
+        prior_marker = mark_before_inlay(design, logger, scope)
         try:
             result["fit"] = build_sketch(style_id=template_id, external_logger=logger, data=data)
-            frames = find_frames(design)
+            frames = find_frames(design, scope)
             if not frames:
                 raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
             result["frame"] = frames[-1].name
@@ -362,8 +372,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
                 raise SendFrameError("The B-spline body is gone after the frame sketch build (see the log).")
             log(f"SEND FRAME: underside face resolved fresh for the solid build (the early one valid: {early_face_valid})")
             z = payload.get("frameBottomZ")
+            # a design with boards: the solid build is told its frame + scope (its discovery takes the FIRST tagged
+            # frame); a legacy-only design calls it exactly as before
+            board_kw = {"frame_comp": frames[-1], "scope": scope} if (scope.is_board or scope.has_boards()) else {}
             build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
-                        appearance_name=payload.get("appearance"), external_logger=logger)
+                        appearance_name=payload.get("appearance"), external_logger=logger, **board_kw)
         finally:
             restore_marker_position(design, prior_marker, logger)
         if seeds and not applied:

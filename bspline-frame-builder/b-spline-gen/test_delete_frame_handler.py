@@ -41,10 +41,16 @@ def env(monkeypatch):
 
     from fb_engine import send_frame as fb_send
 
-    def fake_delete(design_, log):
+    def fake_delete(design_, log, scope=None):  # + the board scope (Send targets)
         calls['delete_previous_frames'].append(design_)
+        calls['scope'] = scope
         return ['Frame_1']
     monkeypatch.setattr(fb_send, 'delete_previous_frames', fake_delete)
+    # Send targets: the project's board, resolved like a replace (its tagged board, else the legacy root board)
+    def fake_scope(des, target, board, params):
+        calls['resolved'] = (des, target, board)
+        return 'the-project-board'
+    monkeypatch.setattr(bsg, '_resolve_send_scope', fake_scope)
     # nothing else this add-in built may go
     for name in ('_remove_last_import', '_delete_bspline_sets', '_clear_custom_graphics'):
         monkeypatch.setattr(bsg, name, (lambda n: (lambda *a, **k: calls['other'].append(n)))(name))
@@ -58,6 +64,8 @@ def _press():
 def test_deletes_the_built_frames_through_the_send_path_and_reports_them(env):
     _press()
     assert env.calls['delete_previous_frames'] == [env.design]
+    assert env.calls['resolved'] == (env.design, 'replace', {'id': '', 'name': 'Board'})
+    assert env.calls['scope'] == 'the-project-board'  # only that board's frame (Send targets)
     assert env.pal.sent == [('delete_frame_result', {'ok': True, 'frames': ['Frame_1'], 'error': None})]
 
 

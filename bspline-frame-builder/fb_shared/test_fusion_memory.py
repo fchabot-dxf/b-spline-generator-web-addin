@@ -46,7 +46,7 @@ def test_send_and_build_both_read_it_before_they_start():
     # 2026-10-10 (Fred, via the advisor): also on panel open (the first handshake) and after each Send's success
     opened = bsg[bsg.index("if action == 'get_design_params':"):]
     assert opened.index("_post_fusion_memory('panel open')") < opened.index('return')
-    gen = bsg[bsg.index("if _post_to_palette('import_success', {}):"):]
+    gen = bsg[bsg.index("if _post_to_palette('import_success', done):"):]  # done = the Send's target + board (Send targets)
     assert gen.index("_post_fusion_memory('after Send')") < gen.index('except Exception')
     assert "_send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, where))" in cam
     # the BUILD reading comes before the engine loads (the start of _do_generate)

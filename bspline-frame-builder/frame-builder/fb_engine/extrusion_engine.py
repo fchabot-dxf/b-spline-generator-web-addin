@@ -35,7 +35,8 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
-    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None):
+    def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None,
+                         cut_context=None):
         """Extrude every closed frame-bar profile in the shape-outline
         sketch and apply the SURROUND trim cut.
 
@@ -43,6 +44,11 @@ class ExtrusionEngine:
         None for a frame without a declared template (bounding-box path).
         Returns the list of new BAR bodies (SURROUND produces no bodies,
         only a cut feature).
+
+        ``cut_context`` (Send targets, fb_engine.board_scope.BoardScope.cut_context): a frame inside an offset BOARD
+        gets its SURROUND cut from (root extrude features, the frame's root-context occurrence) -- MEASURED (probe 2,
+        2026-10-14): from any component's own features Fusion refused it, "body not found to extrude through".
+        None (the legacy root board): unchanged.
         """
         # the bodies the SURROUND cuts actually modified (_finalize_feature) -- the coordinator restores each one's
         # own paint: the to_face body is not always the cut's target (measured live 2026-10-07)
@@ -67,7 +73,7 @@ class ExtrusionEngine:
         new_bodies = []
         for prof, plan, i in to_process:
             new_bodies.extend(
-                self._extrude_one_profile(extrudes, prof, plan, i, prefix, to_face, comp.name)
+                self._extrude_one_profile(extrudes, prof, plan, i, prefix, to_face, comp.name, cut_context=cut_context)
             )
         return new_bodies
 
@@ -137,7 +143,7 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Phase 3 -- single-profile extrusion
     # ------------------------------------------------------------------
-    def _extrude_one_profile(self, extrudes, prof, plan, i, prefix, to_face, frame_comp_name=None):
+    def _extrude_one_profile(self, extrudes, prof, plan, i, prefix, to_face, frame_comp_name=None, cut_context=None):
         """Build one extrude feature (BAR or SURROUND) from its plan, name
         it, clean up its faces, and return any new bodies.
 
@@ -150,6 +156,8 @@ class ExtrusionEngine:
         self.log.log(f"  PROFILE {i}: type={ctype} area={area_str}")
 
         try:
+            if ctype == "SURROUND" and cut_context is not None:  # a board's trim cut: from the root (see extrude_profiles)
+                extrudes, prof = cut_context[0], prof.createForAssemblyContext(cut_context[1])
             op = (
                 adsk.fusion.FeatureOperations.CutFeatureOperation
                 if ctype == "SURROUND"

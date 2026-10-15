@@ -201,7 +201,35 @@ def is_frame_timeline_item(timeline_item, frame_component_name):
     return _component_name_for_entity(entity) == frame_component_name
 
 
-def reorder_frame_before_inlay_in_design(design, frame_component_name, logger=None):
+def _component_for_entity(entity):
+    """The component a TimelineObject's entity lives in (an occurrence: the one it creates), or None."""
+    if entity is None:
+        return None
+    for attr in ("component", "parentComponent"):
+        try:
+            comp = getattr(entity, attr, None)
+            if comp is not None:
+                return comp
+        except Exception:
+            pass
+    return None
+
+
+def _scoped_inlay(scope):
+    """is_inlay predicate: an inlay item, and (Send targets 2026-10-14) one of `scope`'s own board when given."""
+    def is_inlay(it):
+        if not is_inlay_item_name(getattr(it, "name", None)):
+            return False
+        if scope is None:
+            return True
+        try:
+            return scope.owns(_component_for_entity(it.entity))
+        except Exception:
+            return False
+    return is_inlay
+
+
+def reorder_frame_before_inlay_in_design(design, frame_component_name, logger=None, scope=None):
     """Real-Fusion glue — see this module's own docstring for what's
     verified (the pure algorithm, unit-tested) vs. not (this function,
     "NO FUSION" this turn; the advisor verifies it live)."""
@@ -209,12 +237,12 @@ def reorder_frame_before_inlay_in_design(design, frame_component_name, logger=No
         return {"moved": False, "reason": "no timeline"}
 
     is_frame_item = lambda it: is_frame_timeline_item(it, frame_component_name)
-    is_inlay_item = lambda it: is_inlay_item_name(getattr(it, "name", None))
+    is_inlay_item = _scoped_inlay(scope)
 
     return reorder_frame_before_inlay(design.timeline, is_frame_item, is_inlay_item, logger=logger)
 
 
-def mark_before_inlay(design, logger=None):
+def mark_before_inlay(design, logger=None, scope=None):
     """H23 item 52: set `design.timeline.markerPosition` to the inlay's own EARLIEST index, so
     whatever the CALLER builds next is inserted THERE directly -- contiguous, already in the
     right place -- instead of landing at the end and needing the expensive post-hoc reorder
@@ -241,9 +269,10 @@ def mark_before_inlay(design, logger=None):
         return None
     timeline = design.timeline
     inlay_idx = None
+    is_inlay = _scoped_inlay(scope)  # Send targets: the board's OWN inlay (another board's is not before this frame)
     for i in range(timeline.count):
         try:
-            if is_inlay_item_name(getattr(timeline.item(i), "name", None)):
+            if is_inlay(timeline.item(i)):
                 inlay_idx = i
                 break
         except Exception:
@@ -304,7 +333,7 @@ def restore_marker_position(design, state, logger=None):
 BENIGN_NOT_MOVED_REASONS = ("no inlay present", "already in order")
 
 
-def ensure_frame_before_inlay(design, frame_component_name, logger=None):
+def ensure_frame_before_inlay(design, frame_component_name, logger=None, scope=None):
     """The ONE call every frame build step ends with. The sketch build
     (frame_engine.run_sketch_only / run_full_synthesis) AND the solid build
     (solid_coordinator.SolidCoordinator.run) both call it, because each one
@@ -316,7 +345,7 @@ def ensure_frame_before_inlay(design, frame_component_name, logger=None):
     the inlay. Returns the reorder result dict; warns on any
     non-benign not-moved reason (the any-refusal-moves-nothing rule
     stays in reorder_frame_before_inlay)."""
-    result = reorder_frame_before_inlay_in_design(design, frame_component_name, logger)
+    result = reorder_frame_before_inlay_in_design(design, frame_component_name, logger, scope)
     if not result["moved"] and result["reason"] not in BENIGN_NOT_MOVED_REASONS:
         if logger:
             try:

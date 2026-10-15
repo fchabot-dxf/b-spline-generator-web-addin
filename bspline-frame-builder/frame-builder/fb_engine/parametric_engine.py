@@ -490,7 +490,9 @@ class ParametricSketchBuilder:
         world axis.
         """
         try:
-            y_axis = self.ctx.design.rootComponent.yConstructionAxis
+            # Send targets (MEASURED, probe 2 2026-10-14): the sketch's OWN component's axis -- the root's lies outside a
+            # board offset beside the others (the outline then solved a reflex arc); at the root it is the same line
+            y_axis = sketch.parentComponent.yConstructionAxis
             proj_axis = sketch.project(y_axis)
             if proj_axis.count > 0:
                 self.ctx.entity_map[sketch_name]["Y_AXIS"] = proj_axis.item(0)
@@ -516,7 +518,7 @@ class ParametricSketchBuilder:
         template may not need.
         """
         try:
-            x_axis = self.ctx.design.rootComponent.xConstructionAxis
+            x_axis = sketch.parentComponent.xConstructionAxis  # the sketch's own component's (see _project_y_axis)
             proj_axis = sketch.project(x_axis)
             if proj_axis.count > 0:
                 self.ctx.entity_map[sketch_name]["X_AXIS"] = proj_axis.item(0)
