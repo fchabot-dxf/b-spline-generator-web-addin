@@ -26394,3 +26394,10 @@ denied by the permission classifier; harmless, but the port stays busy until sto
 COLOUR header; it now reads "Grout", declared as ROLE_LABELS.grout (palette.js) beside the role labels and written by
 syncGroutPaintRow (the HTML span is empty). Test: brick-colour-ui asserts the label; fails 1/7 on the pre-change
 brick-panel.js. Phone shot: shots/seatA/colour_ui/colour_phone_frame_section_grout_label.png.
+
+**Merge with main 740bf80 (D's drawer trees).** One conflict, tests/brick-tab-sections.test.js: kept D's tree assertions
+(General's sections inside brickBranch_general; the armed element's sections stay) and the Colour ones. One semantic
+break the auto-merge hid: _groutPaintTarget read _generalTab, which the tree removed (ReferenceError, 3 colour tests +
+the tab-sections file). The tree keeps the armed tool, and the grout row now lives only in an element's Colour section,
+so the target is the selected element, else the armed tool. Touched files 61/61; matrix layout 92, grout 5,
+sidebar-quick 8, migration 5 -- 0 FAIL.

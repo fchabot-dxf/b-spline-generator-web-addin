@@ -1520,9 +1520,10 @@ export function setElementGrout(kind, widthIn, phase = 'onRelease') {
  *  grout nodes repaint (editor-brick-tool.js repaintGrout), nothing re-lays, one undo step. */
 function _groutPaintTarget() {
   // Fred 2026-10-15 (colour plan): the grout colour sits in each element's Colour section -- the selected element's, else
-  // the active element tab's; the board-wide groutPaint stays the fallback an untouched element reads (groutPaintOf)
+  // the armed element's (its branch in the drawer tree); the board-wide groutPaint stays the fallback an untouched element
+  // reads (groutPaintOf)
   const picked = _selectedElement && (JOINT_ELEMENT[_selectedElement.kind] || _selectedElement.kind);
-  const kind = picked || (_activeTool && !_generalTab ? JOINT_ELEMENT[_activeTool] || _activeTool : null);
+  const kind = picked || (_activeTool ? JOINT_ELEMENT[_activeTool] || _activeTool : null);
   return kind && GROUT_ELEMENT_KINDS.includes(kind) ? kind : null;
 }
 export function setGroutPaint(patch, target = _groutPaintTarget()) {
