@@ -38,12 +38,12 @@ describe('the Draw tree', () => {
     expect(inBranch('expand', 'editorExpandGroup')).toBe(true);
     for (const g of ['editorLayersHeader', 'editorLayersList']) expect(inBranch('layers', g), g).toBe(true);
   });
-  it('the first look: General open, the rest folded; the open set is remembered per device', () => {
+  it('the first look: General and Layers open (Fred: the layers in view); the caret folds; the open set is remembered', () => {
     expect(open('general')).toBe(true);
-    expect(open('layers')).toBe(false);
-    branch('layers').querySelector('.drawer-branch-head').click();
     expect(open('layers')).toBe(true);
-    expect(JSON.parse(localStorage.getItem(DRAW_TREE_OPEN_KEY))).toContain('layers');
+    branch('layers').querySelector('.drawer-branch-caret').click();
+    expect(open('layers')).toBe(false);
+    expect(JSON.parse(localStorage.getItem(DRAW_TREE_OPEN_KEY))).not.toContain('layers');
   });
   it('a tool branch is the tool\'s: the Text header arms the Text tool; the text mode opens it, another mode folds it', () => {
     const click = vi.fn(); $('toolText').addEventListener('click', click);

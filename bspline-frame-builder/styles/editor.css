@@ -2060,7 +2060,7 @@
     text-align: right;
 }
 .drawer-branch-body {
-    padding: 10px;
+    padding: 8px; /* measured: 10 px pushed a Shape segment-style field 1 px past the panel (layout Panel fit) */
 }
 .drawer-branch-body[hidden] {
     display: none;

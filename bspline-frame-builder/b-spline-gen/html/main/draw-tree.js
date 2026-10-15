@@ -15,8 +15,9 @@ export const DRAW_DRAWER_TREE = Object.freeze([
   Object.freeze({ id: 'layers', title: 'Layers', hosts: Object.freeze(['drawLayersBody']),
     summary: (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; } }),
 ]);
-// the mockup's first look: General open, the rest folded
-export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general']);
+// the first look: General open, and the Layers (Fred, phone: "We don't see layers" -- the Brick tree opens them too;
+// the layers matrix row reads the list on screen when the Draw tab is back); Text / Expand open with their tool
+export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general', 'layers']);
 export const DRAW_TREE_OPEN_KEY = 'bspline.draw.drawerOpen';
 export const DRAW_TREE = createDrawerTree({ id: 'drawDrawerTree', branches: DRAW_DRAWER_TREE, openKey: DRAW_TREE_OPEN_KEY,
   defaultOpen: DRAW_TREE_DEFAULT_OPEN, branchDomId: drawBranchDomId });
