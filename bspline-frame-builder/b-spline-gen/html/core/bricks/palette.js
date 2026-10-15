@@ -28,6 +28,16 @@ export const LOOK_MODES = Object.freeze(['height', 'colour']);
 export const DEFAULT_LOOK_MODE = 'height'; // absent on a saved board = today's view (Fred's fork 1 decides new boards)
 export const PALETTE_KINDS = Object.freeze(['wall', 'frame', 'brush']);
 export const PALETTE_STYLE_ID = 'brickPaletteStyle';
+/** The page event a palette / look change sends (main/app-init.js repaints the 3D drape on it). */
+export const BRICK_PALETTE_CHANGED = 'brickPaletteChanged';
+/** The roles an element's Colour section lists (its pieces can carry them) and how they read. The Raised brush
+ *  paints the Brush's. */
+export const ROLES_FOR_KIND = Object.freeze({
+  wall: Object.freeze(['field', 'accent']),
+  frame: Object.freeze(['field', 'motif', 'accent', 'stone']),
+  brush: Object.freeze(['field', 'accent']),
+});
+export const ROLE_LABELS = Object.freeze({ field: 'Field', motif: 'Motif', accent: 'Accent', stone: 'Stone' });
 const PAINTED_ROLES = BRICK_COLOUR_ROLES.filter((r) => r !== 'grout');
 
 const _setIdOf = (settings, kind) => {

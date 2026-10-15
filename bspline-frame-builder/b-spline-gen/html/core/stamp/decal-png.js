@@ -20,6 +20,12 @@ import { sanitizeSvgForRaster, prepareSvgForRaster, renderSvgNative } from './re
  * @returns {Promise<string|null>} a 'data:image/png;base64,...' data URL, or null if there is
  *   nothing to render (no colour-carrying layers qualify).
  */
+/** The decal's drape SVG: today's look (Fred 2026-10-15, colour plan): never the brick palette, and the colour roles'
+ *  editor-only attribute stripped -- byte-identical to a board drawn before the roles. */
+export function decalDrapeSvg(layers, sketchSvg) {
+  return buildDrapeSvg(layers, String(sketchSvg || '').replace(/ data-brick-role="[a-z]*"/g, ''));
+}
+
 export async function buildArtworkDecalPng(editor, opts = {}) {
   const dpi = Number(opts.dpi) || 150;
   const opacityIn = Number.isFinite(Number(opts.opacity)) ? Number(opts.opacity) : 100;
@@ -32,8 +38,7 @@ export async function buildArtworkDecalPng(editor, opts = {}) {
     ? allLayers.filter((l) => layerIds[l.id] !== false)
     : allLayers;
 
-  const sketchSvg = editor.save(editor, 96);
-  const drapeSvg = buildDrapeSvg(layers, sketchSvg);
+  const drapeSvg = decalDrapeSvg(layers, editor.save(editor, 96));
   if (!drapeSvg) return null;
 
   const mW = editor._mW, mH = editor._mH;

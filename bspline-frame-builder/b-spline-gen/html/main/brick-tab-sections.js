@@ -16,15 +16,18 @@ const sec = (id, title, kind, rows, extra = {}) => Object.freeze({ id, title, ki
 // Fred 2026-10-11 (per-pattern defaults): an element's size and joint (width, depth, profile) -- its pattern's defaults
 // unless overridden there (main/brick-panel.js ELEMENT_LOOK_RESETS)
 const JOINT = ['brickSizeBlock', 'brickGroutWidthRow', 'brickGroutDepthRow', 'brickGroutSpacingHint'];
+// Fred 2026-10-15 (colour plan): an element's colours -- its roles (main/brick-panel.js renderColourRow) and its grout
+const COLOUR = () => sec('colour', 'Colour', 'brick-colour', ['brickColourRow', 'brickGroutPaintRow']);
 
 export const BRICK_TAB_SECTIONS = Object.freeze({
   general: Object.freeze({ host: 'brickSharedLayout', after: null, sections: Object.freeze([
-    sec('look', 'Look · every element', 'brick-look', ['brickGroutPaintRow']),
+    sec('look', 'Look · every element', 'brick-look', ['brickLookModeRow']), // Fred 2026-10-15: the grout colour moved to each element's Colour
     sec('crumble', 'Crumble', 'brick-crumble', ['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']),
     sec('random', 'Randomness', 'brick-random', ['brickSeedRow']),
   ]) }),
   wall: Object.freeze({ host: 'brickWallSection', after: 'brickWallAreaHint', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
+    COLOUR(),
     sec('pattern', 'Pattern', 'brick-pattern', ['brickWallPatternRow', 'brickWallRotationRow', 'brickLargeStonesRow'], { titleOf: 'brickWallPatternLabel' }),
     sec('accent', 'Accent relief', 'brick-accent', ['brickWallAccentRow', 'brickAccentActionsRow', 'brickPatternBuilder', 'brickAccentLevelRow'], { titleOf: 'brickWallAccentLabel' }),
     sec('height', 'Height', 'brick-height', ['brickRusticRow_wall', 'brickLevelRow_wall', 'brickEdgeTaperRow']), // + Edge taper (Fred 2026-10-11), shared
@@ -32,6 +35,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
   ]) }),
   frame: Object.freeze({ host: 'brickFrameSection', after: 'brickElementLabel_frame', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
+    COLOUR(),
     sec('bands', 'Bands', 'brick-pattern', ['brickFramePresetRow', 'brickFrameOffsetRow', 'brickFrameBandsNoteRow', 'brickFrameBandPatternRow']), // + Offset from frame (where the bands start)
     // Fred 2026-10-11: the Corners picker is retired (a preset bundles its corner) -- the section holds the fan-centre row alone
     sec('fanCentre', 'Fan centre', 'brick-fan-centre', ['brickFrameFanCentreRow'], { titleOf: 'brickFrameFanCentreLabel' }), // T86 item 16e
@@ -43,6 +47,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
   ]) }),
   brush: Object.freeze({ host: 'brickBrushSection', after: 'brickElementLabel_brush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
+    COLOUR(),
     sec('stroke', 'Stroke', 'brick-pattern', ['brickBrushProfileRow', 'brickBrushOrientationRow', 'brickBrushPresetRow']),
     sec('accent', 'Accent relief', 'brick-accent', ['brickBrushAccentRow']),
     sec('height', 'Height', 'brick-height', ['brickRusticRow_brush', 'brickEdgeTaperRow']),
@@ -50,6 +55,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
   ]) }),
   raisedBrush: Object.freeze({ host: 'brickRaisedSection', after: 'brickElementLabel_raisedBrush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
+    COLOUR(),
     sec('mode', 'Mode', 'brick-pattern', ['brickRaisedModeRow'], { titleOf: 'brickRaisedModeLabel' }),
     sec('height', 'Height', 'brick-height', ['brickRaisedLevelRow']),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),

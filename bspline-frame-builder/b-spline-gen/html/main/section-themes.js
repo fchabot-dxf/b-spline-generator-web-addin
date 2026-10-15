@@ -47,6 +47,7 @@ export const EDITOR_SECTION_THEMES = Object.freeze({
 export const BRICK_SECTION_THEMES = Object.freeze({
   'brick-size': { hue: 210 },
   'brick-look': { hue: 150 },
+  'brick-colour': { hue: 25 }, // Fred 2026-10-15: each element's Colour section
   'brick-crumble': { hue: 70 },
   'brick-random': { hue: 250 },
   'brick-bricks': { hue: 6 },

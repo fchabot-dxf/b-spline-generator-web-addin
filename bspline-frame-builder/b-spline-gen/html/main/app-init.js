@@ -28,7 +28,7 @@ import { syncFramePanel } from './frame-panel.js';
 import { adoptStoredPhoto } from './photo-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
-import { paletteCss } from '../core/bricks/palette.js';
+import { paletteCss, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
 import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
@@ -662,6 +662,13 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    id: 'brick-look-mode',
+    // Fred 2026-10-15 (colour plan, fork 1): new boards open in the Colour look; a board saved before it has no lookMode
+    // (the load replaces brickSettings whole) and keeps the Height look -- today's view, untouched.
+    when: (p) => p.brickSettings && p.brickSettings.lookMode == null,
+    apply: (p) => { p.brickSettings.lookMode = 'height'; },
+  },
   // 'frame-corner-presets' (item 33: a board on butt_frame / quoin_corners became Soldier + a Corners-row pick) is
   // RETIRED with the picker (Fred 2026-10-11: a preset bundles its corner) -- both are listed presets again, so it would
   // now turn a board saved on "Soldier · quoin" into Soldier + a hidden corner. A board it already migrated keeps its
@@ -678,8 +685,14 @@ export function runMigrations(p = P) {
   }
 }
 
+let _paletteDrapeWired = false;
 export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
+  // a palette change repaints the 3D drape alone (no re-lay, no re-mask): the drape reads the same rules (palette.js)
+  if (!_paletteDrapeWired && typeof document !== 'undefined') {
+    _paletteDrapeWired = true;
+    document.addEventListener(BRICK_PALETTE_CHANGED, () => { refreshDrape(preview); });
+  }
   const restored = loadLastSession();
   runMigrations();
   if (restored) announceBrickSettingsRestored(); // audit v2 N2: the brick panel was built before this restore

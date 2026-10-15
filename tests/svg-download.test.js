@@ -52,6 +52,9 @@ function fakeEditor() {
 }
 const RECT = [[0, 0, 7, 0], [7, 0, 7, 9], [7, 9, 0, 9], [0, 9, 0, 0]].map(([a, b, c, d]) => ({ type: 'line', p0: { x: a, y: b }, p1: { x: c, y: d } }));
 function laidBoard(paint = { color: '#cfc6b4', paintInsetIn: 0 }) {
+  // the Height look (a saved board's; Fred 2026-10-15: a NEW board opens in Colour, pinned in brick-palette.test.js) --
+  // the download's greys below are that look's
+  P.brickSettings.lookMode = 'height';
   const ed = fakeEditor();
   const settings = { ...P.brickSettings, seed: 3, groutPaint: paint };
   runBricks(ed, settings, { primitives: RECT, bands: frameBandsOf(P.brickSettings) });

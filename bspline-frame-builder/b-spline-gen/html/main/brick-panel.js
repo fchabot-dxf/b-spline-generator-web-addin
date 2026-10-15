@@ -53,6 +53,7 @@ import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js'
 import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
 import { applyBrickPalette } from '../editor/brick-palette-style.js';
+import { paletteOf, lookModeOf, ROLES_FOR_KIND, ROLE_LABELS, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
 import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -395,6 +396,8 @@ function _renderLookResets() {
 }
 /** The active element's size and joint shown in its section, the default chip marked, each reset shown iff overridden. */
 function syncElementLook() {
+  renderColourRow(); // the active element's colours (Fred 2026-10-15)
+  syncGroutPaintRow();
   const s = P.brickSettings, kind = _jointKind();
   syncBrickSizeControls(elementSize(s, kind));
   syncBrickSizePresetButtons();
@@ -1516,7 +1519,10 @@ export function setElementGrout(kind, widthIn, phase = 'onRelease') {
  *  Select picked one, else the board-wide one (groutPaint, the General value every element inherits). Paint only: the
  *  grout nodes repaint (editor-brick-tool.js repaintGrout), nothing re-lays, one undo step. */
 function _groutPaintTarget() {
-  const kind = _selectedElement && (JOINT_ELEMENT[_selectedElement.kind] || _selectedElement.kind);
+  // Fred 2026-10-15 (colour plan): the grout colour sits in each element's Colour section -- the selected element's, else
+  // the active element tab's; the board-wide groutPaint stays the fallback an untouched element reads (groutPaintOf)
+  const picked = _selectedElement && (JOINT_ELEMENT[_selectedElement.kind] || _selectedElement.kind);
+  const kind = picked || (_activeTool && !_generalTab ? JOINT_ELEMENT[_activeTool] || _activeTool : null);
   return kind && GROUT_ELEMENT_KINDS.includes(kind) ? kind : null;
 }
 export function setGroutPaint(patch, target = _groutPaintTarget()) {
@@ -1539,6 +1545,73 @@ export function setGroutPaint(patch, target = _groutPaintTarget()) {
   syncQuickSettings();
   return true;
 }
+/** Fred 2026-10-15 (colour plan): the 2D look (board-wide) and each element's Colour section -- one swatch per role its
+ *  pieces can carry (core/bricks/palette.js ROLES_FOR_KIND), its palette's colour shown, a ↺ (the Size & joint resets'
+ *  icon) when the user's own differs from the default. Paint only: no re-lay; the 2D rules and the 3D drape repaint. */
+const COLOUR_RESET_TITLE = 'Reset to the pattern\u2019s colour';
+const _colourKind = () => JOINT_ELEMENT[_jointKind()] || _jointKind() || 'wall';
+function _paletteChanged() {
+  commitBrickSetting('settings'); // one undo step; applyBrickPalette runs at its start
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent(BRICK_PALETTE_CHANGED));
+}
+export function setLookMode(mode) {
+  if (mode !== 'colour' && mode !== 'height') return;
+  P.brickSettings.lookMode = mode;
+  syncLookModeRow();
+  _paletteChanged();
+}
+export function setElementColour(kind, role, hex) {
+  if (hex != null && !/^#[0-9a-f]{6}$/i.test(String(hex))) return false;
+  const all = P.brickSettings.colourByElement || {};
+  P.brickSettings.colourByElement = { ...all, [kind]: { ...(all[kind] || {}), [role]: hex } };
+  renderColourRow();
+  _paletteChanged();
+  return true;
+}
+function syncLookModeRow() {
+  const mode = lookModeOf(P.brickSettings);
+  document.getElementById('brickLook_colour')?.classList.toggle('active', mode === 'colour');
+  document.getElementById('brickLook_height')?.classList.toggle('active', mode === 'height');
+}
+export function renderColourRow() {
+  const host = typeof document !== 'undefined' ? document.getElementById('brickColourRow') : null;
+  if (!host) return;
+  const kind = _colourKind();
+  const pal = paletteOf(P.brickSettings, kind);
+  const own = (P.brickSettings.colourByElement && P.brickSettings.colourByElement[kind]) || {};
+  host.innerHTML = '';
+  for (const role of ROLES_FOR_KIND[kind] || ROLES_FOR_KIND.wall) {
+    const row = document.createElement('div');
+    row.className = 'brick-colour-role';
+    row.style.cssText = 'display:flex; align-items:center; gap:6px; margin-bottom:4px;';
+    const label = document.createElement('span');
+    label.className = 'cad-label';
+    label.style.cssText = 'font-size:11px; flex:0 0 52px; margin:0;';
+    label.textContent = ROLE_LABELS[role];
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.id = `brickColour_${role}`;
+    swatch.className = 'cad-btn';
+    swatch.style.cssText = `width:34px; min-width:34px; height:24px; padding:0; background:${pal[role]};`;
+    swatch.title = `${ROLE_LABELS[role]} colour ${pal[role]}`;
+    swatch.setAttribute('aria-label', swatch.title);
+    swatch.addEventListener('click', (e) => { e.stopPropagation(); openColorMosaic(swatch, (hex) => setElementColour(kind, role, hex)); });
+    row.append(label, swatch);
+    if (own[role]) {
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.id = `brickColourReset_${role}`;
+      reset.className = 'tweak-reset';
+      reset.textContent = '\u21ba';
+      reset.title = COLOUR_RESET_TITLE;
+      reset.setAttribute('aria-label', COLOUR_RESET_TITLE);
+      reset.addEventListener('click', () => setElementColour(kind, role, null));
+      row.appendChild(reset);
+    }
+    host.appendChild(row);
+  }
+}
+
 function syncGroutPaintRow() {
   const target = _groutPaintTarget();
   const paint = groutPaintOf(P.brickSettings, target || 'wall');
@@ -1684,7 +1757,7 @@ const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear'
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
-const PAINT_ONLY_SETTING_KEYS = ['groutPaint', 'groutPaintByElement'];
+const PAINT_ONLY_SETTING_KEYS = ['groutPaint', 'groutPaintByElement', 'lookMode', 'colourByElement']; // + the colours: paint only
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS, ...PAINT_ONLY_SETTING_KEYS];
 // The replacer's `this` is the holder: top-level keys, plus the grout group's own surface-only keys.
 const _settingsKey = () => JSON.stringify(P.brickSettings, function (k, v) {
@@ -3337,6 +3410,11 @@ export function initBrickPanel() {
   document.getElementById('brickGroutColorNone')?.addEventListener('click', () => setGroutPaint({ color: null }));
   document.getElementById('brickGroutEdge')?.addEventListener('change', (e) => setGroutPaint({ paintInsetIn: e.target.value }));
   syncGroutPaintRow();
+  document.getElementById('brickLook_colour')?.addEventListener('click', () => setLookMode('colour'));
+  document.getElementById('brickLook_height')?.addEventListener('click', () => setLookMode('height'));
+  syncLookModeRow();
+  renderColourRow();
+  applyBrickPalette(P.brickSettings);
   bindGroutField('brickGroutDepth', 'groutDepth', 'surface'); // F35 item 18: the joint recess depth, height-only (per element)
   _renderLookResets(); // the Size & joint section's ↺ (ELEMENT_LOOK_RESETS)
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
