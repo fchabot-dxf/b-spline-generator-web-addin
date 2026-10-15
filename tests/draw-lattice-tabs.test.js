@@ -52,9 +52,10 @@ describe('the tabs in the page', () => {
     expect(document.getElementById('editorLayersPanel').style.display).toBe('none');
   });
 
-  it('each art tab\'s strip shows its own Art tabs only', () => {
+  // phase 4: the Draw drawer is a collapse tree (main/draw-tree.js) -- its tab shows no strip; the Lattice tab keeps its own
+  it('each art tab\'s strip shows its own Art tabs only (Draw none: its drawer is a tree)', () => {
     const shown = () => ART_TABS.filter((t) => document.getElementById(`artTab_${t.id}`).style.display !== 'none').map((t) => t.id);
-    expect(shown()).toEqual(['general', 'draw', 'text', 'edit']);
+    expect(shown()).toEqual([]);
     setEditorTab('lattice');
     expect(shown()).toEqual(['lattice', 'shape']);
     expect(activeArtTab()).toBe('lattice'); // the Lattice tab's declared default

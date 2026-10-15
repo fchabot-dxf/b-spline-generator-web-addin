@@ -22,6 +22,8 @@ import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
 import { initSidebarTabs } from './sidebar-tabs.js';
 import { initArtTabs } from './art-tabs.js';
+import { initDrawTree } from './draw-tree.js';
+import { applyModeHosts } from './editor-tabs.js';
 import { initEditorChrome } from './editor-chrome.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
@@ -155,6 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // onChange callback of its own.
     initBrickPanel();
     initArtTabs(); // the Artwork editor's tabs (mockup v2)
+    initDrawTree(); // phase 4: the Draw drawer as one collapse tree (main/draw-tree.js)
+    applyModeHosts(); // its branches filled by the Draw tab's declared panelHosts
     initEditorChrome(); // redesign phase 3: the selection bar, Fit in the canvas corner, the Grid popover (tools-only rows)
 
     // 5. Sidebar / header / theme / project manager.
