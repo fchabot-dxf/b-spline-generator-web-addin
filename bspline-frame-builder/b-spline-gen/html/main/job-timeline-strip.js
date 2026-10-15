@@ -23,6 +23,8 @@ export const JOB_STRIP = Object.freeze({
   headGrabPx: Object.freeze({ phone: 28, desktop: 14 }),
   dragStartPx: 6,
   foldKey: 'bspline.jobTimeline.folded',
+  // advisor 2026-10-15 (the phone shot: the head sat past the right edge): a strip's FIRST draw scrolls the head into view
+  scrollHeadOnFirstDraw: true,
 });
 const JOB_DEP_MARK_COLOR = '#f0a020';
 
@@ -143,7 +145,15 @@ export function renderJobStrips(doc = typeof document !== 'undefined' ? document
     }
     if (index === head) putHead();
     _wireBar(bar, byId);
+    if (JOB_STRIP.scrollHeadOnFirstDraw && !bar.dataset.jobScrolled) { bar.dataset.jobScrolled = '1'; scrollHeadIntoView(bar); }
   }
+}
+
+/** Scrolls a strip so its playhead sits in the middle of what shows (a strip wider than its canvas scrolls sideways). */
+export function scrollHeadIntoView(bar) {
+  const k = bar && bar.querySelector('.job-head');
+  if (!k) return;
+  bar.scrollLeft = Math.max(0, k.offsetLeft - (bar.clientWidth - k.offsetWidth) / 2);
 }
 
 /** Pointer handling on a strip: a tap opens (a group's caret folds), a drag reorders a step / a folded run, the head

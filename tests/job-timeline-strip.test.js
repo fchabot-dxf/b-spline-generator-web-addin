@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
+import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
 
 const $ = (id) => document.getElementById(id);
 const chipIds = (bar) => [...bar.querySelectorAll('[data-job-step]')].map((c) => c.dataset.jobStep);
@@ -72,6 +72,19 @@ describe('one playhead', () => {
     P.jobTimeline = { order, head: g }; // the head right before the lattice group
     renderJobStrips();
     for (const h of JOB_STRIP_HOSTS) expect($(h.id).querySelectorAll('.job-head').length, h.id).toBe(1);
+  });
+});
+
+describe('the head in view on a narrow canvas', () => {
+  it('the first draw scrolls the strip so the head sits in the middle; later draws leave the scroll alone', () => {
+    const bar = $('jobStrip3d');
+    expect(bar.dataset.jobScrolled).toBe('1');
+    const k = bar.querySelector('.job-head');
+    Object.defineProperty(k, 'offsetLeft', { value: 600, configurable: true });
+    Object.defineProperty(k, 'offsetWidth', { value: 28, configurable: true });
+    Object.defineProperty(bar, 'clientWidth', { value: 390, configurable: true });
+    scrollHeadIntoView(bar);
+    expect(bar.scrollLeft).toBe(600 - (390 - 28) / 2);
   });
 });
 
