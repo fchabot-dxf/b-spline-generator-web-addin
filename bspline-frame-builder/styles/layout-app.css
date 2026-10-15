@@ -665,12 +665,16 @@ aside {
     .cad-main-content > .cad-sidebar { grid-column: 3; }
 }
 
-/* Workflow audit #10 (phone): the header fits a phone -- the 🧩 "download the Fusion add-in" button is desktop-only
-   (you install the add-in on the PC), and the project name gets a narrower ellipsis. */
+/* The header at a PHONE (pointer coarse, <= 900 px), declared in the markup: a button marked .cad-nav-phone-hidden leaves
+   the phone header -- it is the Projects window's there (main/pm-toolbar.js headerTwin: New, Pull from Fusion) or
+   desktop-only (data-desktop-only: the add-in download, you install it on the PC). Fred 2026-10-14 (a): with 7 buttons
+   Settings fell off a 390 px phone. The project name ends in "..." in whatever room the buttons leave (was a 22vw cap
+   that pushed them off; a % max-width inside the shrinking title box resolved against itself: measured 8 px). */
 @media (pointer: coarse) and (max-width: 900px) {
-    #btnDownloadAddin { display: none !important; }
-    #btnNewProject { display: none !important; } /* phone: New is in the Projects window (no room in the header) */
-    #fmCurrentFileLabel { max-width: 22vw !important; }
+    .cad-navbar .cad-nav-phone-hidden { display: none !important; }
+    .cad-navbar .cad-nav-spacer { display: none; } /* space-between keeps the buttons right; the spacer cost a 14 px gap of the name's room */
+    .cad-navbar .cad-nav-titlebox { display: flex; min-width: 0; }
+    #fmCurrentFileLabel { max-width: none !important; min-width: 0; flex: 0 1 auto; }
 }
 
 /* =========================================================================

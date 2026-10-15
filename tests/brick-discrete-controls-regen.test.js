@@ -222,7 +222,7 @@ describe('Editor Brick tab (Frame tool)', () => {
     $('brickFramePreset_soldier_stretcher').click();
     expectReLaidAtOnce((c) => expect(c[2].bands.length).toBe(2));
   });
-  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectReLaidAtOnce(); });
+  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button[id^=brickFrameBandPattern_]') /* the options, not the picker's chip */.click(); expectReLaidAtOnce(); });
 });
 
 describe('Generate with nothing to re-lay', () => {
@@ -1329,5 +1329,15 @@ describe('Fred 2026-10-14 ("suggest, don\'t hide"): a wood-frame family orders t
     expect($('brickFramePreset_arch_keystone').title).toMatch(/fits this frame/);
     expect($('brickFramePresetGroup_fits')).not.toBeNull();
     expect($('brickFramePresetGroup_other')).not.toBeNull();
+  });  it('inside the picker (main/icon-select.js): the headings span the grid, the chip names the preset alone', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    P.brickSettings.frameBandPreset = 'arch_keystone';
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    expect(list.closest('.icon-grid-picker')).not.toBeNull();
+    for (const id of ['brickFramePresetGroup_fits', 'brickFramePresetGroup_other']) expect($(id).style.gridColumn, id).toBe('1 / -1');
+    const name = $('brickFramePresetTriggerName').textContent;
+    expect(name).toBe($('brickFramePreset_arch_keystone').dataset.name);
+    expect(name).not.toMatch(/fits this frame/); // the tooltip says it; the chip names the preset
   });
 });

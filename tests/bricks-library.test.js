@@ -107,6 +107,8 @@ describe('FRAME_PRESETS', () => {
       'tudor_frieze', 'corbelled_cornice', 'flemish_architrave', 'chicago_dentil',
       // main 8e57aeb added these four without listing them (the suite was red on main)
       'crenellated_battlement', 'art_deco_stepped', 'florentine_architrave', 'venetian_dentil',
+      // Fred 2026-10-14: the narrow runners (tests/bricks-narrow-runners.test.js)
+      'slim_runner', 'checker_tile_runner', 'twin_runner',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
       'craftsman_apron_quoin', 'double_soldier_quoin',
