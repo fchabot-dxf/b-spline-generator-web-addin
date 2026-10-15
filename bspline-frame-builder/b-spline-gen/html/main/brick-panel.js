@@ -59,7 +59,7 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
-import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
+import { mountIconSelect, refreshIconSelect, mountIconGrid, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -516,135 +516,44 @@ export const accentChoicesForPattern = (patternId) => [
   ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
 ];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
+/** The Wall grid's choices: the pattern's own (0b04ee2), PLUS the board's saved preset when the pattern no longer offers
+ *  it (advisor 2026-10-14: a saved Stretcher Course bands still lays -- accentPresetById -- so the grid shows it, active,
+ *  instead of a chip with no name). Custom / tile / none are not presets: never appended. */
+export const wallAccentChoices = (patternId, presetId) => {
+  const own = accentChoicesForPattern(patternId);
+  const saved = typeof presetId === 'string' && !own.some((c) => c.id === presetId) ? accentPresetById(presetId) : null;
+  return saved ? [...own, saved] : own;
+};
 let _accentClickArmed = false;
-
-let _popoverGlobalWired = false;
-function _wirePopoverGlobal() {
-  if (_popoverGlobalWired || typeof document === 'undefined') return;
-  _popoverGlobalWired = true;
-  document.addEventListener('click', (e) => {
-    for (const list of document.querySelectorAll('.brick-popover-list')) {
-      if (list.style.display !== 'none') {
-        const triggerId = list.dataset.triggerId;
-        const trigger = triggerId ? document.getElementById(triggerId) : null;
-        if ((!trigger || !trigger.contains(e.target)) && !list.contains(e.target)) {
-          list.style.display = 'none';
-        }
-      }
-    }
-  });
-  window.addEventListener('scroll', (e) => {
-    for (const list of document.querySelectorAll('.brick-popover-list')) {
-      if (list.style.display !== 'none' && !list.contains(e.target)) {
-        list.style.display = 'none';
-      }
-    }
-  }, true);
-}
-
-function _togglePopover(triggerEl, popoverEl, maxWidth = 320) {
-  const open = popoverEl.style.display !== 'none';
-  for (const list of document.querySelectorAll('.brick-popover-list')) {
-    list.style.display = 'none';
-  }
-  if (open) return;
-  popoverEl.style.display = popoverEl.dataset.popoverDisplay || 'flex';
-  const r = triggerEl.getBoundingClientRect();
-  const w = maxWidth;
-  const maxW = window.innerWidth || 320;
-  const left = Math.max(4, Math.min(r.left, maxW - w - 4));
-  popoverEl.style.left = `${left}px`;
-  popoverEl.style.top = `${r.bottom + 4}px`;
-  popoverEl.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
-}
 
 export function renderAccentList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickWallAccentTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickWallAccentTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickWallAccentTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickWallAccentTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 280);
-    });
-  }
-
   container.innerHTML = '';
-  container.classList.add('brick-popover-list');
-  container.dataset.triggerId = 'brickWallAccentTriggerWrap';
-  container.dataset.popoverDisplay = 'grid';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
-  container.style.gap = '4px';
-  container.style.maxWidth = '280px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
-
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, _accent().preset);
 
   for (const choice of choices) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon';
+    btn.className = 'cad-btn brick-accent-icon' + (_accent().preset === choice.id ? ' active' : '');
     btn.id = `brickAccent_${choice.id}`;
     btn.title = choice.label;
     btn.setAttribute('aria-label', choice.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0, bond: pattern }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
-    btn.addEventListener('click', () => {
-      setAccentPreset(choice.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setAccentPreset(choice.id));
     container.appendChild(btn);
   }
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Accent', ids: { wrap: 'brickWallAccentTriggerWrap', chip: 'brickWallAccentTrigger', name: 'brickWallAccentTriggerName' } });
 }
 
 export function syncAccentControls() {
   const a = _accent();
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, a.preset);
   for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
-  const triggerBtn = document.getElementById('brickWallAccentTrigger');
-  const triggerName = document.getElementById('brickWallAccentTriggerName');
-  if (triggerBtn && triggerName) {
-    const choice = choices.find((c) => c.id === a.preset)
-      || ACCENT_CHOICES.find((c) => c.id === a.preset)
-      || { id: a.preset, label: a.preset === 'none' ? 'None' : (accentPresetById(a.preset)?.label || a.preset) };
-    const isSunk = a.levelIn < 0;
-    triggerBtn.innerHTML = choice.id === 'none'
-      ? '<span style="font-size:11px; font-weight:600; opacity:0.8;">None</span>'
-      : (accentIconSvg(choice.id, 30, { sunk: isSunk, bond: pattern }) || choice.label);
-    triggerName.textContent = choice.label;
-    triggerBtn.title = `Accent: ${choice.label}`;
-  }
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
@@ -1039,56 +948,9 @@ function renderAccentRowFor(container, target, iconPx) {
   label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
   row.appendChild(label);
 
-  const triggerWrap = document.createElement('div');
-  triggerWrap.id = `brickAccentTriggerWrap_${key}`;
-  triggerWrap.className = 'icon-select';
-  triggerWrap.style.cssText = 'position:relative; display:inline-flex; align-items:center; gap:6px; cursor:pointer;';
-
-  const triggerBtn = document.createElement('button');
-  triggerBtn.type = 'button';
-  triggerBtn.id = `brickAccentTrigger_${key}`;
-  triggerBtn.className = 'cad-btn icon-select-button';
-  triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:40px; height:28px; padding:2px; overflow:hidden;';
-
-  const choice = ACCENT_CHOICES.find((c) => c.id === a.preset) || ACCENT_CHOICES[0];
-  const isSunk = a.levelIn < 0;
-  triggerBtn.innerHTML = choice.id === 'none'
-    ? '<span style="font-size:10px; font-weight:600; opacity:0.8;">None</span>'
-    : (accentIconSvg(choice.id, Math.max(22, iconPx), { sunk: isSunk }) || choice.label);
-
-  const triggerName = document.createElement('span');
-  triggerName.id = `brickAccentTriggerName_${key}`;
-  triggerName.className = 'icon-select-name';
-  triggerName.textContent = choice.label;
-  triggerName.style.cssText = 'font-size:11px; opacity:0.85; font-weight:500;';
-
-  triggerWrap.append(triggerBtn, triggerName);
-  row.appendChild(triggerWrap);
-
-  const popover = document.createElement('div');
+  const popover = document.createElement('div'); // the accent buttons: the picker's grid (Click and the level stay in the row)
   popover.id = `brickAccentPopover_${key}`;
-  popover.className = 'icon-select-grid brick-popover-list';
-  popover.dataset.triggerId = `brickAccentTriggerWrap_${key}`;
-  popover.dataset.popoverDisplay = 'flex';
-  popover.style.display = 'none';
-  popover.style.position = 'fixed';
-  popover.style.zIndex = '10001';
-  popover.style.background = '#fff';
-  popover.style.border = '1px solid #ccc';
-  popover.style.borderRadius = '4px';
-  popover.style.padding = '8px';
-  popover.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  popover.style.flexDirection = 'row';
-  popover.style.flexWrap = 'wrap';
-  popover.style.gap = '4px';
-  popover.style.maxWidth = '280px';
-  popover.style.overflowY = 'auto';
-
-  triggerWrap.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _togglePopover(triggerBtn, popover, 280);
-  });
-
+  row.appendChild(popover);
   for (const c of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1098,14 +960,10 @@ function renderAccentRowFor(container, target, iconPx) {
     btn.setAttribute('aria-label', c.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = c.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(c.id, iconPx, { sunk: a.levelIn < 0 }) || c.label);
-    btn.addEventListener('click', () => {
-      setElementAccent(target, { preset: c.id });
-      popover.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setElementAccent(target, { preset: c.id }));
     popover.appendChild(btn);
   }
-  row.appendChild(popover);
-  _wirePopoverGlobal();
+  mountIconGrid(popover, { label: 'Accent', ids: { wrap: `brickAccentTriggerWrap_${key}`, chip: `brickAccentTrigger_${key}`, name: `brickAccentTriggerName_${key}` } });
 
   const click = document.createElement('button');
   click.type = 'button';
@@ -2262,52 +2120,7 @@ export function deselectTool() {
 
 export function renderFramePresetList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickFramePresetTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickFramePresetTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickFramePresetTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickFramePresetTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 320);
-    });
-  }
-
   container.innerHTML = '';
-  container.classList.add('brick-popover-list');
-  container.dataset.triggerId = 'brickFramePresetTriggerWrap';
-  container.dataset.popoverDisplay = 'flex';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.flexDirection = 'row';
-  container.style.flexWrap = 'wrap';
-  container.style.gap = '4px';
-  container.style.maxWidth = '320px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
 
   const tplId = P.frame && P.frame.templateId;
   // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset, the frame's family's first under "Fits this frame"
@@ -2327,18 +2140,20 @@ export function renderFramePresetList(container) {
     const label = preset.fits ? `${preset.label} · ${FITS_FRAME_LABEL}` : preset.label;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : ''); // item 33 (audit N10): the band stack as an icon, the name as the tooltip
+    // item 33 (audit N10): the band stack as an icon, the name as the tooltip; E 2026-10-14: fits-frame marks the frame family's presets
+    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : '') + (preset.id === P.brickSettings.frameBandPreset ? ' active' : '');
     btn.id = `brickFramePreset_${preset.id}`;
+    btn.dataset.name = preset.label; // the chip's name: the preset alone (the tooltip adds "fits this frame")
     btn.title = label;
     btn.setAttribute('aria-label', label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
-    btn.addEventListener('click', () => {
-      setFrameBandPreset(preset.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   });
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system); E's headings span its rows
+  mountIconGrid(container, { label: `${FRAME_LABELS.brick} preset`, nameOf: (o) => o.dataset.name,
+    ids: { wrap: 'brickFramePresetTriggerWrap', chip: 'brickFramePresetTrigger', name: 'brickFramePresetTriggerName' } });
 }
 
 /** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
@@ -2389,20 +2204,8 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
 }
 
 export function syncFramePresetButtons() {
-  const tplId = P.frame && P.frame.templateId;
-  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
-  }
-  const triggerBtn = document.getElementById('brickFramePresetTrigger');
-  const triggerName = document.getElementById('brickFramePresetTriggerName');
-  if (triggerBtn && triggerName) {
-    const active = presets.find((p) => p.id === P.brickSettings.frameBandPreset) || presets[0] || FRAME_PRESET_LIST[0];
-    if (active) {
-      triggerBtn.innerHTML = framePresetIconSvg(active.id, 30) || active.label;
-      triggerName.textContent = active.label;
-      triggerBtn.title = `Brick frame preset: ${active.label}`;
-    }
   }
   syncFrameFanCentreRow();
   syncQuickSettings();
@@ -2549,6 +2352,7 @@ function renderBrushPresetList(container) {
     });
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Brush preset' }); // Fred: one chip + its name, tap opens the grid
 }
 
 function syncBrushPresetButtons() {
@@ -2604,80 +2408,12 @@ function wallPatternFamilies() {
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 
-let _mosaicGlobalWired = false;
-
-function syncWallPatternTrigger() {
-  const triggerBtn = document.getElementById('brickPatternTrigger');
-  const triggerName = document.getElementById('brickPatternTriggerName');
-  if (!triggerBtn || !triggerName) return;
-  const a = _accent();
-  if (a.preset === ACCENT_TILE.id && a.tile && a.tile.userId) {
-    const u = _userPatterns().find((x) => x.id === a.tile.userId);
-    if (u) {
-      triggerBtn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-      triggerName.textContent = u.label;
-      triggerBtn.title = `Wall pattern: ${u.label}`;
-      return;
-    }
-  }
-  const id = P.brickSettings.pattern || DEFAULT_WALL_PATTERN;
-  const label = _patternLabel(id);
-  triggerBtn.innerHTML = wallPatternIconSvg(id, 30) || label;
-  triggerName.textContent = label;
-  triggerBtn.title = `Wall pattern: ${label}`;
-}
-
 export function renderWallPatternList(container) {
   if (!container) return;
-  const parent = container.parentElement;
-  let triggerWrap = document.getElementById('brickPatternTriggerWrap');
-  if (!triggerWrap && parent) {
-    triggerWrap = document.createElement('div');
-    triggerWrap.id = 'brickPatternTriggerWrap';
-    triggerWrap.className = 'icon-select';
-    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
-
-    const triggerBtn = document.createElement('button');
-    triggerBtn.type = 'button';
-    triggerBtn.id = 'brickPatternTrigger';
-    triggerBtn.className = 'cad-btn icon-select-button';
-    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
-
-    const triggerName = document.createElement('span');
-    triggerName.id = 'brickPatternTriggerName';
-    triggerName.className = 'icon-select-name';
-    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
-
-    triggerWrap.append(triggerBtn, triggerName);
-    parent.insertBefore(triggerWrap, container);
-
-    triggerWrap.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _togglePopover(triggerBtn, container, 320);
-    });
-  }
-
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
-  container.className = 'icon-select-grid brick-pattern-mosaic brick-popover-list';
-  container.dataset.triggerId = 'brickPatternTriggerWrap';
-  container.dataset.popoverDisplay = 'flex';
-  container.style.display = 'none';
-  container.style.position = 'fixed';
-  container.style.zIndex = '10001';
-  container.style.background = '#fff';
-  container.style.border = '1px solid #ccc';
-  container.style.borderRadius = '4px';
-  container.style.padding = '8px';
-  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
-  container.style.flexDirection = 'row';
-  container.style.flexWrap = 'wrap';
-  container.style.gap = '4px';
-  container.style.maxWidth = '320px';
-  container.style.overflowY = 'auto';
-  _wirePopoverGlobal();
-
+  container.classList.add('brick-pattern-mosaic');
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
       const h = document.createElement('div');
@@ -2689,16 +2425,13 @@ export function renderWallPatternList(container) {
     }
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-pattern-icon';
+    btn.className = 'cad-btn brick-pattern-icon' + (id === P.brickSettings.pattern ? ' active' : '');
     btn.id = `brickPattern_${id}`;
     btn.title = _patternLabel(id);
     btn.setAttribute('aria-label', _patternLabel(id));
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
-    btn.addEventListener('click', () => {
-      setWallPattern(id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => setWallPattern(id));
     container.appendChild(btn);
   }
   // item 31d: each SAVED custom pattern is a pattern of its own here (its icon drawn on its bond with its accents)
@@ -2711,13 +2444,12 @@ export function renderWallPatternList(container) {
     btn.setAttribute('aria-label', u.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
-    btn.addEventListener('click', () => {
-      applyUserPattern(u.id);
-      container.style.display = 'none';
-    });
+    btn.addEventListener('click', () => applyUserPattern(u.id));
     container.appendChild(btn);
   }
-  syncWallPatternTrigger();
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Wall pattern', preferActive: '.brick-user-pattern',
+    ids: { wrap: 'brickPatternTriggerWrap', chip: 'brickPatternTrigger', name: 'brickPatternTriggerName' } });
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2737,8 +2469,6 @@ export function setWallPattern(patternId, commit = 'generate') {
     }
   }
   P.brickSettings.pattern = patternId;
-  const list = document.getElementById('brickPatternList');
-  if (list) list.style.display = 'none';
   renderAccentList(document.getElementById('brickAccentList'));
   syncAccentControls();
   syncWallPatternButtons();
@@ -2750,7 +2480,6 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
-  syncWallPatternTrigger();
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
@@ -2897,9 +2626,7 @@ function renderFrameBandPatternList(container) {
       label: `Band ${i + 1}`,
       iconFor: (v) => wallPatternIconSvg(v, 22),
       optionId: (v) => `brickFrameBandPattern_${i}_${v}`,
-      pickSame: true,
-      tilePx: 44,
-      columns: { phone: 4, desktop: 4 },
+      pickSame: true, // PICKER_TILE's size (the advisor: the frame bands get the bigger tiles too)
     });
     if (wrap) {
       const trigger = wrap.querySelector('.icon-select-button');

@@ -176,8 +176,6 @@ export function bindProjectManager(preview) {
   const btnQuickSave = document.getElementById('btnQuickSave');
   if (btnQuickSave) {
     btnQuickSave.addEventListener('click', () => quickSave());
-    // Initial label reflects the restored _currentFile (if any)
-    updateNavbarSaveLabel();
   }
 
   // Wire Ctrl+S / Cmd+S anywhere in the app for the same behavior.
@@ -202,15 +200,6 @@ export function bindProjectManager(preview) {
     btn.classList.toggle('disabled', !dirty);
     btn.title = dirty ? 'Save' : 'Saved';
   });
-}
-
-function updateNavbarSaveLabel() {
-  // H16: the button's own `title` is now owned entirely by the
-  // onDirtyChange handler above ("Save" / "Saved") -- this function only
-  // sets the visible LABEL text (the filename, or the "Save…" fallback).
-  const labelEl = document.getElementById('btnQuickSaveLabel');
-  if (!labelEl) return;
-  labelEl.textContent = _currentFile || 'Save…';
 }
 
 // ─── Open / Close ─────────────────────────────────────────────────────────────
@@ -284,6 +273,8 @@ function wireModalListeners() {
   _btnDelete?.addEventListener('click', onDelete);
   _btnNewFolder?.addEventListener('click', onNewFolder);
   document.getElementById('fmBtnNew')?.addEventListener('click', async () => { if (await newProject()) closeModal(); });
+  // the header's Pull from Fusion, here for the phone (its header drops it): the header button's own handler
+  document.getElementById('fmBtnPullFromFusion')?.addEventListener('click', () => { closeModal(); document.getElementById('btnPullFromFusion')?.click(); });
 
   // View toggle
   _viewBtnTiles?.addEventListener('click', () => setViewMode('tiles'));
@@ -1103,14 +1094,14 @@ function setCurrentFile(name) {
   } catch {}
   updateHeaderFileIndicator();
   updateSaveButtonLabel();
-  updateNavbarSaveLabel();
 }
 
 function updateHeaderFileIndicator() {
   const el = document.getElementById('fmCurrentFileLabel');
   if (!el) return;
-  // Fred: a project that was never saved shows an "Unsaved" label instead of nothing
-  el.textContent = '· ' + (_currentFile || 'Unsaved');
+  // Fred: a project that was never saved shows an "Unsaved" label instead of nothing. Fred 2026-10-11: this is the
+  // header's ONE name (the disk button is icon-only), so no leading "·" separator
+  el.textContent = _currentFile || 'Unsaved';
   el.title = _currentFile || 'Not saved yet';
   el.style.fontStyle = _currentFile ? '' : 'italic';
   el.style.display = 'inline-block'; // inline-block: its max-width / ellipsis apply

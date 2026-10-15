@@ -24,6 +24,7 @@ import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
 import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
 import { bootRetry } from './boot.mjs';
+import { missingControlResult } from './introduced.mjs';
 import { guardHeavyRun, HEAVY_RUN_CHILD_ENV } from '../heavy-run-guard.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -399,8 +400,9 @@ try {
     if (c.introducedBy) {
       if (c.kind === 'stripe') { await openBrickTool('brush'); await click('brickSubTool_brush_stripe', 600); } // item 43: Brush > Stripe
       if (!(await exists(targetId(c.do)))) {
-        rows.push({ name: c.name, kind: c.kind, result: `skipped: not in this build (introduced by ${c.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
-        console.log(`skip  ${c.name.padEnd(34)} not in this build (introduced by ${c.introducedBy})`);
+        const m = missingControlResult(c.introducedBy, ROOT); // a control REMOVED since its commit fails (introduced.mjs)
+        rows.push({ name: c.name, kind: c.kind, result: m.result, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+        console.log(`${m.fail ? 'FAIL' : 'skip'}  ${c.name.padEnd(34)} ${m.result}`);
         continue;
       }
     }
@@ -597,8 +599,9 @@ async function seedClearBoard() {
 // ---------------------------------------------------------------- lay warnings + Select (hoisted)
 function checkRow(kind, name, ok, detail, skip) {
   if (skip) {
-    rows.push({ name, kind, result: `skipped: not in this build (introduced by ${skip})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
-    console.log(`skip  ${name.padEnd(48)} not in this build (introduced by ${skip})`);
+    const m = missingControlResult(skip, ROOT); // a control REMOVED since its commit fails (introduced.mjs)
+    rows.push({ name, kind, result: m.result, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+    console.log(`${m.fail ? 'FAIL' : 'skip'}  ${name.padEnd(48)} ${m.result}`);
     return;
   }
   rows.push({ name, kind, result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', check: ok ? 'PASS' : 'FAIL' } });

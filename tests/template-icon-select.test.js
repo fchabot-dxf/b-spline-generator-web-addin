@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { templateIconSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-template-icon.js';
-import { mountIconSelect, refreshIconSelect } from '../bspline-frame-builder/b-spline-gen/html/main/icon-select.js';
+import { mountIconSelect, refreshIconSelect, mountIconGrid, PICKER_TILE } from '../bspline-frame-builder/b-spline-gen/html/main/icon-select.js';
 
 const offered = FRAME_DEFS.templates.filter((t) => !t.hidden);
 
@@ -129,5 +129,75 @@ describe('mountIconSelect options: optionId, pickSame, tilePx / columns', () => 
     expect(parseFloat(grid.children[0].style.width)).toBe(80);
     button.click(); window.innerWidth = 1280; button.click();
     expect(grid.style.gridTemplateColumns).toBe('repeat(4, 80px)');
+  });
+});
+
+// Fred (the editor's Brick tabs on a phone): the SAME picker over a container of existing option buttons -- the renderers
+// keep their buttons (ids, handlers, the sync code's active state); mountIconGrid turns the container into the grid.
+describe('mountIconGrid: the picker over existing option buttons', () => {
+  const setup = () => {
+    document.body.innerHTML = '<div id="row"><div id="list">'
+      + '<button id="opt_a" title="Alpha" aria-label="Alpha"><svg width="30" height="30"></svg></button>'
+      + '<button id="opt_b" class="active" title="Beta" aria-label="Beta"><svg width="30" height="30"></svg></button>'
+      + '<button id="opt_c" title="Gamma" aria-label="Gamma">C</button></div></div>';
+    const picks = [];
+    for (const id of ['opt_a', 'opt_b', 'opt_c']) document.getElementById(id).addEventListener('click', () => picks.push(id));
+    const wrap = mountIconGrid(document.getElementById('list'), { label: 'Thing' });
+    return { picks, wrap, grid: document.getElementById('list'), chip: wrap.querySelector('.icon-select-button'), name: wrap.querySelector('.icon-select-name') };
+  };
+  it('one chip showing the ACTIVE option (its icon) and its name; the options are the closed grid, kept with their ids', () => {
+    const { wrap, grid, chip, name } = setup();
+    expect(grid.parentElement).toBe(wrap);
+    expect(chip.querySelector('svg')).not.toBeNull();
+    expect(name.textContent).toBe('Beta');
+    expect(chip.title).toBe('Thing: Beta');
+    expect(grid.style.display).toBe('none');
+    expect(parseFloat(document.getElementById('opt_a').style.width)).toBe(PICKER_TILE.tilePx);
+  });
+  it('the chip opens the grid; a pick runs the option\'s own handler and closes it', () => {
+    const { picks, grid, chip } = setup();
+    chip.click();
+    expect(grid.style.display).toBe('grid');
+    document.getElementById('opt_c').click();
+    expect(picks).toEqual(['opt_c']);
+    expect(grid.style.display).toBe('none');
+  });
+  it('the chip follows the active option when the panel\'s sync moves it', async () => {
+    const { name } = setup();
+    document.getElementById('opt_b').classList.remove('active');
+    document.getElementById('opt_c').classList.add('active');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(name.textContent).toBe('Gamma');
+  });
+
+  // the convergence (advisor 2026-10-14): main's hand-rolled popovers folded in -- their ids and behaviours, declared here
+  it('ids: the wrap, chip and name take the declared ids of a picker', () => {
+    document.body.innerHTML = '<div id="row"><div id="list2"><button id="o1" title="One" class="active">1</button></div></div>';
+    mountIconGrid(document.getElementById('list2'), { label: 'X', ids: { wrap: 'xWrap', chip: 'xChip', name: 'xName' } });
+    expect(document.getElementById('xWrap').classList.contains('icon-grid-picker')).toBe(true);
+    expect(document.getElementById('xChip').classList.contains('icon-select-button')).toBe(true);
+    expect(document.getElementById('xName').textContent).toBe('One');
+  });
+  it('a pick shows on the chip AT ONCE (no observer tick) and closes the grid; the name opens the grid too', () => {
+    const { grid, chip, name } = setup();
+    name.click();
+    expect(grid.style.display).not.toBe('none');
+    const c = document.getElementById('opt_c'); // B is active: picking C must show on the chip in the same tick
+    c.addEventListener('click', () => { for (const o of grid.querySelectorAll('button')) o.classList.toggle('active', o === c); });
+    c.click();
+    expect(name.textContent).toBe('Gamma');
+    expect(chip.title).toBe('Thing: Gamma');
+    expect(grid.style.display).toBe('none');
+  });
+  it('preferActive: with two options active, the chip shows the preferred one (a saved pattern over its bond)', () => {
+    document.body.innerHTML = '<div id="row"><div id="list3"><button id="bond" title="Bond" class="active">b</button>'
+      + '<button id="mine" title="Mine" class="active user">m</button></div></div>';
+    mountIconGrid(document.getElementById('list3'), { label: 'P', preferActive: '.user', ids: { name: 'pName' } });
+    expect(document.getElementById('pName').textContent).toBe('Mine');
+  });
+  it('nameOf: a picker declares the name its chip shows (default: the aria-label)', () => {
+    document.body.innerHTML = '<div id="row"><div id="list4"><button class="active" aria-label="Arch · fits this frame" data-name="Arch">a</button></div></div>';
+    mountIconGrid(document.getElementById('list4'), { label: 'F', nameOf: (o) => o.dataset.name, ids: { name: 'fName' } });
+    expect(document.getElementById('fName').textContent).toBe('Arch');
   });
 });
