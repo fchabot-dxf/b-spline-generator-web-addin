@@ -190,6 +190,7 @@ export async function updateStampMasks(nx, nz) {
             levels: P.brickSettings && P.brickSettings.elementLevelIn, // F35 item 16: per-element Level
             edges: P.brickSettings && P.brickSettings.edgeByElement, // Fred 2026-10-11: per-element EDGE TAPER
             accent: P.brickSettings && P.brickSettings.accent, // F35 item 15: raised accents (Wall)
+            heights: P.brickSettings && P.brickSettings.heights, // Fred 2026-10-11: selected bricks' own heights (records)
             frameBandAccents: P.brickSettings && P.brickSettings.frameBandAccents, // per band (advisor)
             brushAccent: P.brickSettings && P.brickSettings.brushAccent, // the Brush element's, per stroke
             accentSeed: P.brickSettings && P.brickSettings.seed }));

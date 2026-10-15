@@ -625,6 +625,13 @@ export const MIGRATIONS = [
     },
   },
   {
+    id: 'brick-height-records',
+    // Fred 2026-10-11: selected bricks' heights are records (core/state.js heights). A board saved before has none -- a load
+    // replaces brickSettings whole, so it says so explicitly and carves exactly as before.
+    when: (p) => p.brickSettings && !Array.isArray(p.brickSettings.heights),
+    apply: (p) => { p.brickSettings.heights = []; },
+  },
+  {
     id: 'grout-per-element',
     // the one board-wide joint width -> a joint per element (groutByElement). A saved board keeps its exact width
     // on every element (it lays as before); a new board starts at each element's set's joint (null).
