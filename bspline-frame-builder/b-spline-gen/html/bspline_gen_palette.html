@@ -396,6 +396,10 @@
         white-space: nowrap;
         overflow: hidden;
       }
+      /* Fred 2026-10-15: a header button whose face declares a phone icon (core/header-faces.js HEADER_BUTTON_FACES)
+         shows the ICON here, not its label ("Send to Fusion" read "d to Fu" at 36 px); the desktop keeps the label. */
+      .cad-navbar .cad-nav-has-phone-icon .cad-nav-face-label { display: none !important; }
+      .cad-navbar .cad-nav-has-phone-icon .cad-nav-face-icon { display: inline-flex !important; }
     }
 
     /* UX2: the one status line for Fusion traffic. Token colors only —
