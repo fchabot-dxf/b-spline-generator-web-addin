@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { elementGroutWidth } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { elementGroutWidth, elementGroutDepth, elementGroutProfile, elementSize } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 describe('the default brick grout is Set 1 (Red Brick)\'s own', () => {
@@ -15,18 +15,23 @@ describe('the default brick grout is Set 1 (Red Brick)\'s own', () => {
     // grout per element: a new board has no own joints -- each element lays with its set's (Red = set 1)
     expect(DEFAULT.brickSettings.groutByElement).toEqual({ wall: null, frame: null, brush: null });
     expect(elementGroutWidth(DEFAULT.brickSettings, 'wall')).toBe(set1.grout.widthIn);
-    expect(DEFAULT.brickSettings.grout.depthIn).toBe(set1.grout.depthIn);
+    // Fred 2026-10-11: depth per element, null = the pattern's default (Set 1's depth: audit C4)
+    expect(DEFAULT.brickSettings.groutDepthByElement).toEqual({ wall: null, frame: null, brush: null });
+    expect(elementGroutDepth(DEFAULT.brickSettings, 'wall')).toBe(set1.grout.depthIn);
   });
   it('is a copy: editing the settings never writes into the frozen set', () => {
     expect(DEFAULT.brickSettings.grout).not.toBe(set1.grout);
   });
   it("Fred (2026-10-05): a new board starts at 1 1/4 in (was 1 in since turn 207), not the set's own 0.75", () => {
-    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1.25);
+    expect(DEFAULT.brickSettings.sizeByElement).toEqual({ wall: null, frame: null, brush: null }); // the pattern's default
+    for (const k of ['wall', 'brush']) expect(elementSize(DEFAULT.brickSettings, k), k).toBe(1.25);
     expect(set1.brickLengthIn).toBe(0.75); // the set's own declaration is unchanged
   });
   it("Fred (turn 207): a new board starts with RECESSED joints (Set 1's 0.05 in) and FLAT brick tops", () => {
-    expect(DEFAULT.brickSettings.grout.profile).toBe('recessed');
-    expect(DEFAULT.brickSettings.grout.depthIn).toBe(0.05);
+    for (const k of ['wall', 'frame', 'brush']) {
+      expect(elementGroutProfile(DEFAULT.brickSettings, k), k).toBe('recessed');
+      expect(elementGroutDepth(DEFAULT.brickSettings, k), k).toBe(0.05);
+    }
     expect(DEFAULT.brickSettings.brickTopMode).toBe('flat');
   });
 });

@@ -13,7 +13,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 import { readFileSync } from 'node:fs';
 import { P, DEFAULT, loadLastSession } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
-import { scaleFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { scaleFor, elementSize } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { DEFAULT_ACCENT } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
@@ -24,11 +24,12 @@ beforeEach(() => { localStorage.clear(); });
 
 describe('a saved board keeps its own settings', () => {
   it('the pre-item-22 fixture (saved at 1 in) loads at 1 in, not the new-board default', () => {
-    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1.25); // the new-board default it must NOT pick up
+    expect(elementSize(DEFAULT.brickSettings, 'wall')).toBe(1.25); // the new-board default it must NOT pick up
     localStorage.setItem('splineGenLastSession', FIXTURE);
     expect(loadLastSession()).toBe(true);
     runMigrations();
-    expect(P.brickSettings.brickLengthIn).toBe(1);
+    // per element since 2026-10-11: the board's own 1 in is every element's size (the migration's overrides)
+    for (const k of ['wall', 'frame', 'brush']) expect(elementSize(P.brickSettings, k), k).toBe(1);
     expect(P.brickSettings.brickTopMode).toBe(JSON.parse(FIXTURE).P.brickSettings.brickTopMode);
   });
 });

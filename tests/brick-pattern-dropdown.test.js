@@ -1,3 +1,4 @@
+// the chips are main/icon-select.js mountIconGrid's (the one picker system): the chip opens the grid
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderWallPatternList, setWallPattern } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -45,27 +46,27 @@ describe('BRICK-PATTERN-DROPDOWN: single chip at rest, popover mosaic on click',
   });
 
   it('clicking the trigger chip toggles the mosaic popover open and closed', () => {
-    const triggerWrap = document.getElementById('brickPatternTriggerWrap');
+    const triggerBtn = document.getElementById('brickPatternTrigger');
     const list = document.getElementById('brickPatternList');
 
     expect(list.style.display).toBe('none');
 
     // Click to open
-    triggerWrap.click();
-    expect(list.style.display).toBe('flex');
+    triggerBtn.click();
+    expect(list.style.display).toBe('grid');
 
     // Click to close
-    triggerWrap.click();
+    triggerBtn.click();
     expect(list.style.display).toBe('none');
   });
 
   it('clicking a pattern button selects it, updates trigger label, and closes mosaic', () => {
-    const triggerWrap = document.getElementById('brickPatternTriggerWrap');
+    const triggerBtn = document.getElementById('brickPatternTrigger');
     const triggerName = document.getElementById('brickPatternTriggerName');
     const list = document.getElementById('brickPatternList');
 
-    triggerWrap.click();
-    expect(list.style.display).toBe('flex');
+    triggerBtn.click();
+    expect(list.style.display).toBe('grid');
 
     const herringboneBtn = document.getElementById('brickPattern_herringbone');
     expect(herringboneBtn).not.toBeNull();
