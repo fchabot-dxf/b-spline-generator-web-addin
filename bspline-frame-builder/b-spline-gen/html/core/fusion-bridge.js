@@ -8,6 +8,7 @@ import { COORD_SYSTEM } from './coords.js';
 import { fusLog } from './fusion-log.js';
 import { releaseHeldStage } from './loading-signal.js';
 import FUSION_HOST from '../data/fusion-host.js';
+import { setHeaderFaceLabel } from './header-faces.js';
 
 export { fusLog } from './fusion-log.js';
 
@@ -32,7 +33,7 @@ export const FUSION_IDLE_LABEL = 'Send to Fusion';
 export function fusionActionButton() { return document.getElementById('btnDownload'); }
 export function setFusionActionState(text, disabled) {
     const b = fusionActionButton(); if (!b) return;
-    b.textContent = text; b.disabled = !!disabled;
+    setHeaderFaceLabel(b, text); b.disabled = !!disabled; // the label only: a phone keeps its icon (core/header-faces.js)
 }
 
 let _statusGen = 0;

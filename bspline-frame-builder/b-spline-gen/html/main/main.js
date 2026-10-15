@@ -56,6 +56,7 @@ import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
 import { installGestureWatch, holdLoadingStage, releaseHeldStage } from '../core/loading-signal.js';
 import { applyFrameLabels } from '../core/frame-labels.js';
+import { applyHeaderFace } from '../core/header-faces.js';
 import {
     onGenerate, onFusionApply, executeExport, closeWizard,
 } from './export-flow.js';
@@ -199,7 +200,7 @@ async function onFusionDetected() {
     const dlBtn = document.getElementById('btnDownloadAddin');
     if (dlBtn) dlBtn.style.display = 'none';
     const headerBtn = document.getElementById('btnDownload');
-    if (headerBtn) headerBtn.textContent = 'Send to Fusion';
+    if (headerBtn) applyHeaderFace(headerBtn, 'fusion'); // core/header-faces.js: the label + its phone icon (Fred 2026-10-15)
     // On every Fusion-mode load (including palette hide/re-show HTML
     // reloads), reset the Send-to-Fusion button to its idle label so it
     // never shows a stale in-progress state.
@@ -220,7 +221,7 @@ async function onFusionDetected() {
 async function onWebDetected() {
     fusLog('Web/Browser Mode Detected');
     const headerBtn = document.getElementById('btnDownload');
-    if (headerBtn) headerBtn.textContent = 'STEP';
+    if (headerBtn) applyHeaderFace(headerBtn, 'web');
     initApp(preview, () => { wireGlobalEvents(preview); hideSplashScreen(); });
     initSvgEditor(preview);
 }

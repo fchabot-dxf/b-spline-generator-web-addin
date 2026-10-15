@@ -362,6 +362,9 @@ aside {
     padding: 0 !important;
 }
 
+/* core/header-faces.js: a button's phone icon is hidden outside the phone header (the palette's phone block shows it) */
+.cad-navbar .cad-nav-face-icon { display: none; align-items: center; justify-content: center; }
+
 #btnDownload:hover {
     background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
 }
