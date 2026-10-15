@@ -1,3 +1,4 @@
+import { blame, PROF_MARK } from '../blame.mjs';
 // Brick matrix group 'blind': no freeze without its card (Fred's rule: a loading signal before every long computation).
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
@@ -116,7 +117,7 @@ const RECORDERS = `(() => { if (window.__blindRec) return 1; window.__blindRec =
     const tasks = window.__long.filter((e) => e.start >= t0 - 5), shown = window.__shown.find((t) => t >= t0 - 5);
     const cut = shown ?? Infinity;
     return JSON.stringify({ blindMs: Math.round(tasks.reduce((s, e) => s + Math.max(0, Math.min(e.start + e.dur, cut) - e.start), 0)),
-      cardMs: shown == null ? null : Math.round(shown - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
+      cardMs: shown == null ? null : Math.round(shown - t0), actMs: Math.round(t1 - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
       tasks: tasks.map((e) => [Math.round(e.start - t0), Math.round(e.dur)]) }); };
   return 1; })()`;
 
@@ -150,6 +151,13 @@ async function doAct(a) {
   return false;
 }
 
+// BLIND_PROFILE=<regex> (opt-in, seat D 2026-10-11): the matching rows' actions run under the CPU profiler and print which
+// app code ran before the card and in their longest tasks (blame.mjs). Every row still runs, in order: a row's state is
+// what the rows before it left (a filtered run skipped the row that opens the editor -- measured: setup control missing).
+const PROFILE = process.env.BLIND_PROFILE ? new RegExp(process.env.BLIND_PROFILE, 'i') : null;
+// the tasks a profiled row blames on their own (BLIND_PROFILE_TASK_MS, default 100): 40 names a pointerdown's 60 ms one
+const PROFILE_TASK_MS = Number(process.env.BLIND_PROFILE_TASK_MS || 100);
+
 async function runBlindBudget() {
   const B = BLIND_BUDGET;
   await send('Emulation.setDeviceMetricsOverride', { ...B.viewport, deviceScaleFactor: 1, mobile: true });
@@ -159,6 +167,7 @@ async function runBlindBudget() {
   try { await send('Page.reload', {}); await waitApp(); } finally { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier }); }
   await sleep(3000);
   await js(RECORDERS);
+  if (PROFILE) { await js(PROF_MARK); await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); }
   try {
     for (const row of B.rows) {
       const budget = row.budgetMs ?? B.budgetMs, name = `No blind freeze (phone, CPU x${B.cpu}): ${row.name} -- under ${budget} ms before its card`;
@@ -177,13 +186,25 @@ async function runBlindBudget() {
       await sleep(1200); // the setup's own work settles before the measured action
       if (!ready) { checkRow('blind', name, false, `setup control missing (${(row.pre || []).join(', ')})`); continue; }
       await send('Emulation.setCPUThrottlingRate', { rate: B.cpu });
+      let markT = null;
+      const prof = !!PROFILE && PROFILE.test(row.name);
+      if (prof) { await send('Profiler.start'); markT = await js('window.__profMark()'); }
       const t0 = await js('performance.now()');
       const did = await doAct(row.act);
       const m = did ? await jsJSON(`window.__blind(${t0}, ${B.quietMs})`) : null;
       await send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      if (prof) {
+        const p = (await send('Profiler.stop')).result?.profile;
+        if (p && m) {
+          const end = m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0);
+          const w = [['before card', t0, t0 + (m.cardMs ?? end)], ...m.tasks.filter(([, d]) => d >= PROFILE_TASK_MS).map(([s, d]) => [`task @${s} ${d}ms`, t0 + s, t0 + s + d])];
+          console.log(`  PROFILE ${row.name}: card ${m.cardMs ?? 'never'} ms, blind ${m.blindMs} ms`);
+          for (const b of blame(p, w, markT, 6)) console.log(`   ${b.w}: ${b.top.map(([ms, c]) => ms + 'ms ' + c).join(' || ')}`);
+        }
+      }
       const ok = !!m && m.blindMs <= budget;
       const load = ok || !m ? '' : ` -- ${loadNote(await calibrate())}`; // detection only: the verdict above is final
-      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
+      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms (the action took ${m.actMs} ms), longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
       if (!ok) await shot(`FAIL_blind_${row.name.replace(/[^A-Za-z0-9]+/g, '_')}`);
       for (const id of row.post || []) { await tap('#' + id); await sleep(500); }
     }

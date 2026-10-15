@@ -12,7 +12,7 @@
  * (a shortcut, Esc = Select) brings its tab up.
  */
 import { renderTabStrip } from '../editor/tab-strip.js';
-import { EDITOR_TABS, getEditorTab, setEditorTab } from './editor-tabs.js';
+import { EDITOR_TABS, SHARED_ART_TOOLS, getEditorTab, setEditorTab } from './editor-tabs.js';
 
 export const ART_TABS = Object.freeze([
   Object.freeze({ id: 'general', label: 'General', tools: Object.freeze([]) }),
@@ -38,6 +38,23 @@ export function artTabOfMode(mode) {
 
 /** Redesign phase 2: the top-level editor tab (EDITOR_TABS) whose `artTabs` hold an Art tab -- Draw or Lattice. */
 export const topTabOfArtTab = (id) => (EDITOR_TABS.find((t) => (t.artTabs || []).includes(id)) || {}).id || null;
+/** Redesign phase 3: the tool row is the top tab's PERMANENT set (EDITOR_TABS `tools`: the shared set, a divider, its
+ *  own), in the declared order -- not filtered per Art tab any more. Buttons not listed (the actions, moved out by
+ *  main/editor-chrome.js; the other tab's tools) are hidden; the button elements are kept, ids and handlers intact. */
+function _layoutToolRow(top) {
+  const row = document.getElementById('editorToolbarArtwork');
+  const own = (EDITOR_TABS.find((t) => t.id === top) || {}).tools;
+  if (!row || !own) return;
+  let divider = document.getElementById('artToolsSharedDivider');
+  if (!divider) { divider = document.createElement('div'); divider.id = 'artToolsSharedDivider'; divider.className = 'tool-divider'; }
+  const shared = own.filter((id) => SHARED_ART_TOOLS.includes(id));
+  for (const id of shared) { const b = document.getElementById(id); if (b) row.appendChild(b); }
+  row.appendChild(divider);
+  for (const id of own.filter((x) => !shared.includes(x))) { const b = document.getElementById(id); if (b) row.appendChild(b); }
+  for (const el of row.children) if (el !== divider) el.style.display = own.includes(el.id) ? '' : 'none';
+  divider.style.display = '';
+  row.style.display = 'flex';
+}
 /** The strip shows the active top tab's own Art tabs only. */
 function _showStripFor(top) {
   const own = (EDITOR_TABS.find((t) => t.id === top) || {}).artTabs;
@@ -61,11 +78,7 @@ export function setArtTab(id, { arm = true } = {}) {
   if (top && getEditorTab() !== top && (onArtTop || arm)) { _switching = true; try { setEditorTab(top); } finally { _switching = false; } }
   _tab = id;
   _showStripFor(top || getEditorTab());
-  const tools = document.getElementById('editorToolbarArtwork');
-  if (tools) {
-    for (const el of tools.children) el.style.display = tab.tools.includes(el.id) ? '' : 'none'; // dividers: none
-    tools.style.display = tab.tools.length ? 'flex' : 'none';
-  }
+  _layoutToolRow(top || getEditorTab());
   const general = document.getElementById('artGeneralBody');
   if (general) general.style.display = id === 'general' ? '' : 'none';
   if (_sync) _sync(id);
@@ -84,6 +97,7 @@ export function initArtTabs() {
     const top = EDITOR_TABS.find((t) => t.id === (e.detail && e.detail.tab));
     if (!top || !top.artTabs || _switching) return;
     _showStripFor(top.id);
+    _layoutToolRow(top.id);
     if (!top.artTabs.includes(_tab)) setArtTab(top.artDefault || top.artTabs[0], { arm: false });
   });
   document.addEventListener('editorModeChanged', (e) => {

@@ -26,7 +26,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     sec('pattern', 'Pattern', 'brick-pattern', ['brickWallPatternRow', 'brickWallRotationRow', 'brickLargeStonesRow'], { titleOf: 'brickWallPatternLabel' }),
     sec('accent', 'Accent relief', 'brick-accent', ['brickWallAccentRow', 'brickAccentActionsRow', 'brickPatternBuilder', 'brickAccentLevelRow'], { titleOf: 'brickWallAccentLabel' }),
-    sec('height', 'Height', 'brick-height', ['brickRusticRow_wall', 'brickLevelRow_wall']),
+    sec('height', 'Height', 'brick-height', ['brickRusticRow_wall', 'brickLevelRow_wall', 'brickEdgeTaperRow']), // + Edge taper (Fred 2026-10-11), shared
     sec('joint', 'Joint', 'brick-joint', JOINT),
   ]) }),
   frame: Object.freeze({ host: 'brickFrameSection', after: 'brickElementLabel_frame', sections: Object.freeze([
@@ -34,7 +34,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('bands', 'Bands', 'brick-pattern', ['brickFramePresetRow', 'brickFrameOffsetRow', 'brickFrameBandsNoteRow', 'brickFrameBandPatternRow']), // + Offset from frame (where the bands start)
     // Fred 2026-10-11: the Corners picker is retired (a preset bundles its corner) -- the section holds the fan-centre row alone
     sec('fanCentre', 'Fan centre', 'brick-fan-centre', ['brickFrameFanCentreRow'], { titleOf: 'brickFrameFanCentreLabel' }), // T86 item 16e
-    sec('height', 'Height', 'brick-height', ['brickLevelRow_frame']),
+    sec('height', 'Height', 'brick-height', ['brickLevelRow_frame', 'brickEdgeTaperRow']),
     // item 9 (Fred: the frame crumbles by the wall's rule; the inset window's brick surround)
     sec('crumble', 'Crumble', 'brick-crumble', ['brickFrameCrumbleRow']),
     sec('surround', 'Window surround', 'brick-surround', ['brickWindowSurroundRow'], { titleOf: 'brickSurroundLabel' }),
@@ -44,7 +44,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     sec('stroke', 'Stroke', 'brick-pattern', ['brickBrushProfileRow', 'brickBrushOrientationRow', 'brickBrushPresetRow']),
     sec('accent', 'Accent relief', 'brick-accent', ['brickBrushAccentRow']),
-    sec('height', 'Height', 'brick-height', ['brickRusticRow_brush']),
+    sec('height', 'Height', 'brick-height', ['brickRusticRow_brush', 'brickEdgeTaperRow']),
     sec('joint', 'Joint', 'brick-joint', JOINT),
   ]) }),
   raisedBrush: Object.freeze({ host: 'brickRaisedSection', after: 'brickElementLabel_raisedBrush', sections: Object.freeze([

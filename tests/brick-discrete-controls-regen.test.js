@@ -40,7 +40,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 });
 
 import {
-  initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
+  initBrickPanel, renderFramePresetList, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
@@ -48,7 +48,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { FRAME_PRESETS, EDGE_TAPER, brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool, BRICK_GENERAL_TAB } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -84,6 +84,7 @@ const FIXTURE = `
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
+  <div id="brickEdgeTaperRow"><input type="range" id="brickEdgeTaperSlider"><input id="brickEdgeTaper"></div>
   <input type="number" id="brickFrameOffsetDistance" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
@@ -221,7 +222,7 @@ describe('Editor Brick tab (Frame tool)', () => {
     $('brickFramePreset_soldier_stretcher').click();
     expectReLaidAtOnce((c) => expect(c[2].bands.length).toBe(2));
   });
-  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectReLaidAtOnce(); });
+  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button[id^=brickFrameBandPattern_]') /* the options, not the picker's chip */.click(); expectReLaidAtOnce(); });
 });
 
 describe('Generate with nothing to re-lay', () => {
@@ -894,13 +895,14 @@ describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid (fla
 
 describe('F35 item 15: raised accents -- a preset icon grid + Click bricks, 3D-only (never pending)', () => {
   beforeEach(() => { P.brickSettings.accent = { preset: 'none', levelIn: 0.0625, clicks: [] }; setup('wall'); });
-  it('None + the 10 presets, icon only with the name as tooltip; the level row hidden for None', async () => {
-    const { ACCENT_PRESETS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js');
+  it('None + the tailored presets, icon only with the name as tooltip; the level row hidden for None', async () => {
+    const { accentPresetsForPattern } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js');
     const btns = [...$('brickAccentList').querySelectorAll('button')];
-    expect(btns.map((b) => b.id)).toEqual(['brickAccent_none', ...ACCENT_PRESETS.map((p) => `brickAccent_${p.id}`)]);
-    expect($('brickAccent_pyramid').title).toBe('Pyramid');
-    expect($('brickAccent_pyramid').querySelector('svg')).not.toBeNull();
-    expect($('brickAccent_pyramid').textContent.trim()).toBe('');
+    const presets = accentPresetsForPattern(P.brickSettings.pattern);
+    expect(btns.map((b) => b.id)).toEqual(['brickAccent_none', ...presets.map((p) => `brickAccent_${p.id}`)]);
+    expect($('brickAccent_zigzag').title).toBe('Stepped zigzag');
+    expect($('brickAccent_zigzag').querySelector('svg')).not.toBeNull();
+    expect($('brickAccent_zigzag').textContent.trim()).toBe('');
     expect($('brickAccent_none').classList.contains('active')).toBe(true);
     expect($('brickAccentLevelRow').style.display).toBe('none');
   });
@@ -1191,8 +1193,8 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
 
   it('(c) a wall can carry a raised preset while the frame has none: accents are the Wall\'s alone', () => {
     setup('wall');
-    $('brickAccent_sparseDots').click();
-    expect(P.brickSettings.accent.preset).toBe('sparseDots');
+    $('brickAccent_diamond').click();
+    expect(P.brickSettings.accent.preset).toBe('diamond');
     expect(runBricks.mock.calls.every((c) => !c[3].kinds.includes('frame') || c[3].kinds.includes('wall'))).toBe(true);
   });
 });
@@ -1269,5 +1271,73 @@ describe('the corner-variant preset chips stay live on a frame with no bands', a
     for (const id of ['quoin_corners', 'butt_frame', 'double_course']) expect($(`brickFramePreset_${id}`).disabled, id).toBe(false);
     $('brickFramePreset_quoin_corners').click();
     expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+});
+
+describe("Fred 2026-10-11: EDGE TAPER per element -- the active element's shoulder, 3D only", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.edgeByElement = { wall: null, frame: null, brush: null };
+    setup('frame');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  const ownEdge = (kind) => brickSetById(elementSetId(P.brickSettings, kind)).heightProfile.edgeRadiusIn;
+  it("untouched: the row shows the element's set's own shoulder, its range from the declaration, nothing written", () => {
+    expect(Number($('brickEdgeTaper').value)).toBe(ownEdge('frame'));
+    expect([$('brickEdgeTaperSlider').min, $('brickEdgeTaperSlider').max, $('brickEdgeTaperSlider').step]).toEqual(
+      [String(EDGE_TAPER.minIn), String(EDGE_TAPER.maxIn), String(EDGE_TAPER.stepIn)]);
+    expect(P.brickSettings.edgeByElement).toEqual({ wall: null, frame: null, brush: null });
+  });
+  it('a drag writes the ACTIVE element only; the release re-masks once; never re-lays, never pending', () => {
+    fire('brickEdgeTaperSlider', 0.06, 'input');
+    expect(P.brickSettings.edgeByElement).toEqual({ wall: null, frame: 0.06, brush: null });
+    expect(notify).not.toHaveBeenCalled();
+    fire('brickEdgeTaperSlider', 0.06, 'change');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+  it("another element's tab shows ITS shoulder (the Wall untouched = its set's own)", () => {
+    fire('brickEdgeTaperSlider', 0, 'change');
+    $('brickTool_wall').click();
+    expect(Number($('brickEdgeTaper').value)).toBe(ownEdge('wall'));
+    $('brickTool_frame').click();
+    expect(Number($('brickEdgeTaper').value)).toBe(0);
+  });
+});
+
+describe('Fred 2026-10-14 ("suggest, don\'t hide"): a wood-frame family orders the presets, never rewrites or hides one', () => {
+  beforeEach(() => { setup('frame'); });
+  afterEach(() => { P.frame = null; });
+  it('a template outside the preset\'s family keeps the board\'s preset (it was rewritten to the family default)', () => {
+    P.brickSettings.frameBandPreset = 'quoin_corners';
+    setFrameRecord({ templateId: 'template_7', params: {} }); // Family 3 (gables): quoin_corners is not one of its presets
+    expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+  it('the preset popover lists EVERY preset: the family\'s first, marked "fits this frame", then the rest', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    const ids = [...list.querySelectorAll('button[id^="brickFramePreset_"]')].map((b) => b.id.replace('brickFramePreset_', ''));
+    expect([...ids].sort()).toEqual(Object.keys(FRAME_PRESETS).sort());
+    for (const id of ['dentil_corbel', 'recessed_panel', 'diaper_lattice', 'chicago_dentil', 'butt_frame']) expect(ids, id).toContain(id);
+    const fits = ids.filter((id) => $(`brickFramePreset_${id}`).classList.contains('fits-frame'));
+    expect(fits).toContain('arch_keystone');
+    expect(fits).not.toContain('butt_frame');
+    expect(ids.slice(0, fits.length)).toEqual(fits); // the family's first
+    expect($('brickFramePreset_arch_keystone').title).toMatch(/fits this frame/);
+    expect($('brickFramePresetGroup_fits')).not.toBeNull();
+    expect($('brickFramePresetGroup_other')).not.toBeNull();
+  });  it('inside the picker (main/icon-select.js): the headings span the grid, the chip names the preset alone', () => {
+    setFrameRecord({ templateId: 'template_10', params: {} }); // Family 2 (arched)
+    P.brickSettings.frameBandPreset = 'arch_keystone';
+    const list = $('brickFramePresetList');
+    renderFramePresetList(list);
+    expect(list.closest('.icon-grid-picker')).not.toBeNull();
+    for (const id of ['brickFramePresetGroup_fits', 'brickFramePresetGroup_other']) expect($(id).style.gridColumn, id).toBe('1 / -1');
+    const name = $('brickFramePresetTriggerName').textContent;
+    expect(name).toBe($('brickFramePreset_arch_keystone').dataset.name);
+    expect(name).not.toMatch(/fits this frame/); // the tooltip says it; the chip names the preset
   });
 });

@@ -15,7 +15,8 @@
 // sections edited in place, then a "2D editor" group with the ones that open the 2D editor (Photo, Brick, Vector
 // stamping -- Decor's two joined Photo there).
 export const SIDEBAR_TABS = Object.freeze([
-  Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
+  // c64a466 (Fred, 2026-10-14): the permanent Layers panel, right after Stock dimensions
+  Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-layers', 'panel-frame']) }),
   Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']),
     groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-photo', 'panel-brick', 'panel-stamp']) })]) }),
   Object.freeze({ id: 'output', label: 'Output', sections: Object.freeze(['panel-view', 'panel-export', 'panel-resolution']) }),

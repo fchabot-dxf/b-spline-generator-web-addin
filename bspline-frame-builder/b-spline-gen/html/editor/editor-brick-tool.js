@@ -669,6 +669,9 @@ export function frameCornerOf(settings) {
 /** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
  *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
 /** 2026-10-11: the arch the board's Frame preset carries (library.js withArch: an arch-surround.js ARCH_SPECS id), or null. */
+// Fred 2026-10-14: a preset lays the SAME on every template -- a saved board re-lays exactly as before (d4b2ec1 had
+// routed quoin_corners on the arched family to a soldier_quoin arch with no bands; Fred chose the curved quoin there,
+// tests/frame-preset-saved-boards-pin.test.js). A wood-frame family only SUGGESTS presets (core/bricks/frame-families.js).
 export const frameArchOf = (settings) => (FRAME_PRESETS[settings && settings.frameBandPreset] || {}).arch || null;
 export function frameBandsOf(settings) {
   const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
@@ -707,6 +710,15 @@ export function elementGroutWidth(settings, kind) {
   if (Number.isFinite(v)) return v;
   const set = setForId(elementSetId(settings || {}, kind));
   return (set && set.grout && set.grout.widthIn) ?? 0.034;
+}
+/** Fred 2026-10-11 (EDGE TAPER): an element's shoulder width, `settings.edgeByElement = { wall, frame, brush }` (the
+ *  Raised brush shares the Brush's) -- a number = the user's own; null / missing = the element's set's own
+ *  heightProfile.edgeRadiusIn. The height mask applies it in the set's place (a surface style still scales it). */
+export function elementEdgeRadius(settings, kind) {
+  const v = settings && settings.edgeByElement && settings.edgeByElement[JOINT_ELEMENT[kind] || kind];
+  if (Number.isFinite(v)) return v;
+  const set = setForId(elementSetId(settings || {}, kind));
+  return (set && set.heightProfile && set.heightProfile.edgeRadiusIn) ?? 0;
 }
 export const elementSettings = (settings, kind) => ({
   ...settings,

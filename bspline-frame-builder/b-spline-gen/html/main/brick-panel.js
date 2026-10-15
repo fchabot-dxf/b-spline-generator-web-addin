@@ -28,7 +28,7 @@ import {
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
-  elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
+  elementGroutWidth, elementEdgeRadius, JOINT_ELEMENT, patternParamsFor,
   topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
@@ -40,7 +40,7 @@ import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
   accentLayInput, BOND_CUSTOM, isCustomBondTile, blankBond, resizeBond, pieceOfCells, bondTogglePiece, bondJoin, bondSplit,
-  bondShift, wallPatternOfBase,
+  bondShift, wallPatternOfBase, accentPresetsForPattern, accentPresetById,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -50,14 +50,15 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
-import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
+import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
+import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
-import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
+import { mountIconSelect, refreshIconSelect, mountIconGrid, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -464,30 +465,49 @@ export function setElementLevel(kind, levelIn, commit = 'generate') {
  *  the 2D highlight and re-masks, never re-lays. The picker = None + ACCENT_PRESETS as engine-drawn icons
  *  (icons only, the name as tooltip); Custom = the "Click bricks" toggle, which arms the canvas mode. */
 const _accent = () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.accent || {}) });
+export const accentChoicesForPattern = (patternId) => [
+  { id: 'none', label: 'None' },
+  ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
+];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
+/** The Wall grid's choices: the pattern's own (0b04ee2), PLUS the board's saved preset when the pattern no longer offers
+ *  it (advisor 2026-10-14: a saved Stretcher Course bands still lays -- accentPresetById -- so the grid shows it, active,
+ *  instead of a chip with no name). Custom / tile / none are not presets: never appended. */
+export const wallAccentChoices = (patternId, presetId) => {
+  const own = accentChoicesForPattern(patternId);
+  const saved = typeof presetId === 'string' && !own.some((c) => c.id === presetId) ? accentPresetById(presetId) : null;
+  return saved ? [...own, saved] : own;
+};
 let _accentClickArmed = false;
 
-function renderAccentList(container) {
+export function renderAccentList(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const choice of ACCENT_CHOICES) {
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = wallAccentChoices(pattern, _accent().preset);
+
+  for (const choice of choices) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon';
+    btn.className = 'cad-btn brick-accent-icon' + (_accent().preset === choice.id ? ' active' : '');
     btn.id = `brickAccent_${choice.id}`;
     btn.title = choice.label;
     btn.setAttribute('aria-label', choice.label);
     btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0 }) || choice.label; // item 32: sunk drawn lower
+    btn.innerHTML = accentIconSvg(choice.id, 30, { sunk: _accent().levelIn < 0, bond: pattern }) || choice.label; // item 32: sunk drawn lower
     if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
     btn.addEventListener('click', () => setAccentPreset(choice.id));
     container.appendChild(btn);
   }
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Accent', ids: { wrap: 'brickWallAccentTriggerWrap', chip: 'brickWallAccentTrigger', name: 'brickWallAccentTriggerName' } });
 }
 
-function syncAccentControls() {
+export function syncAccentControls() {
   const a = _accent();
-  for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
+  const choices = wallAccentChoices(pattern, a.preset);
+  for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
@@ -667,6 +687,8 @@ export function applyUserPattern(id) {
   _disarmAccentClick();
   P.brickSettings.accent = { ...accentOfUserPattern(u), clicks: _accent().clicks || [] };
   P.brickSettings.pattern = wallPatternOfBase(P.brickSettings.accent.tile.base); // 31e: a custom bond on the stretcher grid
+  const list = document.getElementById('brickPatternList');
+  if (list) list.style.display = 'none';
   syncWallPatternButtons();
   syncSetPicker();
   _accentChanged('generate');
@@ -874,23 +896,29 @@ function renderAccentRowFor(container, target, iconPx) {
   const row = document.createElement('div');
   row.className = 'brick-element-accent';
   row.dataset.accentFor = key;
-  row.style.cssText = 'display:flex; gap:3px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
+  row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
   const label = document.createElement('span');
   label.textContent = 'Accent';
-  label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+  label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
   row.appendChild(label);
-  for (const choice of ACCENT_CHOICES) {
+
+  const popover = document.createElement('div'); // the accent buttons: the picker's grid (Click and the level stay in the row)
+  popover.id = `brickAccentPopover_${key}`;
+  row.appendChild(popover);
+  for (const c of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon' + (a.preset === choice.id ? ' active' : '');
-    btn.id = `brickAccent_${key}_${choice.id}`;
-    btn.title = choice.label;
-    btn.setAttribute('aria-label', choice.label);
+    btn.className = 'cad-btn brick-accent-icon' + (a.preset === c.id ? ' active' : '');
+    btn.id = `brickAccent_${key}_${c.id}`;
+    btn.title = c.label;
+    btn.setAttribute('aria-label', c.label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = choice.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(choice.id, iconPx, { sunk: a.levelIn < 0 }) || choice.label);
-    btn.addEventListener('click', () => setElementAccent(target, { preset: choice.id }));
-    row.appendChild(btn);
+    btn.innerHTML = c.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(c.id, iconPx, { sunk: a.levelIn < 0 }) || c.label);
+    btn.addEventListener('click', () => setElementAccent(target, { preset: c.id }));
+    popover.appendChild(btn);
   }
+  mountIconGrid(popover, { label: 'Accent', ids: { wrap: `brickAccentTriggerWrap_${key}`, chip: `brickAccentTrigger_${key}`, name: `brickAccentTriggerName_${key}` } });
+
   const click = document.createElement('button');
   click.type = 'button';
   click.className = 'cad-btn' + (a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _targetKey(_accentClickTarget) === key ? ' active' : '');
@@ -912,7 +940,7 @@ function renderAccentRowFor(container, target, iconPx) {
   container.appendChild(row);
 }
 /** Re-render every non-Wall element's Accent row (the Frame bands' + the Brush's). */
-function renderElementAccentRows() {
+export function renderElementAccentRows() {
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
   const brush = document.getElementById('brickBrushAccentRow');
@@ -1259,6 +1287,7 @@ function syncControlsFromState() {
   syncBrickSizeControls(s.brickLengthIn);
   syncBrickSizePresetButtons();
   syncGroutWidthBox();
+  syncEdgeTaperRow();
   syncGroutPaintRow(); // item 55
   syncFrameOffsetControl();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -1422,6 +1451,18 @@ function syncGroutWidthBox() {
   const box = document.getElementById('brickGroutWidth');
   if (box) box.value = String(+elementGroutWidth(P.brickSettings, _jointKind()).toFixed(4));
 }
+/** Fred 2026-10-11 (EDGE TAPER): the Edge taper row shows + edits the ACTIVE element's shoulder width, as the Grout box
+ *  its joint (core/bricks/library.js EDGE_TAPER; untouched = the element's set's own). 3D only: a re-mask, no re-lay. */
+function syncEdgeTaperRow() {
+  setPair('brickEdgeTaperSlider', 'brickEdgeTaper', +elementEdgeRadius(P.brickSettings, _jointKind()).toFixed(4));
+}
+export function setElementEdge(kind, edgeIn, phase = 'onRelease') {
+  const v = Number(edgeIn);
+  if (!Number.isFinite(v) || v < 0) return;
+  P.brickSettings.edgeByElement = { ...(P.brickSettings.edgeByElement || {}), [JOINT_ELEMENT[kind] || kind]: v };
+  syncEdgeTaperRow();
+  commitBrickSetting('surface', phase);
+}
 export function setElementGrout(kind, widthIn, phase = 'onRelease') {
   const v = Number(widthIn);
   if (!Number.isFinite(v) || v < 0) return;
@@ -1485,6 +1526,7 @@ function _resetJointsOnSetChange() {
   }
   _jointSets = now;
   syncGroutWidthBox();
+  syncEdgeTaperRow(); // an untouched taper follows the new set's own
 }
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
@@ -1593,7 +1635,7 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'edgeByElement'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
@@ -2030,21 +2072,42 @@ export function deselectTool() {
   if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
-function renderFramePresetList(container) {
+export function renderFramePresetList(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const preset of FRAME_PRESET_LIST) {
+
+  const tplId = P.frame && P.frame.templateId;
+  // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset, the frame's family's first under "Fits this frame"
+  const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
+  const heading = (text, id) => {
+    const h = document.createElement('div');
+    h.id = id;
+    h.className = 'brick-preset-group';
+    h.textContent = text;
+    h.style.cssText = 'flex:1 0 100%; font-size:10px; font-weight:600; opacity:0.65; margin:2px 0 0;';
+    container.appendChild(h);
+  };
+  if (presets.some((p) => p.fits)) heading(FITS_FRAME_LABEL[0].toUpperCase() + FITS_FRAME_LABEL.slice(1), 'brickFramePresetGroup_fits');
+
+  presets.forEach((preset, i) => {
+    if (i > 0 && presets[i - 1].fits && !preset.fits) heading('Other presets', 'brickFramePresetGroup_other');
+    const label = preset.fits ? `${preset.label} · ${FITS_FRAME_LABEL}` : preset.label;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // item 33 (audit N10): the band stack as an icon, the name as the tooltip
+    // item 33 (audit N10): the band stack as an icon, the name as the tooltip; E 2026-10-14: fits-frame marks the frame family's presets
+    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : '') + (preset.id === P.brickSettings.frameBandPreset ? ' active' : '');
     btn.id = `brickFramePreset_${preset.id}`;
-    btn.title = preset.label;
-    btn.setAttribute('aria-label', preset.label);
+    btn.dataset.name = preset.label; // the chip's name: the preset alone (the tooltip adds "fits this frame")
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
     btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
-  }
+  });
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system); E's headings span its rows
+  mountIconGrid(container, { label: `${FRAME_LABELS.brick} preset`, nameOf: (o) => o.dataset.name,
+    ids: { wrap: 'brickFramePresetTriggerWrap', chip: 'brickFramePresetTrigger', name: 'brickFramePresetTriggerName' } });
 }
 
 /** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
@@ -2094,7 +2157,7 @@ export function setFrameBandPreset(presetId, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
-function syncFramePresetButtons() {
+export function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
@@ -2243,6 +2306,7 @@ function renderBrushPresetList(container) {
     });
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Brush preset' }); // Fred: one chip + its name, tap opens the grid
 }
 
 function syncBrushPresetButtons() {
@@ -2260,7 +2324,8 @@ function syncBrushPresetButtons() {
  *  later needs no change here. */
 const WALL_PATTERN_LABELS = {
   none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
-  flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  flemish: 'Flemish', english: 'English bond', monk: 'Monk bond', herringbone: 'Herringbone', double_herringbone: 'Double herringbone',
+  basketweave: 'Basketweave', windmill: 'Windmill pavers',
   // F35 item 13: the sheet's own names
   stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
   basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
@@ -2278,9 +2343,9 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
  *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
  *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
-  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'stacked_horizontal', 'stacked_variation'] },
-  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
-  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'english', 'monk', 'stacked_horizontal', 'stacked_variation'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron', 'double_herringbone'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked', 'windmill'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
   // F35 item 14: every BRICK_PATTERNS entry declaring `family: 'tiles'` lands here, under its own heading
   { id: 'tiles', label: 'Tiles', heading: true, patterns: [] },
@@ -2297,13 +2362,12 @@ function wallPatternFamilies() {
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 
-function renderWallPatternList(container) {
+export function renderWallPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
-  container.style.flexDirection = 'row';
-  container.style.flexWrap = 'wrap';
+  container.classList.add('brick-pattern-mosaic');
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
       const h = document.createElement('div');
@@ -2315,7 +2379,7 @@ function renderWallPatternList(container) {
     }
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-pattern-icon';
+    btn.className = 'cad-btn brick-pattern-icon' + (id === P.brickSettings.pattern ? ' active' : '');
     btn.id = `brickPattern_${id}`;
     btn.title = _patternLabel(id);
     btn.setAttribute('aria-label', _patternLabel(id));
@@ -2337,6 +2401,9 @@ function renderWallPatternList(container) {
     btn.addEventListener('click', () => applyUserPattern(u.id));
     container.appendChild(btn);
   }
+  // Fred: one chip + its name, tap opens the grid (main/icon-select.js -- the one picker system)
+  mountIconGrid(container, { label: 'Wall pattern', preferActive: '.brick-user-pattern',
+    ids: { wrap: 'brickPatternTriggerWrap', chip: 'brickPatternTrigger', name: 'brickPatternTriggerName' } });
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2348,7 +2415,16 @@ export function setWallPattern(patternId, commit = 'generate') {
     if (_builder.open) _builder.open = false;
     renderPatternBuilder();
   }
+  const allowed = accentPresetsForPattern(patternId).map((p) => p.id);
+  const isPeriodic = ACCENT_PRESETS.some((p) => p.id === a.preset);
+  if (a.preset && a.preset !== 'none' && a.preset !== ACCENT_CUSTOM.id && a.preset !== ACCENT_TILE.id) {
+    if (!allowed.includes(a.preset) && !isPeriodic) {
+      P.brickSettings.accent = { ...a, preset: 'none' };
+    }
+  }
   P.brickSettings.pattern = patternId;
+  renderAccentList(document.getElementById('brickAccentList'));
+  syncAccentControls();
   syncWallPatternButtons();
   syncSetPicker(); // item 23: Fieldstone makes the wall rock (no brick set active), another pattern gives it back
   commitBrickSetting(commit);
@@ -2468,34 +2544,49 @@ function renderFrameBandPatternList(container) {
   // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
   // Not the preset chips' rule ("grey + explain", a corner that cuts nothing here): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
+  const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     if (i >= keptBands) return;
+    const active = overrides[i] || band.pattern || 'stretcher';
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
+    row.style.cssText = 'display:flex; gap:6px; margin-bottom:4px; align-items:center;';
     const label = document.createElement('span');
     label.textContent = `Band ${i + 1}`;
-    label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+    label.style.cssText = 'font-size:11px; font-weight:600; opacity:0.75; width:44px; flex:0 0 auto;';
     row.appendChild(label);
+
+    const sel = document.createElement('select');
+    sel.id = `brickFrameBandPatternSelect_${i}`;
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
-      if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
-      btn.className = 'cad-btn brick-accent-icon';
-      btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
-      btn.title = pattern.label;
-      btn.setAttribute('aria-label', pattern.label);
-      btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-      btn.innerHTML = wallPatternIconSvg(pattern.id, 22) || pattern.label;
-      if (def && def.bandCapable) {
-        // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
-        btn.addEventListener('click', () => setFrameRock(true));
-      } else {
-        btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
-      }
-      row.appendChild(btn);
+      if (!bandCanLay(def)) continue;
+      const opt = document.createElement('option');
+      opt.value = pattern.id;
+      opt.textContent = pattern.label;
+      sel.appendChild(opt);
     }
+    sel.value = active;
+    sel.addEventListener('change', () => {
+      const def = BRICK_PATTERNS[sel.value];
+      if (def && def.bandCapable) {
+        setFrameRock(true);
+      } else {
+        setFrameBandPattern(i, sel.value);
+      }
+    });
+    row.appendChild(sel);
+
+    const wrap = mountIconSelect(sel, {
+      label: `Band ${i + 1}`,
+      iconFor: (v) => wallPatternIconSvg(v, 22),
+      optionId: (v) => `brickFrameBandPattern_${i}_${v}`,
+      pickSame: true, // PICKER_TILE's size (the advisor: the frame bands get the bigger tiles too)
+    });
+    if (wrap) {
+      const trigger = wrap.querySelector('.icon-select-button');
+      if (trigger) trigger.classList.add('active');
+    }
+
     container.appendChild(row);
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
   });
@@ -2510,6 +2601,11 @@ function syncFrameBandPatternButtons() {
   const overrides = P.brickSettings.frameBandPatterns || [];
   bands.forEach((band, i) => {
     const active = overrides[i] || band.pattern || 'stretcher';
+    const sel = document.getElementById(`brickFrameBandPatternSelect_${i}`);
+    if (sel) {
+      if (sel.value !== active) sel.value = active;
+      refreshIconSelect(sel);
+    }
     for (const pattern of WALL_PATTERN_LIST) {
       document.getElementById(`brickFrameBandPattern_${i}_${pattern.id}`)?.classList.toggle('active', pattern.id === active);
     }
@@ -2780,6 +2876,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint
+  syncEdgeTaperRow(); // the Edge taper row, the active element's shoulder
   syncGroutPaintRow();
   syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -2851,6 +2948,21 @@ const FRAME_PRESET_LABELS = {
   dentil_cornice: 'Dentil cornice',
   arch_keystone: 'Arch + keystone',
   greek_key_mosaic: 'Greek key mosaic',
+  craftsman_apron: 'Craftsman apron',
+  double_soldier: 'Double soldier',
+  english_frame: 'English bond frame',
+  stepped_fret: 'Stepped fret apron',
+  tudor_frieze: 'Tudor diamond frieze',
+  corbelled_cornice: 'Corbelled cornice',
+  flemish_architrave: 'Flemish architrave',
+  chicago_dentil: 'Chicago dentil apron',
+  crenellated_battlement: 'Crenellated battlement',
+  art_deco_stepped: 'Art Deco stepped',
+  florentine_architrave: 'Florentine architrave',
+  venetian_dentil: 'Venetian dentil',
+  slim_runner: 'Slim runner',
+  checker_tile_runner: 'Checker tile runner',
+  twin_runner: 'Twin thin runner',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
@@ -2882,7 +2994,8 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => framePresetsForTemplate(P.frame && P.frame.templateId, FRAME_PRESET_LIST) // every preset, its family's first
+    .map((c) => (c.fits ? { ...c, label: `${c.label} · ${FITS_FRAME_LABEL}` } : c)), iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -3184,6 +3297,17 @@ export function initBrickPanel() {
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
+  // Fred 2026-10-11 (EDGE TAPER): the active element's shoulder width, its range from the declaration
+  for (const id of ['brickEdgeTaperSlider', 'brickEdgeTaper']) {
+    const el = document.getElementById(id);
+    if (el) Object.assign(el, { min: String(EDGE_TAPER.minIn), max: String(EDGE_TAPER.maxIn), step: String(EDGE_TAPER.stepIn) });
+  }
+  const edgeSettle = settleAfterTyping('surface');
+  document.getElementById('brickEdgeTaperSlider')?.addEventListener('input', (e) => setElementEdge(_jointKind(), e.target.value, 'onDrag'));
+  document.getElementById('brickEdgeTaperSlider')?.addEventListener('change', (e) => setElementEdge(_jointKind(), e.target.value, 'onRelease'));
+  document.getElementById('brickEdgeTaper')?.addEventListener('input', (e) => { setElementEdge(_jointKind(), e.target.value, 'onDrag'); edgeSettle(); });
+  document.getElementById('brickEdgeTaper')?.addEventListener('change', (e) => setElementEdge(_jointKind(), e.target.value, 'onRelease'));
+  syncEdgeTaperRow();
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
   }
@@ -3224,6 +3348,13 @@ export function initBrickPanel() {
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts
+  // Fred 2026-10-14 ("suggest, don't hide"): a new template re-ORDERS the preset list (its family's first) -- it never
+  // changes the board's own preset (it used to rewrite frameBandPreset to the family default, on load too)
+  onPageEvent('frameFamilyCheck', 'frameRecordChanged', () => {
+    const container = document.getElementById('brickFramePresetList');
+    if (container) renderFramePresetList(container);
+    syncFramePresetButtons();
+  });
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));

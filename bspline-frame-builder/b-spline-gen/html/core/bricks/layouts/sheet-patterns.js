@@ -131,3 +131,24 @@ export function basketweaveStackedLayout(outline, set) {
   }
   return { cells };
 }
+
+export function windmillLayout(outline, set) {
+  const L = set.brickLengthIn, W = set.brickHeightIn, g = set.grout.widthIn;
+  const unitSize = L + W + g;
+  const centerSize = Math.max(0, L - W - g);
+  const { minX, maxX, minY, maxY } = bbox(outline);
+  const cells = [];
+  let course = 0;
+  for (let y0 = minY - unitSize; y0 < maxY + unitSize; y0 += unitSize + g, course++) {
+    for (let x0 = minX - unitSize; x0 < maxX + unitSize; x0 += unitSize + g) {
+      pushCell(cells, outline, rect(x0, y0, L, W), course);
+      pushCell(cells, outline, rect(x0 + L + g, y0, W, L), course);
+      pushCell(cells, outline, rect(x0 + W + g, y0 + L + g, L, W), course);
+      pushCell(cells, outline, rect(x0, y0 + W + g, W, L), course);
+      if (centerSize > 0.05) {
+        pushCell(cells, outline, rect(x0 + W + g, y0 + W + g, centerSize, centerSize), course);
+      }
+    }
+  }
+  return { cells };
+}

@@ -54,7 +54,7 @@ describe('the declaration', () => {
       for (const r of rows) tabsOf.set(r, [...(tabsOf.get(r) || []), tab]);
     }
     for (const [r, tabs] of tabsOf) if (tabs.length > 1) expect(SHARED_ROWS, r).toContain(r);
-    expect([...SHARED_ROWS].sort()).toEqual(['brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet']);
+    expect([...SHARED_ROWS].sort()).toEqual(['brickEdgeTaperRow', 'brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet']); // + Edge taper (Fred 2026-10-11)
     expect(tabsOf.get('brickSharedSet')).not.toContain('general');
   });
   it('Fred\'s placements: grout Colour / Edge only in General (Look); widths in each element tab; crumble + top bias in General', () => {

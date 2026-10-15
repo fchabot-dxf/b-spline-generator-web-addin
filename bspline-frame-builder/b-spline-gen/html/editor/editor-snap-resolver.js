@@ -72,9 +72,55 @@ export function geometrySnapTargets(editor, excludeEl = null) {
   const g = editor._snapGesture && editor._sketchLayer.node ? editor._snapGesture : null; // no DOM node: never cached
   const kids = g ? [...editor._sketchLayer.node.children] : null;
   if (g && g.targets && g.excludeEl === excludeEl && g.kids.length === kids.length && g.kids.every((k, i) => k === kids[i])) return g.targets;
-  const targets = _buildSnapTargets(editor, excludeEl);
+  const targets = (excludeEl == null && _warmTargets(editor)) || _buildSnapTargets(editor, excludeEl);
   if (g) Object.assign(g, { excludeEl, kids, targets });
   return targets;
+}
+
+/** The IDLE-WARM targets (seat D 2026-10-14; the gate's blind row "Brush stroke": a 60 ms task at POINTERDOWN, before
+ *  the card -- the press's first build, getNodes over every sketch element). The targets with no excluded element are
+ *  built in an IDLE slice and kept while nothing they read changes: the sketch layer's elements and their attributes
+ *  (transform, display, the lock and layer marks -- a MutationObserver) and the layers' visibility (editor._layers). A
+ *  press then starts on them; a stale or missing warm set is built at the press as before -- the same targets either
+ *  way. */
+export const SNAP_WARM = Object.freeze({ idleTimeoutMs: 1000, fallbackDelayMs: 150 });
+const _layersSig = (editor) => (Array.isArray(editor._layers) ? editor._layers : []).map((l) => `${l.id}:${l.visible !== false}`).join('|');
+
+/** Watches `editor`'s sketch layer (once per layer node) and warms the targets when it is quiet. */
+export function watchSnapTargets(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || typeof MutationObserver === 'undefined') return;
+  const w = editor._snapWarm;
+  if (w && w.node === node) return;
+  if (w) w.observer.disconnect();
+  const warm = { node, targets: null, sig: null, pending: false, observer: null };
+  warm.observer = new MutationObserver(() => { warm.targets = null; _scheduleWarm(editor, warm); });
+  warm.observer.observe(node, { subtree: true, childList: true, attributes: true, characterData: true });
+  editor._snapWarm = warm;
+  _scheduleWarm(editor, warm);
+}
+
+function _scheduleWarm(editor, warm) {
+  if (warm.pending) return;
+  warm.pending = true;
+  const run = () => {
+    warm.pending = false;
+    if (editor._snapWarm !== warm) return;
+    if (warm.observer.takeRecords().length) { warm.targets = null; _scheduleWarm(editor, warm); return; } // still changing
+    warm.sig = _layersSig(editor);
+    warm.targets = _buildSnapTargets(editor, null);
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: SNAP_WARM.idleTimeoutMs });
+  else setTimeout(run, SNAP_WARM.fallbackDelayMs);
+}
+
+/** The warm targets when they still hold (no change since they were built), else null. */
+function _warmTargets(editor) {
+  const warm = editor._snapWarm;
+  if (!warm || !editor._sketchLayer || warm.node !== editor._sketchLayer.node) return null;
+  if (warm.observer.takeRecords().length) { warm.targets = null; _scheduleWarm(editor, warm); return null; } // a change this tick
+  if (!warm.targets || warm.sig !== _layersSig(editor)) return null;
+  return warm.targets;
 }
 
 /** The SNAP GESTURE cache (seat A 2026-10-11, matrix blind row "Brush stroke": 390 px, CPU x4, 62-217 ms frozen
@@ -85,6 +131,14 @@ export function geometrySnapTargets(editor, excludeEl = null) {
  *  every snap answers as before. Outside a gesture nothing is cached. */
 export function beginSnapGesture(editor) { editor._snapGesture = { excludeEl: undefined, kids: [], targets: null }; }
 export function endSnapGesture(editor) { editor._snapGesture = null; }
+
+function _makeTarget(x, y, el, kind, el2 = null) {
+  const t = { x, y };
+  if (el) Object.defineProperty(t, 'el', { value: el, enumerable: false, writable: true, configurable: true });
+  if (kind) Object.defineProperty(t, 'kind', { value: kind, enumerable: false, writable: true, configurable: true });
+  if (el2) Object.defineProperty(t, 'el2', { value: el2, enumerable: false, writable: true, configurable: true });
+  return t;
+}
 
 function _buildSnapTargets(editor, excludeEl) {
   const targets = [];
@@ -100,17 +154,18 @@ function _buildSnapTargets(editor, excludeEl) {
     } catch (_) {
       continue; // defensive: an element type getNodes doesn't recognize
     }
-    for (const n of nodes) targets.push({ x: n.x, y: n.y });
+    const defaultKind = el.type === 'circle' ? 'center' : 'endpoint';
+    for (const n of nodes) targets.push(_makeTarget(n.x, n.y, el, defaultKind));
     for (let i = 0; i + 1 < nodes.length; i++) {
-      targets.push({ x: (nodes[i].x + nodes[i + 1].x) / 2, y: (nodes[i].y + nodes[i + 1].y) / 2 });
+      targets.push(_makeTarget((nodes[i].x + nodes[i + 1].x) / 2, (nodes[i].y + nodes[i + 1].y) / 2, el, 'midpoint'));
     }
-    if (el.type === 'line' && nodes.length === 2) lines.push({ a: nodes[0], b: nodes[1] });
+    if (el.type === 'line' && nodes.length === 2) lines.push({ a: nodes[0], b: nodes[1], el });
   }
 
   for (let i = 0; i < lines.length; i++) {
     for (let j = i + 1; j < lines.length; j++) {
       const hit = _segmentIntersection(lines[i].a, lines[i].b, lines[j].a, lines[j].b);
-      if (hit) targets.push(hit);
+      if (hit) targets.push(_makeTarget(hit.x, hit.y, lines[i].el, 'intersection', lines[j].el));
     }
   }
 

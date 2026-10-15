@@ -91,7 +91,7 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 20 named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
@@ -104,8 +104,17 @@ describe('FRAME_PRESETS', () => {
       'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'arch_keystone',
       // 2026-10-11 (Fred, ref5): the Greek key mosaic (tests/bricks-band-motif.test.js)
       'greek_key_mosaic',
+      // architectural apron & bond presets
+      'craftsman_apron', 'double_soldier', 'english_frame', 'stepped_fret',
+      'tudor_frieze', 'corbelled_cornice', 'flemish_architrave', 'chicago_dentil',
+      // main 8e57aeb added these four without listing them (the suite was red on main)
+      'crenellated_battlement', 'art_deco_stepped', 'florentine_architrave', 'venetian_dentil',
+      // Fred 2026-10-14: the narrow runners (tests/bricks-narrow-runners.test.js)
+      'slim_runner', 'checker_tile_runner', 'twin_runner',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
-      'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin'].sort());
+      'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
+      'craftsman_apron_quoin', 'double_soldier_quoin',
+      'tudor_frieze_quoin', 'corbelled_cornice_quoin'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
     expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {

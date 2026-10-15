@@ -311,6 +311,9 @@
     /* Version-stamp status (set by main.js on the Fusion 'build_info' push):
        ok = deployed SHA == source HEAD; stale = differs or dirty; unknown =
        no build-info.json (dev run) -> stays the muted fallback literal. */
+    /* Fred 2026-10-11: the project name is the header's one name (the disk button is icon-only): bigger than the
+       version-badge class it borrows, in the same row -- the header height does not change, a long name ends in "…" */
+    #fmCurrentFileLabel { font-size: 15px; font-weight: 600; color: var(--cad-text-main); line-height: 1.2; }
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
@@ -350,7 +353,7 @@
       .cad-navbar .cad-nav-group {
         gap: 6px;
         min-width: 0;
-        flex-shrink: 0;
+        flex-shrink: 1; /* the name yields to the buttons (measured 2026-10-14: a long name pushed Settings off a 390 px phone) */
       }
       .cad-nav-titlebox {
         min-width: 0;
@@ -508,13 +511,15 @@
              not "the title". H16: dirty-dot REMOVED (Fred, phone, pointing
              at it: "what is the point for?") -- the Save button's own
              colour-vs-grey state (main/cloud-project-manager.js) is the
-             one unsaved-changes signal now. -->
+             one unsaved-changes signal now. Fred 2026-10-11: the name lives
+             HERE only (the disk button is icon-only), bigger, "Unsaved" when
+             never saved. -->
         <!-- workflow audit #10: a long name is cut with "…" instead of pushing the header buttons off a phone -->
         <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none; max-width:30vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;"></span>
       </span>
     </div>
 
-    <div style="flex:1;"></div>
+    <div class="cad-nav-spacer" style="flex:1;"></div>
 
     <div class="cad-navbar-actions" style="display:flex; gap:8px; align-items:center;">
       <!-- Undo/Redo (UX3: moved out of the sidebar sticky header). Ids
@@ -541,10 +546,9 @@
       <button class="cad-btn cad-btn-secondary cad-nav-btn disabled" id="btnQuickSave"
               title="Saved">
         <span style="font-size:18px; line-height:1;">💾</span>
-        <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
       <!-- Fred ("yes please" to a New project button): main/cloud-project-manager.js newProject -->
-      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnNewProject" title="New project: empty drawing, keeps the stock size and frame">
+      <button class="cad-btn cad-btn-secondary cad-nav-btn cad-nav-phone-hidden" id="btnNewProject" title="New project: empty drawing, keeps the stock size and frame">
         <span style="font-size:18px; line-height:1;">📄</span>
         <span class="cad-nav-label">New</span>
       </button>
@@ -552,7 +556,11 @@
         <span style="font-size:18px; line-height:1;">📁</span>
         <span class="cad-nav-label">Projects</span>
       </button>
-      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnDownloadAddin" title="Download Fusion add-in">
+      <button class="cad-btn cad-btn-secondary cad-nav-btn cad-nav-phone-hidden" id="btnPullFromFusion" title="Pull constrained sketch from Fusion">
+        <span style="font-size:18px; line-height:1;">🔄</span>
+        <span class="cad-nav-label">From Fusion</span>
+      </button>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn cad-nav-phone-hidden" data-desktop-only id="btnDownloadAddin" title="Download Fusion add-in">
         <span style="font-size:18px; line-height:1;">🧩</span>
         <span class="cad-nav-label">Add-in</span>
       </button>
@@ -622,6 +630,22 @@
             <div class="cad-stepper" style="width:75px;">
               <input type="number" id="carveZ" value="1.5" step="0.1">
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2a. Layers Panel (Permanent sidebar layers panel) -->
+      <div class="panel panel-layers">
+        <div class="panel-header" id="mainLayersPanelHeader" onclick="togglePanel(this)">📑 LAYERS <span id="mainLayersSummary" style="font-weight:400; opacity:0.7;">— 1 layer</span></div>
+        <div class="panel-body">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <label class="cad-label" style="margin-bottom:0;">Layers</label>
+            <button id="mainAddLayer" type="button" class="layers-add-btn" title="Add Layer">+</button>
+          </div>
+          <div id="mainLayersList" style="margin-bottom:8px;"></div>
+          <div style="display:flex; gap:6px; margin-top:4px;">
+            <button type="button" id="btnMainLayersOpenEditor" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;">Open Editor ✎</button>
+            <button type="button" id="btnMainLayersPullFusion" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;" title="Pull constrained sketch from Fusion">Pull Fusion 🔄</button>
           </div>
         </div>
       </div>
@@ -1525,6 +1549,12 @@
     <section class="cad-viewport">
       <div id="previewArea">
         <canvas id="previewCanvas"></canvas>
+        <div id="canvasTotalHeights"
+          style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; z-index: 100; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
+          <div style="color: #aaa; margin-bottom: 2px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Model Heights</div>
+          <div>Base H: <span id="canvasBaseHeight" style="color: #4488ff; font-weight: bold;">0.000</span>"</div>
+          <div>Total H: <span id="canvasTotalHeight" style="color: #ffcc00; font-weight: bold;">0.000</span>"</div>
+        </div>
         <div id="heightInspector"
           style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.75); color: #fff; padding: 8px 12px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; display: none; z-index: 100; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
           <div
@@ -1538,6 +1568,10 @@
               style="color: #00ff88;">0.000</span>"</div>
           <div id="inspectorWarnRow" style="display: none; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,59,48,0.4); color: #ff3b30; font-weight: bold;">
             &#9888; BIT BELOW STOCK
+          </div>
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div>Base H: <span id="inspectorBaseHeight" style="color: #4488ff;">0.000</span>"</div>
+            <div>Total H: <span id="inspectorTotalHeight" style="color: #ffcc00;">0.000</span>"</div>
           </div>
         </div>
       </div>
@@ -2054,6 +2088,12 @@
         <!-- Canvas -->
         <div style="flex:1; background:#ececec; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;" id="editorCanvasContainer">
           <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
+          <div id="editorCanvasTotalHeights"
+            style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; z-index: 10; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
+            <div style="color: #aaa; margin-bottom: 2px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Model Heights</div>
+            <div>Base H: <span id="editorCanvasBaseHeight" style="color: #4488ff; font-weight: bold;">0.000</span>"</div>
+            <div>Total H: <span id="editorCanvasTotalHeight" style="color: #ffcc00; font-weight: bold;">0.000</span>"</div>
+          </div>
           <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
           <!-- FB-APP F8: in the Frame tab the artwork is view-only (no tool reaches it). F18: the shield is inert
                (pointer-events:none); the frame panel takes handle drags on the container, the editor pans/zooms. -->
@@ -3192,6 +3232,15 @@
               <div id="brickLevelRow_wall" class="brick-level-row" style="margin-bottom:12px;">
                 <label class="cad-label">Level (in)</label>
                 <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
+              </div>
+              <!-- Fred 2026-10-11 (EDGE TAPER): the active element's shoulder width -- one row the Wall / Frame / Brush Height
+                   sections share (main/brick-tab-sections.js); range from core/bricks/library.js EDGE_TAPER, 3D only -->
+              <div id="brickEdgeTaperRow">
+                <label class="cad-label">Edge taper (in) <span style="opacity:0.65; font-weight:400;">(0 = sharp, more = softer)</span></label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickEdgeTaperSlider" class="cad-slider" min="0" max="0.1" step="0.005" value="0.035" title="How wide each brick's rounded shoulder is (3D only)">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickEdgeTaper" value="0.035" min="0" max="0.1" step="0.005"></div>
+                </div>
               </div>
             </div>
 
