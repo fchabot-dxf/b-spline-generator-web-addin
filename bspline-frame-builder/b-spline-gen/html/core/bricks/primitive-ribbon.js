@@ -532,6 +532,35 @@ const CURVE_QUOIN_TURN_DEG = Object.freeze({ min: 20, max: 60 });
 // the arc too, T10's measured 1.92 sq in against the straight corner's 1.21): its reach along the arc is solved so its
 // area is this share of the square quoin at the same stack (block x depth); the side keeps the full block
 const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16, areaOfSquare: 1 });
+/** Fred 2026-10-15 (TOOTHED quoins, via the advisor): the 'toothed' corner is the block's corner square plus `courses`
+ *  teeth along EACH bar, alternating across-the-bar widths of `short` and `long` QUOIN_SET units (each one unit along the
+ *  bar, a joint between), the band's bricks filling round them (contour-bands.js cutUnderQuoins). The first tooth is the
+ *  SHORT one: two long first teeth would overlap inside the corner ((s - J)^2), and with the other bar's short tooth
+ *  beside the square the corner course itself reads long -- long / short / long / short up each bar. */
+export const QUOIN_TOOTH = Object.freeze({ long: 2, short: 1, courses: 3 });
+/** A toothed corner's teeth (QUOIN_TOOTH): plain polygons, built beside `buildBlockJoint`'s square at the same convex
+ *  line-line corner. Each bar keeps the teeth whose far end lies within its own half of the run (the corner at its other
+ *  end takes the other half); a tooth past it is not laid -- a short run lays fewer teeth, never a clipped one. */
+function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint) {
+  const s = QUOIN_SET.brickLengthIn, J = nominalJoint;
+  const lenOf = (p) => Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y);
+  const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  const bars = [
+    { t: tangentAt(curPrim, o), sign: 1, n: { x: curPrim.nx, y: curPrim.ny }, len: lenOf(curPrim) }, // cur STARTS at o
+    { t: tangentAt(prevPrim, o), sign: -1, n: { x: prevPrim.nx, y: prevPrim.ny }, len: lenOf(prevPrim) }, // prev ENDS at o
+  ];
+  const teeth = [];
+  for (const { t, sign, n, len } of bars) {
+    const at = (a, c) => ({ x: o.x + sign * a * t.x + c * n.x, y: o.y + sign * a * t.y + c * n.y });
+    for (let i = 0; i < QUOIN_TOOTH.courses; i++) {
+      const a0 = s + J + i * (s + J), a1 = a0 + s;
+      if (a1 > len / 2 - J / 2) break;
+      const w = (i % 2 === 0 ? QUOIN_TOOTH.short : QUOIN_TOOTH.long) * s;
+      teeth.push([at(a0, 0), at(a1, 0), at(a1, w), at(a0, w)]);
+    }
+  }
+  return teeth;
+}
 /**
  * The CURVED block (the mockup's option A, shots/seatE/grout/curve_quoin_mock_*.png): the stack's ring at the corner
  * between a face square to the side (`blockSize` along it from the corner `o`) and a face along the arc's radius
@@ -1210,13 +1239,17 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
       const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough);
       if (butt) return butt;
     }
-    if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
+    // Fred 2026-10-15: 'toothed' is the block plus its teeth (buildQuoinTeeth) at a line-line corner
+    const blockish = cornerStyle === 'block' || cornerStyle === 'toothed';
+    if (blockish && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
       const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
+      if (block && cornerStyle === 'toothed') return { ...block, teeth: buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint) };
       if (block) return block;
     }
-    // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint)
-    if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
+    // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint); a toothed
+    // corner there is the curved block alone (Fred 2026-10-15: as the block does)
+    if (blockish && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type !== primitives[curIdx].type) {
       const block = buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, d0);
       if (block) return block;
@@ -1362,6 +1395,15 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       sources.push(-2);
       fanSides.push([idx, liveIndices[(k + 1) % m]]); // a quoin's corner too (its `blockOff` index is the second)
       nextId++;
+      // a toothed corner's teeth (buildQuoinTeeth): quoins too, `tooth: true` (additive: only a toothed lay has them)
+      for (const polygon of rawJointEnd.teeth || []) {
+        const tooth = pickSample(set, seed, 'bricks-tooth', nextId);
+        const toothOffset = (mulberry32(seedFor(seed, 'bricks-tooth-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
+        pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId: tooth.sampleId, flip: tooth.flip, heightOffset: toothOffset, tooth: true });
+        sources.push(-2);
+        fanSides.push([idx, liveIndices[(k + 1) % m]]);
+        nextId++;
+      }
     }
   }
   // de's own ACCENT levels (proud/recessed motifs for Wall/Frame/Brush) key off per-piece

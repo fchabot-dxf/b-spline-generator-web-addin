@@ -116,7 +116,11 @@ describe('FRAME_PRESETS', () => {
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
       'craftsman_apron_quoin', 'double_soldier_quoin',
-      'tudor_frieze_quoin', 'corbelled_cornice_quoin'].sort());
+      'tudor_frieze_quoin', 'corbelled_cornice_quoin',
+      // Fred 2026-10-15: the toothed variants (library.js QUOIN_VARIANTS) + Soldier · toothed
+      'soldier_stretcher_toothed', 'three_band_toothed', 'mixed_bands_toothed', 'recessed_panel_toothed',
+      'craftsman_apron_toothed', 'double_soldier_toothed',
+      'tudor_frieze_toothed', 'corbelled_cornice_toothed', 'toothed_corners'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
     expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
@@ -187,5 +191,16 @@ describe('Fred 2026-10-11: a frame preset bundles its corner -- the quoin varian
     // listed right after their base (the chips' order is the declaration's)
     const keys = Object.keys(FRAME_PRESETS);
     for (const id of QUOIN_VARIANT_OF) expect(keys.indexOf(`${id}_quoin`)).toBe(keys.indexOf(id) + 1);
+  });
+  it('Fred 2026-10-15: each also has a <id>_toothed variant (every corner toothed, its best size), right after the quoin one; Soldier too', () => {
+    const keys = Object.keys(FRAME_PRESETS);
+    for (const id of QUOIN_VARIANT_OF) {
+      const base = FRAME_PRESETS[id], v = FRAME_PRESETS[`${id}_toothed`];
+      expect(v.map(({ cornerStyle, ...b }) => b), id).toEqual(base.map(({ cornerStyle, ...b }) => b));
+      expect(v.every((b) => b.cornerStyle === 'toothed'), id).toBe(true);
+      expect(v.bestSize, id).toBe(base.bestSize);
+      expect(keys.indexOf(`${id}_toothed`)).toBe(keys.indexOf(id) + 2);
+    }
+    expect(FRAME_PRESETS.toothed_corners).toEqual([{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'toothed' }]);
   });
 });

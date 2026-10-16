@@ -483,6 +483,7 @@ function wrapInnerQuoins(bricks, ribbons, joint) {
   for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
     let outer = null, best = Infinity;
     for (let k = r - 1; k >= 0 && !outer; k--) for (const o of ribbons[k]) {
+      if (o.tooth) continue; // a toothed corner's tooth is no corner square to wrap
       // its size: the side of a square of its area (a square's own side; a curved block's first edge is one arc step)
       const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.sqrt(Math.abs(signedArea(o.square)));
       if (d < 1.5 * size && d < best) { best = d; outer = o; } // a deep band puts its corner up to ~1.4 sizes in (T5 9x12 1 in)
@@ -995,7 +996,10 @@ function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
  *  corner styles change this frame. A style other than the mitre is effective when at least one joint of the planned
  *  rows takes its cut -- the same plan bricksContourBands lays (the fit rule, the narrowing, every row's depths), read
  *  from the joints alone (opts.cornerCutsOnly), no pieces laid. The mitre always is. */
-export const CORNER_CUT_STYLES = Object.freeze(['butt', 'block', 'lapped']);
+export const CORNER_CUT_STYLES = Object.freeze(['butt', 'block', 'lapped', 'toothed']);
+/** Fred 2026-10-15: a 'toothed' band lays its square and teeth on the stack's OUTERMOST row only (band 0, row 0) -- the
+ *  teeth span the stack; every other row of it lays the mitre, cut clear of the quoins (cutUnderQuoins) like any piece. */
+const rowCornerStyle = (cornerStyle, bandIndex, row) => (cornerStyle === 'toothed' && (bandIndex > 0 || row > 0) ? 'mitre' : cornerStyle);
 export function frameCornerEffect(primitives, bands, opts) {
   const out = { mitre: true };
   for (const style of CORNER_CUT_STYLES) {
@@ -1110,7 +1114,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
       if (opts.planOnly) continue; // T86 (seat E): the plan only -- the bands, the fit rule and the wall's inner path, no pieces
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
-        const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
+        const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, rowCornerStyle(cornerStyle, bandIndex, row), bandIndex, rowSequence, forcedFStart, closed);
         cornerCuts += joints.filter((j) => j && (j.isButt || j.isBlock)).length;
         fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
@@ -1118,7 +1122,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const ribbonKey = `${bandIndex}:${row}`;
       const { pieces: laidPieces, nextId: afterId, sources: laidSources, fanSides: laidFanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
-        seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
+        seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, rowCornerStyle(cornerStyle, bandIndex, row), bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
         (opts.blockOff && opts.blockOff.get(ribbonKey)) || null, // an inner L that cannot fit: that corner's mitre (wrapInnerQuoins)
       );
@@ -1136,7 +1140,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
       // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
       const ribbonQuoins = [];
-      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey, curved: !!pieces[i].curved }); });
+      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey, curved: !!pieces[i].curved, tooth: !!pieces[i].tooth }); });
       if (ribbonQuoins.length) quoinRibbons.push(ribbonQuoins);
       bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
       // T86 item 30: a fan slice also records its corner (the two primitives it sits between), for the fan-vs-fan split

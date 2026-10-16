@@ -51,7 +51,7 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
-import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
+import { FRAME_PRESETS, QUOIN_VARIANT_OF, QUOIN_VARIANTS, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
 import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -2985,6 +2985,7 @@ const FRAME_PRESET_LABELS = {
   // quoin variants of QUOIN_VARIANT_OF are named from their base below
   butt_frame: 'Soldier · butt',
   quoin_corners: 'Soldier · quoin',
+  toothed_corners: 'Soldier · toothed',
   double_course: 'Soldier x2 · lapped',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',
@@ -3019,7 +3020,7 @@ const FRAME_PRESET_LABELS = {
   short_alternating: 'Short bricks · alternating',
   half_soldier_course: 'Half-brick soldiers',
 };
-for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
+for (const id of QUOIN_VARIANT_OF) for (const v of QUOIN_VARIANTS) FRAME_PRESET_LABELS[`${id}_${v.suffix}`] = `${FRAME_PRESET_LABELS[id] || id} · ${v.label}`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
 /** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few

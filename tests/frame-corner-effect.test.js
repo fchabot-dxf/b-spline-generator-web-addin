@@ -30,13 +30,13 @@ describe('frameCornerEffect: the cases Fred was shown', () => {
   // 2026-10-11 (the curved block, primitive-ribbon.js buildCurveBlockJoint): T18's arched top corners now take a Block --
   // Block is live there; Butt / Lapped (line-line only) still re-lay the identical frame
   it('T18 at 1.25 in: Butt / Lapped would re-lay the identical frame (greyed); Block cuts the arched top; the mitre stays', () => {
-    expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: false, block: true, lapped: false });
+    expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: false, block: true, lapped: false, toothed: true }); // toothed = block + teeth (Fred 2026-10-15): the curved block
   });
   it('T18 at 0.75 in: the band fits the 1.11 in stubs -- Butt is live', () => {
     expect(frameCornerEffect(contour('template_18'), FRAME_PRESETS.single_soldier, opts(0.75)).butt).toBe(true);
   });
   it('T1 at 1.25 in: every corner choice is live', () => {
-    expect(frameCornerEffect(contour('template_1'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: true, block: true, lapped: true });
+    expect(frameCornerEffect(contour('template_1'), FRAME_PRESETS.single_soldier, opts(1.25))).toEqual({ mitre: true, butt: true, block: true, lapped: true, toothed: true });
   });
 });
 

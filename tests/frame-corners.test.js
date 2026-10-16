@@ -11,8 +11,8 @@ import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/b
 import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 describe('item 33: the corner styles', () => {
-  it('declares the engine’s four cornerStyle values, each with a name and a tooltip', () => {
-    expect(FRAME_CORNERS.map((c) => c.id)).toEqual(['mitre', 'butt', 'block', 'lapped']);
+  it('declares the engine’s cornerStyle values (+ Fred 2026-10-15: toothed), each with a name and a tooltip', () => {
+    expect(FRAME_CORNERS.map((c) => c.id)).toEqual(['mitre', 'butt', 'block', 'toothed', 'lapped']);
     for (const c of FRAME_CORNERS) expect(c.label && c.title, c.id).toBeTruthy();
   });
   it('the default is the preset’s own corner (mitred for plain Soldier, lapped for Soldier x2); a pick overrides', () => {
@@ -27,10 +27,10 @@ describe('item 33: the corner styles', () => {
     expect(frameBandsOf({ frameBandPreset: 'soldier_stretcher', frameBandPatterns: ['header'], frameCorner: 'lapped' })[0])
       .toMatchObject({ pattern: 'header', cornerStyle: 'lapped' });
   });
-  it('each corner icon is laid by the engine, and the four differ', () => {
+  it('each corner icon is laid by the engine, and all five differ', () => {
     const icons = FRAME_CORNERS.map((c) => frameCornerIconSvg(c.id, 26));
     for (const [i, svg] of icons.entries()) expect(svg, FRAME_CORNERS[i].id).toMatch(/<polygon /);
-    expect(new Set(icons).size).toBe(4);
+    expect(new Set(icons).size).toBe(FRAME_CORNERS.length);
     for (const c of FRAME_CORNERS) expect(frameCornerBricks(c.id).length, c.id).toBeGreaterThan(0);
   });
 });

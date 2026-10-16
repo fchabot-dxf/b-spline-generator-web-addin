@@ -66,7 +66,8 @@ export const BRICK_CONTROL_REQUIRES = [
   // item 74b: one rule per cutting corner style (core/bricks CORNER_CUT_STYLES)
   // Fred 2026-10-11 (a preset bundles its corner; the Corners row is retired): the rule moved onto the preset chips --
   // every preset whose declared corner is that style, in the Frame tab and the sidebar's Frame bands row
-  ...['butt', 'block', 'lapped'].map((style) => ({ controls: presetsCornered(style).flatMap((id) => [`brickFramePreset_${id}`, `brickQuick_frameBands_${id}`]),
+  // the list = CORNER_CUT_STYLES (tests/frame-corner-effect.test.js); + Fred 2026-10-15: toothed
+  ...['butt', 'block', 'lapped', 'toothed'].map((style) => ({ controls: presetsCornered(style).flatMap((id) => [`brickFramePreset_${id}`, `brickQuick_frameBands_${id}`]),
     requires: { fact: cornerFact(style) }, why: CORNER_NOT_LONG_ENOUGH })),
   // T86 item 16e: Eye / Stone act on a frame's corner fans only (the Needle is never greyed)
   { controls: ['brickFrameFanCentre_eye', 'brickFrameFanCentre_stone'], requires: { fact: FAN_FACT }, why: FAN_CENTRE_NO_FAN },

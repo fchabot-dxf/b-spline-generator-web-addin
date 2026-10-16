@@ -471,12 +471,19 @@ export const QUOIN_VARIANT_OF = Object.freeze([
   'craftsman_apron', 'double_soldier',
   'tudor_frieze', 'corbelled_cornice',
 ]);
+/** The corner variants each QUOIN_VARIANT_OF preset gets, in chip order: `<id>_<suffix>` = its bands with every corner
+ *  `cornerStyle`, named "<look> · <label>" (main/brick-panel.js). + Fred 2026-10-15: the TOOTHED quoin (the block plus its
+ *  teeth, primitive-ribbon.js QUOIN_TOOTH). */
+export const QUOIN_VARIANTS = Object.freeze([
+  Object.freeze({ suffix: 'quoin', cornerStyle: 'block', label: 'quoin' }),
+  Object.freeze({ suffix: 'toothed', cornerStyle: 'toothed', label: 'toothed' }),
+]);
 const cornered = (bands, cornerStyle) => {
   const v = bands.map((b) => ({ ...b, cornerStyle }));
   return bands.bestSize ? withBestSize(bands.bestSize, v) : v;
 };
 const withQuoinVariants = (presets) => Object.fromEntries(Object.entries(presets).flatMap(([id, bands]) =>
-  [[id, bands], ...(QUOIN_VARIANT_OF.includes(id) ? [[`${id}_quoin`, cornered(bands, 'block')]] : [])]));
+  [[id, bands], ...(QUOIN_VARIANT_OF.includes(id) ? QUOIN_VARIANTS.map((v) => [`${id}_${v.suffix}`, cornered(bands, v.cornerStyle)]) : [])]));
 
 export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
@@ -499,6 +506,7 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   ],
   butt_frame: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'butt' }],
   quoin_corners: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'block' }],
+  toothed_corners: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'toothed' }], // Fred 2026-10-15: Soldier · toothed
   double_course: [
     { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
     { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },

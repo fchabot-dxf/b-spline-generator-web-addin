@@ -14,6 +14,8 @@ const PRESETS = Object.keys(FRAME_PRESETS).filter((id) => FRAME_PRESETS[id].leng
 const ARCHES = Object.keys(FRAME_PRESETS).filter((id) => !FRAME_PRESETS[id].length && FRAME_PRESETS[id].arch);
 const viewBox = (svg) => svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/).slice(1).map(Number);
 const polygons = (svg) => [...svg.matchAll(/<polygon points="([^"]+)"/g)].map((m) => m[1].split(' ').map((q) => q.split(',').map(Number)));
+// Fred 2026-10-15: a TOOTHED corner's icons use the wider declared window (its teeth run ~3.4 in along each arm)
+const toothed = (bands) => bands.some((b) => b.cornerStyle === 'toothed');
 const centroid = (pts) => pts.reduce(([x, y], [a, b]) => [x + a / pts.length, y + b / pts.length], [0, 0]);
 
 describe('the preset icon style is declared: the L', () => {
@@ -29,7 +31,7 @@ describe('every FRAME_PRESET gets its L from the declared renderer', () => {
     const svg = framePresetIconSvg(id, 30);
     const [x0, y0, w] = viewBox(svg);
     expect([x0, y0]).toEqual([0, 0]);
-    expect(w).toBeCloseTo(depth + PRESET_ICON_STYLES.cornerRun.marginIn, 3);
+    expect(w).toBeCloseTo(depth + PRESET_ICON_STYLES[toothed(FRAME_PRESETS[id]) ? 'toothedRun' : 'cornerRun'].marginIn, 3);
     const polys = polygons(svg), c = polys.map(centroid);
     expect(c.length).toBeGreaterThan(0);
     // every piece TOUCHES an arm (a vertex within the stack depth of the top or the left edge): nothing of the far side or
@@ -62,6 +64,6 @@ describe('no preset icon is shared with the corner set', () => {
     for (const id of PRESETS) expect(corners.has(framePresetIconSvg(id, 30)), id).toBe(false);
   });
   it('the corner icons are still the corner close-up (unchanged by the preset style)', () => {
-    for (const c of FRAME_CORNERS) expect(viewBox(frameCornerIconSvg(c.id, 30))[2], c.id).toBeCloseTo(1.5 + 0.4, 3);
+    for (const c of FRAME_CORNERS) expect(viewBox(frameCornerIconSvg(c.id, 30))[2], c.id).toBeCloseTo(1.5 + (c.id === 'toothed' ? PRESET_ICON_STYLES.toothedRun.marginIn : 0.4), 3);
   });
 });

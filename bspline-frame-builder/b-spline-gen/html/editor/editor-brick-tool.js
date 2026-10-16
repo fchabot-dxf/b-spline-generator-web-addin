@@ -625,6 +625,7 @@ export const FRAME_CORNERS = Object.freeze([
   { id: 'mitre', label: 'Mitre', title: 'Mitre: the bricks meet on the diagonal' },
   { id: 'butt', label: 'Butt', title: 'Butt: one side runs through, the other stops square against it' },
   { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
+  { id: 'toothed', label: 'Toothed', title: 'Toothed quoin: the corner block with long and short teeth up each side' }, // Fred 2026-10-15
   { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
 ]);
 /* Item 33's FOLDED_FRAME_PRESETS (butt_frame / quoin_corners folded into Soldier + the Corners picker) is RETIRED with
@@ -916,7 +917,13 @@ export const PRESET_ICON_STYLES = Object.freeze({
   // then -- Fred 2026-10-11, the L -- cropped to a `windowIn` square on its LEFT SPRINGER: the springer at the corner,
   // the rings / hood rising along one arm and the side bands running down the other (no keystone)
   arch: Object.freeze({ templateId: 'template_10', board: Object.freeze({ widthIn: 7, heightIn: 10 }), windowIn: 3 }),
+  // Fred 2026-10-15: a TOOTHED corner's teeth run ~3.4 in along each arm (primitive-ribbon.js QUOIN_TOOTH, in 1.1 in quoin
+  // units, which do not scale with the brick): its corner icon and its presets' chips use this wider window, so the
+  // square and two teeth (short, long) show (toothedIconStyle)
+  toothedRun: Object.freeze({ whole: false, marginIn: 2.1, clearIn: 2 }),
 });
+/** The icon window for a band stack: PRESET_ICON_STYLES.toothedRun when a band has the toothed corner, else `base`. */
+const toothedIconStyle = (bands, base) => (bands.some((b) => b.cornerStyle === 'toothed') ? PRESET_ICON_STYLES.toothedRun : base);
 /** Fred 2026-10-11: EVERY frame preset's icon -- the chip, the sidebar grid, the editor grid -- is the L: one corner + a
  *  short run of the band stack on both arms, nothing else (cornerRun; an arch preset: its springer, PRESET_ICON_STYLES.arch). */
 export const PRESET_ICON_STYLE = 'cornerRun';
@@ -989,7 +996,7 @@ function _miniFrameSvg({ bricks, crop: c, cropH: ch = c, x0 = 0, y0 = 0 }, heigh
 }
 /** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
-export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
+export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId), toothedIconStyle(_cornerBands(cornerId), PRESET_ICON_STYLES.corner)).bricks;
 const _cornerIcons = new Map();
 export function frameCornerIconSvg(cornerId, heightPx = 26) {
   const key = `${cornerId}:${heightPx}`;
@@ -997,7 +1004,7 @@ export function frameCornerIconSvg(cornerId, heightPx = 26) {
   const declared = _declaredIcon('corner', cornerId, heightPx, heightPx);
   if (declared !== undefined) { _cornerIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`corner ${key}`);
-  const svg = _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+  const svg = _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId), toothedIconStyle(_cornerBands(cornerId), PRESET_ICON_STYLES.corner)), heightPx);
   _cornerIcons.set(key, svg);
   return svg;
 }
@@ -1054,7 +1061,7 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
   const declared = _declaredIcon('preset', presetId, heightPx, heightPx);
   if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`preset ${key}`);
-  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
+  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, toothedIconStyle(bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE])), heightPx);
   _presetIcons.set(key, svg);
   return svg;
 }
