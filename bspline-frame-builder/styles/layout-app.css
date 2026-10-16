@@ -966,3 +966,33 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     border-top: calc(var(--job-overhang, 9px) + 6px) solid #0078d4;
 }
 
+/* A LOCKED step (job-timeline step 3, main/job-timeline-lock.js): its sidebar scope dims + ignores input,
+   a banner (inserted as a SIBLING right before the scope, never inside it -- its own CTA stays live) names the
+   step and offers to move the head. */
+.job-readonly { opacity: 0.55; }
+.job-lock-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid #e0a020;
+    border-radius: 6px;
+    background: #fdf1dc;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.job-lock-icon { flex: 0 0 auto; }
+.job-lock-text { flex: 1 1 auto; color: var(--cad-text-main); }
+.job-lock-cta {
+    flex: 0 0 auto;
+    align-self: center;
+    border: 1px solid #c98a1a;
+    border-radius: 4px;
+    background: #fff;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+

@@ -595,7 +595,7 @@
            otherwise reveal scrolled content through (that padding sits
            OUTSIDE the sticky element's own stuck position). -->
       <div class="sticky-actions">
-        <button class="cad-btn" id="btnRandomSeed" data-job-step="seed"
+        <button class="cad-btn" id="btnRandomSeed" data-job-lock="seed"
           style="width:100%; height:32px; background:#4caf50; color:#ffffff; border:1px solid #388e3c; font-weight:600;">🎲 Generate New
           Seed</button>
       </div>
@@ -607,7 +607,7 @@
       <!-- 2. Stock Dimensions -->
       <div class="panel panel-stock">
         <div class="panel-header" onclick="togglePanel(this)">📐 STOCK DIMENSIONS</div>
-        <div class="panel-body" data-job-step="stock">
+        <div class="panel-body" data-job-lock="stock">
           <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
             <div style="flex:1;">
               <!-- H10 (Fred, iPad: "width X and height Y aren't on the same
@@ -665,7 +665,7 @@
            typed here). With template "none" it stays collapsed to one line. -->
       <div class="panel panel-frame">
         <div class="panel-header collapsed" id="framePanelHeader" onclick="togglePanel(this)">🖼 <span data-frame-label="wood" style="text-transform:uppercase;">Wood frame</span> <span id="frameSummary" style="font-weight:400; opacity:0.7;">— none</span></div>
-        <div class="panel-body hidden" data-job-step="frame">
+        <div class="panel-body hidden" data-job-lock="frame">
           <!-- Fred: "I'd still want the editor door even if no frame yet exists" -- outside #frameSettings (which
                hides with template "None"), so the editor's Frame tab (template picker + Generate) is always reachable.
                Fred: "can the edit frame button be at the top like in vector" -- first in the section, the same place
@@ -752,7 +752,7 @@
       <!-- 3. Skeleton (filter-independent host pipeline) -->
       <div class="panel panel-skeleton">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🦴 SKELETON</div>
-        <div class="panel-body hidden" data-job-step="skeleton">
+        <div class="panel-body hidden" data-job-lock="skeleton">
           <label class="cad-label cad-label-inline">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="peakShapeSlider" class="cad-slider" min="0.3" max="5" step="0.05" value="2.2">
@@ -847,7 +847,7 @@
       <!-- 4. Filter (noise type + per-filter tweaks) -->
       <div class="panel panel-filter">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 FILTER</div>
-        <div class="panel-body hidden" data-job-step="filter">
+        <div class="panel-body hidden" data-job-lock="filter">
           <label class="cad-label">Noise Type</label>
           <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
             <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
@@ -908,7 +908,7 @@
                two .cad-stepper columns). No slider, no range clamp beyond
                what already existed (the stepper input itself never had a
                min/max; only the removed slider did). -->
-          <div class="cad-paired-steppers" data-job-step="seed" style="display:flex; gap:8px; margin-bottom:12px;">
+          <div class="cad-paired-steppers" data-job-lock="seed" style="display:flex; gap:8px; margin-bottom:12px;">
             <div style="flex:1;">
               <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
               <div class="cad-stepper">
@@ -1266,7 +1266,7 @@
       <!-- 6. Sculpt Top -->
       <div class="panel panel-sculpt-top">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT TOP</div>
-        <div class="panel-body hidden" data-job-step="sculptTop">
+        <div class="panel-body hidden" data-job-lock="sculptTop">
           <div class="cad-tool-group">
             <button id="btnToolTopDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>
@@ -1326,7 +1326,7 @@
       <!-- 7. Thicken -->
       <div class="panel panel-thicken">
         <div class="panel-header collapsed" onclick="togglePanel(this)">⛓️ THICKEN</div>
-        <div class="panel-body hidden" data-job-step="back">
+        <div class="panel-body hidden" data-job-lock="back">
           <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
             <input type="checkbox" id="thickenEnabled">
             <span style="font-weight:700;">Enable Thickness</span>

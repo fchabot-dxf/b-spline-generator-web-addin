@@ -11,7 +11,7 @@
  *                             list of sub-item ids (Fred: free interleave) -- groups are only how runs are labelled;
  *   opens                  -- what a click opens (a sidebar section, an editor tab and its layer);
  *   readOnly               -- how a LOCKED step (left of the head) goes inert when opened: 'section' -- every
- *                             [data-job-step="<this step's own id>"] element in the sidebar (main/ui-utils.js
+ *                             [data-job-lock="<this step's own id>"] element in the sidebar (main/ui-utils.js
  *                             setSectionReadOnly; the markup hook lives on the panel body, or narrower -- Seed's own
  *                             Offset X/Y + its Generate button, nested inside Filter's wider section, since the two
  *                             steps share one sidebar panel); 'layer' -- the step's OWN editor layer only (a lock

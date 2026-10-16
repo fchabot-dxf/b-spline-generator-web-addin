@@ -1,9 +1,9 @@
 /**
  * Job timeline step 3, slice 1 (seat D, advisor-approved 2026-10-15): a locked step ('section' readOnly kinds)
- * goes inert via core/ui-utils.js's setSectionReadOnly, resolving by the declared [data-job-step="<stepId>"] DOM
+ * goes inert via core/ui-utils.js's setSectionReadOnly, resolving by the declared [data-job-lock="<stepId>"] DOM
  * hook -- ONE selector rule for every kind, no hand-picked nodes. Seed and Filter share one sidebar panel
  * (panel-filter) but are separate steps: Seed's own Offset X/Y div + its Generate button carry their OWN
- * data-job-step="seed", nested inside Filter's wider panel-body (data-job-step="filter") -- each locks
+ * data-job-lock="seed", nested inside Filter's wider panel-body (data-job-lock="filter") -- each locks
  * independently of the other, in either direction.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -19,15 +19,15 @@ beforeEach(() => {
 });
 
 describe('setSectionReadOnly on the real sidebar markup', () => {
-  it('locks every control inside the matched [data-job-step] scope; restores them', () => {
+  it('locks every control inside the matched [data-job-lock] scope; restores them', () => {
     const checkbox = document.getElementById('thickenEnabled');
     expect(checkbox.disabled).toBe(false);
     setSectionReadOnly('back', true);
     expect(checkbox.disabled).toBe(true);
-    expect(checkbox.closest('[data-job-step="back"]').getAttribute('aria-disabled')).toBe('true');
+    expect(checkbox.closest('[data-job-lock="back"]').getAttribute('aria-disabled')).toBe('true');
     setSectionReadOnly('back', false);
     expect(checkbox.disabled).toBe(false);
-    expect(checkbox.closest('[data-job-step="back"]').getAttribute('aria-disabled')).toBe('false');
+    expect(checkbox.closest('[data-job-lock="back"]').getAttribute('aria-disabled')).toBe('false');
   });
 
   it('a root that is itself a control (the Generate New Seed button, not a container) is disabled directly', () => {
@@ -74,10 +74,10 @@ describe('every declared \'section\' readOnly kind has a real markup hook', () =
       expect(['section', 'layer'], id).toContain(k.readOnly);
     }
   });
-  it('every SECTION-readOnly kind\'s own id matches at least one [data-job-step] element in the real sidebar', () => {
+  it('every SECTION-readOnly kind\'s own id matches at least one [data-job-lock] element in the real sidebar', () => {
     for (const [id, k] of Object.entries(JOB_STEP_KINDS)) {
       if (k.readOnly !== 'section') continue;
-      expect(document.querySelectorAll(`[data-job-step="${id}"]`).length, id).toBeGreaterThan(0);
+      expect(document.querySelectorAll(`[data-job-lock="${id}"]`).length, id).toBeGreaterThan(0);
     }
   });
 });

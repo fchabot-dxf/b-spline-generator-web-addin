@@ -9,6 +9,8 @@ import { P, scheduleSessionSave, bootRestore } from '../core/state.js';
 import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
+import { ensureUndoBaseline, takeSnapshot } from '../core/history.js';
+import { syncJobLocks } from './job-timeline-lock.js';
 
 /** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
  *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
@@ -58,13 +60,29 @@ export function syncJobTimeline() {
   return { steps, ...t };
 }
 
-/** A user's edit of the order or the head: saved with the project. */
-function _commit(order, head) {
+/** A user's edit of the order or the head: saved with the project. `isHeadMove`: advisor 2026-10-15 ("every head
+ *  move is one undo step, uniform") -- a global undo step so crossing a locked step's snapshot backward (step 3)
+ *  Undoes cleanly; P.jobTimeline isn't in core/history.js's UNDO_KEEPS, so it already round-trips whole through
+ *  every global snapshot once one is taken around the move. Plain reordering (no head move) takes no step, same as
+ *  step 2. */
+function _commit(order, head, { isHeadMove = false } = {}) {
   const steps = currentJobSteps();
+  if (isHeadMove) ensureUndoBaseline('Before move the job timeline head'); // recordStep's own "Before X" convention
   P.jobTimeline = normalizeJobTimeline({ order, head }, steps);
+  if (isHeadMove) takeSnapshot('Move the job timeline head');
   markDirty();
   scheduleSessionSave();
   renderJobStrips();
+}
+
+/** The lock banner's "Move the head before X to edit" button (main/job-timeline-lock.js): the head lands exactly
+ *  where `stepId` sits in the CURRENT order, unlocking it (and everything after it). A no-op if the id is gone
+ *  (the layer it named was deleted since the banner was drawn). */
+export function moveHeadBefore(stepId) {
+  const { order } = P.jobTimeline || { order: [] };
+  const at = order.indexOf(stepId);
+  if (at < 0) return;
+  _commit(order, at, { isHeadMove: true });
 }
 
 function _chip(doc, kindId, text, { sub = false, caret = null, mark = null, fixed = false } = {}) {
@@ -84,6 +102,7 @@ function _chip(doc, kindId, text, { sub = false, caret = null, mark = null, fixe
 export function renderJobStrips(doc = typeof document !== 'undefined' ? document : null) {
   if (!doc) return;
   const { steps, order, head } = syncJobTimeline();
+  syncJobLocks(steps, order, head, moveHeadBefore, doc);
   if (!_state.folded) _state.folded = _readFolded();
   const byId = new Map(steps.map((s) => [s.id, s]));
   const marks = new Map(dependencyMarks(order, steps).map((m) => [m.stepId, dependencyNote(m, steps)]));
@@ -192,7 +211,7 @@ function _wireBar(bar, byId) {
       return;
     }
     const gap = gapAt(bar, e.clientX); // 0..n: the number of steps left of the drop point
-    if (d.head) { _commit(order, gap); return; }
+    if (d.head) { _commit(order, gap, { isHeadMove: true }); return; }
     const ids = JSON.parse(d.chip.dataset.jobIds);
     if (ids.some((id) => JOB_STEP_KINDS[byId.get(id).kind].fixed === 'first')) return; // Stock never moves
     _commit(moveIds(order, ids, gap), head);
