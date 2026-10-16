@@ -989,6 +989,59 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     border-top: calc(var(--job-overhang, 9px) + 6px) solid #0078d4;
 }
 
+/* The Δ badge + tooltip (job-timeline step 3 slice 3, Fred-approved mockup lock_mock_2_delta_tooltip.png): an
+   amber pill above the playhead's own tab, shown only when the weighted Δ > 0 (main/job-timeline-strip.js
+   _renderDeltaBadge never creates it otherwise). position:fixed + JS-computed left/bottom (_placeAboveCentered) --
+   same reason main/icon-select.js's own grid uses it (turn 207): .job-strip is overflow:hidden (the horizontal
+   chip scroll), which clips anything position:absolute that rises above the band; position:fixed escapes it. */
+.job-delta-badge {
+    position: fixed;
+    min-width: var(--job-delta-min, 20px);
+    min-height: var(--job-delta-min, 20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    border: none;
+    border-radius: 999px;
+    background: #e0941c;
+    color: #fff;
+    font: 700 11px/1 inherit;
+    white-space: nowrap;
+    cursor: pointer;
+    z-index: 10002; /* above icon-select.js's own grid (10001) -- never fought over, but a stable ordering */
+}
+.job-delta-tooltip {
+    position: fixed;
+    z-index: 10002;
+    width: max-content;
+    max-width: min(90vw, 340px);
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: #1b2430;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal; /* .job-strip (an ancestor, for its own horizontal chip scroll) sets nowrap -- inherited
+                             by anything position:fixed puts here too; this note wraps, it isn't one line */
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    cursor: default;
+}
+.job-delta-title { font-weight: 700; margin-bottom: 8px; }
+.job-delta-table { border-collapse: collapse; width: 100%; }
+.job-delta-table td { padding: 2px 0; }
+.job-delta-table td:not(:first-child) { text-align: right; padding-left: 14px; color: #c7cedb; }
+.job-delta-total {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    font-weight: 700;
+}
+.job-delta-note { margin-top: 8px; color: #9aa4b2; font-size: 11px; }
+
 /* A LOCKED step (job-timeline step 3, main/job-timeline-lock.js): its sidebar scope dims + ignores input,
    a banner (inserted as a SIBLING right before the scope, never inside it -- its own CTA stays live) names the
    step and offers to move the head. */

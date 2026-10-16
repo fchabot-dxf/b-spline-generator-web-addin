@@ -7,13 +7,13 @@
  */
 import { P, scheduleSessionSave, bootRestore } from '../core/state.js';
 import { markDirty } from '../core/dirty.js';
-import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
+import { JOB_STEP_KINDS, JOB_DELTA_WEIGHTS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
 import { ensureUndoBaseline, takeSnapshot } from '../core/history.js';
 import { syncJobLocks, syncLayerLocks } from './job-timeline-lock.js';
 import { sectionColor } from './section-themes.js';
 import { isJobTimelineEnabled } from '../core/job-timeline-enabled.js';
-import { syncCutBaselines } from '../core/job-timeline-baselines.js';
+import { syncCutBaselines, computeWeightedDelta } from '../core/job-timeline-baselines.js';
 
 /** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
  *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
@@ -42,6 +42,8 @@ export const JOB_STRIP = Object.freeze({
   trackPx: 3,
   trackColorDone: '#2b323b',
   trackColorPending: '#aeb6c0',
+  // step 3 slice 3 (Fred-approved mockup lock_mock_2_delta_tooltip.png): the badge's own min touch target
+  deltaBadgeMinPx: Object.freeze({ phone: 28, desktop: 20 }),
 });
 const JOB_DEP_MARK_COLOR = '#f0a020';
 
@@ -49,6 +51,66 @@ const _state = { folded: null, opener: null };
 const _readFolded = () => { try { const v = JSON.parse(localStorage.getItem(JOB_STRIP.foldKey)); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
 const _writeFolded = (v) => { try { localStorage.setItem(JOB_STRIP.foldKey, JSON.stringify(v)); } catch (_) { /* not remembered */ } };
 const _phone = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+
+// The Δ tooltip (step 3 slice 3, Fred-approved mockup lock_mock_2_delta_tooltip.png): ONE global outside-click
+// listener closes whichever is open -- same pattern main/icon-select.js's own popovers use (a listener wired per
+// renderJobStrips call would stack one every re-render; bar.replaceChildren() already detaches the old badge, this
+// just keeps a stale listener from ever doing anything once its tooltip is gone).
+let _deltaTipOpen = null;
+let _deltaGlobalWired = false;
+function _closeDeltaTip() { if (_deltaTipOpen) { _deltaTipOpen.hidden = true; _deltaTipOpen = null; } }
+function _wireDeltaGlobal(doc) {
+  if (_deltaGlobalWired) return;
+  _deltaGlobalWired = true;
+  doc.addEventListener('click', (e) => {
+    if (_deltaTipOpen && _deltaTipOpen.isConnected && !_deltaTipOpen.parentElement.contains(e.target)) _closeDeltaTip();
+  });
+}
+const _fmt3 = (v) => `${v.toFixed(3)}"`;
+const _fmtBadge = (v) => `Δ ${v.toFixed(3).replace(/^0\./, '.')}`; // "0.008" -> ".008", the mockup's own short form
+
+/** Places a fixed-position element centred over `anchor`, `gap` above it, clamped inside the viewport -- same
+ *  pattern main/icon-select.js's own _placeGrid uses (position:fixed + JS coordinates escapes an overflow:hidden
+ *  ancestor; .job-strip itself is one, so the clip main/icon-select.js's own comment names (turn 207) applies
+ *  here too -- measured: an absolutely-positioned badge inside .job-head never painted). */
+function _placeAboveCentered(doc, el, anchor, gap) {
+  const a = anchor.getBoundingClientRect();
+  const w = el.getBoundingClientRect().width;
+  const vw = doc.defaultView?.innerWidth || a.right;
+  el.style.left = `${Math.max(4, Math.min(a.left + a.width / 2 - w / 2, vw - w - 4))}px`;
+  el.style.bottom = `${(doc.defaultView?.innerHeight || a.bottom) - a.top + gap}px`;
+}
+
+/** Builds the Δ badge + its tooltip, fixed-positioned over the playhead element `headEl` -- nothing when the
+ *  weighted score is 0 (the mockup: "shown only when the weighted Δ > 0"). One function owns both, since they
+ *  share the same data. */
+function _renderDeltaBadge(doc, headEl, size) {
+  const { deltas, score } = computeWeightedDelta();
+  if (!(score > 0)) return;
+  const badge = doc.createElement('button');
+  badge.type = 'button';
+  badge.className = 'job-delta-badge';
+  badge.style.setProperty('--job-delta-min', `${JOB_STRIP.deltaBadgeMinPx[size]}px`);
+  badge.textContent = _fmtBadge(score);
+  badge.setAttribute('aria-label', `Changed since the cut: weighted delta ${_fmt3(score)}. Tap for details.`);
+  headEl.appendChild(badge);
+  _placeAboveCentered(doc, badge, headEl, 4);
+
+  const tip = doc.createElement('div');
+  tip.className = 'job-delta-tooltip';
+  tip.hidden = true;
+  const row = (label, d, w) => `<tr><td>${label}</td><td>${_fmt3(d)}</td><td>× ${w}</td><td>${_fmt3(d * w)}</td></tr>`;
+  tip.innerHTML = `<div class="job-delta-title">Changed since the cut</div>`
+    + `<table class="job-delta-table">${row('Back', deltas.back, JOB_DELTA_WEIGHTS.back)}${row('Frame', deltas.frame, JOB_DELTA_WEIGHTS.frame)}${row('Top', deltas.top, JOB_DELTA_WEIGHTS.top)}</table>`
+    + `<div class="job-delta-total"><span>Δ (weighted)</span><span>${_fmt3(score)}</span></div>`
+    + `<div class="job-delta-note">Largest height change on each cut surface since the head passed it. Shown only -- nothing is blocked.</div>`;
+  headEl.appendChild(tip);
+
+  const open = () => { _closeDeltaTip(); tip.hidden = false; _placeAboveCentered(doc, tip, badge, 10); _deltaTipOpen = tip; };
+  badge.addEventListener('click', (e) => { e.stopPropagation(); if (tip.hidden) open(); else _closeDeltaTip(); });
+  badge.addEventListener('mouseenter', () => { if (tip.hidden) open(); });
+  _wireDeltaGlobal(doc);
+}
 
 /** The project's steps now: the live editor's layers (else the saved document's roster) and the frame. */
 export function currentJobSteps() {
@@ -206,6 +268,7 @@ export function renderJobStrips(doc = typeof document !== 'undefined' ? document
       k.dataset.jobHead = '1';
       k.title = 'Playhead: the steps left of it are done (locking comes later)';
       bar.appendChild(k);
+      _renderDeltaBadge(doc, k, size);
     };
     for (const run of groupRuns(order, steps)) {
       const folded = run.group && _state.folded.includes(run.group.id);
