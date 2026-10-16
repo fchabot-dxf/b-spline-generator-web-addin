@@ -527,6 +527,15 @@ export const PATTERN_DEFAULTS = {
   rails: {
     mode: 'spacing', count: [6, 7], every: 2, offset: 0,
     anchor: 'center', spacing: 1, spacingCount: null,
+    // Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): a Pull-
+    // applied rail's own row, keyed by its Send-tagged railId (editor-lattice.js's RAIL_ID_ATTR) -- NEVER by
+    // array index, since Pull can touch any one rail independent of the others. `at` = the SAME offset-fraction
+    // semantics protectedRails[].at already uses (core/pull-rails.js's own matchPulledRails is the one writer).
+    // `locked: true` means a canvas drag on this rail does NOT persist (editor-interaction.js's own "moving
+    // alone never protects" rule, unchanged for every OTHER rail); unlocking lets the user drag it, and that
+    // drag updates ITS OWN `at` here. An old saved pattern has no `rails.custom` key at all, so this empty
+    // default changes nothing it didn't already do -- Generate's own row placement is untouched when it's empty.
+    custom: [],
   },
   // T30 (Fred: "don't limit it to rails, but do snap to them"): default
   // anchor flips 'rails' -> 'free' + railSnapRows (a free end within this
@@ -1629,29 +1638,60 @@ function _colScanLine(i, orientation) {
  * is unchanged -- or, with none that close (or that row already taken), becomes a row of its own. Outside the
  * extent it is dropped. No protected rails: the generated rows, untouched. Pure.
  */
-function _placeProtectedRails(railRows, protectedRails, jMin, jMax) {
-  const protectOfRow = new Map();
-  if (!Array.isArray(protectedRails) || !protectedRails.length) return { rows: railRows, protectOfRow };
+/** Shared row-insertion math (extracted for the rails custom-position slice, seat D 2026-10-16): each target's
+ *  own row as a fraction `.at` of [jMin,jMax] (or a raw `.j` fallback -- protectedRails' own pre-extent-aware
+ *  capture shape) takes the nearest EXISTING row within half the row gap -- it replaces that row, the row count
+ *  is unchanged -- or, with none that close (or that row already taken by an earlier, closer target), becomes a
+ *  row of its own. A target outside the extent is dropped. Returns the updated row list + a map of which
+ *  target[] index landed on each final row. `opts.preciseValue` (rails.custom only): a replaced row takes the
+ *  TARGET's own exact value, not the grid row's -- the opposite of protectedRails' own "snap the stripe/colour
+ *  back onto wherever the grid already put a row" (its own row VALUE was never meant to move); a custom rail's
+ *  whole point is landing at its real, possibly-uneven Fusion position, so "replace" must still move it there,
+ *  only ever merging the ROW COUNT, never discarding the precision the move was captured for. Pure. */
+function _insertAtFractions(railRows, targets, jMin, jMax, opts = {}) {
+  const matchOfRow = new Map();
+  if (!Array.isArray(targets) || !targets.length) return { rows: railRows, matchOfRow };
   const rows = railRows.slice();
   let gap = Infinity;
   for (let k = 1; k < railRows.length; k++) gap = Math.min(gap, Math.abs(railRows[k] - railRows[k - 1]));
   const eps = 1e-9;
-  protectedRails.forEach((pr, k) => {
-    const target = Number.isFinite(pr.at) && jMax > jMin ? jMin + pr.at * (jMax - jMin) : pr.j;
+  targets.forEach((t, k) => {
+    const target = Number.isFinite(t.at) && jMax > jMin ? jMin + t.at * (jMax - jMin) : t.j;
     if (!Number.isFinite(target) || target < jMin - eps || target > jMax + eps) return;
-    let best = null;
-    for (const r of rows) {
-      if (protectOfRow.has(r)) continue;
-      if (best == null || Math.abs(r - target) < Math.abs(best - target)) best = r;
+    let best = null, bestIdx = -1;
+    rows.forEach((r, idx) => {
+      if (matchOfRow.has(r)) return;
+      if (best == null || Math.abs(r - target) < Math.abs(best - target)) { best = r; bestIdx = idx; }
+    });
+    if (best != null && Math.abs(best - target) <= gap / 2 + eps) {
+      const placed = opts.preciseValue ? target : best;
+      rows[bestIdx] = placed;
+      matchOfRow.set(placed, k);
+      return;
     }
-    if (best != null && Math.abs(best - target) <= gap / 2 + eps) { protectOfRow.set(best, k); return; }
     const row = Math.round(target / eps) * eps;
-    if (protectOfRow.has(row)) return;
+    if (matchOfRow.has(row)) return;
     rows.push(row);
-    protectOfRow.set(row, k);
+    matchOfRow.set(row, k);
   });
   rows.sort((x, y) => x - y);
-  return { rows, protectOfRow };
+  return { rows, matchOfRow };
+}
+
+function _placeProtectedRails(railRows, protectedRails, jMin, jMax) {
+  const { rows, matchOfRow } = _insertAtFractions(railRows, protectedRails, jMin, jMax);
+  return { rows, protectOfRow: matchOfRow };
+}
+
+/** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): a Pull-applied
+ *  rail's own row, placed BEFORE _placeProtectedRails runs so a custom rail the user ALSO styled/cut (captured
+ *  fresh from the drawn DOM every generate, same as any other rail) finds its own already-inserted row as its
+ *  nearest match and re-applies its style there -- custom position and protected style/cut coexist on one rail,
+ *  without this function knowing anything about style. Position only (never pieces/colors/stripes -- that stays
+ *  protectedRails' own job); `rails.custom` entries are matched by railId elsewhere (the Pull side), not here --
+ *  computePattern only ever needs each entry's own `.at`. */
+function _placeCustomRails(railRows, customRails, jMin, jMax) {
+  return _insertAtFractions(railRows, customRails, jMin, jMax, { preciseValue: true }).rows;
 }
 
 export function computePattern(PATTERN, opts = {}) {
@@ -1843,8 +1883,12 @@ export function computePattern(PATTERN, opts = {}) {
     : rails.mode === 'spacing'
     ? _railRowsBySpacing(jMin, jMax, rails, P.spacing)
     : _railRowsByCount(jMin, jMax, rails.count, seed);
+  // rails-lock slice: a Pull-applied rail's own row is placed FIRST, so a custom rail the user also styled/cut
+  // finds its own already-inserted row below (see _placeCustomRails' own comment). Empty rails.custom (every
+  // existing saved pattern) is a no-op -- customRailRows === generatedRailRows, byte-for-byte.
+  const customRailRows = _placeCustomRails(generatedRailRows, rails.custom, jMin, jMax);
   // Fred (protected rails): a recoloured / striped / cut rail keeps its row -- see _placeProtectedRails
-  const { rows: railRows, protectOfRow } = _placeProtectedRails(generatedRailRows, P.protectedRails, jMin, jMax);
+  const { rows: railRows, protectOfRow } = _placeProtectedRails(customRailRows, P.protectedRails, jMin, jMax);
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
     let pieces;
