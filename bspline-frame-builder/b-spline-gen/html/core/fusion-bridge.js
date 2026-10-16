@@ -6,7 +6,7 @@
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
 import { fusLog } from './fusion-log.js';
-import { releaseHeldStage } from './loading-signal.js';
+import { releaseHeldStage, holdLoadingStage } from './loading-signal.js';
 import FUSION_HOST from '../data/fusion-host.js';
 import { setHeaderFaceLabel } from './header-faces.js';
 
@@ -176,12 +176,19 @@ export function pollMode(onFusionReady, onWebMode) {
 }
 
 /**
- * Asks Python to extract the active or latest sketch from Fusion and send back its curves.
+ * Asks Python to extract the active or latest sketch from Fusion and send back its curves. Board-aware (seat A
+ * 2026-10-14): the project's own board (P.boardId) goes along, so the add-in reads THAT board's sketch and size
+ * (board_scope.py BoardScope/BoardNamer) -- never another board's, never a design-wide guess. The card stays up
+ * while the add-in walks the sketch (released by main/pull-sketch.js onSketchPulled); the board size goes along too,
+ * so a board with no widthIn/heightIn parameters places the curves on the palette's own board -- never a made-up size.
  */
 export function pullSketchFromFusion() {
     if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
         setFusionStatus('Pulling sketch from Fusion...', 'busy');
-        adsk.fusionSendData('pull_sketch_from_fusion', '{}');
+        holdLoadingStage('pullSketch');
+        adsk.fusionSendData('pull_sketch_from_fusion', JSON.stringify({
+            board: { id: P.boardId || '' }, widthIn: P.widthIn, heightIn: P.heightIn,
+        }));
         fusLog('pull_sketch_from_fusion sent to Python');
     } else {
         fusLog('pull_sketch_from_fusion skipped: not in Fusion environment');

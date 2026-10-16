@@ -56,6 +56,9 @@ export const LOADING_STAGES = {
   applyEdits: { group: 'computing', label: 'saving the drawing', surface: 'card' },
   stepBuild: { group: 'computing', label: 'building the STEP files', surface: 'card' },
   transfer: { group: 'waiting', label: 'sending to Fusion', surface: 'card' },
+  // Pull from Fusion (seat A 2026-10-14, ported from the closed pull-fusion-safe branch): held from the request
+  // until the add-in's sketch_pulled reply (main/pull-sketch.js)
+  pullSketch: { group: 'waiting', label: 'reading the Fusion sketch', surface: 'card' },
   ...Object.fromEntries(FUSION_SEND_STAGES.stages.map((st) => [st.id, { group: 'waiting', label: `Fusion: ${st.label}`, surface: 'card' }])),
 };
 

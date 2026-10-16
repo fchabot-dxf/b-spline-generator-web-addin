@@ -15,12 +15,24 @@ describe('pullSketchFromFusion & sketch_pulled pipeline', () => {
         else delete globalThis.adsk;
     });
 
-    it('pullSketchFromFusion sends pull_sketch_from_fusion when adsk is present', () => {
+    it('pullSketchFromFusion sends the project\'s board id + size (board-aware, seat A 2026-10-14)', () => {
         const sendFn = vi.fn();
         globalThis.adsk = { fusionSendData: sendFn };
+        P.boardId = 'kx1y2z3a';
 
         pullSketchFromFusion();
-        expect(sendFn).toHaveBeenCalledWith('pull_sketch_from_fusion', '{}');
+        const [action, payload] = sendFn.mock.calls[0];
+        expect(action).toBe('pull_sketch_from_fusion');
+        expect(JSON.parse(payload)).toEqual({ board: { id: 'kx1y2z3a' }, widthIn: P.widthIn, heightIn: P.heightIn });
+    });
+
+    it('pullSketchFromFusion sends an empty board id for a project with none yet (the legacy board)', () => {
+        const sendFn = vi.fn();
+        globalThis.adsk = { fusionSendData: sendFn };
+        P.boardId = null;
+
+        pullSketchFromFusion();
+        expect(JSON.parse(sendFn.mock.calls[0][1]).board).toEqual({ id: '' });
     });
 
     it('dispatching sketch_pulled creates Fusion Sketch layer and populates curves', async () => {
