@@ -94,7 +94,24 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null }) {
   for (const layer of layers) {
     const prefix = `L${layer.id}_`;
     const raw = {};
-    for (const [k, v] of Object.entries(boardParams)) if (k.startsWith(prefix)) raw[k.slice(prefix.length)] = v;
+    const rawKeyOf = {}; // base name -> the actual boardParams key it came from (prefixed, or bare -- see below)
+    for (const [k, v] of Object.entries(boardParams)) {
+      if (k.startsWith(prefix)) { const base = k.slice(prefix.length); raw[base] = v; rawKeyOf[base] = k; }
+    }
+    // live 2026-10-16 (seat D): a design with no tagged board is BoardNamer's own "legacy" identity scope
+    // (fb_engine/board_scope.py's own doc comment -- "the legacy root board has none: its names stay as they
+    // are") -- Send skips ALL scoping then, board AND layer, so a single-board document's lattice params come
+    // back from Fusion completely bare (no "L<id>_" at all), not just un-board-prefixed. That's the common case
+    // (most users have exactly one board), so a layer-prefixed match always wins, but when this board has
+    // exactly one lattice-owner layer, an otherwise-unclaimed bare key is this layer's own too. Two-or-more
+    // layers on an identity board would collide at the Fusion level already (Send's own limitation, not Pull's
+    // to resolve) -- the gate below only ever fills in what the prefix match didn't already find.
+    if (layers.length === 1) {
+      for (const [k, v] of Object.entries(boardParams)) {
+        if (LAYER_KEY.test(k) || k in rawKeyOf) continue;
+        raw[k] = v; rawKeyOf[k] = k;
+      }
+    }
     const compared = compareScope('layer', normalizeLayerParams(raw), layer.pattern);
     const changed = compared.filter((r) => r.changed);
     if (changed.length) layerGroups.push({ layerId: layer.id, layerName: layer.name, rows: changed.map((r) => ({ ...r, layerId: layer.id, layerName: layer.name })) });
@@ -102,9 +119,9 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null }) {
     // claim the RAW key(s) this layer's own comparison actually consumed -- stroke_width claims itself once even
     // though it feeds two PULL_MAP rows (rail_width + tie_width)
     if (Number.isFinite(raw.stroke_width) && compared.some((r) => r.fusionParam === 'rail_width' || r.fusionParam === 'tie_width')) {
-      claimedRawKeys.add(`${prefix}stroke_width`);
+      claimedRawKeys.add(rawKeyOf.stroke_width);
     }
-    for (const r of compared) if (r.fusionParam !== 'stroke_width' && Number.isFinite(raw[r.fusionParam])) claimedRawKeys.add(`${prefix}${r.fusionParam}`);
+    for (const r of compared) if (r.fusionParam !== 'stroke_width' && Number.isFinite(raw[r.fusionParam])) claimedRawKeys.add(rawKeyOf[r.fusionParam]);
   }
 
   let frameRows = [];

@@ -41,6 +41,18 @@ describe('showChangeListDialog: the rows it renders', () => {
     expect(body.textContent).toContain('Frame thickness');
   });
 
+  // live Fusion test (seat D 2026-10-16): a row with no prior app value (core/pull-changelist.js's own diffScope --
+  // "the app has no value yet (undefined): counts as changed, the row still shows, from is undefined") used to
+  // throw (v.toFixed on undefined) and silently swallow the WHOLE dialog, caught by onSketchPulled's own try/
+  // catch -- not a hypothetical, reproduced live against a real captured Fusion pull result.
+  it('a row with no prior app value (from undefined) renders "(none)", never throws', () => {
+    const withUnsetFrom = { ...SOME_CHANGES, frameRows: [{ fusionParam: 'boundingboxoffset', label: 'Trim offset', from: undefined, to: 0.25 }] };
+    expect(() => showChangeListDialog(withUnsetFrom)).not.toThrow();
+    const body = document.querySelector('.pull-changelist-body');
+    expect(body.textContent).toContain('(none)');
+    expect(body.textContent).toContain('0.25"');
+  });
+
   it('the informational rails note and the kept/not-mapped summary', () => {
     showChangeListDialog(SOME_CHANGES);
     const body = document.querySelector('.pull-changelist-body');

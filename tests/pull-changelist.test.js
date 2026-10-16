@@ -137,6 +137,46 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
     const result = buildChangeList({}, { P, layers: [layer1], frame });
     expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0 });
   });
+
+  // live Fusion test (seat D 2026-10-16): a design with no tagged board is BoardNamer's own "legacy" identity
+  // scope (fb_engine/board_scope.py) -- Send skips ALL scoping then, so a single-board document's lattice params
+  // come back completely BARE ("node_diameter", not "L3_node_diameter"). That's the common case (most users have
+  // exactly one board) -- caught live: a captured Send + replayed into Fusion came back with bare params, and the
+  // change list showed zero layer rows for node diameter / rail width despite Fusion actually holding changed
+  // values. A layer-prefixed match still wins; bare only fills what the prefix match didn't find, and only when
+  // this board has exactly one lattice layer (two would collide at the Fusion level already -- not Pull's to fix).
+  describe('a single-board (legacy/identity) document: lattice params come back with no L<id>_ prefix at all', () => {
+    it('one layer, bare params: still produces the layer row, still counts an unmapped bare param', () => {
+      const pullResult = {
+        widthIn: 7, heightIn: 9,
+        boardParams: { stroke_width: 0.3, node_diameter: 0.3, frame_thickness: 0.8, fred_custom_margin: 5 },
+      };
+      const result = buildChangeList(pullResult, { P, layers: [layer1], frame });
+
+      expect(result.layerGroups).toHaveLength(1);
+      expect(result.layerGroups[0]).toMatchObject({ layerId: '3', layerName: 'Layer 1' });
+      expect(result.layerGroups[0].rows.map((r) => r.fusionParam).sort()).toEqual(['node_diameter', 'rail_width', 'tie_width']);
+      expect(result.frameRows.map((r) => r.fusionParam)).toEqual(['frame_thickness']);
+      expect(result.notMappedCount).toBe(1); // fred_custom_margin -- not silently swallowed by the bare fallback
+    });
+
+    it('two layers, bare params: neither claims them (Fusion itself cannot tell them apart) -- all unmapped, not misattributed', () => {
+      const pullResult = { widthIn: 7, heightIn: 9, boardParams: { stroke_width: 0.9, node_diameter: 0.9 } };
+      const result = buildChangeList(pullResult, { P, layers: [layer1, layer2], frame: null });
+
+      expect(result.layerGroups).toEqual([]);
+      expect(result.notMappedCount).toBe(2);
+    });
+
+    it('a layer-prefixed key wins over a same-named bare one when both are present', () => {
+      const pullResult = { widthIn: 7, heightIn: 9, boardParams: { L3_node_diameter: 0.4, node_diameter: 0.9 } };
+      const result = buildChangeList(pullResult, { P, layers: [layer1], frame: null });
+      expect(result.layerGroups[0].rows).toEqual([
+        { fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in', kind: 'nodes', layerId: '3', layerName: 'Layer 1', from: 0.25, to: 0.4, changed: true },
+      ]);
+      expect(result.notMappedCount).toBe(1); // the bare "node_diameter" is a DIFFERENT, unclaimed key -- still reported
+    });
+  });
 });
 
 describe('curveCount: rails move freely in Fusion (no driving param) -- informational only, never applied', () => {

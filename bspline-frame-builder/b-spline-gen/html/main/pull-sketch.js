@@ -27,6 +27,7 @@ import { releaseHeldStage } from '../core/loading-signal.js';
 import { getFrameRecord } from '../core/frame-record.js';
 import { buildChangeList } from '../core/pull-changelist.js';
 import { showChangeListDialog, hasChanges, applyChangeList } from './pull-changelist.js';
+import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js';
 
 /** The add-in's reply action, and the loading stage held while it walks the sketch. */
 export const SKETCH_PULLED = 'sketch_pulled';
@@ -105,7 +106,11 @@ export function onSketchPulled(raw) {
     // fallback -- pull-sketch-safe.test.js) still applies: widthIn/heightIn are left out of the diff entirely
     // unless this board's own Fusion parameters declared a size (sizeSource 'fusion').
     const sizedData = data.sizeSource === 'fusion' ? data : { ...data, widthIn: undefined, heightIn: undefined };
-    const layers = (editor._layers || []).filter((l) => l && l.pattern);
+    // live Fusion test (seat D 2026-10-16): a bare `.pattern` check isn't enough -- a layer can carry a stale/
+    // inherited pattern object with nothing actually drawn from it (the 'Fusion Sketch' layer this same pull just
+    // created above got exactly that), and latticeOwnedElementsOnLayer is the already-declared answer to "does
+    // this layer actually have real lattice content right now" (export-flow.js's own gate for the same question).
+    const layers = (editor._layers || []).filter((l) => l && l.pattern && latticeOwnedElementsOnLayer(editor, l.id, l.pattern).length > 0);
     const frame = getFrameRecord().templateId ? getFrameRecord() : null;
     const changeList = buildChangeList(sizedData, { P, layers, frame });
     if (hasChanges(changeList)) {

@@ -12,7 +12,12 @@ import { getFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers } from '../editor/editor-lattice-pattern.js';
 import { recordStep } from '../core/history.js';
 
-const _fmtIn = (v) => `${v.toFixed(2)}"`;
+// live Fusion test (seat D 2026-10-16): `row.from` is `undefined` whenever the app has no value yet for a Fusion
+// param it otherwise recognizes (core/pull-changelist.js's own diffScope doc comment -- "the row still shows,
+// from is undefined", already covered by its own tests) -- the dialog itself never handled that case and threw
+// (v.toFixed on undefined), caught by onSketchPulled's own try/catch, silently swallowing the WHOLE pull (no
+// dialog at all, not even the rows that DID have a real `from`).
+const _fmtIn = (v) => (Number.isFinite(v) ? `${v.toFixed(2)}"` : '(none)');
 const ROW_LABEL = (row) => row.label;
 
 function _row(label, fromText, toText) {
