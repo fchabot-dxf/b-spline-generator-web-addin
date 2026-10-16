@@ -9,8 +9,13 @@
 import { applyRows } from '../core/pull-changelist.js';
 import { applyParam } from './param-manager.js';
 import { getFrameRecord, setFrameRecord } from '../core/frame-record.js';
-import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers } from '../editor/editor-lattice-pattern.js';
+import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers, PATTERN_DEFAULTS } from '../editor/editor-lattice-pattern.js';
 import { recordStep } from '../core/history.js';
+import { _findRailElementById } from '../editor/editor-interaction.js';
+import { getElementLayer } from '../editor/layers.js';
+import { latticeExtentFor } from '../editor/editor-sketch-manifest.js';
+import { matchPulledRails } from '../core/pull-rails.js';
+import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 
 // live Fusion test (seat D 2026-10-16): `row.from` is `undefined` whenever the app has no value yet for a Fusion
 // param it otherwise recognizes (core/pull-changelist.js's own diffScope doc comment -- "the row still shows,
@@ -64,13 +69,14 @@ function _renderBody(changeList) {
     body.appendChild(_divider());
   }
 
-  // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry; the
-  // rails-lock slice (Send-tagged rail ids, matched and applied) isn't built yet, so this is informational only,
-  // never applied by this dialog's own Apply (core/pull-changelist.js buildChangeList's own doc comment).
+  // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry. A matched
+  // one (a real Send-tagged railId, still a live rail here) gets its own position locked on Apply; one that
+  // can't be matched (a hand-drawn/legacy curve, or a rail since deleted) is still counted here but Apply
+  // leaves it alone -- so this stays a plain count, not a promise every one of them will move.
   if (changeList.curveCount > 0) {
     const note = document.createElement('div');
     note.className = 'pull-changelist-note';
-    note.textContent = `${changeList.curveCount} rail${changeList.curveCount === 1 ? '' : 's'} moved in Fusion — not pulled yet.`;
+    note.textContent = `${changeList.curveCount} rail${changeList.curveCount === 1 ? '' : 's'} moved in Fusion — Apply locks each one at its new position.`;
     body.appendChild(note);
   }
 
@@ -100,6 +106,51 @@ function _frameApplyPatch(frameRows) {
   return patch;
 }
 
+/** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): the Pull-Apply
+ *  write path for rail POSITIONS -- for every pulled curve that carries a real Send-tagged railId AND still has
+ *  a live rail drawn for it, resolves the LAYER that rail currently belongs to (_findRailElementById +
+ *  getElementLayer + resolvePatternLayer -- the SAME chain the lock badge's own hit-test uses), groups by that
+ *  layer's own pattern, and writes/updates pattern.rails.custom for each one -- ALWAYS `locked: true` ("Pull
+ *  reads each rail's real position ... and keeps it, with a lock on the pulled rails" -- Fred's own original
+ *  wording: every pull-apply RE-locks what it touches, even a rail the user had since unlocked by hand).
+ *  core/pull-rails.js's own matchPulledRails does the actual offset-fraction math, one copy shared with both the
+ *  canvas-drag persistence (editor-interaction.js) and this. The rail's own ON-SCREEN position updates on the
+ *  NEXT Generate (computePattern's own _placeCustomRails, already wired) -- unlike a width row, this Apply does
+ *  not re-paint the SVG immediately; moving a rail's own drawn endpoints safely (keeping it axis-aligned, not
+ *  colliding with its neighbours) is the SAME job Generate's own row-placement already solves, so a second,
+ *  narrower copy of it here was not worth the risk for this slice. Returns how many rails matched. */
+function applyPulledRailPositions(editor, pulledCurves) {
+  if (!editor || !Array.isArray(pulledCurves) || !pulledCurves.length) return 0;
+  const byPattern = new Map(); // pattern object -> its own matched curves
+  for (const curve of pulledCurves) {
+    if (!curve || curve.type !== 'line' || !curve.railId) continue;
+    const el = _findRailElementById(editor, curve.railId);
+    if (!el) continue;
+    const layerId = getElementLayer(el);
+    const patternLayer = resolvePatternLayer(editor, layerId);
+    const pattern = patternLayer && patternLayer.pattern;
+    if (!pattern) continue;
+    if (!byPattern.has(pattern)) byPattern.set(pattern, []);
+    byPattern.get(pattern).push(curve);
+  }
+  let total = 0;
+  for (const [pattern, curves] of byPattern) {
+    const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
+    const orientation = pattern.orientation || 'horizontal';
+    const extent = latticeExtentFor(pattern, boardRegion(editor));
+    const custom = Array.isArray(pattern.rails && pattern.rails.custom) ? pattern.rails.custom.slice() : [];
+    for (const m of matchPulledRails(curves, { spacing, orientation, extent })) {
+      if (m.at == null) continue;
+      const idx = custom.findIndex((c) => c.id === m.id);
+      const entry = { id: m.id, at: m.at, locked: true };
+      if (idx >= 0) custom[idx] = entry; else custom.push(entry);
+      total++;
+    }
+    pattern.rails = { ...(pattern.rails || PATTERN_DEFAULTS.rails), custom };
+  }
+  return total;
+}
+
 /** Writes every row in `changeList` back onto the app's own board/layer/frame state, in ONE global undo step
  *  (core/history.js recordStep -- the same "sidebar change becomes one step" convention frame-panel.js's
  *  editFrameNow and brick-panel.js's recordBoardStep already use) PLUS one editor-instance pushState/commit, so
@@ -108,9 +159,10 @@ function _frameApplyPatch(frameRows) {
  *  `editor` is the live SVG editor instance (window.svgEditor) -- optional: a pull with no layer/geometry rows at
  *  all (board/frame only) never needs it. Nothing here decides WHEN to show a dialog or whether to Cancel --
  *  that's showChangeListDialog's own job; this is the one write path Apply calls into. */
-export function applyChangeList(changeList, { editor } = {}) {
+export function applyChangeList(changeList, { editor, pulledCurves } = {}) {
   const { boardRows, layerGroups, frameRows } = changeList;
-  if (!boardRows.length && !layerGroups.length && !frameRows.length) return;
+  const hasRailMoves = editor && Array.isArray(pulledCurves) && pulledCurves.some((c) => c && c.railId);
+  if (!boardRows.length && !layerGroups.length && !frameRows.length && !hasRailMoves) return;
 
   recordStep('Pull from Fusion', ['frame', 'editorSvg'], () => {
     for (const row of boardRows) applyParam(row.appPath, row.to);
@@ -129,7 +181,12 @@ export function applyChangeList(changeList, { editor } = {}) {
 
     if (frameRows.length) setFrameRecord(_frameApplyPatch(frameRows));
 
-    if (editor && layerGroups.length && repainted === 0) {
+    // rails-lock slice: a matched rail position writes pattern.rails.custom (locked) but never re-paints the
+    // SVG itself (this function's own doc comment) -- so it's counted here the SAME way a non-repainting width
+    // change already is, to make sure the commit/pushState below still fires for it.
+    const railsMatched = hasRailMoves ? applyPulledRailPositions(editor, pulledCurves) : 0;
+
+    if (editor && (layerGroups.length || railsMatched > 0) && repainted === 0) {
       if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
       if (typeof editor.pushState === 'function') editor.pushState();
     }

@@ -18,7 +18,7 @@ import { applyParam } from '../bspline-frame-builder/b-spline-gen/html/main/para
 import { getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { globalHistoryLog, globalRedoLog, takeSnapshot, unifiedUndo } from '../bspline-frame-builder/b-spline-gen/html/core/history.js';
 import { OWNERSHIP_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
-import { LATTICE_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
+import { LATTICE_ATTR, RAIL_ID_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 import { applyChangeList } from '../bspline-frame-builder/b-spline-gen/html/main/pull-changelist.js';
 
 function makeMockEditor() {
@@ -43,6 +43,7 @@ function makeMockEditor() {
     makeEl,
     _layers: [],
     _sketchLayer: { children: () => ({ toArray: () => [...elements] }) },
+    _mW: 10, _mH: 10,
     pushState: vi.fn(),
     _notifyChange: vi.fn(),
   };
@@ -146,5 +147,69 @@ describe('applyChangeList: board + layer + frame rows, one undo step', () => {
     expect(() => applyChangeList(changeList, {})).not.toThrow();
     expect(applyParam).toHaveBeenCalledWith('widthIn', 10);
     expect(globalHistoryLog.map((s) => s.label)).toEqual(['Initial', 'Before Pull from Fusion', 'Pull from Fusion']);
+  });
+});
+
+// Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): applyChangeList's
+// own rail-position write path -- a pulled line with a real railId (and a still-live rail for it) locks
+// pattern.rails.custom at its new position; Apply never re-paints the rail's own SVG (this slice's own doc
+// comment -- that happens on the NEXT Generate), so this is purely a DATA assertion.
+describe('applyChangeList: pulled rail positions write pattern.rails.custom, locked', () => {
+  const EMPTY_CL = { boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 1 };
+
+  function editorWithRail(railId, y = 4) {
+    const editor = makeMockEditor();
+    editor._layers.push({ id: 'L1', name: 'Layer 1', pattern: { spacing: 0.25, orientation: 'horizontal', widths: {} } });
+    const rail = editor.makeEl({ [LATTICE_ATTR]: 'rail', [RAIL_ID_ATTR]: railId, 'data-layer': 'L1', x1: '0.5', y1: String(y), x2: '8', y2: String(y) });
+    editor.elements.push(rail);
+    return editor;
+  }
+
+  it('a matched pulled rail writes a NEW pattern.rails.custom entry, locked true', () => {
+    const editor = editorWithRail('rail7', 6);
+    const pulledCurves = [{ type: 'line', railId: 'rail7', isConstruction: false, x1: 0.5, y1: 6, x2: 8, y2: 6 }];
+
+    applyChangeList(EMPTY_CL, { editor, pulledCurves });
+
+    const pattern = editor._layers[0].pattern;
+    expect(pattern.rails.custom).toHaveLength(1);
+    expect(pattern.rails.custom[0].id).toBe('rail7');
+    expect(pattern.rails.custom[0].locked).toBe(true);
+    expect(editor.pushState).toHaveBeenCalledOnce();
+    expect(editor._notifyChange).toHaveBeenCalledWith('commit');
+  });
+
+  it('a pull that re-locks an EXISTING, previously-unlocked entry (Pull always re-locks what it touches)', () => {
+    const editor = editorWithRail('rail7', 6);
+    editor._layers[0].pattern.rails = { custom: [{ id: 'rail7', at: 0.1, locked: false }] }; // the user had unlocked it
+    const pulledCurves = [{ type: 'line', railId: 'rail7', isConstruction: false, x1: 0.5, y1: 6, x2: 8, y2: 6 }];
+
+    applyChangeList(EMPTY_CL, { editor, pulledCurves });
+
+    const custom = editor._layers[0].pattern.rails.custom;
+    expect(custom).toHaveLength(1); // updated in place, not duplicated
+    expect(custom[0].locked).toBe(true); // re-locked
+    expect(custom[0].at).not.toBe(0.1); // and its position actually updated too
+  });
+
+  it('a curve with no railId, or one with no live rail left, is skipped -- no crash, no entry', () => {
+    const editor = editorWithRail('rail7', 6);
+    const pulledCurves = [
+      { type: 'line', railId: null, isConstruction: false, x1: 0, y1: 0, x2: 1, y2: 0 },
+      // a validly-SHAPED id (matchPulledRails' own RAIL_ID_RE would accept it) that just has no live rail left
+      // -- the ONE case that isolates _findRailElementById's own guard from matchPulledRails' separate id-shape one
+      { type: 'line', railId: 'rail99', isConstruction: false, x1: 0, y1: 1, x2: 1, y2: 1 },
+    ];
+
+    expect(() => applyChangeList(EMPTY_CL, { editor, pulledCurves })).not.toThrow();
+    expect(editor._layers[0].pattern.rails?.custom ?? []).toEqual([]);
+    expect(editor.pushState).not.toHaveBeenCalled(); // nothing actually matched -- no step at all
+  });
+
+  it('no pulledCurves at all (an ordinary param-only Apply): untouched, same as before this slice', () => {
+    const editor = makeMockEditor();
+    const { changeList } = makeChangeList({ editor });
+
+    expect(() => applyChangeList(changeList, { editor })).not.toThrow();
   });
 });

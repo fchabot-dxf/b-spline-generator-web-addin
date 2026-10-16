@@ -33,7 +33,7 @@ import {
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
-import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
+import { viewboxFor, zoomAbout, applyView, screenToModelDelta, viewScale } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover, snapToGrid, SNAP_POLICY } from './editor-grid.js';
 import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
 import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX, beginSnapGesture, endSnapGesture, watchSnapTargets } from './editor-snap-resolver.js';
@@ -1960,6 +1960,110 @@ function _finishLatticeMove(editor) {
     _commitLatticeMove(editor, move);
 }
 
+/** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred-approved mockup, shots/seatD/
+ *  rails_lock_mockup/rails_lock_mockup.png): a small lock badge (🔒 locked / 🔓 unlocked) drawn at EVERY
+ *  pattern.rails.custom rail's own row, a fixed inset from the board's near edge -- model-space, never outside
+ *  the board itself (the default view has no margin past it, editor-view.js's own viewboxFor), unlike the
+ *  mockup's own "in the margin" sketch. Tapping the badge toggles that ONE rail's lock. */
+const LOCK_BADGE_ATTR = 'data-rail-lock-badge';
+const LOCK_BADGE_INSET_IN = 0.3;
+
+/** Every pattern.rails.custom entry across every layer that currently has a REAL drawn rail for it -- `{pattern,
+ *  entry, el}`, one per entry. A custom entry with no matching element yet (e.g. mid-Generate) is skipped, not
+ *  an error -- the next render picks it up once the rail actually exists. */
+function _customRailLockTargets(editor) {
+    const out = [];
+    for (const layer of editor._layers || []) {
+        const pattern = layer.pattern;
+        const custom = pattern && pattern.rails && pattern.rails.custom;
+        if (!Array.isArray(custom) || !custom.length) continue;
+        for (const entry of custom) {
+            const el = _findRailElementById(editor, entry.id);
+            if (el) out.push({ pattern, entry, el });
+        }
+    }
+    return out;
+}
+
+/** Exported for the Pull-Apply write path (main/pull-changelist.js's applyPulledRailPositions): the SAME lookup
+ *  the lock badge's own hit-test uses to turn a pulled curve's railId into the layer that owns it today. */
+export function _findRailElementById(editor, railId) {
+    if (!railId || !editor._sketchLayer) return null;
+    for (const ch of editor._sketchLayer.children().toArray()) {
+        if (ch && ch.node && ch.node.getAttribute(RAIL_ID_ATTR) === railId) return ch;
+    }
+    return null;
+}
+
+/** Model-space {x,y} for a target's own badge: horizontal orientation (rails run left-right) puts it at the
+ *  rail's own row, inset from the LEFT edge; vertical (rails run top-bottom) puts it at the rail's own column,
+ *  inset from the TOP edge -- always along the board's near edge the rail itself starts from, never past it. */
+function _lockBadgePosition(target) {
+    const n = (k) => parseFloat(target.el.attr(k));
+    if (target.pattern.orientation === 'vertical') {
+        return { x: (n('x1') + n('x2')) / 2, y: LOCK_BADGE_INSET_IN };
+    }
+    return { x: LOCK_BADGE_INSET_IN, y: (n('y1') + n('y2')) / 2 };
+}
+
+/** A fixed SCREEN size regardless of zoom -- the SAME pxPerModelUnit conversion renderRailEndHandle/
+ *  renderShapeLatticeHandles already use, and INPUT_PROFILE's own touch handlePx (28px diameter, this app's own
+ *  declared minimum touch target -- AGENTS.md), not a new size invented for this one badge. */
+function _lockBadgeModelRadius(editor) {
+    const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
+    const svgEl = typeof document !== 'undefined' ? document.getElementById('editorSVGContainer') : null;
+    const clientWidth = (svgEl && svgEl.clientWidth) || 800;
+    const clientHeight = (svgEl && svgEl.clientHeight) || 800;
+    const pxPerModelUnit = view && view.width ? viewScale(view, clientWidth, clientHeight) : 100;
+    const handlePx = inputProfileFor(editor._pointerType).handlePx;
+    return Math.max(handlePx / pxPerModelUnit, 0.05);
+}
+
+/** Redraws every lock badge from scratch into editor._handleLayer (the same transient overlay layer
+ *  renderRailEndHandle/renderShapeLatticeHandles already use) -- clears the stale set first, so a rail that lost
+ *  its custom entry (Generate, or a future "clear pulled position") never leaves an orphaned badge behind. */
+function renderCustomRailLockBadges(editor) {
+    if (!editor._handleLayer) return;
+    for (const ch of editor._handleLayer.children ? editor._handleLayer.children().toArray() : []) {
+        if (ch && ch.node && ch.node.hasAttribute(LOCK_BADGE_ATTR)) ch.remove();
+    }
+    const targets = _customRailLockTargets(editor);
+    if (!targets.length) return;
+    const r = _lockBadgeModelRadius(editor);
+    for (const target of targets) {
+        const p = _lockBadgePosition(target);
+        const locked = !!target.entry.locked;
+        editor._handleLayer.circle(r * 2).center(p.x, p.y)
+            .fill(locked ? '#fff3cd' : '#e3f2fd')
+            .stroke({ color: locked ? '#8a6d00' : '#1565c0', width: r * 0.12 })
+            .attr(LOCK_BADGE_ATTR, target.entry.id);
+        editor._handleLayer.text(locked ? '🔒' : '🔓')
+            .center(p.x, p.y)
+            .font({ size: r * 1.1, anchor: 'middle' })
+            .attr(LOCK_BADGE_ATTR, target.entry.id)
+            .attr('dominant-baseline', 'central');
+    }
+}
+
+/** The lock badge's own hit-test -- runs FIRST, before either lattice tool's own piece hit-test (latticeHandler.
+ *  start / shapeLatticeHandler.start), and stops there on a hit so a badge tap never ALSO starts a drag or draws
+ *  a new piece. A hit flips that ONE rail's own `locked` and re-renders; nothing else in the pattern changes. */
+function _hitCustomRailLockBadge(editor, pt) {
+    if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) return false;
+    const r = _lockBadgeModelRadius(editor);
+    for (const target of _customRailLockTargets(editor)) {
+        const p = _lockBadgePosition(target);
+        if (Math.hypot(pt.x - p.x, pt.y - p.y) <= r) {
+            target.entry.locked = !target.entry.locked;
+            if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+            if (typeof editor.pushState === 'function') editor.pushState();
+            renderCustomRailLockBadges(editor);
+            return true;
+        }
+    }
+    return false;
+}
+
 /** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): a canvas drag
  *  on an UNLOCKED custom rail (pattern.rails.custom, matched by its own Send-tagged RAIL_ID_ATTR -- step 1/3 of
  *  this same slice) persists -- it updates THAT entry's own `at` to the rail's new position, the same offset-
@@ -2027,6 +2131,7 @@ function _commitLatticeMove(editor, move) {
     }
     applyLayerState(editor);
     _persistCustomRailDrag(editor, move);
+    renderCustomRailLockBadges(editor); // rails-lock slice: the dragged rail's badge tracks its new row immediately
     if (typeof editor.pushState === 'function') editor.pushState();
     // audit batch 2: through the commit hooks like every other edit (a pending refill is settled in THIS step)
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
@@ -2180,6 +2285,9 @@ function _emitHandPieces(editor, kind, pieces, orientation, spacing) {
 // other callers of _snap, not for this handler's own point resolution).
 const latticeHandler = {
     start(editor, pt, e) {
+        // rails-lock slice: the lock badge's own hit-test runs FIRST, entirely independent of the piece hit-
+        // test below -- a hit toggles the rail's lock and stops here, touching nothing else this function does.
+        if (_hitCustomRailLockBadge(editor, pt)) return;
         const spacing = editor._grid.spacing || 0.25;
         editor._latticeSpacing = spacing;
         const drawKind = editor._lattice.drawKind || 'rail';
@@ -2578,6 +2686,8 @@ function _nearbyLatticePiece(editor, pt, tol) {
  */
 const shapeLatticeHandler = {
     start(editor, pt, e) {
+        // rails-lock slice: same early, independent lock-badge hit-test latticeHandler.start's own uses.
+        if (_hitCustomRailLockBadge(editor, pt)) return;
         // T59: use the RAW pointer position (bypassing applyTouchMarkerOffset,
         // editor-grid.js), NOT the `pt` handed in — measured live, not just
         // reasoned about: a handle's own hit radius (~25 screen px, matching
@@ -3275,9 +3385,10 @@ export function updateHandles(editor) {
     if (editor._currentMode === 'shapeLattice') {
         editor._paramHandles = renderShapeLatticeHandles(editor);
         renderRailEndHandle(editor); // T81 item 7
+        renderCustomRailLockBadges(editor); // rails-lock slice
         return;
     }
-    if (editor._currentMode === 'lattice') { renderRailEndHandle(editor); return; } // T81 item 7 (lattice mode draws no selection handles)
+    if (editor._currentMode === 'lattice') { renderRailEndHandle(editor); renderCustomRailLockBadges(editor); return; } // T81 item 7 (lattice mode draws no selection handles)
     const sel = editor._selectedElements || [];
     if (!sel.length) return;
     if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;

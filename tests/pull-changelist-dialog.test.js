@@ -56,7 +56,7 @@ describe('showChangeListDialog: the rows it renders', () => {
   it('the informational rails note and the kept/not-mapped summary', () => {
     showChangeListDialog(SOME_CHANGES);
     const body = document.querySelector('.pull-changelist-body');
-    expect(body.querySelector('.pull-changelist-note').textContent).toBe('4 rails moved in Fusion — not pulled yet.');
+    expect(body.querySelector('.pull-changelist-note').textContent).toBe('4 rails moved in Fusion — Apply locks each one at its new position.');
     expect(body.querySelector('.pull-changelist-summary').textContent).toBe('Kept in Fusion: 2 unchanged · Not mapped: 1 param');
   });
 

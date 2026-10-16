@@ -114,7 +114,9 @@ export function onSketchPulled(raw) {
     const frame = getFrameRecord().templateId ? getFrameRecord() : null;
     const changeList = buildChangeList(sizedData, { P, layers, frame });
     if (hasChanges(changeList)) {
-      showChangeListDialog(changeList, { onApply: (cl) => applyChangeList(cl, { editor }) });
+      // rails-lock slice: the RAW pulled curves ride along too -- applyChangeList's own rail-position write path
+      // (applyPulledRailPositions) matches them by railId, independent of buildChangeList's own curveCount.
+      showChangeListDialog(changeList, { onApply: (cl) => applyChangeList(cl, { editor, pulledCurves: data.curves }) });
     }
   } catch (e) {
     fusLog(`sketch_pulled handling failed: ${e.message}`);
