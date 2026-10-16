@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { JOB_STEP_KINDS, JOB_DEFAULT_KIND_ORDER, jobProjectOf, deriveJobSteps, defaultJobOrder, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
-import { SECTION_THEMES, SECTION_ICONS } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
+import { SECTION_THEMES } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
 
 const PROJECT = {
   layers: [
@@ -19,12 +19,15 @@ const PROJECT = {
 const steps = deriveJobSteps(PROJECT);
 
 describe('the steps and Fred\'s default order', () => {
-  it('every kind is declared once, with its look (a REAL section -- a colour and an icon, no colour table of its own), what it opens and its dependencies (data)', () => {
+  it('every kind is declared once, with its own icon (advisor 2026-10-16: distinct per KIND, never the sidebar\'s own repeating icon) and a REAL section for its colour (no colour table of its own), what it opens and its dependencies (data)', () => {
+    const seenIcons = new Map(); // every kind's OWN glyph -- never shared across two DIFFERENT kinds
     for (const [id, k] of Object.entries(JOB_STEP_KINDS)) {
       expect(k.label, id).toBeTruthy();
+      expect(k.icon, id).toBeTruthy();
+      expect(seenIcons.has(k.icon), `${id} and ${seenIcons.get(k.icon)} share the icon '${k.icon}'`).toBe(false);
+      seenIcons.set(k.icon, id);
       expect(k.section, id).toBeTruthy();
       expect(SECTION_THEMES[k.section], `${id} -> section '${k.section}'`).toBeTruthy();
-      expect(SECTION_ICONS[k.section], `${id} -> section '${k.section}'`).toBeTruthy();
       expect(k.opens, id).toBeTruthy(); expect(Array.isArray(k.dependsOn), id).toBe(true);
     }
     expect(JOB_STEP_KINDS.stock.fixed).toBe('first');

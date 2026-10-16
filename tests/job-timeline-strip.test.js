@@ -182,19 +182,27 @@ describe('Fred 2026-10-16: a track line behind the chips, like beads on a rail',
   // jsdom lays out nothing for real -- a PROTOTYPE-level override (not per-instance) so it applies to chips AND
   // the head the moment renderJobStrips creates them fresh each render: element i among its siblings sits at
   // x = i*50, 30px wide -- a believable row in DOM order (chips, then wherever putHead() placed the head).
-  let origLeft, origWidth;
+  let origLeft, origWidth, origTop, origHeight;
   beforeEach(() => {
     origLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft');
     origWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    origTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    origHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return 30; } });
     Object.defineProperty(HTMLElement.prototype, 'offsetLeft', {
       configurable: true,
       get() { return [...(this.parentNode?.children || [])].indexOf(this) * 50; },
     });
+    // the chip row is bottom-aligned (.job-strip align-items:flex-end) -- every chip sits at the same offsetTop/
+    // offsetHeight regardless of x position, unlike offsetLeft above
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return 24; } });
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', { configurable: true, get() { return 10; } });
   });
   afterEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'offsetLeft', origLeft);
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origWidth);
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', origTop);
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', origHeight);
   });
 
   it('renders a visible track spanning the chip row, not the "nothing to span" no-op', () => {
@@ -204,6 +212,13 @@ describe('Fred 2026-10-16: a track line behind the chips, like beads on a rail',
     expect(track.style.display).not.toBe('none');
     expect(track.style.left).toMatch(/^\d+px$/);
     expect(parseFloat(track.style.width)).toBeGreaterThan(0);
+  });
+
+  it('sits at the chip row\'s real vertical centre, not the strip\'s top (the bug: `top` was never set at all)', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    // every stubbed chip: offsetTop 10, offsetHeight 24 -> centre 22, minus half the track's own declared width
+    expect(track.style.top).toBe(`${10 + 24 / 2 - JOB_STRIP.trackPx / 2}px`);
   });
 
   it('the head at the very start: the whole track reads pending (0% done)', () => {

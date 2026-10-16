@@ -9,7 +9,7 @@ import { P, scheduleSessionSave, bootRestore } from '../core/state.js';
 import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
-import { SECTION_ICONS, sectionColor } from './section-themes.js';
+import { sectionColor } from './section-themes.js';
 
 /** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
  *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
@@ -33,9 +33,11 @@ export const JOB_STRIP = Object.freeze({
   scrollHeadOnFirstDraw: true,
   // Fred 2026-10-16: a track line behind the chips, like beads on a rail -- solid/dark left of the head (done),
   // lighter right of it (pending). styles/layout-app.css .job-track reads these.
-  trackPx: 2,
-  trackColorDone: '#5a6472',
-  trackColorPending: '#c9ced4',
+  // advisor review 2026-10-16 ("barely visible on desktop, not at all on phone"): 2px/#5a6472 read as a hairline --
+  // 3px and a near-black done colour so it reads as a real rail, not a seam
+  trackPx: 3,
+  trackColorDone: '#2b323b',
+  trackColorPending: '#aeb6c0',
 });
 const JOB_DEP_MARK_COLOR = '#f0a020';
 
@@ -99,7 +101,7 @@ function _chip(doc, kindId, name, { sub = false, caret = null, mark = null, fixe
   c.style.setProperty('--job-color', sectionColor(k.section));
   c.title = mark ? `${name}\n\n${mark}` : name;
   c.setAttribute('aria-label', name);
-  c.innerHTML = (caret ? `<span class="job-caret">${caret}</span>` : '') + `<span class="job-icon">${SECTION_ICONS[k.section] || ''}</span>`
+  c.innerHTML = (caret ? `<span class="job-caret">${caret}</span>` : '') + `<span class="job-icon">${k.icon || ''}</span>`
     + (swatchKey ? `<span class="job-swatch"></span>` : '') + (mark ? '<span class="job-dep-mark"></span>' : '');
   if (swatchKey) c.querySelector('.job-swatch').style.backgroundColor = _layerSwatch(swatchKey);
   if (mark) c.querySelector('.job-dep-mark').style.background = JOB_DEP_MARK_COLOR;
@@ -207,6 +209,11 @@ function renderTrack(track, bar) {
   const headEl = bar.querySelector('[data-job-head]');
   const headX = headEl ? Math.min(endX, Math.max(startX, headEl.offsetLeft + headEl.offsetWidth / 2)) : startX;
   const donePct = ((headX - startX) / (endX - startX)) * 100;
+  // BUG (advisor review 2026-10-16, "barely visible on desktop, not at all on phone"): `top` was never set, so the
+  // track defaulted to the TOP of the strip (the overhang band), nowhere near the chip row it's meant to run
+  // through. The chip row is bottom-aligned (.job-strip align-items:flex-end), so its real vertical centre is read
+  // off a chip's own offsetTop/offsetHeight, same as left/width above.
+  track.style.top = `${first.offsetTop + first.offsetHeight / 2 - JOB_STRIP.trackPx / 2}px`;
   track.style.display = 'block';
   track.style.left = `${startX}px`;
   track.style.width = `${endX - startX}px`;
