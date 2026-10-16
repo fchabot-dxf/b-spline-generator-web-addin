@@ -9,7 +9,7 @@
 import { applyRows } from '../core/pull-changelist.js';
 import { applyParam } from './param-manager.js';
 import { getFrameRecord, setFrameRecord } from '../core/frame-record.js';
-import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers, PATTERN_DEFAULTS } from '../editor/editor-lattice-pattern.js';
+import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers, PATTERN_DEFAULTS, generatePattern } from '../editor/editor-lattice-pattern.js';
 import { recordStep } from '../core/history.js';
 import { _findRailElementById } from '../editor/editor-interaction.js';
 import { getElementLayer } from '../editor/layers.js';
@@ -114,13 +114,13 @@ function _frameApplyPatch(frameRows) {
  *  reads each rail's real position ... and keeps it, with a lock on the pulled rails" -- Fred's own original
  *  wording: every pull-apply RE-locks what it touches, even a rail the user had since unlocked by hand).
  *  core/pull-rails.js's own matchPulledRails does the actual offset-fraction math, one copy shared with both the
- *  canvas-drag persistence (editor-interaction.js) and this. The rail's own ON-SCREEN position updates on the
- *  NEXT Generate (computePattern's own _placeCustomRails, already wired) -- unlike a width row, this Apply does
- *  not re-paint the SVG immediately; moving a rail's own drawn endpoints safely (keeping it axis-aligned, not
- *  colliding with its neighbours) is the SAME job Generate's own row-placement already solves, so a second,
- *  narrower copy of it here was not worth the risk for this slice. Returns how many rails matched. */
+ *  canvas-drag persistence (editor-interaction.js) and this. Returns the SET of pattern objects actually touched
+ *  (never a bare count) -- the caller runs the SAME Generate on each one (advisor 45: "Apply must SHOW the
+ *  rails where Fusion put them... have Apply call the SAME Generate for that lattice layer... one code path, no
+ *  new risk" -- never a second, narrower placer re-deriving row placement here). */
 function applyPulledRailPositions(editor, pulledCurves) {
-  if (!editor || !Array.isArray(pulledCurves) || !pulledCurves.length) return 0;
+  const touched = new Set();
+  if (!editor || !Array.isArray(pulledCurves) || !pulledCurves.length) return touched;
   const byPattern = new Map(); // pattern object -> its own matched curves
   for (const curve of pulledCurves) {
     if (!curve || curve.type !== 'line' || !curve.railId) continue;
@@ -133,22 +133,24 @@ function applyPulledRailPositions(editor, pulledCurves) {
     if (!byPattern.has(pattern)) byPattern.set(pattern, []);
     byPattern.get(pattern).push(curve);
   }
-  let total = 0;
   for (const [pattern, curves] of byPattern) {
     const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
     const orientation = pattern.orientation || 'horizontal';
     const extent = latticeExtentFor(pattern, boardRegion(editor));
     const custom = Array.isArray(pattern.rails && pattern.rails.custom) ? pattern.rails.custom.slice() : [];
+    let matched = 0;
     for (const m of matchPulledRails(curves, { spacing, orientation, extent })) {
       if (m.at == null) continue;
       const idx = custom.findIndex((c) => c.id === m.id);
       const entry = { id: m.id, at: m.at, locked: true };
       if (idx >= 0) custom[idx] = entry; else custom.push(entry);
-      total++;
+      matched++;
     }
+    if (!matched) continue;
     pattern.rails = { ...(pattern.rails || PATTERN_DEFAULTS.rails), custom };
+    touched.add(pattern);
   }
-  return total;
+  return touched;
 }
 
 /** Writes every row in `changeList` back onto the app's own board/layer/frame state, in ONE global undo step
@@ -158,12 +160,26 @@ function applyPulledRailPositions(editor, pulledCurves) {
  *  belt-and-suspenders two-undo-system split core/history.js's own UNDO_KEEPS doc comment already describes.
  *  `editor` is the live SVG editor instance (window.svgEditor) -- optional: a pull with no layer/geometry rows at
  *  all (board/frame only) never needs it. Nothing here decides WHEN to show a dialog or whether to Cancel --
- *  that's showChangeListDialog's own job; this is the one write path Apply calls into. */
-export function applyChangeList(changeList, { editor, pulledCurves } = {}) {
+ *  that's showChangeListDialog's own job; this is the one write path Apply calls into.
+ *
+ *  Async (advisor 45): a matched rail position isn't just data -- Fred's own "an action is never a silent no-op"
+ *  rule means Apply must SHOW the rail where Fusion put it, not leave it drawn at its old spot until the user
+ *  separately hits Generate. The one way to do that without a second, narrower placer re-deriving row placement
+ *  is to call the SAME generatePattern Generate itself calls, for each layer a rail position actually touched,
+ *  AFTER its own width rows are already applied (so Generate redraws with the CURRENT widths, not stale ones) --
+ *  generatePattern is itself async (boundary-mode layers resolve their contour asynchronously), so this function
+ *  is too; a caller that needs the drawn result to actually be settled (a test, primarily) awaits it.
+ *  core/history.js's own recordStep never awaits its `change` callback, but that's fine here: its own GLOBAL
+ *  snapshot (persistableP()) never includes editor._layers/pattern state at all (that's the SEPARATE 'editorSvg'
+ *  restore key, itself only ever read LAZILY at undo time, not at record time) -- recordStep's own synchronous
+ *  half (board/layer/frame writes, all plain data) is what it snapshots, already complete by the time it runs,
+ *  regardless of how long the async Generate(s) below still have left to run. */
+export async function applyChangeList(changeList, { editor, pulledCurves } = {}) {
   const { boardRows, layerGroups, frameRows } = changeList;
   const hasRailMoves = editor && Array.isArray(pulledCurves) && pulledCurves.some((c) => c && c.railId);
   if (!boardRows.length && !layerGroups.length && !frameRows.length && !hasRailMoves) return;
 
+  let genPromise = null;
   recordStep('Pull from Fusion', ['frame', 'editorSvg'], () => {
     for (const row of boardRows) applyParam(row.appPath, row.to);
 
@@ -181,16 +197,31 @@ export function applyChangeList(changeList, { editor, pulledCurves } = {}) {
 
     if (frameRows.length) setFrameRecord(_frameApplyPatch(frameRows));
 
-    // rails-lock slice: a matched rail position writes pattern.rails.custom (locked) but never re-paints the
-    // SVG itself (this function's own doc comment) -- so it's counted here the SAME way a non-repainting width
-    // change already is, to make sure the commit/pushState below still fires for it.
-    const railsMatched = hasRailMoves ? applyPulledRailPositions(editor, pulledCurves) : 0;
+    // rails-lock slice: write pattern.rails.custom for every matched rail FIRST (synchronous -- computePattern
+    // needs it in place before it runs), then Generate each touched layer, ASYNCHRONOUSLY, started here but
+    // held in `genPromise` for this function's own caller to await below -- recordStep itself never waits on it
+    // (see this function's own doc comment for why that's safe).
+    const touchedPatterns = hasRailMoves ? applyPulledRailPositions(editor, pulledCurves) : new Set();
 
-    if (editor && (layerGroups.length || railsMatched > 0) && repainted === 0) {
+    if (touchedPatterns.size) {
+      // amendUndo: generatePattern's own "fold into whatever was JUST pushed" convention (editor.js's own
+      // _lastPushedState) -- true only once something in THIS transaction has already pushed (the width
+      // repaint above, or an earlier layer's own Generate in this same loop), so one Apply with BOTH a width
+      // change and a rail-position change still ends as exactly ONE editor-local undo step, never two; the
+      // FIRST push of this transaction (nothing to fold into yet) pushes fresh instead.
+      let amend = repainted > 0;
+      genPromise = (async () => {
+        for (const pattern of touchedPatterns) {
+          await generatePattern(editor, pattern, { amendUndo: amend });
+          amend = true;
+        }
+      })();
+    } else if (editor && layerGroups.length && repainted === 0) {
       if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
       if (typeof editor.pushState === 'function') editor.pushState();
     }
   });
+  if (genPromise) await genPromise;
 }
 
 /** Builds and shows the dialog; `onApply(changeList)` fires on Apply (the caller owns the actual writes + undo
