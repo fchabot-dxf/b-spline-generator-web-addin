@@ -261,6 +261,21 @@ def test_a_lines_own_frame_builder_id_comes_back_as_railid_on_the_pulled_curve(m
     assert [c['railId'] for c in res['curves']] == ['rail7', None]
 
 
+# Rails custom-position + lock slice: explicit x1/y1/x2/y2 ride alongside `d` on a line curve, the same
+# convention a circle's cx/cy/r already use -- the Pull matcher reads these directly, never re-parses `d`.
+def test_a_lines_endpoints_ride_alongside_its_d_as_plain_numbers(monkeypatch):
+    monkeypatch.setattr(bsg, '_log', lambda msg: None)
+    monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(activeEditObject=None, userInterface=None), raising=False)
+    d = Design()
+    d.rootComponent.sketches = [_sketch('plain', d.rootComponent, lines=[_line((0, 0), (1, 0))])]
+    d.param('widthIn', 7); d.param('heightIn', 9)
+    monkeypatch.setattr(bsg, '_active_design', lambda: d)
+    res = bsg.PaletteHTMLEventHandler()._handle_pull_sketch({'board': {'id': ''}})
+    c = res['curves'][0]
+    assert (c['x1'], c['y1'], c['x2'], c['y2']) == (3.5, 4.5, 4.5, 4.5)  # the 7x9 board's own centre
+    assert c['d'] == f"M {c['x1']} {c['y1']} L {c['x2']} {c['y2']}"
+
+
 def test_a_fitted_spline_reads_its_range_as_ok_start_end_and_is_imported(monkeypatch):
     monkeypatch.setattr(bsg, '_log', lambda msg: None)
     monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(activeEditObject=None, userInterface=None), raising=False)

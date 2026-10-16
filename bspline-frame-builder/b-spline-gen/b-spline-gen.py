@@ -2187,6 +2187,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     curves_out.append({
                         'type': 'line',
                         'd': f"M {x1} {y1} L {x2} {y2}",
+                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,  # explicit endpoints, same as circle's cx/cy/r
+                        # alongside its own `d` -- the rails-lock Pull matcher reads these directly rather than
+                        # re-parsing the `d` string.
                         'isConstruction': bool(line.isConstruction),
                         'railId': _frame_builder_id(line),
                     })
