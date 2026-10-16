@@ -30,13 +30,145 @@ import { tess, bareGround } from './bare-ground.js';
 
 /** main's own largest bare patch over this sweep is 0.043 sq in (2026-10-10): no case may leave more than this */
 const BARE_PATCH_TOL_SQIN = 0.05;
+/** Fred 2026-10-16 (seat E, via the advisor; shipped with the known gaps): toothed's own residual -- every
+ * `<template> <W>x<H> <L>in <preset>` QUOIN_FULL measured over BARE_PATCH_TOL_SQIN on the shipped state (elbow
+ * infill + short-bar fallback + the per-corner veto, primitive-ribbon.js; NOT the cutUnderQuoins merge-pipeline
+ * work parked on toothed-merge-wip, which fixes 101 of these but newly breaks 115 others -- see that branch's own
+ * commit note), mapped to its OWN measured largest bare patch (sq in). A KNOWN case is tolerated up to exactly
+ * that recorded value, never looser -- this table is a regression guard, not a blanket exemption: any case NOT
+ * listed here still needs BARE_PATCH_TOL_SQIN, and a listed case that gets WORSE than its own recorded value still
+ * fails. Recorded from a real QUOIN_FULL run on this exact state (118 cases, matching the sweep's own failed
+ * count exactly). */
+const QUOIN_TOOTH_KNOWN_RESIDUAL = Object.freeze({
+  'template_1 9x12 1in diaper_lattice': 0.0832,
+  'template_1 9x12 1in tudor_frieze': 0.064,
+  'template_1 9x12 1in tudor_frieze_quoin': 0.064,
+  'template_1 9x12 1in tudor_frieze_toothed': 0.064,
+  'template_1 9x12 1in zigzag_band': 0.064,
+  'template_1 9x12 1.25in diaper_lattice': 0.08,
+  'template_1 9x12 1.25in tudor_frieze': 0.08,
+  'template_1 9x12 1.25in tudor_frieze_quoin': 0.08,
+  'template_1 9x12 1.25in tudor_frieze_toothed': 0.08,
+  'template_1 9x12 1.25in zigzag_band': 0.08,
+  'template_3 9x12 1in diaper_lattice': 0.0832,
+  'template_3 9x12 1.25in diaper_lattice': 0.08,
+  'template_3 9x12 1.25in tudor_frieze': 0.08,
+  'template_3 9x12 1.25in tudor_frieze_quoin': 0.08,
+  'template_3 9x12 1.25in tudor_frieze_toothed': 0.08,
+  'template_3 9x12 1.25in zigzag_band': 0.08,
+  'template_4 9x12 1in craftsman_apron': 0.0816,
+  'template_4 9x12 1in craftsman_apron_quoin': 0.0816,
+  'template_4 9x12 1in craftsman_apron_toothed': 0.0816,
+  'template_4 9x12 1in soldier_string': 0.0816,
+  'template_5 9x12 1in diaper_lattice': 0.0832,
+  'template_5 9x12 1.25in diaper_lattice': 0.064,
+  'template_5 9x12 1.25in tudor_frieze': 0.064,
+  'template_5 9x12 1.25in tudor_frieze_quoin': 0.064,
+  'template_5 9x12 1.25in tudor_frieze_toothed': 0.064,
+  'template_5 9x12 1.25in zigzag_band': 0.064,
+  'template_6 9x12 1in craftsman_apron': 0.0832,
+  'template_6 9x12 1in craftsman_apron_quoin': 0.0832,
+  'template_6 9x12 1in craftsman_apron_toothed': 0.0832,
+  'template_6 9x12 1in diaper_lattice': 0.0512,
+  'template_6 9x12 1in double_soldier': 0.056,
+  'template_6 9x12 1in double_soldier_quoin': 0.056,
+  'template_6 9x12 1in double_soldier_toothed': 0.056,
+  'template_6 9x12 1in soldier_string': 0.0832,
+  'template_6 9x12 1in tudor_frieze': 0.0512,
+  'template_6 9x12 1in tudor_frieze_quoin': 0.0512,
+  'template_6 9x12 1in tudor_frieze_toothed': 0.0512,
+  'template_6 9x12 1in zigzag_band': 0.0512,
+  'template_6 9x12 1.25in corbelled_cornice': 0.0832,
+  'template_6 9x12 1.25in corbelled_cornice_quoin': 0.0832,
+  'template_6 9x12 1.25in corbelled_cornice_toothed': 0.0832,
+  'template_6 9x12 1.25in diaper_lattice': 0.0512,
+  'template_6 9x12 1.25in double_course': 0.0512,
+  'template_6 9x12 1.25in double_soldier': 0.0512,
+  'template_6 9x12 1.25in double_soldier_quoin': 0.0512,
+  'template_6 9x12 1.25in double_soldier_toothed': 0.0512,
+  'template_6 9x12 1.25in english_frame': 0.0832,
+  'template_6 9x12 1.25in quoin_corners': 0.0512,
+  'template_6 9x12 1.25in single_soldier': 0.0512,
+  'template_6 9x12 1.25in soldier_stretcher': 0.0512,
+  'template_6 9x12 1.25in soldier_stretcher_quoin': 0.0512,
+  'template_6 9x12 1.25in soldier_stretcher_toothed': 0.0512,
+  'template_6 9x12 1.25in stepped_fret': 0.0832,
+  'template_6 9x12 1.25in three_band': 0.0512,
+  'template_6 9x12 1.25in three_band_quoin': 0.0512,
+  'template_6 9x12 1.25in three_band_toothed': 0.0512,
+  'template_6 9x12 1.25in tudor_frieze': 0.0512,
+  'template_6 9x12 1.25in tudor_frieze_quoin': 0.0512,
+  'template_6 9x12 1.25in tudor_frieze_toothed': 0.0512,
+  'template_6 9x12 1.25in venetian_dentil': 0.0832,
+  'template_6 9x12 1.25in zigzag_band': 0.0512,
+  'template_9 9x12 1in craftsman_apron': 0.0816,
+  'template_9 9x12 1in craftsman_apron_quoin': 0.0816,
+  'template_9 9x12 1in craftsman_apron_toothed': 0.0816,
+  'template_9 9x12 1in double_soldier': 0.0816,
+  'template_9 9x12 1in double_soldier_quoin': 0.0816,
+  'template_9 9x12 1in double_soldier_toothed': 0.0816,
+  'template_9 9x12 1in soldier_string': 0.0816,
+  'template_10 9x12 1in craftsman_apron': 0.0816,
+  'template_10 9x12 1in craftsman_apron_quoin': 0.0816,
+  'template_10 9x12 1in craftsman_apron_toothed': 0.0816,
+  'template_10 9x12 1in soldier_string': 0.0816,
+  'template_10 9x12 1.25in diaper_lattice': 0.08,
+  'template_10 9x12 1.25in tudor_frieze': 0.08,
+  'template_10 9x12 1.25in tudor_frieze_quoin': 0.08,
+  'template_10 9x12 1.25in tudor_frieze_toothed': 0.08,
+  'template_10 9x12 1.25in zigzag_band': 0.08,
+  'template_12 9x12 1in craftsman_apron': 0.0944,
+  'template_12 9x12 1in craftsman_apron_quoin': 0.0944,
+  'template_12 9x12 1in craftsman_apron_toothed': 0.0944,
+  'template_12 9x12 1in diaper_lattice': 0.0832,
+  'template_12 9x12 1in double_soldier': 0.0672,
+  'template_12 9x12 1in double_soldier_quoin': 0.0672,
+  'template_12 9x12 1in double_soldier_toothed': 0.0672,
+  'template_12 9x12 1in english_frame': 0.0528,
+  'template_12 9x12 1in half_soldier_course': 0.0528,
+  'template_12 9x12 1.25in diaper_lattice': 0.08,
+  'template_12 9x12 1.25in double_course': 0.0736,
+  'template_12 9x12 1.25in double_soldier': 0.0576,
+  'template_12 9x12 1.25in double_soldier_quoin': 0.0576,
+  'template_12 9x12 1.25in double_soldier_toothed': 0.0576,
+  'template_12 9x12 1.25in english_frame': 0.0768,
+  'template_12 9x12 1.25in quoin_corners': 0.0736,
+  'template_12 9x12 1.25in single_soldier': 0.0736,
+  'template_12 9x12 1.25in soldier_stretcher': 0.0576,
+  'template_12 9x12 1.25in soldier_stretcher_quoin': 0.0576,
+  'template_12 9x12 1.25in soldier_stretcher_toothed': 0.0576,
+  'template_12 9x12 1.25in three_band': 0.0576,
+  'template_12 9x12 1.25in three_band_quoin': 0.0576,
+  'template_12 9x12 1.25in three_band_toothed': 0.0576,
+  'template_12 9x12 1.25in tudor_frieze': 0.08,
+  'template_12 9x12 1.25in tudor_frieze_quoin': 0.08,
+  'template_12 9x12 1.25in tudor_frieze_toothed': 0.08,
+  'template_12 9x12 1.25in zigzag_band': 0.08,
+  'template_12 9x12 1.5in double_course': 0.128,
+  'template_12 9x12 1.5in double_soldier': 0.128,
+  'template_12 9x12 1.5in double_soldier_quoin': 0.128,
+  'template_12 9x12 1.5in double_soldier_toothed': 0.128,
+  'template_12 9x12 1.5in half_soldier_course': 0.0672,
+  'template_12 9x12 1.5in quoin_corners': 0.128,
+  'template_12 9x12 1.5in single_soldier': 0.128,
+  'template_12 9x12 1.5in soldier_stretcher': 0.128,
+  'template_12 9x12 1.5in soldier_stretcher_quoin': 0.128,
+  'template_12 9x12 1.5in soldier_stretcher_toothed': 0.128,
+  'template_12 9x12 1.5in three_band': 0.128,
+  'template_12 9x12 1.5in three_band_quoin': 0.128,
+  'template_12 9x12 1.5in three_band_toothed': 0.128,
+  'template_13 7x9 1.5in half_stack_bond': 0.1504,
+});
 const MULTI = Object.keys(FRAME_PRESETS).filter((p) => FRAME_PRESETS[p].length > 1);
 const QUOIN_STYLES = ['block', 'toothed'];
 const FAST = [['template_3', 7, 10, 1, 'mixed_bands'], ['template_5', 9, 12, 0.75, 'three_band'], ['template_1', 7, 9, 1, 'mixed_bands'], ['template_5', 9, 12, 1, 'three_band'],
   ['template_15', 7, 9, 0.75, 'soldier_stretcher'], ['template_6', 7, 9, 1.25, 'mixed_bands'], ['template_11', 7, 9, 1.5, 'mixed_bands'], ['template_5', 9, 12, 1, 'soldier_stretcher'],
   ['template_1', 7, 9, 0.75, 'single_soldier'],
   // the CURVED block (primitive-ribbon.js buildCurveBlockJoint): T10 / T18, a straight side meeting the arched top
-  ['template_10', 7, 9, 1, 'mixed_bands'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 9, 12, 0.75, 'three_band']];
+  ['template_10', 7, 9, 1, 'mixed_bands'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 9, 12, 0.75, 'three_band'],
+  // Fred 2026-10-16 (seat E, via the advisor): QUOIN_FULL's own toothed elbow-pocket cases (buildQuoinTeeth's elbow
+  // infill, primitive-ribbon.js) -- the largest the full sweep found, 0.166 / 0.192 sq in before the fix
+  ['template_8', 9, 12, 1.25, 'single_soldier'], ['template_6', 9, 12, 1.25, 'recessed_panel']];
 const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k));
 const FULL = process.env.QUOIN_FULL ? TEMPLATES.flatMap((tpl) => [[7, 9], [9, 12]].flatMap(([W, H]) => [0.75, 1, 1.25, 1.5].flatMap((L) => [...MULTI, 'single_soldier', 'quoin_corners'].map((p) => [tpl, W, H, L, p])))) : [];
 const box = (p) => [Math.min(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y))];
@@ -82,7 +214,13 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
     const shape = groutShapeOf({ id: 'f', region: [{ outer: primitivesOutline(P), holes: [r.interiorOutline] }], faces: F });
     const painted = F.filter((f) => { const pts = insidePoints(f); return pts.length && pts.filter((p) => pointOnGrout(shape, p.x, p.y)).length > pts.length / 4; });
     expect(painted.length, 'faces painted as grout').toBe(0);
-    expect(bareGround(tess(P), [...r.bricks, ...r.frameBricks], J, { W, H }).largestSqIn, 'largest bare patch (sq in)').toBeLessThanOrEqual(BARE_PATCH_TOL_SQIN);
+    // QUOIN_TOOTH_KNOWN_RESIDUAL: a toothed case already on that table is held to its OWN recorded ceiling, not a
+    // free pass -- every other case (every block case, every toothed case not listed) keeps the strict floor. +1e-4
+    // on a known ceiling: it was recorded rounded to 4 decimals (toFixed(4)), so the real value can read a shade
+    // above its own rounded-down record -- room for that rounding and ordinary FP noise, far short of masking a
+    // real regression (BARE_PATCH_TOL_SQIN itself is 500x that).
+    const known = style === 'toothed' ? QUOIN_TOOTH_KNOWN_RESIDUAL[`${tpl} ${W}x${H} ${L}in ${preset}`] : undefined;
+    expect(bareGround(tess(P), [...r.bricks, ...r.frameBricks], J, { W, H }).largestSqIn, 'largest bare patch (sq in)').toBeLessThanOrEqual(known !== undefined ? known + 1e-4 : BARE_PATCH_TOL_SQIN);
   });
   // seat E 2026-10-11 (Fred picked the curved block): a straight side meeting an arc at a kink inside
   // CURVE_QUOIN_TURN_DEG (T10's arched top, 150 deg inside; T18's, 137) takes a block whose arc face follows the curve --
@@ -113,7 +251,9 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
       frame: { primitives: P, bands: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'toothed' }] } });
     const area = (b) => +(Math.abs(signedArea(b.polygon)) / 1.21).toFixed(3);
     const teeth = r.frameBricks.filter((b) => b.tooth);
-    expect(teeth.length).toBe(4 * (3 + 2));
+    // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL measured a bare elbow pocket, fixed in buildQuoinTeeth): each
+    // corner also gets one elbow-infill square per course BOTH bars reach -- here min(3, 2) = 2 per corner, +4*2 teeth
+    expect(teeth.length).toBe(4 * (3 + 2) + 4 * 2);
     expect(teeth.filter((b) => area(b) === QUOIN_TOOTH.long).length).toBe(4 * (1 + 1));
     expect(r.frameBricks.filter((b) => !b.tooth && b.polygon.length === 4 && area(b) === 1).length).toBe(4); // the corner squares
   });

@@ -537,11 +537,22 @@ const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16, areaOfSquare:
  *  bar, a joint between), the band's bricks filling round them (contour-bands.js cutUnderQuoins). The first tooth is the
  *  SHORT one: two long first teeth would overlap inside the corner ((s - J)^2), and with the other bar's short tooth
  *  beside the square the corner course itself reads long -- long / short / long / short up each bar. */
-export const QUOIN_TOOTH = Object.freeze({ long: 2, short: 1, courses: 3 });
+export const QUOIN_TOOTH = Object.freeze({
+  long: 2, short: 1, courses: 3,
+  // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL on narrow necks/tabs): SHORT-BAR FALLBACK. A bar's own two
+  // ends (both corners sharing it) each lay their natural courses-that-fit stack, same as always; but when the two
+  // stacks would leave less than `minBarFactor` band bricks between them, the regular band can't land a real piece
+  // there (library.js MIN_PIECE_FRACTION's own floor, the precedent: curved corners already fall back to the plain
+  // block off their own feasibility test). So in that case the bar takes NO teeth at all -- the same already-clean
+  // zero-teeth path a too-short bar already falls back to -- rather than a reduced or extended stack. The decision
+  // only reads `len` / the set's own joint / pitch, identical however either of the bar's two corners computes it,
+  // so both land the same answer with no coordination needed.
+  minBarFactor: 1,
+});
 /** A toothed corner's teeth (QUOIN_TOOTH): plain polygons, built beside `buildBlockJoint`'s square at the same convex
  *  line-line corner. Each bar keeps the teeth whose far end lies within its own half of the run (the corner at its other
  *  end takes the other half); a tooth past it is not laid -- a short run lays fewer teeth, never a clipped one. */
-function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint) {
+function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch) {
   const s = QUOIN_SET.brickLengthIn, J = nominalJoint;
   const lenOf = (p) => Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y);
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
@@ -550,14 +561,47 @@ function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint) {
     { t: tangentAt(prevPrim, o), sign: -1, n: { x: prevPrim.nx, y: prevPrim.ny }, len: lenOf(prevPrim) }, // prev ENDS at o
   ];
   const teeth = [];
-  for (const { t, sign, n, len } of bars) {
+  const courseCounts = [];
+  let cornerAt = null; // the first bar's own (a, c) -> point function, reused below for the elbow infill
+  const barResults = bars.map(({ t, sign, n, len }) => {
     const at = (a, c) => ({ x: o.x + sign * a * t.x + c * n.x, y: o.y + sign * a * t.y + c * n.y });
+    if (!cornerAt) cornerAt = at;
+    const barTeeth = [];
+    let courses = 0, a1Last = null;
     for (let i = 0; i < QUOIN_TOOTH.courses; i++) {
       const a0 = s + J + i * (s + J), a1 = a0 + s;
       if (a1 > len / 2 - J / 2) break;
       const w = (i % 2 === 0 ? QUOIN_TOOTH.short : QUOIN_TOOTH.long) * s;
-      teeth.push([at(a0, 0), at(a1, 0), at(a1, w), at(a0, w)]);
+      barTeeth.push([at(a0, 0), at(a1, 0), at(a1, w), at(a0, w)]);
+      a1Last = a1; courses++;
     }
+    // SHORT-BAR FALLBACK (QUOIN_TOOTH.minBarFactor, declared above): this bar's OWN natural stack, doubled (both ends
+    // of the bar share the same len), must leave at least minBarFactor band bricks (pitch) for the regular band to
+    // land a real piece in between -- else this bar does not qualify for teeth on its own. A bar too short to fit
+    // even one course (a1Last null, unrelated to this fallback -- the pre-existing, already-tested short-bar case)
+    // never vetoes its sibling: `vetoes` is true only for an ACTUAL fallback trigger, not for plain shortness.
+    const vetoes = a1Last !== null && len - 2 * a1Last < QUOIN_TOOTH.minBarFactor * pitch;
+    return { barTeeth, courses, vetoes };
+  });
+  // PER-CORNER, not per bar (Fred 2026-10-16, seat E via the advisor: a half-toothed corner -- one bar toothed, the
+  // other plain from the fallback -- didn't tile cleanly for every band motif). One declared decision per corner:
+  // an actual fallback trigger on EITHER bar drops teeth on BOTH, never a mix; a bar that was always too short for
+  // even one course (not this fallback) is unaffected and keeps behaving exactly as before.
+  const cornerOk = !barResults.some((b) => b.vetoes);
+  for (const { barTeeth, courses } of barResults) {
+    if (cornerOk) teeth.push(...barTeeth);
+    courseCounts.push(cornerOk ? courses : 0);
+  }
+  // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL measured a bare pocket): each bar's teeth reach INWARD only
+  // across their own bar, so at a course index BOTH bars place a tooth on, the strip the OTHER bar leaves short of
+  // its own course's reach is uncovered by either -- a diagonal elbow pocket, course i's own along-run square. The
+  // two bars share the SAME course geometry (a0, a1), so one bar's own `at` with its own a reused as its c closes
+  // it exactly at a 90 deg corner, consistent with how the block square (buildBlockJoint) already approximates any
+  // other angle.
+  const elbowCourses = Math.min(courseCounts[0], courseCounts[1]);
+  for (let i = 0; i < elbowCourses; i++) {
+    const a0 = s + J + i * (s + J), a1 = a0 + s;
+    teeth.push([cornerAt(a0, a0), cornerAt(a1, a0), cornerAt(a1, a1), cornerAt(a0, a1)]);
   }
   return teeth;
 }
@@ -1244,7 +1288,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
     if (blockish && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
       const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
-      if (block && cornerStyle === 'toothed') return { ...block, teeth: buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint) };
+      if (block && cornerStyle === 'toothed') return { ...block, teeth: buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch) };
       if (block) return block;
     }
     // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint); a toothed
