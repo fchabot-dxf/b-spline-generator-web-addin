@@ -73,29 +73,42 @@ export const JOB_LAYER_KINDS = Object.freeze([
  *  `data-editor-layers` decoded), `frame` = P.frame. */
 export function jobProjectOf(roster = [], frame = null) {
   const list = Array.isArray(roster) ? roster.filter(Boolean) : [];
-  const owned = new Set(list.flatMap((l) => (l.pattern && l.pattern.layers ? Object.values(l.pattern.layers).map(String) : [])));
+  // _ensureKindLayers (editor-lattice-pattern.js) also records the RAILS layer's own id under pattern.layers.rails
+  // (its own bookkeeping, unrelated to ownership) -- excluded here so the owner layer never excludes itself from
+  // this project's own layers (only the true siblings -- ties, nodes, contour -- are "owned").
+  const owned = new Set(list.flatMap((l) => (l.pattern && l.pattern.layers
+    ? Object.values(l.pattern.layers).map(String).filter((id) => id !== String(l.id)) : [])));
   const layers = list.map((l, stackIndex) => ({ l, stackIndex })).filter(({ l }) => !owned.has(String(l.id))).map(({ l, stackIndex }) => ({
     id: String(l.id), name: l.name || String(l.id), kind: (JOB_LAYER_KINDS.find((k) => k.is(l)) || { kind: 'vector' }).kind, stackIndex,
     followsFrame: !!(l.pattern && l.pattern.contour && l.pattern.contour.fromFrame),
+    // step ids key off THIS, never the raw layer id: a lattice's owner layer id shifts (the placeholder's 0 -> its
+    // Rails layer's real id) on the first Generate (editor-lattice-pattern.js _ensureKindLayers moves .pattern onto
+    // a NEW layer object) -- pattern.jobKey (minted once, freshPattern; NOT pattern.id, which is the Generate/
+    // Regenerate button's own "has run once" signal) moves WITH it. Falls back to the layer id for every
+    // non-pattern layer (vector, bricks) and for a legacy pattern saved before jobKey existed.
+    jobId: l.pattern && l.pattern.jobKey ? String(l.pattern.jobKey) : String(l.id),
   }));
   const hasFrame = !!(frame && frame.templateId);
   return { layers, hasFrame, insetWindow: hasFrame && !!(frame.insetWindow && frame.insetWindow.enabled) };
 }
 
 /** The steps of a project, from what it holds: `layers` = the editor layers [{ id, name, kind: 'vector' | 'lattice' |
- *  'bricks' }] in stack order, `hasFrame` = a wood frame template is picked. A step = { id, kind, label, layerId?, group? }
- *  (group = { id, label } for a sub-item). Ids are stable: 'seed', 'vector:<layer>', 'lattice:<layer>:rails'. */
+ *  'bricks', jobId? }] in stack order, `hasFrame` = a wood frame template is picked. A step = { id, kind, label,
+ *  layerId?, group? } (group = { id, label } for a sub-item). Ids are stable: 'seed', 'vector:<layer>',
+ *  'lattice:<layer>:rails' -- keyed off `jobId` (jobProjectOf's own stable key; falls back to `id` for a caller that
+ *  never set it, e.g. a test's hand-built layer). */
 export function deriveJobSteps({ layers = [], hasFrame = false, insetWindow = false } = {}) {
   const steps = SECTION_KINDS.map((kind) => ({ id: kind, kind, label: JOB_STEP_KINDS[kind].label, flags: [] }));
   for (const l of layers) {
     const at = { layerId: l.id, stackIndex: l.stackIndex ?? 0 };
+    const jid = l.jobId != null ? l.jobId : l.id;
     if (l.kind === 'lattice') {
-      const group = { id: `lattice:${l.id}`, label: `${JOB_STEP_KINDS.latticeRails.group.label} ${l.name}`.trim() };
+      const group = { id: `lattice:${jid}`, label: `${JOB_STEP_KINDS.latticeRails.group.label} ${l.name}`.trim() };
       const flags = l.followsFrame ? ['followsFrame'] : [];
-      steps.push({ id: `lattice:${l.id}:rails`, kind: 'latticeRails', label: JOB_STEP_KINDS.latticeRails.label, ...at, group, flags });
-      steps.push({ id: `lattice:${l.id}:nodes`, kind: 'latticeNodes', label: JOB_STEP_KINDS.latticeNodes.label, ...at, group, flags });
+      steps.push({ id: `lattice:${jid}:rails`, kind: 'latticeRails', label: JOB_STEP_KINDS.latticeRails.label, ...at, group, flags });
+      steps.push({ id: `lattice:${jid}:nodes`, kind: 'latticeNodes', label: JOB_STEP_KINDS.latticeNodes.label, ...at, group, flags });
     } else if (l.kind === 'vector') {
-      steps.push({ id: `vector:${l.id}`, kind: 'vector', label: l.name, ...at, group: { id: 'vector', label: JOB_STEP_KINDS.vector.group.label },
+      steps.push({ id: `vector:${jid}`, kind: 'vector', label: l.name, ...at, group: { id: 'vector', label: JOB_STEP_KINDS.vector.group.label },
         flags: insetWindow ? ['insetWindow'] : [] });
     }
   }

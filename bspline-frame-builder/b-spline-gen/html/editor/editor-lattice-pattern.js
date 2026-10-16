@@ -768,6 +768,13 @@ export const PATTERN_DEFAULTS = {
  *  practice, but this never throws if it somehow doesn't). */
 export function freshPattern(editor) {
   const p = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+  // core/job-timeline.js (seat D, job-timeline step 3 nit): a SEPARATE field from .id below -- .id's presence is
+  // already the Generate/Regenerate button's own signal ("has this pattern been generated at least once",
+  // properties-lattice.js/properties-shape-lattice.js), so minting it here would flip that label before the user
+  // ever presses Generate. jobKey exists from the moment the pattern itself does (panel-open, before any Generate)
+  // and moves WITH the pattern object when _ensureKindLayers gives it to a new Rails layer on the first split --
+  // core/job-timeline.js's jobProjectOf keys a lattice's step ids on this, not the owner layer's own (shifting) id.
+  p.jobKey = `lattice-${Date.now().toString(36)}`;
   const gridSpacing = editor && editor._grid && editor._grid.spacing;
   if (gridSpacing) p.spacing = gridSpacing;
   return p;
