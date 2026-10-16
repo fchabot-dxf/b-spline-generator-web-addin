@@ -874,3 +874,15 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
 .photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
 .photo-layer-needs-on { opacity: 0.45; } /* the layer is off: photo-only controls greyed (photo-layer-section.js needsLayer) */
+
+/* The canvas heights HUD (Fred 2026-10-16: a floating label, no panel/background -- core/engine/rebuild.js
+   updateCanvasHeights writes the total; the base lives in the element's own title tooltip). Two token sets
+   (base.css :root), not the app's light/dark theme: which background it floats over -- the 3D viewport is light,
+   the 2D editor's board is dark/busy. */
+.heights-hud {
+    font: 700 13px 'Cascadia Code', monospace;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+#previewArea .heights-hud { color: var(--heights-hud-on-light-color); text-shadow: var(--heights-hud-on-light-shadow); }
+#editorCanvasContainer .heights-hud { color: var(--heights-hud-on-dark-color); text-shadow: var(--heights-hud-on-dark-shadow); }
