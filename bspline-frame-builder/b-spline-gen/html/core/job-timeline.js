@@ -27,6 +27,9 @@
  *                             steps share one sidebar panel); 'layer' -- the step's OWN editor layer only (a lock
  *                             pushed onto that layer record, main/job-timeline-lock.js -> editor/layers.js), every
  *                             other layer stays editable;
+ *   locksAlso               -- (Fred, 'layer' kinds only) sibling kind-layers that have no step of their own but
+ *                             lock WITH this one (latticeRails: ties, contour -- "cut with the rails") -- resolved
+ *                             through the same owner.pattern.layers map as this kind's own step;
  *   dependsOn              -- the kinds whose result this step's computation READS (data only: the compute pipeline keeps
  *                             its own fixed order; the strip marks a step cut before one it depends on -- detection only).
  * A section that is display / export only (colours, grout colour, Output, the photo's 2D-only edits) is never a step.
@@ -57,8 +60,13 @@ export const JOB_STEP_KINDS = Object.freeze({
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES
   // editorLayersPanel) -- no new colour entry needed; two Lattice groups tell apart by their own sub-item mark, not colour.
+  // locksAlso (Fred, via advisor, 2026-10-16): ties and contour have no job-timeline step of their own, but they're
+  // "cut with the rails" (this kind's own dependsOn comment below) -- locking Rails locks them too
+  // (main/job-timeline-lock.js syncLayerLocks resolves each through the SAME owner.pattern.layers map as rails/
+  // nodes); the (future) editor-tab banner names them by this same list ("Rails, Ties and Contour are cut").
   latticeRails: Object.freeze({ label: 'Rails', icon: '#', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
-    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', dependsOn: [dep('frame', { when: 'followsFrame' })] }),
+    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', locksAlso: Object.freeze(['ties', 'contour']),
+    dependsOn: [dep('frame', { when: 'followsFrame' })] }),
   // nodes <- that lattice's rails (and ties, cut with the rails): a node at each crossing (editor-lattice-pattern.js:2189-2204)
   latticeNodes: Object.freeze({ label: 'Nodes', icon: '•', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
     opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', dependsOn: [dep('latticeRails', { sameLayer: true })] }),

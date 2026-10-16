@@ -993,6 +993,10 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
    a banner (inserted as a SIBLING right before the scope, never inside it -- its own CTA stays live) names the
    step and offers to move the head. */
 .job-readonly { opacity: 0.55; }
+/* Fred, via the advisor 2026-10-16: a root that opts out of its own banner (data-job-lock-banner="false" --
+   today only the pinned Generate New Seed button, always on screen while Seed is locked, so a persistent banner
+   just duplicated the one already shown at Seed's Offset X/Y controls) gets a small lock mark instead. */
+.job-readonly[data-job-lock-banner="false"]::after { content: ' 🔒'; font-size: 0.85em; }
 .job-lock-banner {
     display: flex;
     align-items: flex-start;

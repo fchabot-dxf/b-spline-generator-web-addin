@@ -51,7 +51,56 @@ describe('syncLayerLocks: Rails and Nodes resolve to their OWN real editor layer
 
     expect(editor._layers.find((l) => l.id === railsId).jobLocked).toBe(true);
     expect(editor._layers.find((l) => l.id === nodesId).jobLocked).toBe(false);
-    // ties has no job-timeline step of its own (core/job-timeline.js declares none) -- never locked here
+    // ties has no job-timeline step of its own (core/job-timeline.js declares none), but latticeRails' own
+    // locksAlso (Fred, via advisor 2026-10-16: "cut with the rails") locks it WITH rails
+    expect(editor._layers.find((l) => l.id === tiesId).jobLocked).toBe(true);
+  });
+
+  it('contour (the OTHER locksAlso target) locks WITH Rails too, when it exists', () => {
+    const editor = makeMockEditor();
+    const pattern = freshPattern(editor);
+    editor._layers[0].pattern = pattern;
+    _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes', 'contour']);
+    const contourId = pattern.layers.contour;
+    expect(contourId).toBeTruthy(); // sanity: a real contour layer exists
+
+    const steps = deriveJobSteps(jobProjectOf(editor._layers, null));
+    const order = defaultJobOrder(steps);
+    const head = order.indexOf('lattice:' + steps.find((s) => s.kind === 'latticeRails').id.split(':')[1] + ':rails') + 1;
+    syncLayerLocks(steps, order, head, editor);
+
+    expect(editor._layers.find((l) => l.id === contourId).jobLocked).toBe(true);
+  });
+
+  it('a contour that was never generated (not yet in pattern.layers) locks nothing -- no crash, nothing phantom', () => {
+    const editor = makeMockEditor();
+    const pattern = freshPattern(editor);
+    editor._layers[0].pattern = pattern;
+    _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']); // no 'contour' requested
+    expect(pattern.layers.contour).toBeUndefined();
+
+    const steps = deriveJobSteps(jobProjectOf(editor._layers, null));
+    const order = defaultJobOrder(steps);
+    const head = order.indexOf('lattice:' + steps.find((s) => s.kind === 'latticeRails').id.split(':')[1] + ':rails') + 1;
+    expect(() => syncLayerLocks(steps, order, head, editor)).not.toThrow();
+  });
+
+  it('locksAlso only follows Rails -- locking ONLY Nodes (reordered before Rails) never locks ties', () => {
+    const editor = makeMockEditor();
+    const pattern = freshPattern(editor);
+    editor._layers[0].pattern = pattern;
+    _ensureKindLayers(editor, pattern, '0', ['rails', 'ties', 'nodes']);
+    const nodesId = pattern.layers.nodes, tiesId = pattern.layers.ties;
+
+    const steps = deriveJobSteps(jobProjectOf(editor._layers, null));
+    const nodesStepId = steps.find((s) => s.kind === 'latticeNodes').id;
+    const railsStepId = steps.find((s) => s.kind === 'latticeRails').id;
+    // Rails normally precedes Nodes (defaultJobOrder) -- a custom order with Nodes FIRST is the only way to lock
+    // Nodes without also locking Rails (locked = order.slice(0, head), a PREFIX)
+    const order = [nodesStepId, railsStepId, ...defaultJobOrder(steps).filter((id) => id !== nodesStepId && id !== railsStepId)];
+    syncLayerLocks(steps, order, 1, editor); // only the first entry (Nodes) is locked
+
+    expect(editor._layers.find((l) => l.id === nodesId).jobLocked).toBe(true);
     expect(editor._layers.find((l) => l.id === tiesId).jobLocked).toBe(false);
   });
 

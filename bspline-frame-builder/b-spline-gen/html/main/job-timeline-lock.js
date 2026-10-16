@@ -24,6 +24,12 @@ function bannerBody(kind) {
 function syncBanner(root, step, kind, locked, onMoveHead) {
   const prev = root.previousElementSibling;
   const hasBanner = !!(prev && prev.classList && prev.classList.contains(BANNER_CLASS));
+  // Fred, via the advisor 2026-10-16: the pinned Generate New Seed button is ALWAYS on screen while Seed is locked
+  // (it lives in .sticky-actions), so its own copy of the banner just duplicated the one already shown at Seed's
+  // Offset X/Y controls below -- declared per-root (data-job-lock-banner="false" on the button, palette.html),
+  // not a kind-level special case, since every OTHER root for the same step still wants its own banner. Quieter
+  // instead: styles/layout-app.css's .job-readonly[data-job-lock-banner="false"] appends a small lock mark.
+  if (root.getAttribute('data-job-lock-banner') === 'false') { if (hasBanner) prev.remove(); return; }
   if (!locked) { if (hasBanner) prev.remove(); return; }
   const banner = hasBanner ? prev : root.ownerDocument.createElement('div');
   if (!hasBanner) {
@@ -65,11 +71,22 @@ function targetLayerId(editor, step) {
   return real != null ? String(real) : step.layerId;
 }
 
+/** A step's own `locksAlso` kinds (core/job-timeline.js -- ties/contour, no step of their own), resolved through
+ *  the SAME owner.pattern.layers map targetLayerId above reads -- a kind-layer that was never generated (the
+ *  pattern never split that far, e.g. no contour yet) simply isn't in the map, so nothing is added for it. */
+function locksAlsoIds(editor, step, kindDef) {
+  if (!kindDef.locksAlso || !kindDef.locksAlso.length) return [];
+  const owner = (editor._layers || []).find((l) => String(l.id) === String(step.layerId));
+  const map = owner && owner.pattern && owner.pattern.layers ? owner.pattern.layers : null;
+  if (!map) return [];
+  return kindDef.locksAlso.map((k) => map[k]).filter((id) => id != null).map(String);
+}
+
 /** The 'layer' half of a lock: every editor layer's own `jobLocked` flag (editor/layers.js isEditableByLayer /
  *  isOnVisibleLayer), kept in lockstep with the project's current order/head -- same call site, same cadence as
  *  syncJobLocks (main/job-timeline-strip.js renderJobStrips). A layer with no step pointing at it (ties, contour --
- *  core/job-timeline.js declares no step kind for either) is never locked here: locking something with no banner
- *  explaining why would be confusing (flagged to the advisor, not decided here). */
+ *  core/job-timeline.js declares no step kind for either) is locked only via latticeRails' own declared `locksAlso`
+ *  -- Fred, via the advisor 2026-10-16: they're "cut with the rails", so Rails locked locks them too. */
 export function syncLayerLocks(steps, order, head, editor) {
   if (!editor || !Array.isArray(editor._layers)) return;
   const locked = new Set(order.slice(0, head));
@@ -79,6 +96,7 @@ export function syncLayerLocks(steps, order, head, editor) {
     if (kind.readOnly !== 'layer' || !locked.has(step.id)) continue;
     const id = targetLayerId(editor, step);
     if (id != null) lockedLayerIds.add(id);
+    for (const alsoId of locksAlsoIds(editor, step, kind)) lockedLayerIds.add(alsoId);
   }
   for (const layer of editor._layers) layer.jobLocked = lockedLayerIds.has(String(layer.id));
 }

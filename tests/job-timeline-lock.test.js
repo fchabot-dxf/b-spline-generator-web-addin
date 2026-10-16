@@ -80,6 +80,28 @@ describe('syncJobLocks: a locked \'section\' step goes inert with a banner; unlo
     expect(banner.textContent).toContain('Read-only.');
     expect(banner.textContent).not.toContain('underside');
   });
+
+  it('Seed locked: the pinned Generate New Seed button (data-job-lock-banner="false") greys out with NO banner of its own -- the Offset X/Y div (the OTHER seed root) still gets the full banner', () => {
+    const head = order.indexOf('seed') + 1;
+    syncJobLocks(steps, order, head, () => {}, document);
+
+    const btn = document.getElementById('btnRandomSeed');
+    expect(btn.disabled).toBe(true);
+    expect(btn.classList.contains('job-readonly')).toBe(true);
+    expect(btn.previousElementSibling?.classList.contains('job-lock-banner')).not.toBe(true);
+
+    const offsetRoot = [...document.querySelectorAll('[data-job-lock="seed"]')].find((el) => el !== btn);
+    expect(offsetRoot.previousElementSibling.classList.contains('job-lock-banner')).toBe(true);
+  });
+
+  it('unlocking Seed removes nothing extra from the button (it never had a banner to clean up)', () => {
+    const lockedHead = order.indexOf('seed') + 1;
+    syncJobLocks(steps, order, lockedHead, () => {}, document);
+    syncJobLocks(steps, order, 0, () => {}, document);
+    const btn = document.getElementById('btnRandomSeed');
+    expect(btn.disabled).toBe(false);
+    expect(btn.previousElementSibling?.classList.contains('job-lock-banner')).not.toBe(true);
+  });
 });
 
 describe('moving the playhead is one global undo step (advisor: every head move, uniform)', () => {
