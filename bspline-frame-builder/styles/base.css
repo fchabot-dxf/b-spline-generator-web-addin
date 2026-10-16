@@ -149,6 +149,14 @@ input, select, textarea, button {
     --cad-text-main: #333333;
     --cad-text-muted: #666666;
 
+    /* The canvas heights HUD (Fred 2026-10-16: a floating label, no panel) -- its own halo per background it floats
+       over, not the app's light/dark theme: the 3D viewport (light) and the 2D editor's board (dark, busy content).
+       main/canvas-corners.js, styles/layout-app.css .heights-hud. */
+    --heights-hud-on-light-color: #1a1a1a;
+    --heights-hud-on-light-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 1px 2px #fff;
+    --heights-hud-on-dark-color: #ffffff;
+    --heights-hud-on-dark-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 2px #000;
+
     /* Typography */
     --cad-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 

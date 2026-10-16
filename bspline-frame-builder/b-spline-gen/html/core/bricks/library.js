@@ -818,7 +818,10 @@ export const BRICK_PATTERN_DEFAULTS = Object.freeze({ sizeIn: 1.25, groutWidthIn
 /** the Wall's patterns (BRICK_PATTERNS ids): none differs yet (non-brick defaults come as rows, Fred 2026-10-11) */
 export const WALL_PATTERN_DEFAULTS = Object.freeze({});
 /** the Brick frame's presets: their size is the preset's bestSize (withBestSize, above); other values per preset here */
-export const FRAME_PRESET_DEFAULTS = Object.freeze({});
+export const FRAME_PRESET_DEFAULTS = Object.freeze({
+  // Fred's colour plan (2026-10-14): the Greek key's green / white are its motif / field (core/bricks/palette.js paletteOf)
+  greek_key_mosaic: Object.freeze({ colours: Object.freeze({ motif: '#3f8f72', field: '#f2efe6' }) }),
+});
 /** the Brush's presets (BRUSH_PRESETS ids): none differs yet */
 export const BRUSH_PRESET_DEFAULTS = Object.freeze({});
 /** Which pattern registry an element reads, and which brickSettings key holds its pick (raisedBrush paints the Brush's). */

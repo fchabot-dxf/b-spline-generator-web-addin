@@ -15,6 +15,8 @@ import { beginLoadingSequence } from '../core/loading-signal.js';
 import { isFusionMode } from '../core/state.js';
 import { applyParam } from './param-manager.js';
 import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
+import { isJobTimelineEnabled, setJobTimelineEnabled } from '../core/job-timeline-enabled.js';
+import { renderJobStrips } from './job-timeline-strip.js';
 import { onClearFusionDesign } from './export-flow.js';
 import { copyLogToClipboard } from './copy-log.js';
 import { pullSketchFromFusion } from '../core/fusion-bridge.js';
@@ -88,6 +90,18 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
         hapticCheckbox.checked = isHapticEnabled();
         hapticCheckbox.addEventListener('change', () => {
             setHapticEnabled(hapticCheckbox.checked);
+        });
+    }
+
+    // Fred 2026-10-16: DEFAULT OFF (isJobTimelineEnabled's own unset-default, core/job-timeline-enabled.js) -- the
+    // checkbox mirrors it and writes back on change, same shape as Haptic feedback above; re-renders at once so
+    // flipping it shows/hides the strip live, not only on the next reload.
+    const jobTimelineCheckbox = document.getElementById('jobTimelineEnabled');
+    if (jobTimelineCheckbox) {
+        jobTimelineCheckbox.checked = isJobTimelineEnabled();
+        jobTimelineCheckbox.addEventListener('change', () => {
+            setJobTimelineEnabled(jobTimelineCheckbox.checked);
+            renderJobStrips();
         });
     }
 }

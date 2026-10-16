@@ -54,6 +54,20 @@ describe('the canvas corners', () => {
     expect(cornerPos('bottom-left')).toContain('bottom:calc(10px + var(--job-strip-height, 0px))');
     expect(cornerPos('top-left')).toContain('top:10px;');
   });
+  it('the heights HUD is a floating label (Fred 2026-10-16): no panel/background markup, no "Model Heights"/"Base H" visible text -- just "H <total>"', () => {
+    for (const id of ['canvasTotalHeights', 'editorCanvasTotalHeights']) {
+      const el = $(id);
+      expect(el.classList.contains('heights-hud'), id).toBe(true);
+      expect(el.style.background, id).toBe('');
+      expect(el.style.padding, id).toBe('');
+      expect(el.style.border, id).toBe('');
+      expect(el.textContent.replace(/\s+/g, ' ').trim(), id).toMatch(/^H 0\.000"$/);
+    }
+  });
+  it('the readout\'s base height is kept in its own title tooltip (nothing lost when the visible Base line was removed)', () => {
+    expect($('canvasTotalHeights').hasAttribute('title')).toBe(true);
+    expect($('editorCanvasTotalHeights').hasAttribute('title')).toBe(true);
+  });
   it('applying twice moves nothing twice', () => {
     applyCanvasCorners(); applyCanvasCorners();
     expect($('previewArea').querySelectorAll('.canvas-corner-stack[data-corner="top-left"]').length).toBe(1);

@@ -3,10 +3,11 @@
  * bottom from P.jobTimeline, kept safe on every layer change, groups fold, a step / a folded run is dragged, the head is
  * dragged, a tap opens the step (the app's opener), an amber dot marks a step cut before one it depends on.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
+import { setJobTimelineEnabled } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline-enabled.js';
 
 const $ = (id) => document.getElementById(id);
 const chipIds = (bar) => [...bar.querySelectorAll('[data-job-step]')].map((c) => c.dataset.jobStep);
@@ -14,6 +15,9 @@ let opener;
 beforeEach(() => {
   document.body.innerHTML = '<div id="previewArea" style="position:relative"></div><div id="editorCanvasContainer" style="position:relative"></div>';
   try { localStorage.clear(); } catch (_) { /* blocked */ }
+  setJobTimelineEnabled(true); // the switch is DEFAULT OFF (core/job-timeline-enabled.js) -- this file tests the
+  // strip itself, so it turns it on, same as a real matrix row must through the Settings control (its own describe
+  // block below tests the OFF state directly)
   window.svgEditor = { _layers: [{ id: 'L1', name: 'Red petals' }, { id: 'LA', name: 'A', pattern: {} }, { id: 'L2', name: 'Green stems' }] };
   P.frame = { templateId: 'template_1' };
   P.jobTimeline = null;
@@ -28,14 +32,15 @@ describe('the strip', () => {
     const bar = $('jobStrip3d');
     expect(chipIds(bar)).toEqual(P.jobTimeline.order);
     expect(bar.querySelector('[data-job-step="stock"]').classList.contains('job-step-fixed')).toBe(true);
-    expect(bar.children[1].dataset.jobHead).toBe('1'); // head 0: right after the title, before Stock
+    expect(bar.children[2].dataset.jobHead).toBe('1'); // head 0: right after the track + title, before Stock
     expect(JOB_STRIP_HOSTS.find((h) => h.id === 'jobStrip2d').bottom).toBe('var(--drawer-height, 0px)'); // the editor's: above the phone drawer
   });
   it('a group folds into one chip with its count; unfolding brings its steps back', () => {
     toggleJobGroup('vector');
     const g = $('jobStrip3d').querySelector('[data-job-group="vector"]');
     expect(g.dataset.jobFolded).toBe('1');
-    expect(g.textContent).toContain('Vector stamping · 2');
+    expect(g.title).toContain('Vector stamping · 2'); // no visible text (Fred 2026-10-16) -- the name moved to the tooltip
+    expect(g.getAttribute('aria-label')).toContain('Vector stamping · 2');
     expect(chipIds($('jobStrip3d'))).not.toContain('vector:L1');
     toggleJobGroup('vector');
     expect(chipIds($('jobStrip3d'))).toContain('vector:L1');
@@ -62,7 +67,7 @@ describe('the strip', () => {
     // Fred's default order cuts Skeleton before Filter (Filter sets its frequency); the Back is snapshot-backed: no mark
     const sk = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
     expect(sk.querySelector('.job-dep-mark')).not.toBeNull();
-    expect(sk.title).toBe('Skeleton is cut before Filter, but Filter changes the skeleton');
+    expect(sk.title).toContain('Skeleton is cut before Filter, but Filter changes the skeleton');
     for (const id of ['seed', 'back']) expect($('jobStrip3d').querySelector(`[data-job-step="${id}"] .job-dep-mark`), id).toBeNull();
   });
 });
@@ -140,6 +145,107 @@ describe('before the page-load restore', () => {
   });
 });
 
+describe('Fred 2026-10-16: chips are icon-on-colour, no text -- a sub-item\'s own layer swatch tells same-kind layers apart', () => {
+  it('a plain section chip (Stock) has no swatch; a lattice sub-item (Rails) does', () => {
+    const bar = $('jobStrip3d');
+    expect(bar.querySelector('[data-job-step="stock"] .job-swatch')).toBeNull();
+    const rails = [...bar.querySelectorAll('[data-job-step]')].find((c) => c.dataset.jobStep.endsWith(':rails'));
+    expect(rails.querySelector('.job-swatch')).not.toBeNull();
+  });
+  it('one lattice\'s Rails and Nodes chips share the SAME swatch colour (one group); a SECOND lattice gets a different one', () => {
+    window.svgEditor._layers.push({ id: 'LB', name: 'B', pattern: {} });
+    P.jobTimeline = null;
+    renderJobStrips();
+    const bar = $('jobStrip3d');
+    const swatchOf = (id) => bar.querySelector(`[data-job-step="${id}"] .job-swatch`).style.backgroundColor;
+    const [railsA, nodesA] = ['lattice:LA:rails', 'lattice:LA:nodes'].map(swatchOf);
+    const [railsB] = ['lattice:LB:rails'].map(swatchOf);
+    expect(railsA).toBe(nodesA); // same lattice, same colour
+    expect(railsA).not.toBe(railsB); // a different lattice, a different colour
+  });
+  it('two DIFFERENT vector layers get two DIFFERENT swatch colours (Fred: "Yellow vs Red")', () => {
+    const bar = $('jobStrip3d');
+    const c1 = bar.querySelector('[data-job-step="vector:L1"] .job-swatch').style.backgroundColor;
+    const c2 = bar.querySelector('[data-job-step="vector:L2"] .job-swatch').style.backgroundColor;
+    expect(c1).not.toBe(c2);
+  });
+  it('a chip never shows its name as visible text -- only as its title / aria-label', () => {
+    const chip = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
+    expect(chip.textContent.trim()).not.toContain('Skeleton');
+    expect(chip.title).toContain('Skeleton');
+    expect(chip.getAttribute('aria-label')).toBe('Skeleton');
+  });
+  it('declares a minimum chip size so an icon-only chip stays a real touch target (>= 28px on a phone); the bar carries it, same pattern as --job-overhang', () => {
+    expect(JOB_STRIP.chipMinPx.phone).toBeGreaterThanOrEqual(28);
+    const bar = $('jobStrip3d');
+    expect(bar.style.getPropertyValue('--job-chip-min')).toBe(`${JOB_STRIP.chipMinPx.desktop}px`);
+  });
+});
+
+describe('Fred 2026-10-16: a track line behind the chips, like beads on a rail', () => {
+  // jsdom lays out nothing for real -- a PROTOTYPE-level override (not per-instance) so it applies to chips AND
+  // the head the moment renderJobStrips creates them fresh each render: element i among its siblings sits at
+  // x = i*50, 30px wide -- a believable row in DOM order (chips, then wherever putHead() placed the head).
+  let origLeft, origWidth, origTop, origHeight;
+  beforeEach(() => {
+    origLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft');
+    origWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    origTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    origHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return 30; } });
+    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', {
+      configurable: true,
+      get() { return [...(this.parentNode?.children || [])].indexOf(this) * 50; },
+    });
+    // the chip row is bottom-aligned (.job-strip align-items:flex-end) -- every chip sits at the same offsetTop/
+    // offsetHeight regardless of x position, unlike offsetLeft above
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return 24; } });
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', { configurable: true, get() { return 10; } });
+  });
+  afterEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', origLeft);
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origWidth);
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', origTop);
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', origHeight);
+  });
+
+  it('renders a visible track spanning the chip row, not the "nothing to span" no-op', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track).not.toBeNull();
+    expect(track.style.display).not.toBe('none');
+    expect(track.style.left).toMatch(/^\d+px$/);
+    expect(parseFloat(track.style.width)).toBeGreaterThan(0);
+  });
+
+  it('sits at the chip row\'s real vertical centre, not the strip\'s top (the bug: `top` was never set at all)', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    // every stubbed chip: offsetTop 10, offsetHeight 24 -> centre 22, minus half the track's own declared width
+    expect(track.style.top).toBe(`${10 + 24 / 2 - JOB_STRIP.trackPx / 2}px`);
+  });
+
+  it('the head at the very start: the whole track reads pending (0% done)', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track.style.background).toContain(`${JOB_STRIP.trackColorDone} 0%`);
+  });
+
+  it('the head at the very end: the whole track reads done (100%)', () => {
+    const order = P.jobTimeline.order;
+    P.jobTimeline = { order, head: order.length };
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track.style.background).toContain(`${JOB_STRIP.trackColorPending} 100%`);
+  });
+
+  it('declares its own colours/width in JOB_STRIP (not inline CSS math at the call site)', () => {
+    expect(JOB_STRIP.trackPx).toBeGreaterThan(0);
+    expect(JOB_STRIP.trackColorDone).toMatch(/^#/);
+    expect(JOB_STRIP.trackColorPending).toMatch(/^#/);
+  });
+});
+
 // gate 2026-10-15 (blind: "Art: Shape Generate" setup missing): on a phone the undo / redo pill (position:fixed, outside
 // the strip's host) sat UNDER the 2D strip, so a real tap on Undo hit the playhead and on Redo the Stock chip
 describe('what floats over the editor canvas clears the 2D strip', () => {
@@ -154,5 +260,45 @@ describe('what floats over the editor canvas clears the 2D strip', () => {
     for (const r of rules) expect(r).toContain(`var(${def.rootVar}, 0px)`);
     const hint = css.slice(css.indexOf('#editorStatusHint {'));
     expect(hint.slice(0, hint.indexOf(';'))).toContain(`var(${def.rootVar}, 0px)`);
+  });
+});
+
+describe('Fred 2026-10-16: the "Job timeline" Settings switch, DEFAULT OFF', () => {
+  it('nothing saved yet reads as off (core/job-timeline-enabled.js isJobTimelineEnabled\'s own default)', () => {
+    try { localStorage.clear(); } catch (_) { /* blocked */ }
+    // re-render with nothing set at all -- the beforeEach above already turned it on for every OTHER test in this
+    // file, so this is the one place that checks the true un-set default
+    renderJobStrips();
+    for (const h of JOB_STRIP_HOSTS) expect($(h.id), h.id).toBeNull();
+  });
+
+  it('off: no strip in either host, the height custom properties zeroed (the canvas keeps its full height)', () => {
+    setJobTimelineEnabled(false);
+    renderJobStrips();
+    for (const h of JOB_STRIP_HOSTS) {
+      expect($(h.id), h.id).toBeNull();
+      const host = $(h.host);
+      expect(host.style.getPropertyValue('--job-strip-height'), h.host).toBe('');
+    }
+    expect(document.documentElement.style.getPropertyValue('--job-strip-2d-height')).toBe('0px');
+  });
+
+  it('off: P.jobTimeline is never written, even when the project changes underneath it (syncJobTimeline\'s own guard)', () => {
+    const before = P.jobTimeline; // the beforeEach above already seeded it (switch ON at that point)
+    setJobTimelineEnabled(false);
+    window.svgEditor._layers.push({ id: 'L9', name: 'New layer' });
+    document.dispatchEvent(new CustomEvent('editorLayersChanged'));
+    expect(P.jobTimeline).toBe(before); // the SAME object -- not even re-normalized, let alone saved
+  });
+
+  it('switching back on resumes exactly where P.jobTimeline was left (nothing reset by being off)', () => {
+    const saved = { order: P.jobTimeline.order, head: 2 };
+    P.jobTimeline = saved;
+    setJobTimelineEnabled(false);
+    renderJobStrips(); // off: draws nothing, writes nothing
+    setJobTimelineEnabled(true);
+    renderJobStrips();
+    expect($('jobStrip3d')).not.toBeNull();
+    expect(P.jobTimeline.head).toBe(2); // resumed, not reset to 0
   });
 });

@@ -131,6 +131,11 @@ export const DEFAULT = {
       // without the keys reads the defaults (no colour, no inset): nothing changes on load.
       groutPaint: { color: null, paintInsetIn: 0 },
       groutPaintByElement: { wall: null, frame: null, brush: null },
+      // Fred 2026-10-15 (colour plan, fork 1): a NEW board opens in the Colour look (core/bricks/palette.js); a saved
+      // board without the key keeps the Height look, today's view (main/app-init.js MIGRATIONS 'brick-look-mode').
+      // colourByElement[kind][role] = the user's own colour, absent / null = the element's palette default.
+      lookMode: 'colour',
+      colourByElement: { wall: {}, frame: {}, brush: {} },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original

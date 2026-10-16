@@ -30,6 +30,22 @@ export const SECTION_THEMES = Object.freeze({
   photo: { hue: 345 },
 });
 
+/** Fred 2026-10-16 (the job timeline's chips: icon-on-colour, no text): one declared icon per SECTION_THEMES id,
+ *  the SAME glyph the sidebar panel header already shows (bspline_gen_palette.html) -- reused, not reinvented.
+ *  main/job-timeline-strip.js reads this + SECTION_THEMES' hue so a chip never carries its own hand-picked look. */
+export const SECTION_ICONS = Object.freeze({
+  stock: '📐', layers: '📑', frame: '🖼', skeleton: '🦴', filter: '🎨', brick: '🧱', stamp: '📐',
+  'sculpt-top': '🎨', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
+});
+
+/** A SECTION_THEMES hue as a flat CSS colour (not themeTokens' body/header/stripe/text derivation, which is for
+ *  TINTING a whole panel) -- job-timeline-strip.js's chips want ONE saturated, readable-on-white colour per
+ *  section, the same role JOB_STEP_KINDS' own (now-retired) per-kind `color` literal used to play. */
+export function sectionColor(id) {
+  const theme = SECTION_THEMES[id];
+  return theme ? `hsl(${theme.hue}, 55%, 42%)` : '#607d8b';
+}
+
 /** The editor's right panels / sections -> the sidebar theme they share (+ a lightness step within the family). */
 export const EDITOR_SECTION_THEMES = Object.freeze({
   // a PANEL: its own grey header (.layers-header) takes the theme's header + stripe (Fred)
@@ -47,6 +63,7 @@ export const EDITOR_SECTION_THEMES = Object.freeze({
 export const BRICK_SECTION_THEMES = Object.freeze({
   'brick-size': { hue: 210 },
   'brick-look': { hue: 150 },
+  'brick-colour': { hue: 25 }, // Fred 2026-10-15: each element's Colour section
   'brick-crumble': { hue: 70 },
   'brick-random': { hue: 250 },
   'brick-bricks': { hue: 6 },

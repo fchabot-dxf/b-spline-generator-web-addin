@@ -71,6 +71,7 @@ import { groutShapeOf, groutIdOf, pointOnGrout, primitivesOutline } from '../cor
 import { wallRegionOf } from '../core/bricks/engine.js';
 import { polygonIntersection, clipToHalfPlane, signedArea } from '../core/bricks/geometry.js';
 import { strokeCrossings, splitAtCrossings, throughRegion } from '../core/bricks/crossings.js';
+import { brickRoleOf, BRICK_ROLE_ATTR } from '../core/bricks/colour-roles.js'; // colour roles (paint only)
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -189,7 +190,8 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-sample', brick.sampleId || '')
     .attr('data-brick-flip', brick.flip ? '1' : '0')
     .attr('data-brick-id', String(brick.id))
-    .attr('data-brick-height-offset', brick.heightOffset || 0);
+    .attr('data-brick-height-offset', brick.heightOffset || 0)
+    .attr(BRICK_ROLE_ATTR, brickRoleOf(brick, kind)); // colour roles (core/bricks/colour-roles.js): editor-only, paint only
   if (typeof brick.accentMarked === 'boolean') el.attr(ACCENT_MARK_ATTR, brick.accentMarked ? '1' : '0'); // item 31b: the engine's cut mark
   // 2026-10-11: a motif's raised look (band-motif.js): a flat-topped plateau, joined to its raised neighbours (the height mask)
   if (brick.topFlat) el.attr(BRICK_TOP_FLAT_ATTR, '1');
