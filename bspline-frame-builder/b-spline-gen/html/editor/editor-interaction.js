@@ -41,7 +41,7 @@ import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
     isLatticePoint, moveRailAlongAxis, translateTie,
-    nearestEndWithin, stretchRailEnd, stretchTieEnd, LATTICE_DRAW_KINDS,
+    nearestEndWithin, stretchRailEnd, stretchTieEnd, LATTICE_DRAW_KINDS, RAIL_ID_ATTR,
 } from './editor-lattice.js';
 import { PATTERN_DEFAULTS, getLayerPattern, _resolveExtent, _scalePrimitiveToLattice, usesContourCenterline, _findBoundaryElements, resolvePatternLayer, clipHandRailToBoundary, bakeContourPieceTransform, CONTOUR_SEG_INDEX_ATTR, _ensureKindLayers, freshPattern } from './editor-lattice-pattern.js';
 import { insideSpans, insetGeneratedPresetPathDToPrimitives } from './editor-lattice-boundary.js';
@@ -71,7 +71,9 @@ import {
 // so this file — which has no panel DOM at all — can call the identical
 // write/regenerate logic, not a second copy of it).
 import { generateSilhouette, joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
-import { hitTestSegment, hitTestArcGrip, nearestSegment } from './editor-shape-lattice-interaction.js';
+import { hitTestSegment, hitTestArcGrip, nearestSegment, boardRegion } from './editor-shape-lattice-interaction.js';
+import { latticeExtentFor } from './editor-sketch-manifest.js';
+import { matchPulledRails } from '../core/pull-rails.js';
 import { renderTouchConfirm } from './editor-touch-confirm.js';
 import {
     currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
@@ -1958,6 +1960,36 @@ function _finishLatticeMove(editor) {
     _commitLatticeMove(editor, move);
 }
 
+/** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): a canvas drag
+ *  on an UNLOCKED custom rail (pattern.rails.custom, matched by its own Send-tagged RAIL_ID_ATTR -- step 1/3 of
+ *  this same slice) persists -- it updates THAT entry's own `at` to the rail's new position, the same offset-
+ *  fraction core/pull-rails.js's own matchPulledRails already computes for a Pull reply, reused here rather than
+ *  a second copy of the same math. An ORDINARY rail (no entry at all) or a LOCKED custom one is untouched --
+ *  "moving alone never protects" stays true for every rail this mechanism doesn't apply to, exactly as before
+ *  this slice. No-op (and no `pattern.rails` mutation at all) when the moved piece isn't even a rail, or the
+ *  layer it's on has no pattern to update. */
+function _persistCustomRailDrag(editor, move) {
+    if (move.kind !== 'rail') return;
+    const railId = move.el.attr(RAIL_ID_ATTR);
+    if (!railId) return;
+    const layerId = getElementLayer(move.el);
+    const patternLayer = resolvePatternLayer(editor, layerId);
+    const pattern = patternLayer && patternLayer.pattern;
+    const custom = pattern && pattern.rails && pattern.rails.custom;
+    if (!Array.isArray(custom) || !custom.length) return;
+    const entry = custom.find((c) => c && c.id === railId);
+    if (!entry || entry.locked) return;
+    const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
+    const extent = latticeExtentFor(pattern, boardRegion(editor));
+    const curve = {
+        type: 'line', railId, isConstruction: false,
+        x1: parseFloat(move.el.attr('x1')), y1: parseFloat(move.el.attr('y1')),
+        x2: parseFloat(move.el.attr('x2')), y2: parseFloat(move.el.attr('y2')),
+    };
+    const [matched] = matchPulledRails([curve], { spacing, orientation: pattern.orientation || 'horizontal', extent });
+    if (matched && matched.at != null) entry.at = matched.at;
+}
+
 function _commitLatticeMove(editor, move) {
     endRailEndStretch(editor); // T81 item 7: drop the held end-handle look, every release
     // T81 item 5: the ONE end-of-drag cleanup every exit path (pointerup,
@@ -1994,6 +2026,7 @@ function _commitLatticeMove(editor, move) {
         }
     }
     applyLayerState(editor);
+    _persistCustomRailDrag(editor, move);
     if (typeof editor.pushState === 'function') editor.pushState();
     // audit batch 2: through the commit hooks like every other edit (a pending refill is settled in THIS step)
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
