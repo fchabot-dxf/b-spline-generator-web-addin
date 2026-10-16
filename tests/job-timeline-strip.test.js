@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
+import { setJobTimelineEnabled } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline-enabled.js';
 
 const $ = (id) => document.getElementById(id);
 const chipIds = (bar) => [...bar.querySelectorAll('[data-job-step]')].map((c) => c.dataset.jobStep);
@@ -14,6 +15,9 @@ let opener;
 beforeEach(() => {
   document.body.innerHTML = '<div id="previewArea" style="position:relative"></div><div id="editorCanvasContainer" style="position:relative"></div>';
   try { localStorage.clear(); } catch (_) { /* blocked */ }
+  setJobTimelineEnabled(true); // the switch is DEFAULT OFF (core/job-timeline-enabled.js) -- this file tests the
+  // strip itself, so it turns it on, same as a real matrix row must through the Settings control (its own describe
+  // block below tests the OFF state directly)
   window.svgEditor = { _layers: [{ id: 'L1', name: 'Red petals' }, { id: 'LA', name: 'A', pattern: {} }, { id: 'L2', name: 'Green stems' }] };
   P.frame = { templateId: 'template_1' };
   P.jobTimeline = null;
@@ -256,5 +260,45 @@ describe('what floats over the editor canvas clears the 2D strip', () => {
     for (const r of rules) expect(r).toContain(`var(${def.rootVar}, 0px)`);
     const hint = css.slice(css.indexOf('#editorStatusHint {'));
     expect(hint.slice(0, hint.indexOf(';'))).toContain(`var(${def.rootVar}, 0px)`);
+  });
+});
+
+describe('Fred 2026-10-16: the "Job timeline" Settings switch, DEFAULT OFF', () => {
+  it('nothing saved yet reads as off (core/job-timeline-enabled.js isJobTimelineEnabled\'s own default)', () => {
+    try { localStorage.clear(); } catch (_) { /* blocked */ }
+    // re-render with nothing set at all -- the beforeEach above already turned it on for every OTHER test in this
+    // file, so this is the one place that checks the true un-set default
+    renderJobStrips();
+    for (const h of JOB_STRIP_HOSTS) expect($(h.id), h.id).toBeNull();
+  });
+
+  it('off: no strip in either host, the height custom properties zeroed (the canvas keeps its full height)', () => {
+    setJobTimelineEnabled(false);
+    renderJobStrips();
+    for (const h of JOB_STRIP_HOSTS) {
+      expect($(h.id), h.id).toBeNull();
+      const host = $(h.host);
+      expect(host.style.getPropertyValue('--job-strip-height'), h.host).toBe('');
+    }
+    expect(document.documentElement.style.getPropertyValue('--job-strip-2d-height')).toBe('0px');
+  });
+
+  it('off: P.jobTimeline is never written, even when the project changes underneath it (syncJobTimeline\'s own guard)', () => {
+    const before = P.jobTimeline; // the beforeEach above already seeded it (switch ON at that point)
+    setJobTimelineEnabled(false);
+    window.svgEditor._layers.push({ id: 'L9', name: 'New layer' });
+    document.dispatchEvent(new CustomEvent('editorLayersChanged'));
+    expect(P.jobTimeline).toBe(before); // the SAME object -- not even re-normalized, let alone saved
+  });
+
+  it('switching back on resumes exactly where P.jobTimeline was left (nothing reset by being off)', () => {
+    const saved = { order: P.jobTimeline.order, head: 2 };
+    P.jobTimeline = saved;
+    setJobTimelineEnabled(false);
+    renderJobStrips(); // off: draws nothing, writes nothing
+    setJobTimelineEnabled(true);
+    renderJobStrips();
+    expect($('jobStrip3d')).not.toBeNull();
+    expect(P.jobTimeline.head).toBe(2); // resumed, not reset to 0
   });
 });

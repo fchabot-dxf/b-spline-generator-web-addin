@@ -10,6 +10,7 @@ import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
 import { sectionColor } from './section-themes.js';
+import { isJobTimelineEnabled } from '../core/job-timeline-enabled.js';
 
 /** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
  *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
@@ -64,7 +65,9 @@ export function currentJobSteps() {
 export function syncJobTimeline() {
   const steps = currentJobSteps();
   const t = normalizeJobTimeline(P.jobTimeline, steps);
-  if (!bootRestore.complete) return { steps, ...t };
+  // the switch (core/job-timeline-enabled.js) OFF: never write -- P.jobTimeline (order/head/snapshots) stays
+  // exactly as saved, same rule as before bootRestore completes, so switching back on resumes where it left off
+  if (!bootRestore.complete || !isJobTimelineEnabled()) return { steps, ...t };
   if (!P.jobTimeline || JSON.stringify(P.jobTimeline) !== JSON.stringify(t)) { P.jobTimeline = t; scheduleSessionSave(); }
   return { steps, ...t };
 }
@@ -108,9 +111,23 @@ function _chip(doc, kindId, name, { sub = false, caret = null, mark = null, fixe
   return c;
 }
 
+/** The switch (core/job-timeline-enabled.js) OFF: no strip, the canvas keeps its full height -- removes any bar a
+ *  PRIOR render (while on) left behind and zeroes the height custom properties every reader (the phone undo pill,
+ *  the editor canvas) backs off by. P.jobTimeline itself is untouched (syncJobTimeline's own guard). */
+function _clearStrips(doc) {
+  for (const def of JOB_STRIP_HOSTS) {
+    const host = doc.getElementById(def.host);
+    if (!host) continue;
+    doc.getElementById(def.id)?.remove();
+    host.style.removeProperty('--job-strip-height');
+    if (def.rootVar) doc.documentElement.style.setProperty(def.rootVar, '0px');
+  }
+}
+
 /** Draws the strip into every declared host. */
 export function renderJobStrips(doc = typeof document !== 'undefined' ? document : null) {
   if (!doc) return;
+  if (!isJobTimelineEnabled()) { _clearStrips(doc); return; }
   const { steps, order, head } = syncJobTimeline();
   if (!_state.folded) _state.folded = _readFolded();
   const byId = new Map(steps.map((s) => [s.id, s]));

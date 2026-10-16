@@ -1626,6 +1626,16 @@
           </label>
         </div>
 
+        <!-- Fred 2026-10-16: DEFAULT OFF, a per-device preference (core/job-timeline-enabled.js's own localStorage
+             key, same pattern as Haptic feedback above) -- main/header-controls.js reads/writes it. Off: the strip
+             is hidden and the canvas keeps its full height; the saved timeline itself is untouched. -->
+        <div class="cad-panel-section">
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="jobTimelineEnabled">
+            <span>Job timeline</span>
+          </label>
+        </div>
+
         <div class="cad-status-divider" style="margin: 12px 0;"></div>
 
         <div class="cad-panel-section">
