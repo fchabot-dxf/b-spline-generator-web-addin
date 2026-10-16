@@ -36,7 +36,10 @@ const FAST = [['template_3', 7, 10, 1, 'mixed_bands'], ['template_5', 9, 12, 0.7
   ['template_15', 7, 9, 0.75, 'soldier_stretcher'], ['template_6', 7, 9, 1.25, 'mixed_bands'], ['template_11', 7, 9, 1.5, 'mixed_bands'], ['template_5', 9, 12, 1, 'soldier_stretcher'],
   ['template_1', 7, 9, 0.75, 'single_soldier'],
   // the CURVED block (primitive-ribbon.js buildCurveBlockJoint): T10 / T18, a straight side meeting the arched top
-  ['template_10', 7, 9, 1, 'mixed_bands'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 9, 12, 0.75, 'three_band']];
+  ['template_10', 7, 9, 1, 'mixed_bands'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 9, 12, 0.75, 'three_band'],
+  // Fred 2026-10-16 (seat E, via the advisor): QUOIN_FULL's own toothed elbow-pocket cases (buildQuoinTeeth's elbow
+  // infill, primitive-ribbon.js) -- the largest the full sweep found, 0.166 / 0.192 sq in before the fix
+  ['template_8', 9, 12, 1.25, 'single_soldier'], ['template_6', 9, 12, 1.25, 'recessed_panel']];
 const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k));
 const FULL = process.env.QUOIN_FULL ? TEMPLATES.flatMap((tpl) => [[7, 9], [9, 12]].flatMap(([W, H]) => [0.75, 1, 1.25, 1.5].flatMap((L) => [...MULTI, 'single_soldier', 'quoin_corners'].map((p) => [tpl, W, H, L, p])))) : [];
 const box = (p) => [Math.min(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y))];
@@ -113,7 +116,9 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
       frame: { primitives: P, bands: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'toothed' }] } });
     const area = (b) => +(Math.abs(signedArea(b.polygon)) / 1.21).toFixed(3);
     const teeth = r.frameBricks.filter((b) => b.tooth);
-    expect(teeth.length).toBe(4 * (3 + 2));
+    // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL measured a bare elbow pocket, fixed in buildQuoinTeeth): each
+    // corner also gets one elbow-infill square per course BOTH bars reach -- here min(3, 2) = 2 per corner, +4*2 teeth
+    expect(teeth.length).toBe(4 * (3 + 2) + 4 * 2);
     expect(teeth.filter((b) => area(b) === QUOIN_TOOTH.long).length).toBe(4 * (1 + 1));
     expect(r.frameBricks.filter((b) => !b.tooth && b.polygon.length === 4 && area(b) === 1).length).toBe(4); // the corner squares
   });

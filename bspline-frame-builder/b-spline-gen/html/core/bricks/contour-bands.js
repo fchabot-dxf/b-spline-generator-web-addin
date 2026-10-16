@@ -511,27 +511,51 @@ const boxesMeet = (a, b) => !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] 
 const overlapArea = (a, b) => Math.abs(signedArea(polygonIntersection(a, b)) || 0);
 const largestOf = (parts) => (parts || []).filter((p) => p && p.length >= 3).sort((a, c) => Math.abs(signedArea(c)) - Math.abs(signedArea(a)))[0] || null;
 /** A piece's under-floor remnant merged into a neighbour (seat E 2026-10-10, the advisor's rule: as rubble / ashlar grow a
- *  block over a sliver): for each candidate index `j` in order, the hull of the remnant and `pieces[j]`, `clear`ed again
- *  (the cutter that left the remnant, grown by its joint) and every other laid piece it meets (`live(k)`), grown by
- *  `joint`, cut out of it (MEASURED T11 7x9 1.5 in: a gable triangle's hull bulged 0.001 sq in past the joint), taken
- *  when it is no smaller than the neighbour and overlaps nothing. Returns { j, polygon } or null (the remnant drops).
- *  cutUnderQuoins' remnants. */
-function mergeRemnant(remnant, pieces, candidates, clear, live, joint) {
+ *  block over a sliver): for each candidate index `j` in order, the hull of the remnant and `pieces[j]`, re-cleared by
+ *  `clearMulti` (see cutUnderQuoins' two modes) and every other laid piece it meets (`live(k)`), grown by `joint`, cut
+ *  out of it (MEASURED T11 7x9 1.5 in: a gable triangle's hull bulged 0.001 sq in past the joint), taken when the total
+ *  survives no smaller than the neighbour and overlaps nothing. Returns { j, polygons } (one or more fragments; the
+ *  first replaces `pieces[j]`, any further ones are new, separate pieces) or null (the remnant drops). */
+function mergeRemnant(remnant, pieces, candidates, clearMulti, live, joint) {
   const meets = (p, k, j) => k !== j && live(k) && boxesMeet(boxOfPoly(p), boxOfPoly(pieces[k].polygon)) && overlapArea(p, pieces[k].polygon) > MEDIAL_OVERLAP_SQIN;
   for (const j of candidates) {
-    let merged = clear(convexHull([...remnant, ...pieces[j].polygon]));
-    for (let k = 0; k < pieces.length && merged; k++) {
-      if (meets(merged, k, j)) merged = largestOf(polygonDifference(merged, offsetPathInward(pieces[k].polygon, joint, -inwardSignFor(pieces[k].polygon))));
-    }
-    if (!merged || merged.length < 3 || Math.abs(signedArea(merged)) < Math.abs(signedArea(pieces[j].polygon)) - 1e-9) continue;
+    const neighbour = pieces[j].polygon;
+    let fragments = clearMulti(convexHull([...remnant, ...neighbour]));
+    fragments = fragments.flatMap((f0) => {
+      let f = f0;
+      for (let k = 0; k < pieces.length && f; k++) if (meets(f, k, j)) f = largestOf(polygonDifference(f, offsetPathInward(pieces[k].polygon, joint, -inwardSignFor(pieces[k].polygon))));
+      return f && f.length >= 3 ? [f] : [];
+    });
+    if (!fragments.length) continue;
+    const totalArea = fragments.reduce((s, f) => s + Math.abs(signedArea(f)), 0);
+    if (totalArea < Math.abs(signedArea(neighbour)) - 1e-9) continue;
     // it must hold the remnant (a neighbour beyond the quoin: the cut kept the neighbour's side and lost the remnant --
     // MEASURED T6 7x9 1 in recessed_panel, the tab slot's band-2 piece "merged" into the run past the block)
-    if (overlapArea(merged, remnant) < 0.9 * Math.abs(signedArea(remnant))) continue;
-    if (!pieces.some((b, k) => meets(merged, k, j))) return { j, polygon: merged };
+    const held = fragments.reduce((s, f) => s + overlapArea(f, remnant), 0);
+    if (held < 0.9 * Math.abs(signedArea(remnant))) continue;
+    // biggest first: `polygons[0]` is what REPLACES pieces[j] (legacy's own single largestOf always was the biggest
+    // one found, not necessarily floor-clearing on its own -- a still-pending step-2 remnant, say); a floor on
+    // EVERY fragment here would silently throw away real area clearMulti already proved survives, exactly the bug
+    // this fix exists to close. Only `polygons[1:]`, genuine EXTRA disconnected pieces, get the floor -- at the
+    // point they become their own standalone brick (cutUnderQuoins' own `place` / step 2 handling).
+    if (!fragments.some((f) => pieces.some((b, k) => meets(f, k, j)))) {
+      return { j, polygons: fragments.sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a))) };
+    }
   }
   return null;
 }
-function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
+/** cutUnderQuoins' two re-clear modes (seat E 2026-10-16, via the advisor; QUOIN_FULL on a toothed corner): `legacy`
+ *  is byte-identical to every lay before this -- one fragment, `largestOf` over every quoin the (shrinking) poly's own
+ *  box meets, exactly as `clearOfQuoins` always did. `surviving` is the fix: the SAME per-quoin scoping (a merge's hull
+ *  re-clears against whichever quoins its own evolving box actually meets, same as today -- an EARLIER attempt that
+ *  restricted this to only the two input pieces' own boxes measured a new regression: a hull can legitimately need a
+ *  cut from a quoin neither original piece's own box touched), but keeps EVERY resulting fragment at or above the
+ *  piece floor, not only the largest. MEASURED (template_6 9x12 1.25in corbelled_cornice, toothed): a remnant that
+ *  individually survived its own tooth's cut intact (a real, valid sliver) was lost entirely at a later merge step
+ *  purely because `largestOf` kept a different fragment. Call sites choose per corner style (never 'legacy' silently
+ *  losing a style's otherwise-real fix) -- see FRAME_PRESETS' own cornerStyle in contour-bands.js's main loop. */
+const QUOIN_MERGE_MODES = Object.freeze(['legacy', 'surviving']);
+function cutUnderQuoins(bricks, origins, ribbons, joint, minArea, wallZone, mergeMode = 'legacy') {
   const quoins = new Set(ribbons.flat().map((q) => q.at));
   const own = [...quoins].map((at) => bricks[at].polygon);
   const grown = own.map((p) => offsetPathInward(p, joint, -inwardSignFor(p)));
@@ -563,22 +587,71 @@ function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
   const resolve = (j) => { while (absorbed.has(j)) j = absorbed.get(j); return j; };
   const rowNeighbours = (i, ok) => [...new Set(bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j)
     && bricks[j].bandIndex === bricks[i].bandIndex && bricks[j].rowIndex === bricks[i].rowIndex && Math.abs(bricks[j].pieceIndex - bricks[i].pieceIndex) === 1).map(resolve))].filter((j) => j !== i && ok(j));
-  const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
+  const clearMulti = (poly) => {
+    if (mergeMode !== 'surviving') {
+      const q = clearOfQuoins(poly);
+      const r = q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q;
+      return r ? [r] : [];
+    }
+    let frags = poly ? [poly] : [];
+    for (let k = 0; k < grown.length; k++) {
+      const next = [];
+      for (const f of frags) {
+        if (!boxesMeet(boxOfPoly(f), gBox[k]) || overlapArea(f, own[k]) <= MEDIAL_OVERLAP_SQIN) { next.push(f); continue; }
+        next.push(...polygonDifference(f, grown[k]).filter((p) => p && p.length >= 3));
+      }
+      frags = next;
+    }
+    if (wallZone) frags = frags.flatMap((f) => polygonDifference(f, wallZone).filter((p) => p && p.length >= 3));
+    return frags; // NO floor here -- mergeRemnant's own total-area / held checks need every fragment's real area
+  };
   const laid = (j) => !dropped.has(j) && !remnants.has(j);
+  // a merge's extra fragments (beyond the first, which replaces its target) become new bricks ONLY once they clear the
+  // piece floor on their own -- named like every other multi-piece split in this engine (arch-surround.js /
+  // fill-shape.js: `${id}~${k}`), same metadata as their target (legacy mode never returns more than one fragment, so
+  // this is a no-op there). A sub-floor extra is simply dropped: its area already counted toward the merge's own
+  // acceptance, the same way legacy's single largestOf fragment never had to clear the floor on its own either.
+  const placeExtras = (got) => {
+    let n = 0;
+    for (let k = 1; k < got.polygons.length; k++) {
+      if (Math.abs(signedArea(got.polygons[k])) < minArea) continue;
+      bricks.push({ ...bricks[got.j], id: `${bricks[got.j].id}~${++n}`, polygon: got.polygons[k] });
+      origins.push(origins[got.j]);
+      keep.push(bricks.length - 1);
+    }
+  };
+  const place = (got) => {
+    bricks[got.j] = { ...bricks[got.j], polygon: got.polygons[0] };
+    placeExtras(got);
+  };
   const intoLaid = () => {
     for (const [i, poly] of [...remnants]) {
-      const got = mergeRemnant(poly, bricks, rowNeighbours(i, laid), clear, (k) => k !== i && laid(k), joint);
-      if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+      const got = mergeRemnant(poly, bricks, rowNeighbours(i, laid), clearMulti, (k) => k !== i && laid(k), joint);
+      if (got) { place(got); remnants.delete(i); absorbed.set(i, got.j); }
     }
   };
   // 1. into a laid neighbour
   intoLaid();
-  // 2. what none took: remnants side by side become one piece (laid when it clears the floor)
-  for (const [i, poly] of [...remnants]) {
+  // 2. what none took: remnants side by side become one piece (laid when it clears the floor). A real, pre-existing
+  // bug here (seat E 2026-10-16, via the advisor; a third root cause found tracing the worst case): the snapshot is
+  // taken once, before this loop's own first merge -- an earlier remnant that just merged INTO a later-visited one
+  // (both still pending) left that later one's OWN stale pre-merge area sitting in a destructured `poly`, so when
+  // ITS turn came to merge onward it carried only its own original sliver, silently dropping what it had just
+  // absorbed (MEASURED template_6 9x12 1.25in corbelled_cornice: piece 180's area never reached the final merged
+  // piece this way). MEASURED to change 4 of 21,432 block/lapped/butt lays too (a pre-existing bug there as well),
+  // so -- same scoping as clearMulti's own two modes -- the live read only replaces the snapshot's own captured
+  // value under 'surviving' (toothed); every other style keeps today's exact lay, stale bug included, untouched.
+  const staleSnapshot = new Map(remnants); // legacy mode's own exact behaviour: each key's value as of THIS point, never re-read
+  for (const i of [...remnants.keys()]) {
     if (!remnants.has(i)) continue;
+    const poly = mergeMode === 'surviving' ? remnants.get(i) : staleSnapshot.get(i);
     const pieces = bricks.map((b, k) => (remnants.has(k) ? { ...b, polygon: remnants.get(k) } : b));
-    const got = mergeRemnant(poly, pieces, rowNeighbours(i, (j) => remnants.has(j)), clear, (k) => k !== i && (!dropped.has(k) || remnants.has(k)), joint);
-    if (got) { remnants.set(got.j, got.polygon); remnants.delete(i); absorbed.set(i, got.j); }
+    const got = mergeRemnant(poly, pieces, rowNeighbours(i, (j) => remnants.has(j)), clearMulti, (k) => k !== i && (!dropped.has(k) || remnants.has(k)), joint);
+    if (got) {
+      remnants.set(got.j, got.polygons[0]); // the primary continuation stays pending, same as legacy (step 2's own point)
+      placeExtras(got); // any further fragment at or above the floor becomes a real, separate piece straight away
+      remnants.delete(i); absorbed.set(i, got.j);
+    }
   }
   for (const [i, poly] of [...remnants]) if (Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; dropped.delete(i); keep.push(i); remnants.delete(i); }
   // 3. what is still under the floor: a laid neighbour once more (one grown in step 1 or 2)
@@ -589,8 +662,8 @@ function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
   for (const [i, poly] of [...remnants]) {
     const pb = boxOfPoly(poly), gapTo = (b) => Math.max(0, b[0] - pb[2], pb[0] - b[2]) + Math.max(0, b[1] - pb[3], pb[1] - b[3]);
     const near = bricks.map((b, j) => [j, gapTo(boxOfPoly(b.polygon))]).filter(([j, g]) => j !== i && !quoins.has(j) && laid(j) && g <= 2 * joint).sort((a, b) => a[1] - b[1]).map(([j]) => j);
-    const got = mergeRemnant(poly, bricks, near, clear, (k) => k !== i && laid(k), joint);
-    if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+    const got = mergeRemnant(poly, bricks, near, clearMulti, (k) => k !== i && laid(k), joint);
+    if (got) { place(got); remnants.delete(i); absorbed.set(i, got.j); }
   }
   return keep.filter((i) => !dropped.has(i)).sort((a, b) => a - b);
 }
@@ -1188,7 +1261,10 @@ export function bricksContourBands(primitives, bands, opts) {
     // a merged remnant stays out of the wall's region by the band's half of the joint (MEASURED T5 9x12 1 in
     // soldier_stretcher: an arc piece's hull took the chord across its curved inner edge, 0.02 sq in into the wall)
     const wallZone = innerPath.length >= 3 ? offsetPathInward(innerPath, halfJoint, -inwardSignFor(innerPath)) : null;
-    const keep = cutUnderQuoins(bricks, quoinRibbons, set.grout.widthIn, minArea, wallZone);
+    // QUOIN_MERGE_MODES, scoped per corner style (seat E 2026-10-16, via the advisor): 'toothed' alone opts into the
+    // fix (measured byte-identical for every other style first); every other style keeps 'legacy', unchanged.
+    const mergeMode = bands.some((b) => b.cornerStyle === 'toothed') ? 'surviving' : 'legacy';
+    const keep = cutUnderQuoins(bricks, origins, quoinRibbons, set.grout.widthIn, minArea, wallZone, mergeMode);
     if (keep.length !== bricks.length) { const b = keep.map((i) => bricks[i]), o = keep.map((i) => origins[i]); bricks.length = 0; bricks.push(...b); origins.length = 0; origins.push(...o); }
   }
   const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
