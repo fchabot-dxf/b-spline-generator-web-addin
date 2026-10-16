@@ -989,3 +989,14 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     border-top: calc(var(--job-overhang, 9px) + 6px) solid #0078d4;
 }
 
+/* The canvas heights HUD (Fred 2026-10-16: a floating label, no panel/background -- core/engine/rebuild.js
+   updateCanvasHeights writes the total; the base lives in the element's own title tooltip). Two token sets
+   (base.css :root), not the app's light/dark theme: which background it floats over -- the 3D viewport is light,
+   the 2D editor's board is dark/busy. */
+.heights-hud {
+    font: 700 13px 'Cascadia Code', monospace;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+#previewArea .heights-hud { color: var(--heights-hud-on-light-color); text-shadow: var(--heights-hud-on-light-shadow); }
+#editorCanvasContainer .heights-hud { color: var(--heights-hud-on-dark-color); text-shadow: var(--heights-hud-on-dark-shadow); }

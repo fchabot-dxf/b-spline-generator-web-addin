@@ -434,6 +434,15 @@ function formatWarning(thicken) {
     return msg || '<span style="color:#208a4f;">Thickness Surface Safe</span>';
 }
 
+/** The top-left floating HUD (styles/layout-app.css .heights-hud): just the TOTAL height text; the base stays
+ *  available in the element's own title tooltip, not a visible line (Fred 2026-10-16, "no panel"). One declared
+ *  list -- `root` carries the tooltip, `total` is the visible span -- not two parallel id arrays. The bottom-left
+ *  Surface Inspector (inspectorBaseHeight/inspectorTotalHeight) is a different, untouched readout. */
+export const HEIGHTS_HUD = Object.freeze([
+    Object.freeze({ root: 'canvasTotalHeights', total: 'canvasTotalHeight' }),
+    Object.freeze({ root: 'editorCanvasTotalHeights', total: 'editorCanvasTotalHeight' }),
+]);
+
 /**
  * Updates the live total heights on the canvas HUD overlays:
  *   - Base Height: Model total height before vector stamping & sculpting
@@ -474,12 +483,15 @@ export function updateCanvasHeights(baseHeights, heights, thicken = null) {
     const baseStr = (Number.isFinite(baseSpan) ? baseSpan : 0).toFixed(3);
     const totalStr = (Number.isFinite(totalSpan) ? totalSpan : 0).toFixed(3);
 
-    for (const id of ['canvasBaseHeight', 'editorCanvasBaseHeight', 'inspectorBaseHeight']) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = baseStr;
-    }
-    for (const id of ['canvasTotalHeight', 'editorCanvasTotalHeight', 'inspectorTotalHeight']) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = totalStr;
+    const inspectorBase = document.getElementById('inspectorBaseHeight');
+    if (inspectorBase) inspectorBase.textContent = baseStr;
+    const inspectorTotal = document.getElementById('inspectorTotalHeight');
+    if (inspectorTotal) inspectorTotal.textContent = totalStr;
+
+    for (const { root, total } of HEIGHTS_HUD) {
+        const span = document.getElementById(total);
+        if (span) span.textContent = totalStr;
+        const host = document.getElementById(root);
+        if (host) host.title = `Base H: ${baseStr}"`;
     }
 }
