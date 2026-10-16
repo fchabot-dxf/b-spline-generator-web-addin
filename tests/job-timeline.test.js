@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { JOB_STEP_KINDS, JOB_DEFAULT_KIND_ORDER, jobProjectOf, deriveJobSteps, defaultJobOrder, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
+import { SECTION_THEMES, SECTION_ICONS } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
 
 const PROJECT = {
   layers: [
@@ -18,9 +19,13 @@ const PROJECT = {
 const steps = deriveJobSteps(PROJECT);
 
 describe('the steps and Fred\'s default order', () => {
-  it('every kind is declared once, with its look, what it opens and its dependencies (data)', () => {
+  it('every kind is declared once, with its look (a REAL section -- a colour and an icon, no colour table of its own), what it opens and its dependencies (data)', () => {
     for (const [id, k] of Object.entries(JOB_STEP_KINDS)) {
-      expect(k.label, id).toBeTruthy(); expect(k.color, id).toMatch(/^#/); expect(k.opens, id).toBeTruthy(); expect(Array.isArray(k.dependsOn), id).toBe(true);
+      expect(k.label, id).toBeTruthy();
+      expect(k.section, id).toBeTruthy();
+      expect(SECTION_THEMES[k.section], `${id} -> section '${k.section}'`).toBeTruthy();
+      expect(SECTION_ICONS[k.section], `${id} -> section '${k.section}'`).toBeTruthy();
+      expect(k.opens, id).toBeTruthy(); expect(Array.isArray(k.dependsOn), id).toBe(true);
     }
     expect(JOB_STEP_KINDS.stock.fixed).toBe('first');
     expect(JOB_STEP_KINDS.latticeRails.group.by).toBe('layer');

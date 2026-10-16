@@ -910,11 +910,14 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 }
 .job-step {
     position: relative;
+    z-index: 1; /* above .job-track */
     flex: 0 0 auto;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     height: calc(var(--job-band, 34px) - 10px);
+    min-width: var(--job-chip-min, 24px);
     padding: 0 9px;
     border: 1px solid var(--job-color);
     border-radius: 6px;
@@ -927,8 +930,18 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 /* Stock (JOB_STEP_KINDS fixed: 'first'): pinned as step 1 -- a dashed edge, no grab; not a lock */
 .job-step-fixed { cursor: default; border-style: dashed; }
 .job-step.job-done { opacity: 0.55; }
-.job-icon { color: var(--job-color); }
+/* Fred 2026-10-16: icon-on-colour, no text -- the step's name is the chip's title/aria-label instead (not shown) */
+.job-icon { color: var(--job-color); font-size: 15px; line-height: 1; }
 .job-caret { color: var(--cad-text-muted); font-size: 10px; }
+/* a sub-item's own layer swatch (job-timeline-strip.js _layerSwatch): a small ring so two same-kind sub-items of
+   DIFFERENT layers (two Lattice groups, Red vs Yellow vector layers) stay distinguishable without text */
+.job-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+    flex: 0 0 auto;
+}
 .job-dep-mark {
     position: absolute;
     top: 2px;
@@ -936,6 +949,16 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     width: 7px;
     height: 7px;
     border-radius: 50%;
+}
+/* the track line (JOB_STRIP trackPx/trackColorDone/trackColorPending): chips sit on it like beads on a rail.
+   top/left/width/height are set in JS (job-timeline-strip.js renderTrack) from the chips' OWN real layout --
+   .job-strip bottom-aligns its flex children, so a CSS-only vertical centre would have to re-derive that padding
+   math; reading it off a real chip's offsetTop/offsetHeight is simpler and never drifts if the layout changes. */
+.job-track {
+    position: absolute;
+    z-index: 0;
+    border-radius: 2px;
+    pointer-events: none;
 }
 /* the playhead: a line through the band, its grab tab (a ▼) rising --job-overhang above it (JOB_STRIP, declared);
    the whole column, --job-head-grab wide, is the touch target */

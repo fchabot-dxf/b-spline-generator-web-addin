@@ -4,7 +4,12 @@
  * main/job-timeline-strip.js draws it, the project keeps it (P.jobTimeline = { order, head }).
  *
  * JOB_STEP_KINDS declares every kind of step once:
- *   label / icon / colour  -- how a step shows;
+ *   label                  -- the tooltip / aria-label (Fred 2026-10-16: chips show no text, icon-on-colour only);
+ *   section                -- the main/section-themes.js id this kind's chip reads its icon (SECTION_ICONS) and
+ *                             colour (SECTION_THEMES hue) from -- no colour table of its own; 'stamp' (Vector
+ *                             Stamping / the editor's Artwork+Lattice tabs) covers latticeRails/latticeNodes/vector
+ *                             alike -- a job-timeline-strip.js sub-item mark (the layer's own derived swatch)
+ *                             tells two lattice groups, or two vector layers, apart;
  *   fixed: 'first'         -- the step is always step 1 and never dragged (Stock);
  *   group                  -- the sub-items of one group: `by: 'layer'` (one group per lattice layer, its layer's name)
  *                             or `by: 'kind'` (one "Vector stamping" group of every vector layer); the ORDER is a flat
@@ -19,40 +24,42 @@
 // (deriveJobSteps). Every edge is the code's own read (seat D survey, 2026-10-14), cited on the lines above it.
 const dep = (kind, extra = {}) => Object.freeze({ kind, ...extra });
 export const JOB_STEP_KINDS = Object.freeze({
-  stock: Object.freeze({ label: 'Stock', icon: '▭', color: '#607d8b', fixed: 'first', opens: { sidebar: 'panel-stock' }, dependsOn: [] }),
+  stock: Object.freeze({ label: 'Stock', section: 'stock', fixed: 'first', opens: { sidebar: 'panel-stock' }, dependsOn: [] }),
   // Seed Offset X / Y sit in Filter; the seed itself is the pinned Generate New Seed bar.
   // seed -> stock: the grid is the board's (core/engine/rebuild.js:139 resolveGrid, core/terrain.js:126 aspect)
-  seed: Object.freeze({ label: 'Seed', icon: '✦', color: '#7e57c2', opens: { sidebar: 'panel-filter' }, dependsOn: ['stock'] }),
+  seed: Object.freeze({ label: 'Seed', section: 'filter', opens: { sidebar: 'panel-filter' }, dependsOn: ['stock'] }),
   // filter <- seed: the fine noise is seeded (core/terrain.js:121, read at :206)
-  filter: Object.freeze({ label: 'Filter', icon: '≈', color: '#00838f', opens: { sidebar: 'panel-filter' }, dependsOn: ['seed', 'stock'] }),
+  filter: Object.freeze({ label: 'Filter', section: 'filter', opens: { sidebar: 'panel-filter' }, dependsOn: ['seed', 'stock'] }),
   // skeleton <- seed (terrain.js:123, :264-270, :322) and <- filter: noiseType sets its frequency (terrain.js:246-248);
   // <- stock: the edge margin is a share of the board (rebuild.js:285)
-  skeleton: Object.freeze({ label: 'Skeleton', icon: '⌇', color: '#455a64', opens: { sidebar: 'panel-skeleton' }, dependsOn: ['seed', 'filter', 'stock'] }),
+  skeleton: Object.freeze({ label: 'Skeleton', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, dependsOn: ['seed', 'filter', 'stock'] }),
   // sculptTop <- the terrain (seed + skeleton + filter, combined at terrain.js:299): preDelta is added to it (rebuild.js:291)
-  sculptTop: Object.freeze({ label: 'Sculpt top', icon: '▲', color: '#6d4c41', opens: { sidebar: 'panel-sculpt-top' }, dependsOn: ['seed', 'skeleton', 'filter'] }),
+  sculptTop: Object.freeze({ label: 'Sculpt top', section: 'sculpt-top', opens: { sidebar: 'panel-sculpt-top' }, dependsOn: ['seed', 'skeleton', 'filter'] }),
   // Back = Thicken + Sculpt bottom: reads the STAMPED heights -- every stamp pass, bricks included (rebuild.js:169 on
   // :296's output; core/engine/build-thicken-data.js:56-57, :63) -- and the board (build-thicken-data.js:50)
   // snapshotOnLock (Fred 2026-10-14): the Back is cut FIRST in his real flow and its lock will be a carve-time snapshot of
   // the underside -- later stamps no longer feed it, so its reads are never marked (detection skips a snapshot kind)
-  back: Object.freeze({ label: 'Back', icon: '▼', color: '#5b6b7a', opens: { sidebar: 'panel-thicken' }, snapshotOnLock: true,
+  back: Object.freeze({ label: 'Back', section: 'thicken', opens: { sidebar: 'panel-thicken' }, snapshotOnLock: true,
     dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
-  latticeRails: Object.freeze({ label: 'Rails', icon: '#', color: '#2e7d32', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
+  // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES
+  // editorLayersPanel) -- no new colour entry needed; two Lattice groups tell apart by their own sub-item mark, not colour.
+  latticeRails: Object.freeze({ label: 'Rails', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
     opens: { editorTab: 'lattice', layer: true }, dependsOn: [dep('frame', { when: 'followsFrame' })] }),
   // nodes <- that lattice's rails (and ties, cut with the rails): a node at each crossing (editor-lattice-pattern.js:2189-2204)
-  latticeNodes: Object.freeze({ label: 'Nodes', icon: '•', color: '#2e7d32', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
+  latticeNodes: Object.freeze({ label: 'Nodes', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
     opens: { editorTab: 'lattice', layer: true }, dependsOn: [dep('latticeRails', { sameLayer: true })] }),
   // a stamp is added onto terrain + sculpt top (rebuild.js:296); rasterized on the board (main/stamp-mask-manager.js:197-202);
   // the frame's inset window is punched out of it (stamp-mask-manager.js:113, :213)
-  vector: Object.freeze({ label: 'Vector', icon: '✎', color: '#c0392b', group: Object.freeze({ by: 'kind', label: 'Vector stamping' }),
+  vector: Object.freeze({ label: 'Vector', section: 'stamp', group: Object.freeze({ by: 'kind', label: 'Vector stamping' }),
     opens: { editorTab: 'artwork', layer: true }, dependsOn: ['stock', 'sculptTop', dep('frame', { when: 'insetWindow' })] }),
   // flat bricks fit a plane to the surface stamped so far -- the layers UNDER theirs (core/engine/apply-stamp-layers.js:124-125,
   // rebuild.js:338-345); the frame's contour lays the frame bands (main/brick-panel.js:3149-3153) and its panel outline
   // sets the bricks' edge height (stamp-mask-manager.js:117, :214)
-  bricks: Object.freeze({ label: 'Bricks', icon: '▤', color: '#b5651d', opens: { editorTab: 'brick' },
+  bricks: Object.freeze({ label: 'Bricks', section: 'brick', opens: { editorTab: 'brick' },
     dependsOn: ['stock', 'sculptTop', dep('vector', { belowInStack: true }), dep('latticeRails', { belowInStack: true }), dep('latticeNodes', { belowInStack: true }), 'frame'] }),
   // the frame is laid on the board (editor/editor-frame-profile.js:476)
-  frame: Object.freeze({ label: 'Wood frame', icon: '▢', color: '#8d6e63', opens: { sidebar: 'panel-frame' }, dependsOn: ['stock'] }),
+  frame: Object.freeze({ label: 'Wood frame', section: 'frame', opens: { sidebar: 'panel-frame' }, dependsOn: ['stock'] }),
 });
 
 /** Fred's default order (2026-10-14): the kinds in this order; a project without a saved order starts on it, head at 0. */

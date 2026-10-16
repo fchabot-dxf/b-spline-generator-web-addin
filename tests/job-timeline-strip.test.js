@@ -3,7 +3,7 @@
  * bottom from P.jobTimeline, kept safe on every layer change, groups fold, a step / a folded run is dragged, the head is
  * dragged, a tap opens the step (the app's opener), an amber dot marks a step cut before one it depends on.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { renderJobStrips, syncJobTimeline, moveIds, initJobTimelineStrip, toggleJobGroup, JOB_STRIP_HOSTS, JOB_STRIP, scrollHeadIntoView } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
@@ -28,14 +28,15 @@ describe('the strip', () => {
     const bar = $('jobStrip3d');
     expect(chipIds(bar)).toEqual(P.jobTimeline.order);
     expect(bar.querySelector('[data-job-step="stock"]').classList.contains('job-step-fixed')).toBe(true);
-    expect(bar.children[1].dataset.jobHead).toBe('1'); // head 0: right after the title, before Stock
+    expect(bar.children[2].dataset.jobHead).toBe('1'); // head 0: right after the track + title, before Stock
     expect(JOB_STRIP_HOSTS.find((h) => h.id === 'jobStrip2d').bottom).toBe('var(--drawer-height, 0px)'); // the editor's: above the phone drawer
   });
   it('a group folds into one chip with its count; unfolding brings its steps back', () => {
     toggleJobGroup('vector');
     const g = $('jobStrip3d').querySelector('[data-job-group="vector"]');
     expect(g.dataset.jobFolded).toBe('1');
-    expect(g.textContent).toContain('Vector stamping · 2');
+    expect(g.title).toContain('Vector stamping · 2'); // no visible text (Fred 2026-10-16) -- the name moved to the tooltip
+    expect(g.getAttribute('aria-label')).toContain('Vector stamping · 2');
     expect(chipIds($('jobStrip3d'))).not.toContain('vector:L1');
     toggleJobGroup('vector');
     expect(chipIds($('jobStrip3d'))).toContain('vector:L1');
@@ -62,7 +63,7 @@ describe('the strip', () => {
     // Fred's default order cuts Skeleton before Filter (Filter sets its frequency); the Back is snapshot-backed: no mark
     const sk = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
     expect(sk.querySelector('.job-dep-mark')).not.toBeNull();
-    expect(sk.title).toBe('Skeleton is cut before Filter, but Filter changes the skeleton');
+    expect(sk.title).toContain('Skeleton is cut before Filter, but Filter changes the skeleton');
     for (const id of ['seed', 'back']) expect($('jobStrip3d').querySelector(`[data-job-step="${id}"] .job-dep-mark`), id).toBeNull();
   });
 });
@@ -137,6 +138,92 @@ describe('before the page-load restore', () => {
       document.dispatchEvent(new Event('editorLayersChanged'));
       expect(P.jobTimeline).not.toBeNull();
     } finally { vi.useRealTimers(); }
+  });
+});
+
+describe('Fred 2026-10-16: chips are icon-on-colour, no text -- a sub-item\'s own layer swatch tells same-kind layers apart', () => {
+  it('a plain section chip (Stock) has no swatch; a lattice sub-item (Rails) does', () => {
+    const bar = $('jobStrip3d');
+    expect(bar.querySelector('[data-job-step="stock"] .job-swatch')).toBeNull();
+    const rails = [...bar.querySelectorAll('[data-job-step]')].find((c) => c.dataset.jobStep.endsWith(':rails'));
+    expect(rails.querySelector('.job-swatch')).not.toBeNull();
+  });
+  it('one lattice\'s Rails and Nodes chips share the SAME swatch colour (one group); a SECOND lattice gets a different one', () => {
+    window.svgEditor._layers.push({ id: 'LB', name: 'B', pattern: {} });
+    P.jobTimeline = null;
+    renderJobStrips();
+    const bar = $('jobStrip3d');
+    const swatchOf = (id) => bar.querySelector(`[data-job-step="${id}"] .job-swatch`).style.backgroundColor;
+    const [railsA, nodesA] = ['lattice:LA:rails', 'lattice:LA:nodes'].map(swatchOf);
+    const [railsB] = ['lattice:LB:rails'].map(swatchOf);
+    expect(railsA).toBe(nodesA); // same lattice, same colour
+    expect(railsA).not.toBe(railsB); // a different lattice, a different colour
+  });
+  it('two DIFFERENT vector layers get two DIFFERENT swatch colours (Fred: "Yellow vs Red")', () => {
+    const bar = $('jobStrip3d');
+    const c1 = bar.querySelector('[data-job-step="vector:L1"] .job-swatch').style.backgroundColor;
+    const c2 = bar.querySelector('[data-job-step="vector:L2"] .job-swatch').style.backgroundColor;
+    expect(c1).not.toBe(c2);
+  });
+  it('a chip never shows its name as visible text -- only as its title / aria-label', () => {
+    const chip = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
+    expect(chip.textContent.trim()).not.toContain('Skeleton');
+    expect(chip.title).toContain('Skeleton');
+    expect(chip.getAttribute('aria-label')).toBe('Skeleton');
+  });
+  it('declares a minimum chip size so an icon-only chip stays a real touch target (>= 28px on a phone); the bar carries it, same pattern as --job-overhang', () => {
+    expect(JOB_STRIP.chipMinPx.phone).toBeGreaterThanOrEqual(28);
+    const bar = $('jobStrip3d');
+    expect(bar.style.getPropertyValue('--job-chip-min')).toBe(`${JOB_STRIP.chipMinPx.desktop}px`);
+  });
+});
+
+describe('Fred 2026-10-16: a track line behind the chips, like beads on a rail', () => {
+  // jsdom lays out nothing for real -- a PROTOTYPE-level override (not per-instance) so it applies to chips AND
+  // the head the moment renderJobStrips creates them fresh each render: element i among its siblings sits at
+  // x = i*50, 30px wide -- a believable row in DOM order (chips, then wherever putHead() placed the head).
+  let origLeft, origWidth;
+  beforeEach(() => {
+    origLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft');
+    origWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return 30; } });
+    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', {
+      configurable: true,
+      get() { return [...(this.parentNode?.children || [])].indexOf(this) * 50; },
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetLeft', origLeft);
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', origWidth);
+  });
+
+  it('renders a visible track spanning the chip row, not the "nothing to span" no-op', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track).not.toBeNull();
+    expect(track.style.display).not.toBe('none');
+    expect(track.style.left).toMatch(/^\d+px$/);
+    expect(parseFloat(track.style.width)).toBeGreaterThan(0);
+  });
+
+  it('the head at the very start: the whole track reads pending (0% done)', () => {
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track.style.background).toContain(`${JOB_STRIP.trackColorDone} 0%`);
+  });
+
+  it('the head at the very end: the whole track reads done (100%)', () => {
+    const order = P.jobTimeline.order;
+    P.jobTimeline = { order, head: order.length };
+    renderJobStrips();
+    const track = $('jobStrip3d').querySelector('.job-track');
+    expect(track.style.background).toContain(`${JOB_STRIP.trackColorPending} 100%`);
+  });
+
+  it('declares its own colours/width in JOB_STRIP (not inline CSS math at the call site)', () => {
+    expect(JOB_STRIP.trackPx).toBeGreaterThan(0);
+    expect(JOB_STRIP.trackColorDone).toMatch(/^#/);
+    expect(JOB_STRIP.trackColorPending).toMatch(/^#/);
   });
 });
 
