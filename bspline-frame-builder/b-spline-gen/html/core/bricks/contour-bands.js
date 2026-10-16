@@ -1081,6 +1081,18 @@ export function bricksContourBands(primitives, bands, opts) {
     // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
     // pieces (same role every other pattern already gives it), not a per-piece length.
     const { patternName, cornerStyle, naturalWidth, pitch: patternPitch, sequence, staggerFrac, rows, isAreaBand, motif } = plannedBands[bandIndex];
+    // Fred 2026-10-16 (seat E, via the advisor; classic long-and-short quoin, inside the band): a toothed corner's
+    // stones are sized off the OUTER band's own real total width (naturalWidth x rows, what every other caller
+    // here already uses for "how deep is this band") -- the square's own side, and each stone's full-depth (long)
+    // or half-depth (short) reach across the band. Along the bar they still ride the band's own `pitch`.
+    // ROOT CAUSE (T12 three_band top corners, MEASURED via a zoomed render + a piece dump, seat E 2026-10-16):
+    // `rowDepths` (below) already trims EVERY row's own d1 by `halfJoint` for a closed frame -- band0's own regular
+    // pieces stop half a joint short of the raw naturalWidth x rows, same as every other band/row boundary here,
+    // leaving the mortar joint to whatever comes next. The quoin's stones used the UNTRIMMED value, so their own
+    // far edge landed a half-joint off from where band0's real pieces (and the wall/next band past them) actually
+    // end -- fine on the plain rect (MEASURED 0/0/0 regardless, the mismatch there happened to fall inside existing
+    // tolerance), a real ~0.1 sq in gap on T12's tighter top corner. Trimmed here, matching the row's own d1 exactly.
+    const bandWidthIn = naturalWidth * rows - set.grout.widthIn / 2;
     if (isAreaBand) {
       // opts.cornerCutsOnly counts the ROWS' joints only (below); an area band's stones never add to them, and this
       // mode returns the counts alone -- so its stones are not laid (MEASURED 2026-10-07: the panel's corner / fan
@@ -1114,7 +1126,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
       if (opts.planOnly) continue; // T86 (seat E): the plan only -- the bands, the fit rule and the wall's inner path, no pieces
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
-        const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, rowCornerStyle(cornerStyle, bandIndex, row), bandIndex, rowSequence, forcedFStart, closed);
+        const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, rowCornerStyle(cornerStyle, bandIndex, row), bandIndex, rowSequence, forcedFStart, closed, null, bandWidthIn);
         cornerCuts += joints.filter((j) => j && (j.isButt || j.isBlock)).length;
         fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
@@ -1125,6 +1137,7 @@ export function bricksContourBands(primitives, bands, opts) {
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, rowCornerStyle(cornerStyle, bandIndex, row), bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
         (opts.blockOff && opts.blockOff.get(ribbonKey)) || null, // an inner L that cannot fit: that corner's mitre (wrapInnerQuoins)
+        bandWidthIn, // Fred 2026-10-16 (seat E, via the advisor): a toothed corner's own full band width (buildQuoinTeeth)
       );
       // frame motifs: each piece of a motif band carries its relief (band-motif.js tagMotifRow)
       // a motif-cut row drops a run piece under its own floor (band-motif.js motifFloorKeep: an end closer the mitre left a

@@ -2985,7 +2985,7 @@ const FRAME_PRESET_LABELS = {
   // quoin variants of QUOIN_VARIANT_OF are named from their base below
   butt_frame: 'Soldier · butt',
   quoin_corners: 'Soldier · quoin',
-  toothed_corners: 'Soldier · toothed',
+  toothed_corners: 'Soldier · stepped',
   double_course: 'Soldier x2 · lapped',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',

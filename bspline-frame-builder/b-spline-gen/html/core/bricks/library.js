@@ -476,7 +476,7 @@ export const QUOIN_VARIANT_OF = Object.freeze([
  *  teeth, primitive-ribbon.js QUOIN_TOOTH). */
 export const QUOIN_VARIANTS = Object.freeze([
   Object.freeze({ suffix: 'quoin', cornerStyle: 'block', label: 'quoin' }),
-  Object.freeze({ suffix: 'toothed', cornerStyle: 'toothed', label: 'toothed' }),
+  Object.freeze({ suffix: 'toothed', cornerStyle: 'toothed', label: 'stepped' }), // Fred 2026-10-16 (seat E, via the advisor): display label only -- suffix/cornerStyle (preset ids, saved boards) stay 'toothed'
 ]);
 const cornered = (bands, cornerStyle) => {
   const v = bands.map((b) => ({ ...b, cornerStyle }));

@@ -625,7 +625,7 @@ export const FRAME_CORNERS = Object.freeze([
   { id: 'mitre', label: 'Mitre', title: 'Mitre: the bricks meet on the diagonal' },
   { id: 'butt', label: 'Butt', title: 'Butt: one side runs through, the other stops square against it' },
   { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
-  { id: 'toothed', label: 'Toothed', title: 'Toothed quoin: the corner block with long and short teeth up each side' }, // Fred 2026-10-15
+  { id: 'toothed', label: 'Stepped corner', title: 'Stepped corner: long and short stones stepping in from the corner, inside the band' }, // Fred 2026-10-15; renamed 2026-10-16 (seat E, via the advisor) -- Fred: real quoins are a wall-edge feature, not a frame corner. Internal id stays 'toothed'.
   { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
 ]);
 /* Item 33's FOLDED_FRAME_PRESETS (butt_frame / quoin_corners folded into Soldier + the Corners picker) is RETIRED with

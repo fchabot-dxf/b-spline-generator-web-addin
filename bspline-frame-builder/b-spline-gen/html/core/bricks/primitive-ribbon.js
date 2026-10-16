@@ -470,7 +470,7 @@ const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already 
  * uses, for the exact same reason: an id assigned here could collide with one the main loop hands
  * out later).
  */
-function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
+function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, blockSizeOverride) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
   const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
@@ -481,7 +481,10 @@ function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
   // Convex = the next run turns toward the inside: tCur along the previous line's inward normal.
   const convex = tCur.x * primitives[prevIdx].nx + tCur.y * primitives[prevIdx].ny > 0;
   if (dot > BUTT_SQUARE_MAX_DOT || !convex) return null; // the mitre
-  const blockSize = QUOIN_SET.brickLengthIn;
+  // Fred 2026-10-16 (seat E, via the advisor; brick-sized teeth): a TOOTHED corner's own square is the outer
+  // band's own brick length (blockSizeOverride, buildQuoinTeeth's `pitch`), not QUOIN_SET's fixed 1.1 in -- the
+  // plain BLOCK style (no teeth) is untouched, still QUOIN_SET, same as every saved board laid it before.
+  const blockSize = blockSizeOverride || QUOIN_SET.brickLengthIn;
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
   // 21b: each run must be longer than the block plus a joint, or its cut lands past its own end and its pieces
   // lie under the block (T5 quoin 0.75 in: a 0.139 sq in overlap at each bottom corner, the bottom line shorter
@@ -532,13 +535,19 @@ const CURVE_QUOIN_TURN_DEG = Object.freeze({ min: 20, max: 60 });
 // the arc too, T10's measured 1.92 sq in against the straight corner's 1.21): its reach along the arc is solved so its
 // area is this share of the square quoin at the same stack (block x depth); the side keeps the full block
 const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16, areaOfSquare: 1 });
-/** Fred 2026-10-15 (TOOTHED quoins, via the advisor): the 'toothed' corner is the block's corner square plus `courses`
- *  teeth along EACH bar, alternating across-the-bar widths of `short` and `long` QUOIN_SET units (each one unit along the
- *  bar, a joint between), the band's bricks filling round them (contour-bands.js cutUnderQuoins). The first tooth is the
- *  SHORT one: two long first teeth would overlap inside the corner ((s - J)^2), and with the other bar's short tooth
- *  beside the square the corner course itself reads long -- long / short / long / short up each bar. */
+/** Fred 2026-10-16 (seat E, via the advisor): two corrections past the first ("the yellow blocks are too big" --
+ *  QUOIN_SET units; then a crossed-teeth bug reading depth off `naturalWidth`, which swaps axes with the along-bar
+ *  pitch for 'soldier', library.js:368). Fred's THIRD read (v2 still poked past the band's own outer edge as a
+ *  thin strip; he wants the classic long-and-short quoin, fully INSIDE the band): from the corner square, each
+ *  bar's first `courses` band SLOTS become quoin stones -- `alongBricks` of the band's own brick pitch long (so
+ *  they land on the band's own joints, not a foreign size), their DEPTH ACROSS the band alternating `depth.long`
+ *  (the full band width -- flush with the band's own inner edge) and `depth.short` (half of it -- the band's own
+ *  bricks fill the rest of that slot, `cutUnderQuoins`/`mergeRemnant`, same as any partial overlap). LONG first
+ *  (unlike the old along-bar alternation, there's no overlap risk here to dodge: the square already reaches the
+ *  band's own full width, so a long stone beside it is just as flush, never deeper). Corner square = the band's
+ *  own full width, SQUARE (buildBlockJoint's `blockSizeOverride`) -- the classic quoin block, not a brick unit. */
 export const QUOIN_TOOTH = Object.freeze({
-  long: 2, short: 1, courses: 3,
+  alongBricks: 1, depth: Object.freeze({ long: 1, short: 0.5 }), courses: 3,
   // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL on narrow necks/tabs): SHORT-BAR FALLBACK. A bar's own two
   // ends (both corners sharing it) each lay their natural courses-that-fit stack, same as always; but when the two
   // stacks would leave less than `minBarFactor` band bricks between them, the regular band can't land a real piece
@@ -551,28 +560,46 @@ export const QUOIN_TOOTH = Object.freeze({
 });
 /** A toothed corner's teeth (QUOIN_TOOTH): plain polygons, built beside `buildBlockJoint`'s square at the same convex
  *  line-line corner. Each bar keeps the teeth whose far end lies within its own half of the run (the corner at its other
- *  end takes the other half); a tooth past it is not laid -- a short run lays fewer teeth, never a clipped one. */
-function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch) {
-  const s = QUOIN_SET.brickLengthIn, J = nominalJoint;
+ *  end takes the other half); a tooth past it is not laid -- a short run lays fewer teeth, never a clipped one.
+ *  `pitch` (the regular BAND's own along-bar step, possibly axis-swapped for 'soldier') sizes the stones ALONG the
+ *  bar -- here that's exactly right (QUOIN_TOOTH.alongBricks of it): the stones land on the band's own joints, same
+ *  as the short-bar-fallback veto that already reads it. `bandWidthIn` (the outer band's own real total width,
+ *  `naturalWidth * rows`) is the stones' DEPTH across the band (long = all of it, short = half) and the square's
+ *  own side. */
+function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch, bandWidthIn) {
+  const J = nominalJoint;
+  const blockSize = bandWidthIn; // buildBlockJoint's own blockSizeOverride for 'toothed' -- the classic quoin block
   const lenOf = (p) => Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y);
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
   const bars = [
     { t: tangentAt(curPrim, o), sign: 1, n: { x: curPrim.nx, y: curPrim.ny }, len: lenOf(curPrim) }, // cur STARTS at o
     { t: tangentAt(prevPrim, o), sign: -1, n: { x: prevPrim.nx, y: prevPrim.ny }, len: lenOf(prevPrim) }, // prev ENDS at o
   ];
+  // each course's own along-bar slot, ONE brick pitch long (QUOIN_TOOTH.alongBricks), one joint past the previous
+  // one (or the square for i=0) -- BOTH bars share this exact sequence (same pitch), so the elbow infill below
+  // (if ever needed again) could reuse it unchanged.
+  const slots = [];
+  {
+    let pos = blockSize;
+    for (let i = 0; i < QUOIN_TOOTH.courses; i++) {
+      const a0 = pos + J, a1 = a0 + QUOIN_TOOTH.alongBricks * pitch;
+      slots.push([a0, a1]);
+      pos = a1;
+    }
+  }
   const teeth = [];
   const courseCounts = [];
-  let cornerAt = null; // the first bar's own (a, c) -> point function, reused below for the elbow infill
   const barResults = bars.map(({ t, sign, n, len }) => {
     const at = (a, c) => ({ x: o.x + sign * a * t.x + c * n.x, y: o.y + sign * a * t.y + c * n.y });
-    if (!cornerAt) cornerAt = at;
     const barTeeth = [];
     let courses = 0, a1Last = null;
-    for (let i = 0; i < QUOIN_TOOTH.courses; i++) {
-      const a0 = s + J + i * (s + J), a1 = a0 + s;
+    for (let i = 0; i < slots.length; i++) {
+      const [a0, a1] = slots[i];
       if (a1 > len / 2 - J / 2) break;
-      const w = (i % 2 === 0 ? QUOIN_TOOTH.short : QUOIN_TOOTH.long) * s;
-      barTeeth.push([at(a0, 0), at(a1, 0), at(a1, w), at(a0, w)]);
+      // LONG first (Fred's sketch): flush with the square's own full-width reach, so no overlap risk to dodge --
+      // unlike the old along-bar alternation, a long stone here is never deeper than its neighbour, just as flush.
+      const depth = (i % 2 === 0 ? QUOIN_TOOTH.depth.long : QUOIN_TOOTH.depth.short) * bandWidthIn;
+      barTeeth.push([at(a0, 0), at(a1, 0), at(a1, depth), at(a0, depth)]);
       a1Last = a1; courses++;
     }
     // SHORT-BAR FALLBACK (QUOIN_TOOTH.minBarFactor, declared above): this bar's OWN natural stack, doubled (both ends
@@ -592,17 +619,11 @@ function buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch) {
     if (cornerOk) teeth.push(...barTeeth);
     courseCounts.push(cornerOk ? courses : 0);
   }
-  // Fred 2026-10-16 (seat E, via the advisor; QUOIN_FULL measured a bare pocket): each bar's teeth reach INWARD only
-  // across their own bar, so at a course index BOTH bars place a tooth on, the strip the OTHER bar leaves short of
-  // its own course's reach is uncovered by either -- a diagonal elbow pocket, course i's own along-run square. The
-  // two bars share the SAME course geometry (a0, a1), so one bar's own `at` with its own a reused as its c closes
-  // it exactly at a 90 deg corner, consistent with how the block square (buildBlockJoint) already approximates any
-  // other angle.
-  const elbowCourses = Math.min(courseCounts[0], courseCounts[1]);
-  for (let i = 0; i < elbowCourses; i++) {
-    const a0 = s + J + i * (s + J), a1 = a0 + s;
-    teeth.push([cornerAt(a0, a0), cornerAt(a1, a0), cornerAt(a1, a1), cornerAt(a0, a1)]);
-  }
+  // Fred 2026-10-16 (seat E, via the advisor; brick-sized teeth -- was long/short QUOIN_SET units reaching a
+  // depth on the SAME scale as the along-bar width, which is why the old elbow infill's `[a0,a1] x [a0,a1]`
+  // square closed its pocket exactly): depth (`w`, one course) and along-bar length (a brick) are now different
+  // units, so that old square no longer applies as-is -- measuring on the real engine (bareGround) before
+  // guessing a replacement.
   return teeth;
 }
 /**
@@ -1209,7 +1230,7 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  *  carries `isButt`, a block's `isBlock`; a mitre, a fan or no joint at all carries neither. `blockOff` (a Set of corner
  *  indices, the corner before primitive `curIdx`): a 'block' row lays those corners as the mitre (contour-bands.js: an
  *  inner band's L that cannot fit, seat E 2026-10-10); absent = every corner as before. */
-export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, blockOff = null) {
+export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, blockOff = null, bandWidthIn) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, d1, closed)) liveIndices.push(i);
@@ -1287,8 +1308,8 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
     const blockish = cornerStyle === 'block' || cornerStyle === 'toothed';
     if (blockish && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
-      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
-      if (block && cornerStyle === 'toothed') return { ...block, teeth: buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch) };
+      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, cornerStyle === 'toothed' ? bandWidthIn : undefined);
+      if (block && cornerStyle === 'toothed') return { ...block, teeth: buildQuoinTeeth(primitives, prevIdx, curIdx, o, nominalJoint, pitch, bandWidthIn) };
       if (block) return block;
     }
     // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint); a toothed
@@ -1363,8 +1384,8 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
  * @param {Set<number>} [blockOff] — 'block' corners laid as the mitre (ribbonJoints)
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0, cutEnds = null, blockOff = null) {
-  const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed, blockOff);
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0, cutEnds = null, blockOff = null, bandWidthIn) {
+  const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed, blockOff, bandWidthIn);
   if (liveIndices.length === 0) return { pieces: [], nextId: startId };
   const m = liveIndices.length;
 
