@@ -16,14 +16,18 @@
  *   scope       -- 'board' (P itself) | 'layer' (one lattice layer's own pattern) | 'frame' (P.frame)
  *   appPath     -- a dot path INTO that scope's object (core/pull-changelist.js's own getPath/setPath)
  *   label, unit -- the change-list row's own text
+ *   kind        -- 'layer' scope only: the editor-lattice-pattern.js rewidthOwnedKind(s) kind ('rails'/'ties'/
+ *                  'nodes') this row's own SVG elements need re-widthed to match -- declared here, next to the
+ *                  appPath it already rides with, so main/pull-changelist.js's Apply never hand-rolls its own
+ *                  fusionParam -> kind switch.
  */
 export const PULL_MAP = Object.freeze([
   Object.freeze({ fusionParam: 'widthIn', scope: 'board', appPath: 'widthIn', label: 'Width', unit: 'in' }),
   Object.freeze({ fusionParam: 'heightIn', scope: 'board', appPath: 'heightIn', label: 'Height', unit: 'in' }),
 
-  Object.freeze({ fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in' }),
-  Object.freeze({ fusionParam: 'rail_width', scope: 'layer', appPath: 'widths.rails', label: 'Rail width', unit: 'in' }),
-  Object.freeze({ fusionParam: 'tie_width', scope: 'layer', appPath: 'widths.ties', label: 'Tie width', unit: 'in' }),
+  Object.freeze({ fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in', kind: 'nodes' }),
+  Object.freeze({ fusionParam: 'rail_width', scope: 'layer', appPath: 'widths.rails', label: 'Rail width', unit: 'in', kind: 'rails' }),
+  Object.freeze({ fusionParam: 'tie_width', scope: 'layer', appPath: 'widths.ties', label: 'Tie width', unit: 'in', kind: 'ties' }),
 
   Object.freeze({ fusionParam: 'frame_thickness', scope: 'frame', appPath: 'params.frame_thickness', label: 'Frame thickness', unit: 'in' }),
   Object.freeze({ fusionParam: 'boundingboxoffset', scope: 'frame', appPath: 'params.boundingboxoffset', label: 'Trim offset', unit: 'in' }),

@@ -3136,6 +3136,37 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
 }
 
 /**
+ * Pull from Fusion, step (b) (seat D 2026-10-16; advisor 45, Fred): the multi-LAYER sibling of
+ * `rewidthOwnedKinds` above -- that one only batches several KINDS within ONE layer; Apply from the Pull
+ * change-list dialog can touch several LAYERS' widths in one user action and still needs exactly one editor
+ * undo step, same "every internal mutation is undo-silent; pushState() fires exactly once, at the end" shape.
+ * NODE-D (rewidthOwnedKind's own convention, not rewidthOwnedKinds' -- that one's own 'node' branch is never
+ * actually exercised with a 'nodes' kind by any existing caller, and is missing the /2): `value` here is always
+ * PATTERN.widths.nodeDiameter, a DIAMETER -- divided by 2 for the circle's own `r` attribute.
+ * @param {Array<[layerId:string, kind:string, value:number]>} layerKindValueTriples
+ * @returns {number} total elements re-widthed, across every layer and kind.
+ */
+export function rewidthOwnedKindsAcrossLayers(editor, layerKindValueTriples) {
+  let total = 0;
+  for (const [layerId, kind, value] of layerKindValueTriples) {
+    const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
+    if (!latticeKind) continue;
+    const patternLayer = resolvePatternLayer(editor, layerId);
+    const owned = _ownedOnLayer(editor, _kindLayerId(patternLayer && patternLayer.pattern, layerId, kind), latticeKind);
+    for (const ch of owned) {
+      if (latticeKind === 'node') ch.attr('r', value / 2);
+      else ch.attr('stroke-width', value);
+      total++;
+    }
+  }
+  if (total > 0) {
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  }
+  return total;
+}
+
+/**
  * "Detach all" (panel action): strips OWNERSHIP_ATTR from every element
  * the given LAYER currently owns, WITHOUT moving or deleting anything —
  * the bulk, gesture-free counterpart to the per-drag detach a user might

@@ -39,10 +39,22 @@ describe('Pull from Fusion never resizes the board by a fallback', () => {
     onSketchPulled(reply({ widthIn: 7, heightIn: 9, sizeSource: null }));
     expect(applyParam).not.toHaveBeenCalled();
   });
-  it('this board declares its own size (sizeSource fusion): the board follows it', () => {
+  it('this board declares its own size (sizeSource fusion): the change-list dialog offers it; nothing applies until Apply', () => {
     window.svgEditor = editor().ed;
     onSketchPulled(reply({ widthIn: 10, heightIn: 12, sizeSource: 'fusion' }));
+    expect(applyParam).not.toHaveBeenCalled(); // Fred: "nothing changes until Apply"
+    const overlay = document.getElementById('pullChangeListOverlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay.textContent).toContain('Width');
+    overlay.querySelector('.cad-btn-primary').click(); // Apply
     expect(applyParam.mock.calls).toEqual([['widthIn', 10], ['heightIn', 12]]);
+  });
+
+  it('no size on this board (sizeSource null): no dialog row offers to resize it either', () => {
+    window.svgEditor = editor().ed;
+    onSketchPulled(reply({ widthIn: 10, heightIn: 12, sizeSource: null }));
+    const overlay = document.getElementById('pullChangeListOverlay');
+    expect(overlay === null || !overlay.textContent.includes('Width')).toBe(true);
   });
 });
 

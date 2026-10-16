@@ -36,7 +36,7 @@ describe('layerParamsFor: one layer\'s own slice of a flat boardParams dict', ()
 describe('compareScope / diffScope: changed vs kept, against a value this small is noise', () => {
   it('a real change: from/to set, changed true', () => {
     const rows = compareScope('layer', { node_diameter: 0.3 }, { widths: { nodeDiameter: 0.25 } });
-    expect(rows).toEqual([{ fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in', from: 0.25, to: 0.3, changed: true }]);
+    expect(rows).toEqual([{ fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in', kind: 'nodes', from: 0.25, to: 0.3, changed: true }]);
   });
 
   it('matches already: changed false, still returned by compareScope (kept-count material), filtered out by diffScope', () => {
@@ -135,6 +135,23 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
 
   it('no boardParams / no size at all: an empty, harmless change list', () => {
     const result = buildChangeList({}, { P, layers: [layer1], frame });
-    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0 });
+    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0 });
+  });
+});
+
+describe('curveCount: rails move freely in Fusion (no driving param) -- informational only, never applied', () => {
+  it('counts non-construction curves only -- a construction line was never a rail to begin with', () => {
+    const pullResult = {
+      curves: [
+        { type: 'line', d: 'M 0 0 L 1 0', isConstruction: false },
+        { type: 'line', d: 'M 0 1 L 1 1', isConstruction: false },
+        { type: 'line', d: 'M 0 2 L 1 2', isConstruction: true },
+      ],
+    };
+    expect(buildChangeList(pullResult, { P: {}, layers: [], frame: null }).curveCount).toBe(2);
+  });
+
+  it('no curves at all: 0, not undefined', () => {
+    expect(buildChangeList({}, { P: {}, layers: [], frame: null }).curveCount).toBe(0);
   });
 });

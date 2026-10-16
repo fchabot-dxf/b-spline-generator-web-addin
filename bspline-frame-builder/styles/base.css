@@ -2151,6 +2151,23 @@ input[type="range"].cad-slider::-webkit-slider-thumb {
     flex-shrink: 0;
 }
 
+/* Pull from Fusion's change-list dialog (step (b), Fred-approved mockup shots/seatD/pull/01_desktop_changelist.png):
+   a .cad-modal-body's own content -- grouped rows (Board / one per lattice layer / Wood frame), a divider between
+   groups, an informational note (rails moved, not pulled yet), a kept/not-mapped summary line. */
+.pull-changelist-body { padding: 14px 16px; overflow-y: auto; max-height: 60vh; font-size: 12px; }
+.pull-changelist-group-header {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: #666;
+    margin-bottom: 6px;
+}
+.pull-changelist-row { display: flex; justify-content: space-between; padding: 3px 0; }
+.pull-changelist-divider { height: 1px; background: #e2e2e2; margin: 10px 0; }
+.pull-changelist-note, .pull-changelist-summary { color: #888; font-size: 11px; line-height: 1.5; }
+.pull-changelist-note { margin-bottom: 8px; }
+
 .cad-btn.active {
     background-color: var(--cad-accent-blue) !important;
     color: white !important;

@@ -125,5 +125,12 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null }) {
     notMappedCount++;
   }
 
-  return { boardRows, layerGroups, frameRows, keptCount, notMappedCount };
+  // advisor 2026-10-16: rails move freely in Fusion now (no driving param -- core/pull-map.js's own doc comment)
+  // -- their new positions come back as GEOMETRY (pulled curves), not a param row. The rails-lock slice (Send-
+  // tagged rail ids, matched and applied) isn't built yet; until it lands this is INFORMATIONAL ONLY -- Apply
+  // never touches geometry. Non-construction curves only (the carved/drawn ones -- construction geometry was
+  // never a rail to begin with, same filter pull-sketch.js's own onSketchPulled already applies).
+  const curveCount = (pullResult.curves || []).filter((c) => !c.isConstruction).length;
+
+  return { boardRows, layerGroups, frameRows, keptCount, notMappedCount, curveCount };
 }
