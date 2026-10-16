@@ -10,7 +10,7 @@ import { markDirty } from '../core/dirty.js';
 import { JOB_STEP_KINDS, JOB_DELTA_WEIGHTS, jobProjectOf, deriveJobSteps, normalizeJobTimeline, groupRuns, dependencyMarks, dependencyNote } from '../core/job-timeline.js';
 import { decodeLayersAttr } from '../editor/layers-attr.js';
 import { ensureUndoBaseline, takeSnapshot } from '../core/history.js';
-import { syncJobLocks, syncLayerLocks } from './job-timeline-lock.js';
+import { syncJobLocks, syncLayerLocks, syncLatticeTabLock } from './job-timeline-lock.js';
 import { sectionColor } from './section-themes.js';
 import { isJobTimelineEnabled } from '../core/job-timeline-enabled.js';
 import { syncCutBaselines, computeWeightedDelta } from '../core/job-timeline-baselines.js';
@@ -225,6 +225,7 @@ export function renderJobStrips(doc = typeof document !== 'undefined' ? document
   const { steps, order, head } = syncJobTimeline();
   syncJobLocks(steps, order, head, moveHeadBefore, doc);
   syncLayerLocks(steps, order, head, typeof window !== 'undefined' ? window.svgEditor : null);
+  syncLatticeTabLock(steps, order, head, typeof window !== 'undefined' ? window.svgEditor : null, moveHeadBefore, doc);
   if (!_state.folded) _state.folded = _readFolded();
   const byId = new Map(steps.map((s) => [s.id, s]));
   const marks = new Map(dependencyMarks(order, steps).map((m) => [m.stepId, dependencyNote(m, steps)]));

@@ -1052,6 +1052,9 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .job-readonly[data-job-lock-banner="false"]::after { content: ' 🔒'; font-size: 0.85em; }
 .job-lock-banner {
     display: flex;
+    flex-wrap: wrap; /* step 3 slice 3 (live screenshot, the 236px editor Lattice panel): no-wrap let the CTA
+                         button overflow/overlap the text instead of dropping to its own row -- every existing
+                         sidebar banner already reads fine wrapped (it's wide enough the CTA rarely needs to) */
     align-items: flex-start;
     gap: 8px;
     margin-bottom: 12px;
