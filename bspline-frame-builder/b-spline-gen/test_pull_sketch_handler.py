@@ -37,9 +37,23 @@ def _pt(x_in, y_in):
     return types.SimpleNamespace(x=x_in * IN, y=y_in * IN, z=0)
 
 
-def _line(a, b, construction=False):
+class _Attrs:
+    """Rails custom-position + lock slice: the minimal attributes.itemByName('FrameBuilder', 'ID') a real Fusion
+    entity exposes (build_context.py's ctx.set_id writes it) -- None when nothing was ever set, same as the real
+    Fusion API returning no attribute item."""
+    def __init__(self, rail_id=None):
+        self._rail_id = rail_id
+
+    def itemByName(self, group, name):
+        if (group, name) == ('FrameBuilder', 'ID') and self._rail_id is not None:
+            return types.SimpleNamespace(value=self._rail_id)
+        return None
+
+
+def _line(a, b, construction=False, rail_id=None):
     return types.SimpleNamespace(startSketchPoint=types.SimpleNamespace(geometry=_pt(*a)),
-                                 endSketchPoint=types.SimpleNamespace(geometry=_pt(*b)), isConstruction=construction)
+                                 endSketchPoint=types.SimpleNamespace(geometry=_pt(*b)), isConstruction=construction,
+                                 attributes=_Attrs(rail_id))
 
 
 class _BadLine:
@@ -190,6 +204,22 @@ def test_the_curve_types_it_does_not_read_are_reported_and_a_failed_curve_is_cou
     assert res['skipped'] == {'sketchEllipses': 2, 'sketchControlPointSplines': 1}
     assert res['failed'] == {'line': 1}
     assert len(res['curves']) == 1
+
+
+# Rails custom-position + lock slice (seat D 2026-10-16; advisor 45): a line's own FrameBuilder:ID (set_id's
+# own `override_id`, already written by every lattice Send -- sketch_manifest_builder.py) rides back on the
+# pulled curve as `railId`, so a later Pull can match it to the exact rail it came from, not guess by position.
+def test_a_lines_own_frame_builder_id_comes_back_as_railid_on_the_pulled_curve(monkeypatch):
+    monkeypatch.setattr(bsg, '_log', lambda msg: None)
+    monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(activeEditObject=None, userInterface=None), raising=False)
+    d = Design()
+    d.rootComponent.sketches = [_sketch('plain', d.rootComponent, lines=[
+        _line((0, 0), (1, 0), rail_id='rail7'), _line((0, 1), (1, 1)),  # the second was never tagged (a legacy/hand-drawn curve)
+    ])]
+    d.param('widthIn', 7); d.param('heightIn', 9)
+    monkeypatch.setattr(bsg, '_active_design', lambda: d)
+    res = bsg.PaletteHTMLEventHandler()._handle_pull_sketch({'board': {'id': ''}})
+    assert [c['railId'] for c in res['curves']] == ['rail7', None]
 
 
 def test_a_fitted_spline_reads_its_range_as_ok_start_end_and_is_imported(monkeypatch):

@@ -1720,6 +1720,21 @@ PULL_SKETCH_UNSUPPORTED = ('sketchFixedSplines', 'sketchControlPointSplines', 's
                            'sketchEllipticalArcs', 'sketchConicCurves')
 
 
+def _frame_builder_id(entity):
+    """Rails custom-position + lock slice (seat D 2026-10-16; advisor 45): the Send-tagged id a rail's centerline
+    carries (ctx.set_id's own 'FrameBuilder'/'ID' attribute, fb_engine/build_context.py -- already written on
+    every lattice rail/tie/node Send, by editor-sketch-manifest.js's own manifest `id`, now a stable per-rail
+    value -- the write path (sketch_manifest_builder.py's _create_slot_entity) was already generic, so no Python
+    change was needed to START writing it. None when
+    absent (a hand-drawn/legacy curve, or any read failure). Rails only -- only they move freely in Fusion now
+    (core/pull-map.js's own doc comment), so only they need a Pull matcher."""
+    try:
+        attr = entity.attributes.itemByName('FrameBuilder', 'ID')
+        return attr.value if attr else None
+    except Exception:
+        return None
+
+
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
     def __init__(self):
         super().__init__()
@@ -2149,7 +2164,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     curves_out.append({
                         'type': 'line',
                         'd': f"M {x1} {y1} L {x2} {y2}",
-                        'isConstruction': bool(line.isConstruction)
+                        'isConstruction': bool(line.isConstruction),
+                        'railId': _frame_builder_id(line),
                     })
                 except Exception as e:
                     _failed('line', e)

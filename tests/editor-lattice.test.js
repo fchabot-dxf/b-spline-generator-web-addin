@@ -21,6 +21,7 @@ import {
   findNodeAt,
   emitNode,
   emitSegment,
+  RAIL_ID_ATTR,
   ORIENTATIONS,
   orient,
   isLatticePoint,
@@ -359,6 +360,31 @@ describe('emitSegment (SE7c)', () => {
     const { editor, calls } = mockEditorForEmit([], 1.0);
     emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
     expect(calls.stroke[0].width).toBeCloseTo(LATTICE_STYLE.rail.widthFactor * 1.0, 10);
+  });
+
+  // Pull from Fusion, rails custom-position + lock slice (seat D 2026-10-16): a rail gets a stable RAIL_ID_ATTR,
+  // minted once at emit time (editor._nextRailId) -- this is the id Send tags onto the Fusion sketch curve
+  // (FrameBuilder:ID), so a later Pull can match it back to this exact rail, not guess from geometry.
+  describe('RAIL_ID_ATTR: a rail\'s own Send-tag identity', () => {
+    it('a rail gets a RAIL_ID_ATTR; a tie does not', () => {
+      const { editor, emitted } = mockEditorForEmit([], 0.25);
+      emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
+      const railIdCalls = emitted.filter(([k]) => k === RAIL_ID_ATTR);
+      expect(railIdCalls).toHaveLength(1);
+      expect(railIdCalls[0][1]).toBe('rail1');
+
+      emitted.length = 0;
+      emitSegment(editor, 'tie', { x: 0, y: 0 }, { x: 0, y: 1 });
+      expect(emitted.filter(([k]) => k === RAIL_ID_ATTR)).toEqual([]);
+    });
+
+    it('two rails get two DIFFERENT, incrementing ids -- never reused across the same editor session', () => {
+      const { editor, emitted } = mockEditorForEmit([], 0.25);
+      emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
+      emitSegment(editor, 'rail', { x: 0, y: 1 }, { x: 1, y: 1 });
+      const ids = emitted.filter(([k]) => k === RAIL_ID_ATTR).map(([, v]) => v);
+      expect(ids).toEqual(['rail1', 'rail2']);
+    });
   });
 });
 

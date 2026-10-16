@@ -272,7 +272,7 @@ export function latticeFromDrawn(pieces, spacing, generated = null) {
   const seg = (kind) => (p) => {
     const a = L(p.p1), b = L(p.p2);
     return { kind, a, b, aContourHit: hits.get(key(kind, a)), bContourHit: hits.get(key(kind, b)),
-      railGroup: lineOf(a, b) };
+      railGroup: lineOf(a, b), railId: p.railId || undefined };
   };
   return {
     segments: [...(pieces.rails || []).map(seg('rail')), ...(pieces.ties || []).map(seg('tie'))],
@@ -418,7 +418,12 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   const railAxisGroupsSeen = new Set();
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
-    const id = toEntityId('rail', idx);
+    // rails-lock slice: `seg.railId` (present only when built from `drawn` pieces -- latticeFromDrawn, which
+    // carries each piece's own RAIL_ID_ATTR) is this rail's STABLE Send-tag identity, minted once at emit time;
+    // falls back to the old positional id for a pure/generated build (no real DOM element to tag -- parity
+    // sweeps, Pull-replay scripts). ctx.set_id's own `override_id` (sketch_manifest_builder.py) already writes
+    // whichever string this is onto the Fusion entity's `FrameBuilder:ID` attribute -- no Python change needed.
+    const id = seg.railId || toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });

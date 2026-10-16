@@ -44,6 +44,7 @@ import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findBoundaryElements } from '../editor/editor-lattice-pattern.js';
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
+import { RAIL_ID_ATTR } from '../editor/editor-lattice.js';
 import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
 import { showToast } from '../core/toast.js';
 import { brickPieceLayers, BRICK_GEN_ATTR, groutNodes, GROUT_REGION_ATTR } from '../editor/editor-brick-tool.js';
@@ -257,8 +258,12 @@ export function _brickOutlineSvgs(editor) {
 function _drawnPiecesForLayer(editor, pattern, layerId) {
     const kindLayerId = (kind) => (pattern && pattern.layers && pattern.layers[kind]) || layerId;
     const num = (el, k) => parseFloat(el.node.getAttribute(k));
+    // rails-lock slice: a rail's own RAIL_ID_ATTR (minted at emit time, editor-lattice.js's own emitSegment) rides
+    // along so the manifest can Send-tag it (editor-sketch-manifest.js's manifestFromLattice) -- absent on ties,
+    // read here as a no-op for them (plain object property, never consumed downstream for a tie piece).
     const lines = (latticeKind, patternKind) => _ownedOnLayer(editor, kindLayerId(patternKind), latticeKind).map((el) => ({
         p1: { x: num(el, 'x1'), y: num(el, 'y1') }, p2: { x: num(el, 'x2'), y: num(el, 'y2') },
+        railId: el.node.getAttribute(RAIL_ID_ATTR) || null,
     }));
     const nodes = _ownedOnLayer(editor, kindLayerId('nodes'), 'node').map((el) => ({
         c: { x: num(el, 'cx'), y: num(el, 'cy') },

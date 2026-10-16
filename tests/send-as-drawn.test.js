@@ -60,6 +60,20 @@ describe('F17 P1: a lattice is sent AS DRAWN', () => {
     for (const id of ['rail0', 'rail2']) expect(slot(after, id)).toEqual(slot(before, id)); // only that rail moved
   });
 
+  // Pull from Fusion, rails custom-position + lock slice (seat D 2026-10-16): a rail drawn with its own
+  // RAIL_ID_ATTR (editor-lattice.js's emitSegment, minted at creation) sends the FUSION ENTITY tagged with
+  // THAT id -- not the positional rail0/rail1/... a later Pull can then match the moved curve back to this
+  // exact rail by id, never by guessing from its new position.
+  it('a rail\'s own RAIL_ID_ATTR becomes its manifest entity id (and the Fusion FrameBuilder:ID it carries), not the positional one', () => {
+    const drawn = drawnFromPattern(BOX, REGION);
+    drawn.rails[1].railId = 'rail-uuid-abc123';
+    const manifest = _fusionLayerManifest(editorWith(BOX, drawn), { id: 'railsL' });
+    expect(slot(manifest, 'rail-uuid-abc123')).toBeTruthy();
+    expect(slot(manifest, 'rail1')).toBeUndefined(); // the positional id is NOT also present -- one id, not two
+    // the other rails, never given their own railId, still fall back to the positional id -- unaffected
+    for (const id of ['rail0', 'rail2']) expect(slot(manifest, id)).toBeTruthy();
+  });
+
   it('a deleted rail is not sent, and the ties that touched only it lose their coincidents to it', () => {
     const drawn = drawnFromPattern(BOX, REGION);
     const full = buildSketchManifest({ ...BOX }, REGION, { drawn });

@@ -79,6 +79,16 @@ export const LATTICE_STYLE = {
 /** data-lattice attribute values: 'rail' | 'tie' | 'node'. */
 export const LATTICE_ATTR = 'data-lattice';
 
+/** Pull from Fusion, rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided
+ *  design): a rail's own stable identity, minted once at emit time (editor._nextRailId, a per-editor monotonic
+ *  counter -- layers.js's own `_nextLayerId` convention) and carried as a Fusion-side `FrameBuilder:ID` attribute
+ *  through Send (editor-sketch-manifest.js's manifest `id` already becomes that attribute's value -- no Python
+ *  change needed). A regenerate mints a FRESH set (every rail is recreated -- editor-lattice-pattern.js's own
+ *  "drops the layer, mints fresh ones" convention), which is fine: the id only needs to survive from ONE Send to
+ *  the Pull that reads it back, never across a Generate. Ties/nodes don't get one -- only rails move freely in
+ *  Fusion (core/pull-map.js's own doc comment), so only rails need a Pull matcher. */
+export const RAIL_ID_ATTR = 'data-rail-id';
+
 /** SE7h (Fred: "invert rails and ties so rails are vertical"): the two
  *  declared lattice orientations. 'horizontal' (default) is the frame
  *  every algorithm below is written in — rails constant-j (spanning i),
@@ -418,11 +428,16 @@ export function emitSegment(editor, kind, a, b, widthOverride) {
   const layer = ensureActiveLayer(editor);
   const spacing = editor._grid?.spacing || GRID_DEFAULTS.spacing;
   const width = widthOverride != null ? widthOverride : LATTICE_STYLE[kind].widthFactor * spacing;
-  return editor._sketchLayer
+  const el = editor._sketchLayer
     .line(a.x, a.y, b.x, b.y)
     .stroke({ color: editor._color, width, linecap: 'round' })
     .attr('data-layer', layer)
     .attr(LATTICE_ATTR, kind);
+  if (kind === 'rail') {
+    editor._nextRailId = (editor._nextRailId || 0) + 1;
+    el.attr(RAIL_ID_ATTR, `rail${editor._nextRailId}`);
+  }
+  return el;
 }
 
 /** Emit a filled dot at a MODEL-space point — the lattice tool's
