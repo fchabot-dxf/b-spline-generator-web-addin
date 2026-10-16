@@ -785,10 +785,10 @@ export function brickElementNodes(editor, node) {
  *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
  *  have always shipped theirs, so they keep it (byte-identical either way). One declared list. */
 export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
-  wall: ['data-brick-owner', 'data-brick-accent-marked', 'data-brick-accent'], // + item 31b: the engine's cut mark (brick-accents.js ACCENT_MARK_ATTR); item 49: the accent flag (editor-brick-tool.js ACCENT_FLAG_ATTR)
+  wall: ['data-brick-owner', 'data-brick-accent-marked', 'data-brick-accent', 'data-brick-role'], // + colour roles (paint only); item 31b: the engine's cut mark (brick-accents.js ACCENT_MARK_ATTR); item 49: the accent flag (editor-brick-tool.js ACCENT_FLAG_ATTR)
   // per-element run accents: each band / stroke brick's place on its run's grid (editor-only, like the owner)
-  frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
-  brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
+  frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent', 'data-brick-role'],
+  brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent', 'data-brick-role'],
 });
 /** F35 item 55: brick-tool node KINDS (`data-brick`) that never go into Send's Bricks sketch (stamp.bricks.svg): the
  *  grout shape is paint, not geometry (Fred: it reaches Fusion only by the SVG import, and only when the advisor

@@ -26363,3 +26363,48 @@ layer "<boardId>_L<n>_"; the legacy root board = the identity). newComponent sta
 
 **Process slip (mine).** One unguarded full vitest overlapped the S1 background vitest + matrix: 4 timing failures there
 and a layout run that straddled a merge (15 rows read main's pre-pattern-defaults layout). Re-run guarded.
+
+## 2026-10-15 -- seat A (77): brick colour roles + palette + the colour UI (branch colour-roles)
+
+Fred's answers (via the advisor): (1) new boards open in the Colour look, saved boards keep Height; (2) the grout colour
+is per element, in each element's Colour section; (3) a set's natural colour is the field default, pattern-declared
+colours on top; (4) the palette shows on the 2D / 3D view and the SVG download only -- the Fusion decal keeps today's look.
+
+**Shape.** Roles (field / motif / accent / stone) come from the engine's own tags (core/bricks/colour-roles.js) and are
+written as the editor-only attr data-brick-role. ONE ruleset, core/bricks/palette.js paletteCss(), feeds the 2D page
+style, the 3D drape SVG and the SVG download -- never a brick's own fill, so the sketch, the height mask and Send's bytes
+are unchanged. Pattern colours are declared data (FRAME_PRESET_DEFAULTS greek_key_mosaic: motif green, field white).
+UI: General gets the "2D look" switch; wall / frame / brush / raised brush each get a Colour section (role swatches with
+a reset when the user's own differs, then that element's grout colour; an untouched element reads the old board-wide one).
+
+**Saved boards.** MIGRATIONS 'brick-look-mode' sets lookMode 'height' when absent (pinned in brick-colour-ui and the
+existing brick-element-set whole-object pin, updated). The decal strips data-brick-role and passes no CSS:
+byte-identical to a board drawn before the roles (pinned).
+
+**Gate.** Full vitest guarded: 6799 pass, 5 fail -- 1 real (brick-element-set's whole-object pin now carries
+lookMode 'height', updated) + 4 timeouts under load (export-flow grep, frame-gen, frame-undo-step, matrix-introduced);
+the 5 files alone: 90/90 pass. Matrix: layout 92 rows, grout 5, sidebar-quick 8, migration 5 -- 0 FAIL, 0 page errors.
+Shots: ~/.bspline-status/shots/seatA/colour_ui/ (phone + desktop Colour section and General look; Greek key, hourglass
+Greek key, dentil corbel boards in 2D / 3D).
+
+**Left running (not mine to kill under auto mode):** my scratch serve.py on 9781 (PIDs 12496, 64248) -- the kill was
+denied by the permission classifier; harmless, but the port stays busy until stopped.
+
+**Grout label (advisor, 2026-10-15).** The grout row in each Colour section read "Colour · this Brick frame" under the
+COLOUR header; it now reads "Grout", declared as ROLE_LABELS.grout (palette.js) beside the role labels and written by
+syncGroutPaintRow (the HTML span is empty). Test: brick-colour-ui asserts the label; fails 1/7 on the pre-change
+brick-panel.js. Phone shot: shots/seatA/colour_ui/colour_phone_frame_section_grout_label.png.
+
+**Merge with main 740bf80 (D's drawer trees).** One conflict, tests/brick-tab-sections.test.js: kept D's tree assertions
+(General's sections inside brickBranch_general; the armed element's sections stay) and the Colour ones. One semantic
+break the auto-merge hid: _groutPaintTarget read _generalTab, which the tree removed (ReferenceError, 3 colour tests +
+the tab-sections file). The tree keeps the armed tool, and the grout row now lives only in an element's Colour section,
+so the target is the selected element, else the armed tool. Touched files 61/61; matrix layout 92, grout 5,
+sidebar-quick 8, migration 5 -- 0 FAIL.
+
+**Lay row (advisor, gate 99730df).** "Grey by height: the SVG download..." downloaded a fresh board, which now opens in
+Colour: 147 coloured paths. Fixed the ROW: it first checks the new Colour look (new sibling row: every brick path is its
+element's palette colour by role, the accents the accent, grout separate -- 147/147 matched, 2 colours, 2 grout paths),
+then switches to Height grey through General's 2D look button (revealBrickControl + click) and runs the grey check
+unchanged: 147 flat greys, accents lighter, grout darker. lay group alone: 17 rows, 0 FAIL. The repaint row read 248 ms
+against its 250 budget (252 once while my other vitest ran) -- near the line, not touched here.

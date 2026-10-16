@@ -57,12 +57,15 @@ describe('the declaration', () => {
     }
     for (const [r, tabs] of tabsOf) if (tabs.length > 1) expect(SHARED_ROWS, r).toContain(r);
     // Fred 2026-10-11: + the size and the joint depth (per element, the Size & joint section), + Edge taper
-    expect([...SHARED_ROWS].sort()).toEqual(['brickEdgeTaperRow', 'brickGroutDepthRow', 'brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet', 'brickSizeBlock']);
+    // + Fred 2026-10-15: each element's Colour section (its roles + its grout colour)
+    expect([...SHARED_ROWS].sort()).toEqual(['brickColourRow', 'brickEdgeTaperRow', 'brickGroutDepthRow', 'brickGroutPaintRow', 'brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet', 'brickSizeBlock']);
     expect(tabsOf.get('brickSharedSet')).not.toContain('general');
   });
-  it('Fred\'s placements: grout Colour / Edge only in General (Look); widths in each element tab; crumble + top bias in General', () => {
+  it('Fred\'s placements: the grout colour and the role colours in each element\'s Colour (2026-10-15), the 2D look in General; widths in each element tab; crumble + top bias in General', () => {
     const tabsWith = (row) => Object.entries(BRICK_TAB_SECTIONS).filter(([, d]) => d.sections.some((s) => s.rows.includes(row))).map(([t]) => t);
-    expect(tabsWith('brickGroutPaintRow')).toEqual(['general']);
+    expect(tabsWith('brickGroutPaintRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
+    expect(tabsWith('brickColourRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
+    expect(tabsWith('brickLookModeRow')).toEqual(['general']);
     expect(tabsWith('brickGroutWidthRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
     expect(tabsWith('brickTopBiasRow')).toEqual(['general']);
     expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toEqual(['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']);
@@ -70,7 +73,7 @@ describe('the declaration', () => {
   it('the accent sections are titled "Accent relief" (Fred); item 9\'s Frame Crumble + Window surround are Frame sections', () => {
     for (const tab of ['wall', 'brush']) expect(BRICK_TAB_SECTIONS[tab].sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
     const frame = BRICK_TAB_SECTIONS.frame.sections;
-    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Size & joint']); // Corners -> Fan centre (2026-10-11)
+    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Colour', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Size & joint']); // + Colour (2026-10-15) // Corners -> Fan centre (2026-10-11)
     expect(frame.find((s) => s.id === 'crumble').kind).toBe(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').kind);
   });
 });
@@ -82,11 +85,11 @@ describe('in the panel', () => {
   });
   it('the Wall tab shows its own sections, in order, each themed by its kind; General\'s live in their own branch', () => {
     expect(activeBrickTab()).toBe('wall');
-    expect(shownSections('wall')).toEqual(['bricks', 'pattern', 'accent', 'height', 'joint']);
+    expect(shownSections('wall')).toEqual(['bricks', 'colour', 'pattern', 'accent', 'height', 'joint']);
     // phase 4: General's sections are always there, inside the General branch (its fold hides them)
     for (const id of ['look', 'crumble', 'random']) expect($('brickBranch_general').contains($(sectionDomId('general', id))), id).toBe(true);
     const shells = [...$('brickWallSection').querySelectorAll(':scope > .brick-sec')].map((s) => s.querySelector('.panel-header').textContent);
-    expect(shells).toEqual(['Bricks', 'Pattern', 'Accent relief', 'Height', 'Size & joint']);
+    expect(shells).toEqual(['Bricks', 'Colour', 'Pattern', 'Accent relief', 'Height', 'Size & joint']);
     const joint = $(sectionDomId('wall', 'joint'));
     expect(joint.classList.contains('section-themed-brick')).toBe(true);
     expect(joint.style.getPropertyValue('--section-stripe')).toBe(themeTokens('brick-joint', 'light').stripe);
@@ -118,7 +121,7 @@ describe('in the panel', () => {
     expect($('brickBranch_general').classList.contains('open')).toBe(true);
     expect(shownSections('general')).toEqual(['look', 'crumble', 'random']); // Fred 2026-10-11: no global size any more
     expect(shownSections('frame')).toEqual(before); // phase 4: the armed element's sections stay
-    expect($(sectionDomId('general', 'look')).contains($('brickGroutColorSwatch'))).toBe(true);
+    expect($(sectionDomId('general', 'look')).contains($('brickLook_colour'))).toBe(true); // Fred 2026-10-15: the grout colour moved to each Colour
     // the size + joint depth sit in every element tab's own Size & joint section (declared; one DOM row moved per tab)
     for (const tab of ['wall', 'frame', 'brush', 'raisedBrush']) {
       const joint = BRICK_TAB_SECTIONS[tab].sections.find((x) => x.id === 'joint');

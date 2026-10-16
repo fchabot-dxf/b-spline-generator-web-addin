@@ -3373,9 +3373,19 @@
             </div>
             <!-- F35 item 55: the grout PAINT (main/brick-panel.js setGroutPaint): colour (None = the board shows through) +
                  Edge (each brick's painted face inset; paint only). Edits the element Select picked, else every element. -->
+            <!-- Fred 2026-10-15 (colour plan): the 2D look, board-wide (General), and each element's Colour section
+                 (main/brick-panel.js renderColourRow: its roles' colours, then its grout colour below) -->
+            <div id="brickLookModeRow" style="margin-bottom:8px;">
+              <label class="cad-label" style="font-size:10px;">2D look</label>
+              <div class="cad-toggle-group" style="display:flex; gap:4px;">
+                <button type="button" id="brickLook_colour" class="cad-btn" title="The bricks in their colours (each element's Colour section)">Colour</button>
+                <button type="button" id="brickLook_height" class="cad-btn" title="The bricks in greys by their height (the carve's view)">Height grey</button>
+              </div>
+            </div>
+            <div id="brickColourRow" style="margin-bottom:6px;"></div>
             <div id="brickGroutPaintRow" style="display:flex; gap:4px; align-items:flex-end; margin-bottom:6px;">
               <div style="flex:1;">
-                <label class="cad-label" style="font-size:10px;">Colour <span id="brickGroutPaintScope" style="opacity:0.6;"></span></label>
+                <label class="cad-label" style="font-size:10px;"><span id="brickGroutPaintLabel"></span> <span id="brickGroutPaintScope" style="opacity:0.6;"></span></label>
                 <div style="display:flex; gap:4px;">
                   <button type="button" id="brickGroutColorSwatch" class="cad-btn" title="Grout colour (the app's colour picker)" aria-haspopup="true" style="width:34px; min-width:34px; height:26px; padding:0;"></button>
                   <button type="button" id="brickGroutColorNone" class="cad-btn" title="No grout colour: the board shows through the joints" style="height:26px;">None</button>
