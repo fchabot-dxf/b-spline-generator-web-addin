@@ -155,7 +155,10 @@ input, select, textarea, button {
     --heights-hud-on-light-color: #1a1a1a;
     --heights-hud-on-light-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 1px 2px #fff;
     --heights-hud-on-dark-color: #ffffff;
-    --heights-hud-on-dark-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 2px #000;
+    /* advisor review (a live shot, 100% zoom): the old double 0 0 3px #000 (both fully opaque) read as a thick
+       black box outline, not a halo -- a tighter, partly-transparent inner pass for edge definition + a wider,
+       softer outer pass for falloff, same two-pass shape, reads as a soft glow instead */
+    --heights-hud-on-dark-shadow: 0 0 1.5px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.55), 0 1px 1px rgba(0, 0, 0, 0.5);
 
     /* Typography */
     --cad-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

@@ -82,11 +82,15 @@ function _placeAboveCentered(doc, el, anchor, gap) {
 }
 
 /** Builds the Δ badge + its tooltip, fixed-positioned over the playhead element `headEl` -- nothing when the
- *  weighted score is 0 (the mockup: "shown only when the weighted Δ > 0"). One function owns both, since they
- *  share the same data. */
+ *  weighted score is 0 (the mockup: "shown only when the weighted Δ > 0"). Gated on the score ROUNDED to the
+ *  same 3-decimal precision the badge/tooltip display (advisor review, a live shot: a baseline round-trips
+ *  through 16-bit quantization -- core/job-timeline-snapshot.js -- so even a genuinely untouched surface reads
+ *  a tiny nonzero raw score; without this the badge showed "Δ .000", nonzero by the raw check but zero on
+ *  screen). One function owns both the badge and its tooltip, since they share the same data. */
 function _renderDeltaBadge(doc, headEl, size) {
   const { deltas, score } = computeWeightedDelta();
-  if (!(score > 0)) return;
+  const shown = Math.round(score * 1000) / 1000;
+  if (!(shown > 0)) return;
   const badge = doc.createElement('button');
   badge.type = 'button';
   badge.className = 'job-delta-badge';

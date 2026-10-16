@@ -49,6 +49,22 @@ describe('no badge: the weighted Δ is 0', () => {
     expect(P.jobTimeline.snapshots.back).toBeDefined();
     expect(headEl().querySelector('.job-delta-badge')).toBeNull();
   });
+
+  it('advisor review (a live shot): quantization round-trip noise on a VARIED board never shows the badge, even though the raw score is technically nonzero', () => {
+    // a flat fixture (fixture() above) round-trips through 16-bit quantization bit-exact (zero span -> one
+    // bucket) -- it can never reproduce this. A varied field quantizes each cell to a DIFFERENT bucket, so
+    // dequantizing back is only approximately equal to the live value (core/job-timeline-snapshot.js's own
+    // round-trip test pins this to 3 decimals, not exact) -- a captured-then-immediately-read baseline is
+    // "untouched" in every real sense, but its raw Δ is a tiny nonzero float, not literal 0.
+    const nx = 3, nz = 3;
+    const heights = new Float32Array([0, 0.37, 0.91, 0.12, 0.64, 0.08, 0.55, 0.23, 0.79]);
+    const offsetPts = new Float32Array(nx * nz * 3);
+    for (let k = 0; k < nx * nz; k++) offsetPts[k * 3 + 2] = -0.25;
+    setLastResult({ heights, thickenData: { offsetPts }, nx, nz });
+    renderJobStrips(document);
+    moveHeadBefore('vector:L1'); // captures sculptTop ('top') + back baselines from these exact varied heights
+    expect(headEl().querySelector('.job-delta-badge')).toBeNull();
+  });
 });
 
 describe('the badge + tooltip once the weighted Δ is > 0', () => {
