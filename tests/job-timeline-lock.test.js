@@ -11,6 +11,7 @@ import { globalHistoryLog, globalRedoLog, takeSnapshot } from '../bspline-frame-
 import { renderJobStrips, moveHeadBefore, JOB_STRIP_HOSTS } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
 import { syncJobLocks } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-lock.js';
 import { deriveJobSteps, jobProjectOf, defaultJobOrder } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
+import { setJobTimelineEnabled } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline-enabled.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
@@ -18,6 +19,8 @@ const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).repl
 beforeEach(() => {
   document.body.innerHTML = BODY.replace(/^<body[^>]*>/, '').replace(/<\/body>$/, '');
   try { localStorage.clear(); } catch (_) { /* blocked */ }
+  setJobTimelineEnabled(true); // the switch is DEFAULT OFF (core/job-timeline-enabled.js, merged in from job-timeline) --
+  // the renderJobStrips calls below need it on, same as tests/job-timeline-strip.test.js's own fix
   window.svgEditor = { _layers: [{ id: 'L1', name: 'Red petals' }] };
   P.frame = null;
   P.jobTimeline = null;
