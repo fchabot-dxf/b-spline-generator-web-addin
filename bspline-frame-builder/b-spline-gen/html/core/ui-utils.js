@@ -118,6 +118,30 @@ export function syncUItoParam(key, value) {
     }
 }
 
+/** Job timeline step 3 (seat D): every input/select/button/textarea inside a [data-job-step="<stepId>"] scope, made
+ *  read-only (readOnly=true) or restored (false) -- the ONE selector rule every locked kind resolves through
+ *  (core/job-timeline.js JOB_STEP_KINDS readOnly:'section'; advisor 2026-10-15, "don't hand-pick nodes in code").
+ *  Scope resolves to the NEAREST [data-job-step] ancestor, so a step whose own markup sits nested inside a wider
+ *  section carrying a DIFFERENT step id (Seed's own Offset X/Y div + its Generate button, inside Filter's shared
+ *  sidebar panel) locks independently of that parent -- never dragged inert by the parent's own lock, and vice
+ *  versa. Not native `inert`: its ancestor-cascade has no override, so a nested narrower scope could never stay
+ *  interactive while its parent is locked (the Seed/Filter case this exists for). A banner inserted for the locked
+ *  step must be a SIBLING of the matched root, never a descendant, or its own "Move the head" button would be
+ *  caught by this same walk. */
+export function setSectionReadOnly(stepId, readOnly, doc = document) {
+    const roots = doc.querySelectorAll(`[data-job-step="${stepId}"]`);
+    for (const root of roots) {
+        root.classList.toggle('job-readonly', readOnly);
+        root.setAttribute('aria-disabled', readOnly ? 'true' : 'false');
+        const candidates = [root, ...root.querySelectorAll('input, select, button, textarea')];
+        for (const el of candidates) {
+            if (!('disabled' in el)) continue; // root may be a plain container, not a control itself
+            if (el.closest('[data-job-step]') !== root) continue; // a narrower nested step's own scope
+            el.disabled = readOnly;
+        }
+    }
+}
+
 /**
  * Updates the display labels in the resolution/spacing dropdown.
  */
