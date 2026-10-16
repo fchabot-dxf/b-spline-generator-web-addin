@@ -23,7 +23,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   generatePattern, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
-  nextSeed, recolorOwnedKind, rewidthOwnedKind, BOUNDARY_REF_ATTR,
+  nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKindsAcrossLayers, BOUNDARY_REF_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { OVERRIDE_COLOR_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
@@ -674,6 +674,64 @@ describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', (
     expect(count).toBe(0);
     expect(editor.pushStateCalls).toBe(0);
     expect(editor.notifyChangeCalls).toEqual([]);
+  });
+});
+
+/**
+ * Pull from Fusion step (b) (seat D 2026-10-16): rewidthOwnedKindsAcrossLayers -- rewidthOwnedKinds' own multi-
+ * KIND batching (one layer, several kinds, one undo step) extended to several LAYERS too, since Apply from the
+ * change-list dialog can touch more than one lattice layer in a single user action.
+ */
+describe('rewidthOwnedKindsAcrossLayers: several LAYERS, several kinds, exactly one undo step', () => {
+  let editor;
+  beforeEach(() => {
+    editor = _makeMockEditor();
+    editor._layers.push({ id: '1', name: 'Layer 2', visible: true });
+  });
+
+  it('re-widths pattern A\'s rails AND pattern B\'s nodes in one call, one undo step', () => {
+    // generatePattern (T76) drops the layer it runs on and mints fresh Rails/Ties/
+    // Nodes layers of its own, then repoints editor._activeLayer at the new
+    // pattern-owning one -- same convention the pre-existing rewidthOwnedKind
+    // tests above rely on (`rewidthOwnedKind(editor, editor._activeLayer, ...)`).
+    // So the two patterns' own elements are told apart by DOM identity (what
+    // existed right after each generatePattern call), not by assuming the
+    // original '0'/'1' ids survive onto the generated content.
+    editor._activeLayer = '0';
+    generatePattern(editor, { ...PATTERN_DEFAULTS, seed: 60, rails: { every: 2, offset: 0 } });
+    const layerA = editor._activeLayer;
+    const elementsAfterA = editor._sketchLayer.children().toArray();
+
+    editor._activeLayer = '1';
+    generatePattern(editor, { ...PATTERN_DEFAULTS, seed: 61, rails: { every: 2, offset: 0 } });
+    const layerB = editor._activeLayer;
+    const elementsFromB = editor._sketchLayer.children().toArray().filter((el) => !elementsAfterA.includes(el));
+    editor.pushStateCalls = 0; editor.notifyChangeCalls = [];
+
+    const railsOnA = elementsAfterA.filter((el) => el.attr('data-lattice') === 'rail');
+    const nodesOnB = elementsFromB.filter((el) => el.attr('data-lattice') === 'node');
+    expect(railsOnA.length).toBeGreaterThan(0);
+    expect(nodesOnB.length).toBeGreaterThan(0);
+    const railsOnBBefore = elementsFromB.filter((el) => el.attr('data-lattice') === 'rail').map((el) => el.attr('stroke-width'));
+
+    const total = rewidthOwnedKindsAcrossLayers(editor, [[layerA, 'rails', 0.4], [layerB, 'nodes', 0.6]]);
+
+    expect(total).toBe(railsOnA.length + nodesOnB.length);
+    for (const el of railsOnA) expect(el.attr('stroke-width')).toBe(0.4);
+    for (const el of nodesOnB) expect(el.attr('r')).toBe(0.3); // NODE-D: 0.6 diameter -> 0.3 radius, same /2 as rewidthOwnedKind
+    // pattern B's own rails were never named in the triples -- untouched
+    const railsOnBAfter = elementsFromB.filter((el) => el.attr('data-lattice') === 'rail').map((el) => el.attr('stroke-width'));
+    expect(railsOnBAfter).toEqual(railsOnBBefore);
+
+    expect(editor.pushStateCalls).toBe(1); // ONE step for both patterns together, not one per pattern
+    expect(editor.notifyChangeCalls).toEqual(['commit']);
+  });
+
+  it('an empty triple list, or one naming nothing owned yet, is a no-op (no undo push)', () => {
+    expect(rewidthOwnedKindsAcrossLayers(editor, [])).toBe(0);
+    expect(editor.pushStateCalls).toBe(0);
+    expect(rewidthOwnedKindsAcrossLayers(editor, [['0', 'rails', 0.4]])).toBe(0); // nothing generated yet
+    expect(editor.pushStateCalls).toBe(0);
   });
 });
 
