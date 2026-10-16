@@ -156,7 +156,8 @@ export function defaultJobOrder(steps) {
 /** A saved timeline made safe for `steps` (Fred: "consider if some reordering would error the model"): ids that no
  *  longer exist dropped (a deleted layer), duplicates dropped, missing ids APPENDED at the end (a new layer, a new kind),
  *  the fixed-first kind at index 0, the head clamped to 0..length. No saved timeline (an old project) = the default
- *  order with the head at the start. */
+ *  order with the head at the start. `saved.snapshots` (job-timeline step 3 slice 2's frozen undersides) passes
+ *  through untouched -- this function only ever reshapes order/head, never owns that key. */
 export function normalizeJobTimeline(saved, steps) {
   const ids = new Set(steps.map((s) => s.id));
   if (!saved || !Array.isArray(saved.order)) return { order: defaultJobOrder(steps), head: 0 };
@@ -168,7 +169,7 @@ export function normalizeJobTimeline(saved, steps) {
   const first = order.filter((id) => JOB_STEP_KINDS[kindOf.get(id)].fixed === 'first');
   const rest = order.filter((id) => JOB_STEP_KINDS[kindOf.get(id)].fixed !== 'first');
   const head = Number.isFinite(saved.head) ? Math.max(0, Math.min(order.length, Math.round(saved.head))) : 0;
-  return { order: [...first, ...rest], head };
+  return { order: [...first, ...rest], head, ...(saved.snapshots ? { snapshots: saved.snapshots } : {}) };
 }
 
 /** The strip's runs: consecutive steps of one group form a run (its group's label shown on EACH run -- a split group

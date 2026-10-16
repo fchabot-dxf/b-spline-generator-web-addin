@@ -51,7 +51,7 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
     thickenMode, thickenDir, extraThickenThin,
     extraThickenThinFalloff, thickenYellowOffset,
   } = params;
-  const { extraThickenThinMask = null, postDelta = null } = opts;
+  const { extraThickenThinMask = null, postDelta = null, backHeights = null } = opts;
 
   const normals = computeNormals(heights, nx, nz, widthIn, heightIn);
   const safeMap = computeSafeOffsetMap(heights, nx, nz, widthIn, heightIn, SAFE_MAP_BOTTOM_SMOOTH_IN);
@@ -76,12 +76,18 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
   }
 
   const sign = thickenDir === 'up' ? 1 : -1;
-  const offsetPts = buildAdjustedOffsetPts({
-    heights, normals, nx, nz, widthIn, heightIn,
-    thickness, thickenMode, safeMap, sign,
-    extraThickenThin, extraThickenThinFalloff,
-    extraThickenThinMask, postDelta,
-  });
+  // job-timeline step 3 slice 2 (Fred, via advisor): Back LOCKED -- the underside is frozen at the moment it was
+  // cut (core/job-timeline-snapshot.js), so later front (top-surface) edits never move it. Bypasses the whole
+  // offset computation (safe-map, thin-fill, smoothing -- the frozen heights were already smoothed, once, at
+  // capture time): the bottom point at each cell is the CURRENT top point's (x, y) straight down to the frozen z.
+  const offsetPts = backHeights
+    ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights })
+    : buildAdjustedOffsetPts({
+        heights, normals, nx, nz, widthIn, heightIn,
+        thickness, thickenMode, safeMap, sign,
+        extraThickenThin, extraThickenThinFalloff,
+        extraThickenThinMask, postDelta,
+      });
 
   // Update z-bounds with bottom-surface z.
   for (let k = 0; k < nx * nz; k++) {
@@ -147,6 +153,26 @@ function buildAdjustedOffsetPts({
 
   const smoothed = smoothOffsetPoints(adjusted, nx, nz, widthIn, heightIn, OFFSET_SMOOTH_RADIUS_IN);
   return { raw: rawOffsetPts, smoothed, clampMap };
+}
+
+/** Back LOCKED (job-timeline step 3 slice 2): the bottom offset point at each cell is the CURRENT top point's own
+ *  (x, y) -- the grid never moves, only the terrain on it does -- straight down to the FROZEN snapshot's z
+ *  (core/job-timeline-snapshot.js, already resampled to this grid if it changed size since capture). No live
+ *  computation (safe-map, thin-fill, smoothing) runs: the frozen heights were already fully computed, once, at
+ *  capture time. clampMap has no true per-cell safe-limit reading here (nothing was clamped) -- filled with the
+ *  nominal thickness so buildHeatColours' own ratio reads "safe" rather than "fully thin" by a stray zero. */
+function buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights }) {
+  const count = nx * nz;
+  const pts = new Float32Array(count * 3);
+  for (let k = 0; k < count; k++) {
+    const i = k % nx;
+    const j = (k / nx) | 0;
+    pts[k * 3 + 0] = -widthIn / 2 + i * widthIn / (nx - 1);
+    pts[k * 3 + 1] = -heightIn / 2 + j * heightIn / (nz - 1);
+    pts[k * 3 + 2] = backHeights[k];
+  }
+  const clampMap = new Float32Array(count).fill(thickness);
+  return { raw: pts, smoothed: pts, clampMap };
 }
 
 /**

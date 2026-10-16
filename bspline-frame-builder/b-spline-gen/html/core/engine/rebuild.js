@@ -30,6 +30,8 @@ import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
 import { isPhotoReady } from '../photo/state.js';
+import { isJobTimelineEnabled } from '../job-timeline-enabled.js';
+import { isBackLocked, dequantizeHeights } from '../job-timeline-snapshot.js';
 
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -166,9 +168,17 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
 
             await yieldToMain();
+            // job-timeline step 3 slice 2: Back LOCKED + the Settings switch ON -- the frozen underside, resampled
+            // to THIS grid if it changed size since capture (dequantizeHeights' own nearest-neighbour). Switch off
+            // reads as "no lock" everywhere else in job-timeline (core/job-timeline-enabled.js), so it does here too:
+            // the live underside, unchanged.
+            const backSnap = P.jobTimeline?.snapshots?.back;
+            const backHeights = (isJobTimelineEnabled() && isBackLocked(P.jobTimeline) && backSnap)
+                ? dequantizeHeights(backSnap, nx, nz) : null;
             const thicken = buildThickenData(heights, nx, nz, P, {
                 extraThickenThinMask,
                 postDelta,
+                backHeights,
             });
             lastResult.thickenData = thicken.data;
 
