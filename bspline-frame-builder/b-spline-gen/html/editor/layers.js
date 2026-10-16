@@ -220,8 +220,21 @@ function _hiddenItself(node) {
   return !!(n && typeof n.getAttribute === 'function' && n.getAttribute('display') === 'none');
 }
 
+/** Job timeline step 3 (seat D, slice 1): a layer whose own job-timeline step is left of the playhead (a
+ *  'layer'-readOnly kind -- lattice rails/nodes, vector, bricks). Pushed onto the layer RECORD by
+ *  main/job-timeline-lock.js's syncLayerLocks (resolved from P.jobTimeline there, main/ owns that read) -- a
+ *  plain field, same shape as `visible`/`carve`, not the grout's per-NODE LOCKED_ATTR (a different concept: one
+ *  whole layer going read-only, not one drawn shape the Brick tab owns). */
+export function isJobLocked(layer) {
+  return !!(layer && layer.jobLocked);
+}
+
 export function isEditableByLayer(editor, node) {
-  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node) && !isLockedNode(node);
+  const layerId = getElementLayer(node);
+  if (layerId !== getActiveLayer(editor)) return false;
+  const layers = Array.isArray(editor._layers) ? editor._layers : [];
+  const layer = layers.find((l) => String(l.id) === layerId);
+  return !isJobLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 /** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
@@ -242,7 +255,7 @@ export function isOnVisibleLayer(editor, node) {
   const layerId = getElementLayer(node);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return (!layer || layer.visible !== false) && !_hiddenItself(node) && !isLockedNode(node);
+  return (!layer || layer.visible !== false) && !isJobLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 // ----------- Data ops -----------
