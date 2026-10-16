@@ -2052,10 +2052,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         sent with the request) and sizeSource is None -- never a made-up size. `bounds` = the pulled curves' extent
         in board inches. A curve type this pull does not read is REPORTED (`skipped`, PULL_SKETCH_UNSUPPORTED), one
         that failed to read is counted (`failed`), never dropped in silence. A sketch belonging to ANOTHER board
-        (active-edit, selection, or the scan) is never used -- Pull only ever touches the project's own board."""
+        (active-edit, selection, or the scan) is never used -- Pull only ever touches the project's own board.
+
+        Step (b) (seat D 2026-10-16; advisor 45, Fred): `result['boardParams']` -- EVERY user parameter this board
+        owns (namer.owns), keyed by its board-stripped name (namer.base) -- a lattice layer's own LAYER prefix
+        (e.g. "L3_stroke_width") stays in the key, since only the app side knows which real layer id that is. This
+        is deliberately generic (every board-owned param, not just the ones PULL_MAP declares) -- core/pull-map.js
+        on the app side is the ONE place that decides which of these it recognizes; an unrecognized one is counted
+        in the change list's own "not mapped" line, not filtered out here (Python stays param-schema-agnostic).
+        All v1 PULL_MAP params are length-type ("in"); a future unitless one (a Shape Lattice preset, a ck_*
+        toggle -- v2) would need `p.unit`-aware conversion, not the flat /2.54 below."""
         data = data or {}
         result = {'ok': False, 'sketchName': None, 'widthIn': None, 'heightIn': None, 'sizeSource': None,
-                  'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'error': None}
+                  'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'boardParams': {}, 'error': None}
         try:
             des = _active_design()
             if not des:
@@ -2111,6 +2120,20 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 raise RuntimeError('No sketch found on this board in the active Fusion design.')
 
             result['sketchName'] = target_sketch.name
+
+            # step (b): every length-type param this board owns, board-prefix stripped (widthIn/heightIn excluded --
+            # already their own top-level fields). A read failure on one param never drops the rest.
+            for p in des.allParameters:
+                try:
+                    name = p.name
+                    if not namer.owns(name):
+                        continue
+                    base = namer.base(name)
+                    if base in ('widthIn', 'heightIn'):
+                        continue
+                    result['boardParams'][base] = p.value / 2.54
+                except Exception as e:
+                    _log(f"boardParams read failed for a parameter: {e}")
 
             w_param = des.allParameters.itemByName(namer.name('widthIn'))
             h_param = des.allParameters.itemByName(namer.name('heightIn'))

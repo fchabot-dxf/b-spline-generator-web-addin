@@ -69,8 +69,22 @@ def _sketch(name, parent, lines=(), fitted=(), ellipses=0, cp_splines=0):
 
 
 class _Param:
-    def __init__(self, value_in):
-        self.value = value_in * IN
+    def __init__(self, name, value_in):
+        self.name, self.value = name, value_in * IN
+
+
+class _ParamCollection:
+    """des.allParameters as the real Fusion API shape: BOTH iterable (step (b)'s own board-owned scan) and
+    itemByName (the existing widthIn/heightIn lookup) -- a plain SimpleNamespace supports neither."""
+
+    def __init__(self, params):
+        self._params = params
+
+    def itemByName(self, name):
+        return self._params.get(name)
+
+    def __iter__(self):
+        return iter(self._params.values())
 
 
 class Design:
@@ -92,11 +106,11 @@ class Design:
         return b
 
     def param(self, name, value_in):
-        self._params[name] = _Param(value_in)
+        self._params[name] = _Param(name, value_in)
 
     @property
     def allParameters(self):
-        return types.SimpleNamespace(itemByName=lambda n: self._params.get(n))
+        return _ParamCollection(self._params)
 
 
 @pytest.fixture
@@ -113,6 +127,11 @@ def two_boards(monkeypatch):
     b.sketches = [_sketch('Lattice B', b, lines=[_line((0, 0), (2, 0))])]
     d.param('bRoseid_widthIn', 10); d.param('bRoseid_heightIn', 12)
     d.param('bOakid_widthIn', 7); d.param('bOakid_heightIn', 9)
+    d.param('bRoseid_L3_node_diameter', 0.3)  # board A's own lattice layer 3
+    d.param('bRoseid_frame_thickness', 0.8)
+    d.param('bRoseid_fred_custom_margin', 2.5)  # Fred's own param, under board A's own prefix -- a real param this
+    # board owns, but not one core/pull-map.js declares -- the "not mapped" case
+    d.param('bOakid_L9_node_diameter', 0.15)  # board B's own lattice layer 9 -- a DIFFERENT value
     d.a, d.b = a, b
 
     def run(board_id):
@@ -136,6 +155,26 @@ def test_pulling_board_b_reads_bs_own_sketch_and_size_never_as(two_boards):
     assert res['sketchName'] == 'Lattice B'
     assert (res['sizeSource'], res['widthIn'], res['heightIn']) == ('fusion', 7.0, 9.0)
     assert res['curves'][0]['d'] == 'M 3.5 4.5 L 5.5 4.5'  # the 7x9 board's own centre
+
+
+# ---- step (b): boardParams -- every length param this board owns, board-prefix stripped, layer prefix kept -------
+def test_board_a_params_are_stripped_of_the_board_prefix_only_layer_prefix_kept(two_boards):
+    res = two_boards('bRoseid')
+    assert res['boardParams']['L3_node_diameter'] == pytest.approx(0.3)
+    assert res['boardParams']['frame_thickness'] == pytest.approx(0.8)
+    assert res['boardParams']['fred_custom_margin'] == pytest.approx(2.5)  # Fred's own: present, the app decides "not mapped"
+    assert 'widthIn' not in res['boardParams'] and 'heightIn' not in res['boardParams']  # already their own fields
+
+
+def test_board_bs_params_never_leak_board_as_and_vice_versa(two_boards):
+    res_a = two_boards('bRoseid')
+    res_b = two_boards('bOakid')
+    # the exact key SET, not just "the stripped name is absent" -- a scoping bug that reads another board's
+    # param under its own UNSTRIPPED name (namer.base only strips a name that starts with ITS prefix, leaving a
+    # foreign one untouched) would still pass a narrower "'L9_node_diameter' not in res_a" check
+    assert set(res_a['boardParams']) == {'L3_node_diameter', 'frame_thickness', 'fred_custom_margin'}
+    assert set(res_b['boardParams']) == {'L9_node_diameter'}
+    assert res_b['boardParams']['L9_node_diameter'] == pytest.approx(0.15)
 
 
 def test_an_unknown_board_id_falls_back_to_the_legacy_scope_which_owns_neither_tagged_board(two_boards):
