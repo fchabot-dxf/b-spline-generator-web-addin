@@ -26363,3 +26363,41 @@ layer "<boardId>_L<n>_"; the legacy root board = the identity). newComponent sta
 
 **Process slip (mine).** One unguarded full vitest overlapped the S1 background vitest + matrix: 4 timing failures there
 and a layout run that straddled a merge (15 rows read main's pre-pattern-defaults layout). Re-run guarded.
+
+## 2026-10-16 -- seat E (15): greek_key_mosaic fan overlap (Mode A) -- root cause found, fix reverted
+
+**What.** Traced the fan-piece overlap in the greek_key_mosaic preset (12-row mosaic band, library.js:583;
+TIP_FAN_SWEEP_FULL flagged it, templates 4/8/19). No fix shipped -- reverted, primitive-ribbon.js confirmed
+byte-identical to 2f9bc59 (md5 e5f5bf0...). Parked here per the advisor so the next person who picks this up
+does not re-walk the same trace.
+
+**Root cause (MEASURED, not guessed).** The overlapping piece's own d0/d1 ARE its row's correct depth (row 11,
+2.217-2.383in on T8 7x9 0.75in) -- it is not reading the wrong row. The real issue is in buildPatch
+(primitive-ribbon.js): every slice of a dropped-primitive corner patch converges on ONE shared apex q, the
+row's own TRUE d1 corner. For the ordinary case (one dropped fillet) q sits close to the boundary, about one
+row's own width away, so the wedge is small and well-behaved. T8's gable corner at this depth drops FOUR
+primitives at once (a much wider chain -- the whole peak collapsing together), so the single apex sits far
+deeper than one row's own width. Slices far from the apex come out as long, thin wedges whose outer vertices
+land in territory OTHER rows (each laid independently, trusting their own q) already cover -- that is the
+measured overlap (confirmed via a direct polygon dump: the overlapping piece's own far vertices fall inside
+row 6's own x-range on that corner).
+
+**Fix tried and reverted.** Capped the shared apex to width (the row's own depth) from the patch boundary's
+own midpoint, inside buildPatch, only when the natural apex exceeds that. MEASURED result on the full
+greek_key_mosaic sweep (every template x 7x9/9x12 x 0.75/1in): overlap count dropped, but bare-patch share got
+worse across nearly every case (several 2-10x), and one NEW case (T8 9x12 1in) picked up a self-intersecting
+polygon that was not there before. The assumption "an ordinary corner's own apex already sits within about one
+row's width of the boundary" was wrong often enough that the cap fired on many ordinary corners too, not just
+the pathological wide-chain ones -- net negative, reverted immediately.
+
+**What a real fix likely needs.** The inner (d1) edge of a wide dropped-chain patch probably needs to be built
+as its OWN path (offsetting the chain inward, the way a normal band strip's own d1 edge already is), not a
+single point every slice converges on -- that keeps the small-chain case exactly as it is today (the two
+collapse to the same single point when the chain is short) while giving a wide chain a real inner boundary
+instead of one apex pulling far-away slices inward. Did not attempt this -- bigger than a quick follow-up, and
+Mode B (the greek_key_mosaic band triggering a much larger, separate bare-ground problem on several templates --
+see the advisor DM thread, not repeated here) is going to Fred first regardless.
+
+**Scope note.** Checked: this is specific to a WIDE dropped-primitive chain (several primitives collapsing at
+once), not every corner patch -- the single-fillet case (the vast majority of patches across every other preset)
+never reaches the part of buildPatch that would need to change.
