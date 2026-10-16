@@ -32,6 +32,12 @@
  *                             through the same owner.pattern.layers map as this kind's own step;
  *   dependsOn              -- the kinds whose result this step's computation READS (data only: the compute pipeline keeps
  *                             its own fixed order; the strip marks a step cut before one it depends on -- detection only).
+ *   cuts: 'top'|'back'|'frame' -- which PHYSICAL surface this kind's cut commits (step 3 slice 3, the advisor
+ *                             2026-10-16): core/job-timeline-baselines.js captures that surface's current state the
+ *                             moment the head passes the LATEST step sharing this value (re-anchoring on every later
+ *                             one -- Fred cuts colour layers one at a time, each re-anchoring 'top's own baseline),
+ *                             drops it on a backward move, diff-only (never frozen, never drives a rebuild -- only
+ *                             Back's own `snapshotOnLock` does that). A kind with no `cuts` never contributes.
  * A section that is display / export only (colours, grout colour, Output, the photo's 2D-only edits) is never a step.
  */
 // A dependency: a kind, or { kind, sameLayer?, belowInStack?, when? } -- `sameLayer`: only the same layer's step;
@@ -50,12 +56,12 @@ export const JOB_STEP_KINDS = Object.freeze({
   // <- stock: the edge margin is a share of the board (rebuild.js:285)
   skeleton: Object.freeze({ label: 'Skeleton', icon: '🦴', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['seed', 'filter', 'stock'] }),
   // sculptTop <- the terrain (seed + skeleton + filter, combined at terrain.js:299): preDelta is added to it (rebuild.js:291)
-  sculptTop: Object.freeze({ label: 'Sculpt top', icon: '▲', section: 'sculpt-top', opens: { sidebar: 'panel-sculpt-top' }, readOnly: 'section', dependsOn: ['seed', 'skeleton', 'filter'] }),
+  sculptTop: Object.freeze({ label: 'Sculpt top', icon: '▲', section: 'sculpt-top', opens: { sidebar: 'panel-sculpt-top' }, readOnly: 'section', cuts: 'top', dependsOn: ['seed', 'skeleton', 'filter'] }),
   // Back = Thicken + Sculpt bottom: reads the STAMPED heights -- every stamp pass, bricks included (rebuild.js:169 on
   // :296's output; core/engine/build-thicken-data.js:56-57, :63) -- and the board (build-thicken-data.js:50)
   // snapshotOnLock (Fred 2026-10-14): the Back is cut FIRST in his real flow and its lock will be a carve-time snapshot of
   // the underside -- later stamps no longer feed it, so its reads are never marked (detection skips a snapshot kind)
-  back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true,
+  back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
     dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES
@@ -65,23 +71,29 @@ export const JOB_STEP_KINDS = Object.freeze({
   // (main/job-timeline-lock.js syncLayerLocks resolves each through the SAME owner.pattern.layers map as rails/
   // nodes); the (future) editor-tab banner names them by this same list ("Rails, Ties and Contour are cut").
   latticeRails: Object.freeze({ label: 'Rails', icon: '#', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
-    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', locksAlso: Object.freeze(['ties', 'contour']),
+    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', locksAlso: Object.freeze(['ties', 'contour']), cuts: 'top',
     dependsOn: [dep('frame', { when: 'followsFrame' })] }),
   // nodes <- that lattice's rails (and ties, cut with the rails): a node at each crossing (editor-lattice-pattern.js:2189-2204)
   latticeNodes: Object.freeze({ label: 'Nodes', icon: '•', section: 'stamp', group: Object.freeze({ by: 'layer', label: 'Lattice' }),
-    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', dependsOn: [dep('latticeRails', { sameLayer: true })] }),
+    opens: { editorTab: 'lattice', layer: true }, readOnly: 'layer', cuts: 'top', dependsOn: [dep('latticeRails', { sameLayer: true })] }),
   // a stamp is added onto terrain + sculpt top (rebuild.js:296); rasterized on the board (main/stamp-mask-manager.js:197-202);
   // the frame's inset window is punched out of it (stamp-mask-manager.js:113, :213)
   vector: Object.freeze({ label: 'Vector', icon: '✎', section: 'stamp', group: Object.freeze({ by: 'kind', label: 'Vector stamping' }),
-    opens: { editorTab: 'artwork', layer: true }, readOnly: 'layer', dependsOn: ['stock', 'sculptTop', dep('frame', { when: 'insetWindow' })] }),
+    opens: { editorTab: 'artwork', layer: true }, readOnly: 'layer', cuts: 'top', dependsOn: ['stock', 'sculptTop', dep('frame', { when: 'insetWindow' })] }),
   // flat bricks fit a plane to the surface stamped so far -- the layers UNDER theirs (core/engine/apply-stamp-layers.js:124-125,
   // rebuild.js:338-345); the frame's contour lays the frame bands (main/brick-panel.js:3149-3153) and its panel outline
   // sets the bricks' edge height (stamp-mask-manager.js:117, :214)
-  bricks: Object.freeze({ label: 'Bricks', icon: '▤', section: 'brick', opens: { editorTab: 'brick' }, readOnly: 'layer',
+  bricks: Object.freeze({ label: 'Bricks', icon: '▤', section: 'brick', opens: { editorTab: 'brick' }, readOnly: 'layer', cuts: 'top',
     dependsOn: ['stock', 'sculptTop', dep('vector', { belowInStack: true }), dep('latticeRails', { belowInStack: true }), dep('latticeNodes', { belowInStack: true }), 'frame'] }),
   // the frame is laid on the board (editor/editor-frame-profile.js:476)
-  frame: Object.freeze({ label: 'Wood frame', icon: '▢', section: 'frame', opens: { sidebar: 'panel-frame' }, readOnly: 'section', dependsOn: ['stock'] }),
+  frame: Object.freeze({ label: 'Wood frame', icon: '▢', section: 'frame', opens: { sidebar: 'panel-frame' }, readOnly: 'section', cuts: 'frame', dependsOn: ['stock'] }),
 });
+
+/** step 3 slice 3 (the advisor 2026-10-16): per-surface weight in the combined Δ score (core/job-timeline-baselines.js
+ *  computeWeightedDelta) -- "changes that affect only/mostly the top should be worth less" (Fred). Candidates; Fred
+ *  tunes them once he sees real numbers. Detection only -- no blocking threshold yet (that's Fred's own number, ask
+ *  before adding one). */
+export const JOB_DELTA_WEIGHTS = Object.freeze({ back: 1, frame: 1, top: 0.25 });
 
 /** Fred's default order (2026-10-14): the kinds in this order; a project without a saved order starts on it, head at 0. */
 export const JOB_DEFAULT_KIND_ORDER = Object.freeze(['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back', 'latticeRails', 'latticeNodes',

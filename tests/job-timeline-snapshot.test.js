@@ -148,4 +148,21 @@ describe('byte-size pin (the advisor: "pin its byte size, ~50KB")', () => {
     expect(snap.data).toHaveLength(count);
     expect(bytes).toBeLessThan(60000); // headroom above the ~50KB estimate; catches an accidental format bloat
   });
+
+  it('slice 3: top\'s baseline is the SAME grid as back\'s (core/job-timeline-baselines.js captureTopBaseline), so a board with both locked is ~2x, not a surprise 10x', () => {
+    const nx = 81, nz = 107;
+    const count = nx * nz;
+    const zs = new Array(count);
+    for (let k = 0; k < count; k++) zs[k] = k / (count - 1);
+    const back = quantizeHeights(zs, nx, nz);
+    const top = quantizeHeights(zs, nx, nz); // top's own capture quantizes the SAME way, same grid size
+    // frame's baseline is a handful of numeric fields (core/job-timeline-baselines.js frameFootprint) -- not a grid
+    const frame = { footprint: { frameBottomZ: -1, panelLip: 0.05, 'params.boundingboxoffset': 0.25 } };
+    const bytes = JSON.stringify({
+      back: { ...back, capturedAt: 1760000000000 },
+      top: { ...top, capturedAt: 1760000000000 },
+      frame: { ...frame, capturedAt: 1760000000000 },
+    }).length;
+    expect(bytes).toBeLessThan(130000); // ~2x the single-grid estimate + frame's negligible footprint
+  });
 });

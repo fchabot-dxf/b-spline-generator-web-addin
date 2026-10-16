@@ -13,7 +13,7 @@ import { ensureUndoBaseline, takeSnapshot } from '../core/history.js';
 import { syncJobLocks, syncLayerLocks } from './job-timeline-lock.js';
 import { sectionColor } from './section-themes.js';
 import { isJobTimelineEnabled } from '../core/job-timeline-enabled.js';
-import { isBackLocked, captureBackSnapshot, dropBackSnapshot } from '../core/job-timeline-snapshot.js';
+import { syncCutBaselines } from '../core/job-timeline-baselines.js';
 
 /** Where a strip is drawn: the host and what its bottom sits on (the editor's: the phone drawer's top). `rootVar`: its
  *  height also on the document root, for what floats over that canvas OUTSIDE its host (the phone's position:fixed
@@ -81,23 +81,21 @@ export function syncJobTimeline() {
  *  every global snapshot once one is taken around the move. Plain reordering (no head move) takes no step, same as
  *  step 2.
  *
- *  job-timeline step 3 slice 2: a head move that crosses Back's OWN lock boundary captures or drops its snapshot
- *  (core/job-timeline-snapshot.js) BEFORE the undo snapshot is taken, so the capture/drop is part of the SAME
- *  step Undo already restores -- no extra undo machinery. Gated on the Settings switch defensively (renderJobStrips'
- *  own gating already means this path is unreachable from the UI while it's off, same as syncJobLocks/syncLayerLocks). */
+ *  job-timeline step 3 slice 2/3: a head move that crosses a `cuts` surface's own lock boundary (back/top/frame,
+ *  core/job-timeline-baselines.js syncCutBaselines) captures or drops that surface's baseline BEFORE the undo
+ *  snapshot is taken, so the capture/drop is part of the SAME step Undo already restores -- no extra undo
+ *  machinery. Gated on the Settings switch defensively (renderJobStrips' own gating already means this path is
+ *  unreachable from the UI while it's off, same as syncJobLocks/syncLayerLocks). */
 function _commit(order, head, { isHeadMove = false } = {}) {
   const steps = currentJobSteps();
   if (isHeadMove) ensureUndoBaseline('Before move the job timeline head'); // recordStep's own "Before X" convention
-  const wasBackLocked = isHeadMove && isJobTimelineEnabled() && isBackLocked(P.jobTimeline);
-  // carry any existing snapshots (slice 2) forward -- a plain reorder, or a head move that doesn't cross Back's
-  // own lock boundary, must never silently drop an already-frozen underside
+  const prevOrder = P.jobTimeline?.order || [];
+  const prevHead = P.jobTimeline?.head ?? 0;
+  // carry any existing snapshots (slice 2/3) forward -- a plain reorder, or a head move that doesn't cross a
+  // `cuts` surface's own lock boundary, must never silently drop an already-captured baseline
   P.jobTimeline = normalizeJobTimeline({ order, head, snapshots: P.jobTimeline?.snapshots }, steps);
   if (isHeadMove) {
-    if (isJobTimelineEnabled()) {
-      const nowBackLocked = isBackLocked(P.jobTimeline);
-      if (nowBackLocked && !wasBackLocked) captureBackSnapshot();
-      else if (!nowBackLocked && wasBackLocked) dropBackSnapshot();
-    }
+    if (isJobTimelineEnabled()) syncCutBaselines(prevOrder, prevHead, P.jobTimeline.order, P.jobTimeline.head, steps);
     takeSnapshot('Move the job timeline head');
   }
   markDirty();
