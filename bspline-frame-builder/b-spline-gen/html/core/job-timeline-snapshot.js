@@ -11,6 +11,7 @@
  * and the head is past Back -- the live underside, same as the switch being off for every other lock.
  */
 import { P, lastResult } from './state.js';
+import { resampleDelta } from './sculpt.js';
 
 const QUANT_MAX = 65535;
 
@@ -25,22 +26,17 @@ export function quantizeHeights(zs, nx, nz) {
 }
 
 /** The reverse: a snapshot's own real Z values, resampled to (targetNx, targetNz) if the grid changed size since
- *  capture (NEAREST neighbour -- a bitwise-exact reproduction of a changed-resolution board isn't the point here;
- *  not moving the cut underside while Back is locked is). */
+ *  capture -- a resolution change or a board resize while Back is locked (the advisor: "a resize while cut is
+ *  physically impossible -- resample it, don't block it; let the Δ readout show the change" (slice 3)). Reuses
+ *  core/sculpt.js's own resampleDelta (BILINEAR) -- the same mechanism preDelta/postDelta already resample through
+ *  on a resolution change (core/engine/rebuild.js's reconcileSculptDeltas), not a second one next to it. */
 export function dequantizeHeights(snapshot, targetNx = snapshot.nx, targetNz = snapshot.nz) {
   const { data, nx, nz, minZ, maxZ } = snapshot;
   const span = maxZ - minZ || 1;
   const real = (q) => minZ + (q / QUANT_MAX) * span;
-  if (targetNx === nx && targetNz === nz) return data.map(real);
-  const out = new Array(targetNx * targetNz);
-  for (let j = 0; j < targetNz; j++) {
-    const sj = Math.min(nz - 1, Math.round((j / Math.max(1, targetNz - 1)) * (nz - 1)));
-    for (let i = 0; i < targetNx; i++) {
-      const si = Math.min(nx - 1, Math.round((i / Math.max(1, targetNx - 1)) * (nx - 1)));
-      out[j * targetNx + i] = real(data[sj * nx + si]);
-    }
-  }
-  return out;
+  const native = data.map(real);
+  if (targetNx === nx && targetNz === nz) return native;
+  return Array.from(resampleDelta(native, nx, nz, targetNx, targetNz));
 }
 
 /** Whether 'back' sits left of the playhead right now -- the step's own fixed id (core/job-timeline.js: SECTION_KINDS

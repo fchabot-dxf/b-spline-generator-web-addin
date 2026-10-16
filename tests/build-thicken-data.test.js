@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildThickenData } from '../bspline-frame-builder/b-spline-gen/html/core/engine/build-thicken-data.js';
+import { quantizeHeights, dequantizeHeights } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline-snapshot.js';
 
 const BASE_PARAMS = Object.freeze({
   widthIn: 2, heightIn: 2, thickness: 0.25, thickenEnabled: true,
@@ -74,5 +75,29 @@ describe('buildThickenData: Back locked (opts.backHeights present)', () => {
   it('no live offset computation ran: raw === smoothed (nothing to smooth, it was already finished at capture time)', () => {
     const thicken = buildThickenData(FLAT_HEIGHTS, 3, 3, BASE_PARAMS, { backHeights: FROZEN });
     expect(thicken.data.rawOffsetPts).toEqual(thicken.data.offsetPts);
+  });
+});
+
+describe('advisor check: Export rebuilds at its own (usually finer) resolution -- it must land on the SAME frozen underside the preview shows', () => {
+  it('a 5x5 "preview" grid and a 9x9 "export" grid, same locked snapshot, agree exactly at every coincident point', () => {
+    // captured once at a 3x3 grid (core/job-timeline-snapshot.js, the real module -- not a hand-rolled stand-in);
+    // Display and Export then each dequantize it to their OWN grid (main/export-flow.js withExportResolution runs
+    // the same rebuild() at a different P.spacing) and buildThickenData runs independently for each
+    const snap = quantizeHeights([0.05, 0.4, 0.15, 0.6, 0.9, 0.25, 0.1, 0.5, 0.3], 3, 3);
+    const previewBack = dequantizeHeights(snap, 5, 5);
+    const exportBack  = dequantizeHeights(snap, 9, 9);
+
+    const previewTop = new Float32Array(25); // flat top at both resolutions -- isolates the backHeights path
+    const exportTop  = new Float32Array(81);
+    const preview = buildThickenData(previewTop, 5, 5, BASE_PARAMS, { backHeights: previewBack });
+    const exportT = buildThickenData(exportTop,  9, 9, BASE_PARAMS, { backHeights: exportBack });
+
+    for (let jp = 0; jp < 5; jp++) {
+      for (let ip = 0; ip < 5; ip++) {
+        const pK = jp * 5 + ip;
+        const eK = (jp * 2) * 9 + (ip * 2); // the coincident export cell at the same physical position
+        expect(exportT.data.offsetPts[eK * 3 + 2]).toBeCloseTo(preview.data.offsetPts[pK * 3 + 2], 4);
+      }
+    }
   });
 });
