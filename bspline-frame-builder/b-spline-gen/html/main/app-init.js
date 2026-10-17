@@ -686,6 +686,17 @@ export const MIGRATIONS = [
   // RETIRED with the picker (Fred 2026-10-11: a preset bundles its corner) -- both are listed presets again, so it would
   // now turn a board saved on "Soldier · quoin" into Soldier + a hidden corner. A board it already migrated keeps its
   // explicit frameCorner (still read, tests/frame-corner-legacy-pin.test.js); one it never saw lays from its own bands.
+  {
+    id: 'greek-key-tile-legacy-1x',
+    // Fred 2026-10-17 (seat E, via the advisor): the Greek key mosaic's own tiles shrank to 0.75 of their size (narrow
+    // wood frames; library.js FRAME_PRESETS.greek_key_mosaic tileFactor). A board saved on it before this has no
+    // frameBandTileFactor key (a load replaces brickSettings whole, so it never takes the new DEFAULT empty array)
+    // and laid at the old, full tile size: pin band 0 (the preset's only band) to 1, its own old tileFactor, so it
+    // keeps laying byte-identical (tests/greek-key-tile-legacy-pin.test.js). A board not on this preset, or one
+    // saved after (frameBandTileFactor already an array, even empty), is untouched -- a fresh pick gets 0.75.
+    when: (p) => p.brickSettings && p.brickSettings.frameBandPreset === 'greek_key_mosaic' && !p.brickSettings.frameBandTileFactor,
+    apply: (p) => { p.brickSettings.frameBandTileFactor = [1]; },
+  },
 ];
 
 export function runMigrations(p = P) {
