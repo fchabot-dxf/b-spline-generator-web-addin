@@ -26484,3 +26484,49 @@ before citing turn 18; unchanged by the branch move, not re-shot.
 
 **TIP_FAN_SWEEP_FULL on this clean branch:** see the next WORK-LOG entry below for the full-sweep result now that
 the toothed-preset noise is gone.
+
+## 2026-10-17 -- seat E (20): TIP_FAN_SWEEP_FULL on the clean branch -- 22 known, 0 unexplained
+
+**MOTIF_SWEEP_FULL=1 TIP_FAN_SWEEP_FULL=1** on `greek-key-tiles` (origin/main + the one tileFactor commit, nothing
+toothed anywhere): 506 + 3420 = 3926 lays. Without the KNOWN tables: 22 failed, all in
+`bricks-tip-fill-fans.test.js`, 0 in the motif sweep. Confirms the earlier 64-failure count (reported turn 18) was
+entirely an artifact of the wrong base -- the 38 toothed-preset failures are GONE here (that preset doesn't exist
+on this branch) and the 15 "other" count from before was itself measured against a sweep that included toothed
+preset variants of checker_tile_runner etc.; the real, clean-base count for that group is 11, not 15.
+
+**The 22, split and recorded (not fixed) in `GREEK_KEY_KNOWN_RESIDUAL` / new `KNOWN_OVERLAP`,
+tests/bricks-tip-fill-fans.test.js:**
+
+1. **greek_key_mosaic at 1in, 8 bare-patch cases (T2/T11/T13/T16/T17/T18/T19 -- some 7x9, some 9x12):** 0.0540 to
+   0.2040 share of one brick face. 1in was never in scope for the tileFactor turn (Fred/the advisor's pick was
+   0.75in specifically) -- per the advisor: "leave it, 0.75 is its best size," recorded not chased.
+2. **greek_key_mosaic at 1in, 3 overlap cases (T4/T8/T19, all 7x9):** the same Mode-A-style dropped-primitive-chain
+   overlap the 0.75in tileFactor shrink resolved, still present at the bigger 1in tile -- 0.0021 to 0.0269 sq in,
+   1 to 9 pairs. No existing mechanism covered an overlap exception before this (only bare-patch had one); added
+   `KNOWN_OVERLAP` alongside `KNOWN_RESIDUAL`, same "+1e-4, held to its own ceiling, any other case still fails
+   outright" shape.
+3. **checker_tile_runner / third_stepped_bond / short_alternating / half_soldier_course on T16/T17 (11 cases, both
+   sizes, both board dimensions depending on the case):** confirmed STILL failing on this clean branch -- neither
+   toothed-quoin code nor anything from this turn's own tileFactor work touches these presets or these templates'
+   other bands. Pre-existing on `origin/main` today, from the narrow-runner / short-brick merges (unrelated prior
+   work). Per the advisor: don't fix them in this branch -- recorded as known, listed here for whoever picks them
+   up: T16 7x9 0.75in / T17 7x9 0.75in checker_tile_runner (0.1067 each); T16 9x12 0.75in checker_tile_runner
+   (0.2133); T16 9x12 1in / T17 9x12 1in checker_tile_runner (0.1260 each); T16 9x12 0.75in third_stepped_bond /
+   short_alternating / half_soldier_course (0.1600 each); T17 9x12 0.75in third_stepped_bond / short_alternating /
+   half_soldier_course (0.1813 each).
+
+Re-ran after adding both tables: 3926/3926 green. Full `npx vitest run` on this branch again after: 513 files /
+7104 tests, green. `GREEK_KEY_KNOWN_RESIDUAL` renamed to `KNOWN_RESIDUAL` (its own comment updated) since it now
+holds the checker_tile_runner-group cases too, not just the Greek key's.
+
+**Shared-lock aside (not this repo's bug, but blocked this turn for a while):** the CPU lock script's own `source
+~/.shared-cpu/cpu_lock.sh && cpu_lock_take ...` usage pattern -- its own header's documented usage -- silently
+no-opped under today's rewritten `cpu_lock.sh`: the trailing CLI guard line evaluates to exit 1 when the file is
+merely sourced, so `source` itself returns 1 and the `&&` chain never reaches `cpu_lock_take`. Cost ~12h on an old
+waiter process sourcing the pre-rewrite script (genuinely polling, just never going to get anywhere once the new
+script replaced the old fairness logic it was comparing against) plus a couple of silent relaunch attempts before
+isolating it. The advisor says it's fixed and DDCS is told; flagging here too in case another branch's own
+WORK-LOG wants the pointer.
+
+**Pushing tier: full** -- this branch only (`git diff --stat origin/main`): 11 files in the tileFactor commit, 1
+file (tests/bricks-tip-fill-fans.test.js) in this one, nothing toothed, nothing outside bricks/greek-key scope.
