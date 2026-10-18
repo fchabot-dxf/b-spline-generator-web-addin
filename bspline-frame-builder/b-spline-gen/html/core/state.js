@@ -213,6 +213,13 @@ export const DEFAULT = {
       // soldier_stretcher, keeps band 0's own override). Only course/course-alternating kinds are
       // meaningful here (main/brick-panel.js's own FRAME_BAND_PATTERN_LIST greys out the rest).
       frameBandPatterns: [],
+      // Fred 2026-10-17 (seat E, via the advisor; the Greek key's tiles were too big for narrow wood frames): one
+      // entry per band INDEX, same convention as frameBandPatterns above -- a missing/falsy index means "use that
+      // band's own declared tileFactor" (library.js FRAME_PRESETS, 1 when absent). Only the Greek key band declares
+      // one today (0.75); every other band's own tileFactor is undefined, so this array is a no-op for them. A
+      // board saved before this existed has frameBandTileFactor absent entirely (a load replaces brickSettings
+      // whole, never backfilled from this DEFAULT) -- app-init.js MIGRATIONS pins it to the band's own OLD size.
+      frameBandTileFactor: [],
       // F35 item 10 follow-up (Fred): the Brush tool's own settings, shown only when Brush is the
       // active tool (main/brick-panel.js). `orientation` already had real engine support
       // (core/bricks/along-path.js's own opts.orientation); `profile` ('bricks' = Stripped,

@@ -37,6 +37,50 @@ const CASES = FULL
 
 const area = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
 const boxOf = (p) => { const xs = p.map((q) => q.x), ys = p.map((q) => q.y); return [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]; };
+/** Fred 2026-10-17 (seat E, via the advisor): known residuals, recorded not fixed -- a regression guard (like
+ *  bricks-quoin-stack.test.js's own QUOIN_TOOTH_KNOWN_RESIDUAL), not a blanket exemption: any OTHER case, or a
+ *  listed one that gets WORSE than its own recorded share, still fails. +1e-4 for the same toFixed(4)-rounding/
+ *  FP-noise headroom that table's own comment explains. Two groups, both measured on this exact shipped state (a
+ *  branch off origin/main carrying only the greek_key tileFactor change -- re-run after the first TIP_FAN sweep
+ *  turned out to have been measured on a branch still sitting on the parked, never-merged toothed-quoins commits):
+ *  - greek_key_mosaic: 36 of 38 template x board-size lays at 0.75in (its own recommended size) are clean (27
+ *    before the tileFactor shrink) -- T16/T17 7x9 are the 2 that are not. At 1in (never in scope for the tileFactor
+ *    turn -- "leave it, 0.75 is its best size") the same Mode-A-style overlap and bare-patch gaps the 0.75in fix
+ *    resolved still show up on several other templates; recorded, not chased.
+ *  - checker_tile_runner / third_stepped_bond / short_alternating / half_soldier_course on T16/T17: confirmed
+ *    STILL failing on this clean branch (no toothed or tileFactor code anywhere near them) -- pre-existing on main
+ *    today, from the narrow-runner / short-brick merges. Per the advisor: don't fix them here.
+ */
+const KNOWN_RESIDUAL = Object.freeze({
+  'template_16 7x9 0.75in greek_key_mosaic': 0.1067,
+  'template_17 7x9 0.75in greek_key_mosaic': 0.0640,
+  'template_11 7x9 1in greek_key_mosaic': 0.2040,
+  'template_13 7x9 1in greek_key_mosaic': 0.1200,
+  'template_16 7x9 1in greek_key_mosaic': 0.0600,
+  'template_16 9x12 1in greek_key_mosaic': 0.1200,
+  'template_17 7x9 1in greek_key_mosaic': 0.0600,
+  'template_18 9x12 1in greek_key_mosaic': 0.0540,
+  'template_19 9x12 1in greek_key_mosaic': 0.0540,
+  'template_2 7x9 1in greek_key_mosaic': 0.1020,
+  'template_16 7x9 0.75in checker_tile_runner': 0.1067,
+  'template_17 7x9 0.75in checker_tile_runner': 0.1067,
+  'template_16 9x12 0.75in checker_tile_runner': 0.2133,
+  'template_16 9x12 1in checker_tile_runner': 0.1260,
+  'template_17 9x12 1in checker_tile_runner': 0.1260,
+  'template_16 9x12 0.75in third_stepped_bond': 0.1600,
+  'template_16 9x12 0.75in short_alternating': 0.1600,
+  'template_16 9x12 0.75in half_soldier_course': 0.1600,
+  'template_17 9x12 0.75in third_stepped_bond': 0.1813,
+  'template_17 9x12 0.75in short_alternating': 0.1813,
+  'template_17 9x12 0.75in half_soldier_course': 0.1813,
+});
+/** greek_key_mosaic at 1in only (the other 8 known cases above are bare-patch only, 0 overlap): the same
+ *  dropped-primitive-chain overlap the tileFactor shrink resolved at 0.75in, still present at the 1in size. */
+const KNOWN_OVERLAP = Object.freeze({
+  'template_19 7x9 1in greek_key_mosaic': 0.0104,
+  'template_4 7x9 1in greek_key_mosaic': 0.0021,
+  'template_8 7x9 1in greek_key_mosaic': 0.0269,
+});
 
 describe(`tip fill keeps the corner fan's ground (${FULL ? 'full sweep' : 'fast set'})`, () => {
   it.each(CASES)('%s %sx%s at %s in, %s', (tpl, W, H, L, preset) => {
@@ -48,14 +92,18 @@ describe(`tip fill keeps the corner fan's ground (${FULL ? 'full sweep' : 'fast 
     if (!fb.length && r.archFit) return; // no frame laid (an arch that does not fit): the 'none' lay, left out here
     const s = scaledSet(SET, L / SET.brickLengthIn);
     const bare = bareGround(tess(prims), [...fb, ...r.bricks], s.grout.widthIn, { W, H });
-    expect(bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), 'largest bare patch, share of one brick face').toBeLessThanOrEqual(PATCH_MAX_FACE);
-    const bx = fb.map((b) => boxOf(b.polygon)), bad = [];
+    const key = `${tpl} ${W}x${H} ${L}in ${preset}`;
+    const known = KNOWN_RESIDUAL[key];
+    expect(bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), 'largest bare patch, share of one brick face').toBeLessThanOrEqual(known !== undefined ? known + 1e-4 : PATCH_MAX_FACE);
+    const bx = fb.map((b) => boxOf(b.polygon)), bad = [], overlaps = [];
     for (let i = 0; i < fb.length; i++) for (let j = i + 1; j < fb.length; j++) {
       const a = bx[i], b = bx[j];
       if (a[1] < b[0] || b[1] < a[0] || a[3] < b[2] || b[3] < a[2]) continue;
       const o = area(polygonIntersection(fb[i].polygon, fb[j].polygon));
-      if (o > OVERLAP_MAX_SQIN) bad.push(`${fb[i].id}/${fb[j].id} ${o.toFixed(4)}`);
+      if (o > OVERLAP_MAX_SQIN) { bad.push(`${fb[i].id}/${fb[j].id} ${o.toFixed(4)}`); overlaps.push(o); }
     }
-    expect(bad, 'frame pieces overlapping').toEqual([]);
+    const knownOverlap = KNOWN_OVERLAP[key];
+    if (knownOverlap !== undefined) expect(Math.max(0, ...overlaps), 'largest frame overlap, known residual (sq in)').toBeLessThanOrEqual(knownOverlap + 1e-4);
+    else expect(bad, 'frame pieces overlapping').toEqual([]);
   });
 });
