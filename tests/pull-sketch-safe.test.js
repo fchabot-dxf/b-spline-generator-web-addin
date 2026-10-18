@@ -86,7 +86,7 @@ describe('a card from the request to the reply; a named handler', () => {
     globalThis.adsk = { fusionSendData: send };
     P.boardId = 'kx1y2z3a';
     pullSketchFromFusion();
-    expect(send).toHaveBeenCalledWith('pull_sketch_from_fusion', JSON.stringify({ board: { id: 'kx1y2z3a' }, widthIn: 7, heightIn: 9 }));
+    expect(send).toHaveBeenCalledWith('pull_sketch_from_fusion', JSON.stringify({ board: { id: 'kx1y2z3a' }, widthIn: 7, heightIn: 9, frameSeedIds: [] }));
     expect(currentLoadingStage()?.id).toBe(PULL_SKETCH_STAGE);
     window.svgEditor = editor().ed;
     onSketchPulled(reply({}));

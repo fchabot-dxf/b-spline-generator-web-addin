@@ -245,7 +245,7 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
   return R;
 }
 
-const BASIS = { hw: (r) => r.w / 2, hh: (r) => r.h / 2, h: (r) => r.h };
+export const BASIS = { hw: (r) => r.w / 2, hh: (r) => r.h / 2, h: (r) => r.h };
 
 /**
  * T6 TAB TOP (T9 I SHAPE the same way): presets whose DRAWN frame (not only a drag) obeys the frame rule

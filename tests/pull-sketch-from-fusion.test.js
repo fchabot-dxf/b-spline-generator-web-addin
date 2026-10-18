@@ -23,7 +23,7 @@ describe('pullSketchFromFusion & sketch_pulled pipeline', () => {
         pullSketchFromFusion();
         const [action, payload] = sendFn.mock.calls[0];
         expect(action).toBe('pull_sketch_from_fusion');
-        expect(JSON.parse(payload)).toEqual({ board: { id: 'kx1y2z3a' }, widthIn: P.widthIn, heightIn: P.heightIn });
+        expect(JSON.parse(payload)).toEqual({ board: { id: 'kx1y2z3a' }, widthIn: P.widthIn, heightIn: P.heightIn, frameSeedIds: [] }); // no frame on this board: nothing to read back
     });
 
     it('pullSketchFromFusion sends an empty board id for a project with none yet (the legacy board)', () => {
