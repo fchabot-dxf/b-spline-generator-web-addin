@@ -59,8 +59,17 @@ describe('matchPulledRails: what it skips (never guesses an id, never includes a
     expect(matchPulledRails(curves, { spacing: SPACING, orientation: 'horizontal', extent: EXTENT })).toEqual([]);
   });
 
-  it('a construction line is skipped even if it somehow carries a railId', () => {
+  // The old pin ("a construction line is skipped even if it somehow carries a railId") guarded a case that never
+  // happens the way it assumed: measured live in Fusion (2026-10-18, 7x9 board), ALL 9 Send-tagged rails
+  // (rail1..rail9) are construction lines, so the skip dropped every real rail and Apply moved nothing.
+  it('a construction line that carries a railId IS a rail (every real Send rail is one)', () => {
     const curves = [{ type: 'line', railId: 'rail7', isConstruction: true, x1: 0, y1: 2, x2: 4, y2: 2 }];
+    expect(matchPulledRails(curves, { spacing: SPACING, orientation: 'horizontal', extent: EXTENT }))
+      .toEqual([{ id: 'rail7', at: 0.5 }]);
+  });
+
+  it('a construction line with NO railId is still skipped', () => {
+    const curves = [{ type: 'line', railId: null, isConstruction: true, x1: 0, y1: 2, x2: 4, y2: 2 }];
     expect(matchPulledRails(curves, { spacing: SPACING, orientation: 'horizontal', extent: EXTENT })).toEqual([]);
   });
 

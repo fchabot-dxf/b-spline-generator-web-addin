@@ -22,7 +22,7 @@
 import { primitiveFromContourD, contourPrimitiveEnds, mergeContourPrimitives, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import {
   toLattice, fromLattice, latticeCrossings,
-  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
+  LATTICE_ATTR, RAIL_ID_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder } from './layers.js';
@@ -1691,7 +1691,12 @@ function _placeProtectedRails(railRows, protectedRails, jMin, jMax) {
  *  protectedRails' own job); `rails.custom` entries are matched by railId elsewhere (the Pull side), not here --
  *  computePattern only ever needs each entry's own `.at`. */
 function _placeCustomRails(railRows, customRails, jMin, jMax) {
-  return _insertAtFractions(railRows, customRails, jMin, jMax, { preciseValue: true }).rows;
+  const { rows, matchOfRow } = _insertAtFractions(railRows, customRails, jMin, jMax, { preciseValue: true });
+  // row value -> the custom entry's own id: the entry is the rail's source of truth, so Generate mints that rail
+  // WITH the entry's id (seat D 2026-10-18; a regenerate used to mint fresh ids and orphan every lock)
+  const idOfRow = new Map();
+  for (const [row, k] of matchOfRow) if (customRails[k] && customRails[k].id) idOfRow.set(row, customRails[k].id);
+  return { rows, idOfRow };
 }
 
 export function computePattern(PATTERN, opts = {}) {
@@ -1886,7 +1891,7 @@ export function computePattern(PATTERN, opts = {}) {
   // rails-lock slice: a Pull-applied rail's own row is placed FIRST, so a custom rail the user also styled/cut
   // finds its own already-inserted row below (see _placeCustomRails' own comment). Empty rails.custom (every
   // existing saved pattern) is a no-op -- customRailRows === generatedRailRows, byte-for-byte.
-  const customRailRows = _placeCustomRails(generatedRailRows, rails.custom, jMin, jMax);
+  const { rows: customRailRows, idOfRow: customIdOfRow } = _placeCustomRails(generatedRailRows, rails.custom, jMin, jMax);
   // Fred (protected rails): a recoloured / striped / cut rail keeps its row -- see _placeProtectedRails
   const { rows: railRows, protectOfRow } = _placeProtectedRails(customRailRows, P.protectedRails, jMin, jMax);
   const halfRail = widths.rails / 2 / P.spacing;
@@ -1932,6 +1937,8 @@ export function computePattern(PATTERN, opts = {}) {
         // unique-per-row key, reused directly rather than a second counter.
         railGroup: j,
         ...(pr && pr.spans === kept.length && pr.span === idx ? { protect: pk } : {}),
+        // a row split into several pieces: the entry's id goes on the first only (an id names ONE element)
+        ...(idx === 0 && customIdOfRow.has(j) ? { railId: customIdOfRow.get(j) } : {}),
       });
       if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
       if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
@@ -2276,6 +2283,7 @@ export function computePattern(PATTERN, opts = {}) {
       // orientation-independent, passed through unchanged.
       railGroup: s.railGroup,
       ...(s.protect != null ? { protect: s.protect } : {}),
+      ...(s.railId ? { railId: s.railId } : {}),
     })),
     nodePoints: nodePoints.map((p) => orient(p, orientation)),
   };
@@ -2730,11 +2738,17 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   editor._activeLayer = kindLayerIds.rails;
   editor._color = colors.rails;
   const keptProtected = [];
+  // a freshly minted rail must never take a custom entry's id (a loaded board's editor counter starts at 0)
+  for (const seg of segments) {
+    const n = seg.railId && /^rail(\d+)$/.exec(seg.railId);
+    if (n) editor._nextRailId = Math.max(editor._nextRailId || 0, +n[1]);
+  }
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     const el = tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
+    if (el && seg.railId) el.attr(RAIL_ID_ATTR, seg.railId); // the custom entry's own id (see _placeCustomRails)
     if (el && seg.protect != null && _reapplyProtectedRail(el, protectedRails[seg.protect])) {
       keptProtected.push(protectedRails[seg.protect]);
     }
