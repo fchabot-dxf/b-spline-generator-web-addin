@@ -186,6 +186,10 @@ def _point_seed_from(ctx, s_name, seed_from, geo_id):
     src = ctx.entity_map.get(s_name, {}).get(seed_from["id"])
     if src is None:
         raise ValueError(f"SeedFrom {seed_from['id']!r} (point {geo_id!r}): no such built entity yet")
+    if seed_from.get("side") == "point":
+        # a bare Point source (e.g. T18/T19's top_apex_anchor): its own position
+        g = src.geometry
+        return g.x, g.y
     if seed_from.get("side") == "short-arc-mid":
         c = src.centerSketchPoint.geometry
         r = src.radius

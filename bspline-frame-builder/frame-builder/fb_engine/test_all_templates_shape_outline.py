@@ -139,9 +139,16 @@ def _resolve_pts(it, items, ev):
     for p in it['Points']:
         if isinstance(p, dict) and 'SeedFrom' in p:
             src_id, side = p['SeedFrom']['id'], p['SeedFrom']['side']
+            if side == 'point':  # a bare Point step (T18/T19's top_apex_anchor): its own resolved position
+                src = next(s for s in items if s.get('ID') == src_id and s.get('Type') == 'Point')
+                out.append(_resolve_pts(src, items, ev)[0])
+                continue
             src = next(s for s in items if s.get('ID') == src_id
                        and not any(isinstance(sp, dict) for sp in s.get('Points', [])))
             src_pts = [(ev(x), ev(y)) for x, y in src['Points']]
+            if side == 'short-arc-mid':  # the declared mid sits on the seed circle's minor arc
+                out.append(src_pts[1])
+                continue
             chosen = min(src_pts, key=lambda xy: xy[0]) if side == 'left' else max(src_pts, key=lambda xy: xy[0])
             out.append(chosen)
         else:
