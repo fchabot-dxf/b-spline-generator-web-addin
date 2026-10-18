@@ -578,9 +578,8 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // naturalWidth x 12) 0.75 of the size above. 36 of 38 templates x board-size lays clean at 0.75 (27 at 1.0); the
   // two still bad (T16 / T17 7x9) are recorded as known in tests/bricks-tip-fill-fans.test.js's own PATCH_KNOWN.
   // A board saved before this (frameBandTileFactor absent) keeps the OLD 1.0 via app-init.js MIGRATIONS.
-  // Fred 2026-10-17 (via the advisor, scope turn): meanderCurves -- the key continues around an arc (waist / arched
-  // head) instead of going flat/flush there (BAND_MOTIFS.greek_key's own curveMeander declares it CAN; this is the
-  // fresh-pick default). A board saved before this (frameBandMeanderCurves absent) keeps the OLD flat-on-arc via
+  // Fred 2026-10-17 (via the advisor, scope turn): meanderCurves -- an arc (waist / arched head) lays the motif's own
+  // curvePattern instead of going flat/flush there (the fresh-pick default). A board saved before this (frameBandMeanderCurves absent) keeps the OLD flat-on-arc via
   // app-init.js MIGRATIONS, same pattern as tileFactor.
   greek_key_mosaic: withBestSize(0.75, [
     { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key', tileFactor: 0.75, meanderCurves: true },
@@ -759,11 +758,10 @@ export const BAND_MOTIFS = Object.freeze({
   // green / white strip either side of it. Corner: the strips turn as an L; the key's corner is a concentric square (ring +
   // 2x2 centre), symmetric about the diagonal (both runs read it). Flat raised tops with the joints between raised neighbours
   // filled (as the zigzag / diaper): the key reads as continuous strokes, not a scatter of green tiles.
-  // curveMeander (Fred 2026-10-17, via the advisor, scope turn): the ONLY motif declaring this today -- band-motif.js
-  // runRelief reads it to allow real (non-flush) relief on an arc primitive, and tagMotifRow threads the grid's own
-  // column phase continuously across a row's primitive runs (line->arc, line->line) instead of resetting it at each
-  // one -- every OTHER motif keeps today's per-run reset and flush-on-arc, byte-identical.
-  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, curveMeander: true, grid: {
+  // curvePattern (Fred 2026-10-18, via the advisor): the key does NOT go round a curve (its columns do not line up row to
+  // row there); a band with meanderCurves on lays this plain pattern along each arc row instead (band-motif.js
+  // CURVE_PATTERNS: rings | along | plain). Flush on an arc when the band's meanderCurves is off (a saved board).
+  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, curvePattern: 'rings', grid: {
     tile: ['......', 'RRRRRR', '......', 'RRRR.R', '...R.R', '.R.R.R', '.RRR.R', '.....R', 'RRRRRR', '......', 'RRRRRR', '......'],
     corner: [
       '............',
