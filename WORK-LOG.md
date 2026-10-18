@@ -26401,3 +26401,90 @@ see the advisor DM thread, not repeated here) is going to Fred first regardless.
 **Scope note.** Checked: this is specific to a WIDE dropped-primitive chain (several primitives collapsing at
 once), not every corner patch -- the single-fillet case (the vast majority of patches across every other preset)
 never reaches the part of buildPatch that would need to change.
+
+## 2026-10-17 -- seat E (18): greek_key_mosaic tileFactor 0.75 -- shipped, saved boards pinned
+
+**What.** Fred's pick from the options grid (turn 17): the Greek key mosaic's own tiles shrink to 0.75 of their
+size (same 12-row meander, the band's own depth scales down with it: 2.4in -> 1.8in) -- narrow wood frames now
+have real wall left. Declared, not hand-rolled: `tileFactor: 0.75` on the ONE band in
+`FRAME_PRESETS.greek_key_mosaic` (library.js), read generically in contour-bands.js's own `planBands` (scales
+`naturalWidth`/`pitch`, the two things that set a band's own tile size) and the main row loop's `scaledL`/`scaledH`
+handed to `motifRowPlan` for a row-cutting grid motif (greek_key is one -- `motifCutsRows` is true for it, which
+routes its own depth through a DIFFERENT formula (`motifRowDepth`) than the one I touched first; found that by
+watching an env-var scratch hook do nothing, then tracing where the real number still came from). Absent or 1
+(every other band today): a complete no-op, confirmed byte-identical (below).
+
+**Saved boards.** `core/state.js` DEFAULT gained `frameBandTileFactor: []`, same per-band-index-override
+convention as the existing `frameBandPatterns` (F35 item 8). `editor-brick-tool.js` `frameBandsOf` applies it the
+same way: an override wins, absent falls through to the band's own declared `tileFactor`. `app-init.js` MIGRATIONS
+gained `greek-key-tile-legacy-1x`: a board saved on greek_key_mosaic with no `frameBandTileFactor` key (a load
+replaces brickSettings whole, never backfilled from this DEFAULT -- the window-surround-legacy-none precedent) is
+pinned to `[1]`, its own old size; a board saved AFTER (the key already an array, even empty) is untouched and
+gets the new 0.75 on its next lay. `tests/greek-key-tile-legacy-pin.test.js` (new, PIN=1 to re-pin) hashes a
+legacy board's own lay against a fixture and asserts it's NOT equal to a fresh pick's lay -- proof the override
+is actually doing something, not a no-op pin.
+
+**Every other preset byte-identical.** `tests/frame-presets-unchanged.test.js`, `frame-preset-saved-boards-pin.test.js`,
+`bricks-cell-parts-pin.test.js`, `bricks-library.test.js`, `frame-preset-icons.test.js`, `frame-corners.test.js`,
+`frame-corner-effect.test.js` -- all green (117 tests), plus `MOTIF_SWEEP_FULL=1` on `bricks-band-motif.test.js`
+(506 tests, every OTHER motif preset x template x size): green. `tools/gen_brick_icons.mjs` regenerated +
+`brick-icons-fresh.test.js` green.
+
+**Re-recorded the Greek key's own sweep/pins (bricks-band-motif.test.js, the Greek key describe block).** The
+preset-declaration pin, the tile-size pin (0.166in -> 0.116in = `s.brickHeightIn * 0.75 - J`), and GK_KNOWN (the
+dedicated clean-lay sweep over rect/template_1/template_10/template_18 at the Greek key's own best size) all
+updated to measured values. GK_KNOWN shrank a lot: template_1 7x10 and template_10 7x10 (both known exceptions at
+the old 1.0x tile) are now clean outright. Only template_18 7x10 is still bad, and differently -- the smallest
+piece is now 0.000227 of the floor (was 0.0005) and there's a real 0.2844-tile bare patch (none recorded before;
+`outside` -- tiles landing past the outline -- is now 0, the OLD problem there).
+
+**One test needed real surgery, not just new numbers.** The per-piece "which lattice column is this, does its
+relief match the declared corner/tile table" check reconstructed a piece's own column from its physical x
+position -- reliable at the old, bigger tile size (few repeats per run), but at 0.75x a 7-10in run now packs
+40-44 tiles instead of ~10, and across that many repeats the reconstruction (several approaches tried: raw
+physical-position rounding, per-piece integer cell-span accumulation anchored from both ends, a plain sequential
+array index with a constant offset) kept landing on a DIFFERENT false mismatch each time -- evidence the drift was
+in my reconstruction, not the lay (the independent coverage/overlap sweep on this exact case is clean throughout).
+Simplified to what the run can prove without rebuilding the engine's own internal column count: every piece reads
+a real declared relief, and the periodic middle repeats with the tile's own 6-row period (piece i same relief as
+piece i+6), wherever the true phase actually sits. Parked for whoever wants the exact corner-to-cell mapping back:
+`band-motif.js` `motifRowPlan` is already exported and returns `startColumn` -- call it directly with the row's
+real d0/d1/bandStart instead of reconstructing from output geometry.
+
+**Mode A (the fan overlap, parked turn 15) at the new tile size.** Confirmed resolved -- the shallower band means
+the dropped-primitive chain at a gable corner no longer spans as many rows (this was already reported before the
+tileFactor pick; unchanged by today's work, repeating here since it's the same mechanism this commit's own sweep
+also exercises).
+
+**T16/T17 7x9 (the 2 cases still bad in the general TIP_FAN sweep).** Recorded as KNOWN in
+`tests/bricks-tip-fill-fans.test.js`'s own `GREEK_KEY_KNOWN_RESIDUAL` (same regression-guard shape as
+`bricks-quoin-stack.test.js`'s QUOIN_TOOTH_KNOWN_RESIDUAL: a listed case is held to its OWN recorded ceiling, not
+a blanket exemption -- any other case, or a worse measurement on a listed one, still fails): T16 7x9 0.75in
+0.1067, T17 7x9 0.75in 0.0640, both bare-patch only, 0 overlaps either.
+
+**Before/after shot:** ~/.bspline-status/shots/seatE/greek_key_tilefactor_final/ (before.png = a legacy board,
+tileFactor 1.0, via the real migration path; after.png = a fresh pick, tileFactor 0.75) -- T4 9x12 0.75in, opened
+before citing.
+
+**TIP_FAN_SWEEP_FULL (4104 lays, every preset x template x 7x9/9x12 x 0.75/1in): 64 failed.** `greek_key_mosaic at
+0.75in` -- the scope this whole turn is about -- is CLEAN, 0 of those 64 (confirmed: zero "0.75 in,
+greek_key_mosaic" entries in the fail list). The 64 split three ways, only one of which is this turn's own:
+
+1. **greek_key_mosaic at 1in (11 failures, NOT recorded, flagged not fixed):** T2/T4/T8/T11/T13/T16/T17/T18/T19,
+   all "at 1 in" specifically -- tileFactor scales relative to whichever L is picked, so at 1in the tiles are
+   still big enough to trigger the SAME Mode-A-style overlap the 0.75in fix resolved (T8 7x9 1in: one 0.0269 sq in
+   overlap, the exact pair from the original Mode A report). Fred/the advisor's ask was 0.75in specifically (the
+   preset's own recommended size); 1in was never in scope for this turn and isn't recorded as known. Needs a call:
+   record it too, or leave 1in as a size nobody's committed to fixing.
+2. **38 pre-existing failures, unrelated to today, on TOOTHED-QUOIN preset variants** (craftsman_apron_toothed,
+   double_soldier_toothed, tudor_frieze_toothed, three_band_toothed, toothed_corners, soldier_stretcher_toothed,
+   recessed_panel_toothed, corbelled_cornice_toothed -- template_12 7x9/9x12, template_6 9x12, template_1/3/4/5/9/10
+   9x12, mostly "at 1 in"). primitive-ribbon.js/contour-bands.js's own toothed-quoin code (buildQuoinTeeth,
+   buildBlockJoint, rowCornerStyle) is untouched by anything in this turn or the parked v3 work -- confirmed
+   unchanged by md5 earlier, and these presets sit entirely outside the `band.tileFactor` code path this turn
+   added. This looks like this test file's own full sweep (TIP_FAN_SWEEP_FULL) was simply never run against the
+   toothed-quoins ship (2f9bc59) -- a pre-existing gap this turn's own full run happened to surface, not something
+   introduced today. NOT investigated further (out of scope) -- flagging for the advisor to decide who picks it up.
+3. **15 more pre-existing failures, unrelated to both of the above:** checker_tile_runner (T16/T17, several sizes)
+   and third_stepped_bond / short_alternating / half_soldier_course (T16/T17 9x12 0.75in). Also untouched by
+   anything this turn or the toothed-quoins work. Same as #2 -- flagged, not investigated.

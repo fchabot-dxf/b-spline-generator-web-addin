@@ -580,8 +580,14 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // 2026-10-11 (Fred, ref5): a mosaic -- ONE band of 12 square-tile rows (BAND_MOTIFS.greek_key), every tile the same size
   // (one brick height); widthIn = 12 rows at Set 1's own size. Best at the 0.75 in chip (Fred 2026-10-11 picked it): a 0.2
   // in tile pitch (0.166 in tiles), the band 2.4 in deep (at 0.375 in the 0.066 in tiles were a third grout)
+  // Fred 2026-10-17 (seat E, via the advisor; MEASURED, tests/_scratch -- the full depth tiles a gable's own narrow
+  // top collapses several primitives into one corner, overlapping neighbouring rows, and a few other templates ran
+  // the band off the board entirely): tileFactor 0.75 -- same 12-row meander, each tile (and the band's own depth,
+  // naturalWidth x 12) 0.75 of the size above. 36 of 38 templates x board-size lays clean at 0.75 (27 at 1.0); the
+  // two still bad (T16 / T17 7x9) are recorded as known in tests/bricks-tip-fill-fans.test.js's own PATCH_KNOWN.
+  // A board saved before this (frameBandTileFactor absent) keeps the OLD 1.0 via app-init.js MIGRATIONS.
   greek_key_mosaic: withBestSize(0.75, [
-    { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key' },
+    { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key', tileFactor: 0.75 },
   ]),
   craftsman_apron: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'header' },

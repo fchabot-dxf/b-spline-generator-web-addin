@@ -114,8 +114,15 @@ function planBands(bands, L, H, set, closed) {
     const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
     const isAreaBand = patternDef.kind === 'tile2d' && !!patternDef.bandCapable;
     const cornerStyle = band.cornerStyle || 'mitre';
-    const naturalWidth = isAreaBand ? band.widthIn : courseHeightFor(patternDef, L, H);
-    const pitch = patternDef.kind === 'course-alternating' ? L : axisLen(patternDef.pitchAxis, L, H);
+    // Fred 2026-10-17 (seat E, via the advisor; the Greek key's own tiles too big for narrow wood frames): a band's
+    // own declared `tileFactor` (library.js FRAME_PRESETS, e.g. greek_key_mosaic's 0.75; editor-brick-tool.js
+    // frameBandsOf applies a saved board's own per-band override first) scales the TWO things that set this band's
+    // own tile size -- naturalWidth/pitch below, and motifRowPlan's own L/H for a row-cutting grid motif (the main
+    // loop below, `scaledL`/`scaledH`). Absent or 1 (every other band today): bL/bH === L/H exactly, byte-identical.
+    const tf = band.tileFactor && band.tileFactor !== 1 ? band.tileFactor : null;
+    const [bL, bH] = tf ? [L * tf, H * tf] : [L, H];
+    const naturalWidth = isAreaBand ? band.widthIn : courseHeightFor(patternDef, bL, bH);
+    const pitch = patternDef.kind === 'course-alternating' ? bL : axisLen(patternDef.pitchAxis, bL, bH);
     const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
     const staggerFrac = patternDef.staggerFrac || 0;
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
@@ -132,10 +139,10 @@ function planBands(bands, L, H, set, closed) {
     if (motif || band.rows > 0) {
       const motifRows = motifCutsRows(motif) ? motifRowCount(motif) : null;
       const declaredRows = band.rows > 0 ? band.rows : motifRows || rows;
-      return { patternName, cornerStyle, naturalWidth: motifCutsRows(motif) ? motifRowDepth(motif, H) : naturalWidth, pitch, sequence, staggerFrac,
-        rows: declaredRows, isAreaBand, motif };
+      return { patternName, cornerStyle, naturalWidth: motifCutsRows(motif) ? motifRowDepth(motif, bH) : naturalWidth, pitch, sequence, staggerFrac,
+        rows: declaredRows, isAreaBand, motif, scaledL: bL, scaledH: bH };
     }
-    return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
+    return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand, scaledL: bL, scaledH: bH };
   });
 }
 
@@ -1080,7 +1087,7 @@ export function bricksContourBands(primitives, bands, opts) {
     // flemish ('course-alternating') has no single pitch at all -- its own `sequence` (below)
     // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
     // pieces (same role every other pattern already gives it), not a per-piece length.
-    const { patternName, cornerStyle, naturalWidth, pitch: patternPitch, sequence, staggerFrac, rows, isAreaBand, motif } = plannedBands[bandIndex];
+    const { patternName, cornerStyle, naturalWidth, pitch: patternPitch, sequence, staggerFrac, rows, isAreaBand, motif, scaledL, scaledH } = plannedBands[bandIndex];
     if (isAreaBand) {
       // opts.cornerCutsOnly counts the ROWS' joints only (below); an area band's stones never add to them, and this
       // mode returns the counts alone -- so its stones are not laid (MEASURED 2026-10-07: the panel's corner / fan
@@ -1108,7 +1115,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       // frame motifs: a row-cutting motif sets the row's cut itself (band-motif.js motifRowPlan); every other band as before
       const motifPlan = motifCutsRows(motif)
-        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L, H, J: set.grout.widthIn, bond: band.bond }) : null;
+        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L: scaledL, H: scaledH, J: set.grout.widthIn, bond: band.bond }) : null;
       const pitch = motifPlan ? motifPlan.pitch : patternPitch;
       const rowSequence = motifPlan ? motifPlan.sequence : sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
