@@ -261,6 +261,23 @@ def test_a_lines_own_frame_builder_id_comes_back_as_railid_on_the_pulled_curve(m
     assert [c['railId'] for c in res['curves']] == ['rail7', None]
 
 
+# Live Fusion test (seat D 2026-10-18): a sketch the user SELECTS in the browser (or edits) inside an occurrence
+# comes back as an assembly-context PROXY -- its lines are proxies too, and attributes do not resolve on a proxy
+# (every rail read back railId None, so Pull matched nothing). The tag lives on the proxy's nativeObject.
+def test_a_proxy_lines_railid_is_read_from_its_native_object(monkeypatch):
+    monkeypatch.setattr(bsg, '_log', lambda msg: None)
+    monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(activeEditObject=None, userInterface=None), raising=False)
+    d = Design()
+    native = _line((0, 0), (1, 0), rail_id='rail3')
+    proxy = _line((0, 0), (1, 0))  # same geometry, but its own attributes are empty, as on a real proxy
+    proxy.nativeObject = native
+    d.rootComponent.sketches = [_sketch('plain', d.rootComponent, lines=[proxy])]
+    d.param('widthIn', 7); d.param('heightIn', 9)
+    monkeypatch.setattr(bsg, '_active_design', lambda: d)
+    res = bsg.PaletteHTMLEventHandler()._handle_pull_sketch({'board': {'id': ''}})
+    assert [c['railId'] for c in res['curves']] == ['rail3']
+
+
 # Rails custom-position + lock slice: explicit x1/y1/x2/y2 ride alongside `d` on a line curve, the same
 # convention a circle's cx/cy/r already use -- the Pull matcher reads these directly, never re-parses `d`.
 def test_a_lines_endpoints_ride_alongside_its_d_as_plain_numbers(monkeypatch):

@@ -1734,6 +1734,9 @@ def _frame_builder_id(entity):
     absent (a hand-drawn/legacy curve, or any read failure). Rails only -- only they move freely in Fusion now
     (core/pull-map.js's own doc comment), so only they need a Pull matcher."""
     try:
+        # a sketch picked or edited inside an occurrence is an assembly-context PROXY, and attributes do not resolve
+        # on a proxy -- the Send-written tag is on its native object (the entity itself when it already is native)
+        entity = getattr(entity, 'nativeObject', None) or entity
         attr = entity.attributes.itemByName('FrameBuilder', 'ID')
         return attr.value if attr else None
     except Exception:
