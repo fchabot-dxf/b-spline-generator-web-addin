@@ -19,8 +19,8 @@ const $ = (id) => doc.getElementById(id);
 
 describe('item 43: the Brick tab strip', () => {
   // phase 4: the strip is the TOOL row; General is a branch of the drawer tree (its header keeps brickTab_general)
-  it('declared tools: Wall, Frame, Brush, Scissors -- no General, no Stripe tab, no Raised (retired); each keeps its tool button id', () => {
-    expect(brickTabs().map((t) => t.label)).toEqual(['Wall', FRAME_LABELS.brick, 'Brush', 'Scissors']);
+  it('declared tools: Wall, Frame, Brush, Raised, Scissors -- no General, no Stripe tab; each keeps its tool button id', () => {
+    expect(brickTabs().map((t) => t.label)).toEqual(['Wall', FRAME_LABELS.brick, 'Brush', 'Raised', 'Scissors']);
     expect(brickTabs().some((t) => t.id === BRICK_GENERAL_TAB.id)).toBe(false);
     expect(brickTabs().find((t) => t.id === 'wall').buttonId).toBe('brickTool_wall');
     expect(brickTabs().some((t) => t.id === 'stripe')).toBe(false);

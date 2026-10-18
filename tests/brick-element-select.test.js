@@ -228,7 +228,7 @@ describe('Fred 2026-10-11: Wall / Frame > Heights -- pick bricks, Raise / Lower 
     $('brickHeightRaise').click();
     expect(P.brickSettings.heights[0].pick).toBe('region');
   });
-  it('picking another tool drops the picks; the Raised brush has no tab any more', async () => {
+  it('picking another tool drops the picks', async () => {
     setup();
     $('brickSubTool_wall_heights').click();
     tap({ x: 1.5, y: 0.1 });
@@ -236,6 +236,23 @@ describe('Fred 2026-10-11: Wall / Frame > Heights -- pick bricks, Raise / Lower 
     $('brickTool_wall').click();
     $('brickSubTool_wall_heights').click();
     expect($('brickHeightPicked').textContent).toBe('No bricks picked');
-    expect($('brickTool_raisedBrush')).toBeNull();
+  });
+  it('Heights and the Raised brush do not fight: the Raised tab stays, picking it drops the picks and leaves pick mode, and Esc then touches no heights', async () => {
+    setup();
+    P.brickSettings.heights = [];
+    expect($('brickTool_raisedBrush')).toBeTruthy(); // Fred (c): the Raised brush stays beside Heights
+    $('brickSubTool_wall_heights').click();
+    tap({ x: 1.5, y: 0.1 });
+    $('brickHeightRaise').click();
+    expect($('brickHeightPicked').textContent).toMatch(/^1 brick picked/); // Raise keeps the picks
+    $('brickTool_raisedBrush').click();
+    await Promise.resolve(); // the row follows the sub-tool on a microtask
+    expect(window.svgEditor.modes.at(-1)).not.toBe('brickHeightPick'); // Raised arms its own draw mode
+    expect($('brickHeightPickRow_wall').style.display).toBe('none');
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(P.brickSettings.heights).toHaveLength(1); // Esc is Heights' only while it holds picks
+    $('brickTool_wall').click();
+    $('brickSubTool_wall_heights').click();
+    expect($('brickHeightPicked').textContent).toBe('No bricks picked');
   });
 });

@@ -55,6 +55,13 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('height', 'Height', 'brick-height', ['brickRusticRow_brush', 'brickEdgeTaperRow']),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
+  raisedBrush: Object.freeze({ host: 'brickRaisedSection', after: 'brickElementLabel_raisedBrush', sections: Object.freeze([
+    sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
+    COLOUR(),
+    sec('mode', 'Mode', 'brick-pattern', ['brickRaisedModeRow'], { titleOf: 'brickRaisedModeLabel' }),
+    sec('height', 'Height', 'brick-height', ['brickRaisedLevelRow']),
+    sec('joint', 'Size & joint', 'brick-joint', JOINT),
+  ]) }),
 });
 
 /** The rows more than one tab declares (derived, never typed): moved into the active tab's section on a tab switch. */
@@ -75,6 +82,7 @@ export const BRICK_DRAWER_TREE = Object.freeze([
   branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall' }),
   branch('frame', FRAME_LABELS.brick, 'bands · fan centre · crumble', ['brickFrameSection'], { armsTool: 'frame' }),
   branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush' }),
+  branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush' }), // retiring (E: heights move to Select)
   branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general' }),
   branch('layers', 'Layers', (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; }, ['brickLayersSlot']),
 ]);

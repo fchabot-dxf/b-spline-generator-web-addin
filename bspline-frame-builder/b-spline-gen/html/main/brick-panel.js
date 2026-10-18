@@ -93,7 +93,7 @@ const BRICK_TOOLS = [
   // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
   { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', iconSvg: () => brickToolIconSvg('raisedBrush'), label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
     variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
-    // (no `tab`: Fred 2026-10-11 retired the Raised brush -- heights are set on picked bricks, Wall / Frame > Heights; the tool stays so a saved board's raised strokes still lay and select)
+    tab: { order: 4, label: 'Raised' },
     subTools: ['draw', 'select'], // F35 item 36
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
