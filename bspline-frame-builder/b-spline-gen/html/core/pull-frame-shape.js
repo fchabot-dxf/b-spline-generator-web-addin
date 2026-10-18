@@ -32,14 +32,34 @@ const SWEEP_STEPS = 24;
 const TIE_BREAK = 1e-7;
 const _d = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-/** The pulled curve's point distance to a model curve, tolerant of the sketch's own S/E direction (a Fusion arc's
+/** Distance of point `p` from the circle through the 3 points `c` (null if they are collinear). */
+function _circleDist(p, c) {
+  const [a, b, d] = c;
+  const k = 2 * (a[0] * (b[1] - d[1]) + b[0] * (d[1] - a[1]) + d[0] * (a[1] - b[1]));
+  if (Math.abs(k) < 1e-12) return null;
+  const a2 = a[0] ** 2 + a[1] ** 2, b2 = b[0] ** 2 + b[1] ** 2, d2 = d[0] ** 2 + d[1] ** 2;
+  const cx = (a2 * (b[1] - d[1]) + b2 * (d[1] - a[1]) + d2 * (a[1] - b[1])) / k;
+  const cy = (a2 * (d[0] - b[0]) + b2 * (a[0] - d[0]) + d2 * (b[0] - a[0])) / k;
+  return Math.abs(_d(p, [cx, cy]) - _d(a, [cx, cy]));
+}
+const _side = (s, e, m) => Math.sign((e[0] - s[0]) * (m[1] - s[1]) - (e[1] - s[1]) * (m[0] - s[0]));
+
+/** The pulled curve's distance to a model curve, tolerant of the sketch's own S/E direction (a Fusion arc's
  *  start/end need not be the Arc3Point's). Only line/arc entries carry points; pins and radius seeds do not
- *  come back as curves. */
+ *  come back as curves. An ARC (3 points) compares by shape, not mid-to-mid: the pulled mid is the arc's parametric
+ *  middle, while a seed's Arc3Point mid is only some point on the arc (MEASURED live, template_5 arc_top_dip: seed
+ *  mid x 0.01, pulled 0.0, the same arc to 3e-4). So: the endpoints, plus the model mid's distance from the pulled
+ *  arc's circle (a mid on the other side of the chord is a different arc: compared point to point). */
 function _curveDist(a, b) {
   if (!a || !b || a.length !== b.length) return Infinity;
   let fwd = 0, rev = 0;
   for (let i = 0; i < a.length; i++) { fwd = Math.max(fwd, _d(a[i], b[i])); rev = Math.max(rev, _d(a[i], b[b.length - 1 - i])); }
-  return Math.min(fwd, rev);
+  if (a.length !== 3) return Math.min(fwd, rev);
+  const ends = Math.min(Math.max(_d(a[0], b[0]), _d(a[2], b[2])), Math.max(_d(a[0], b[2]), _d(a[2], b[0])));
+  const onCircle = _circleDist(a[1], b);
+  const sameSide = _side(b[0], b[2], a[1]) === _side(b[0], b[2], b[1]);
+  if (onCircle === null || !sameSide) return Math.min(fwd, rev);
+  return Math.max(ends, onCircle);
 }
 
 /** Per seedMap id (line/arc kinds that the pull actually returned): the model-vs-pulled distance. */
