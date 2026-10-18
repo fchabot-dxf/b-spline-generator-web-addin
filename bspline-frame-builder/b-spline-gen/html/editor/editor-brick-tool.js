@@ -679,12 +679,14 @@ export function frameBandsOf(settings) {
   const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = (settings && settings.frameBandPatterns) || [];
   const tileFactors = (settings && settings.frameBandTileFactor) || [];
+  const meanders = (settings && settings.frameBandMeanderCurves) || [];
   const corner = settings && settings.frameCorner ? frameCornerOf(settings) : null;
   return base.map((band, i) => ({
     ...band,
     ...(overrides[i] ? { pattern: overrides[i] } : {}),
     ...(corner ? { cornerStyle: corner } : {}),
     ...(tileFactors[i] != null ? { tileFactor: tileFactors[i] } : {}),
+    ...(meanders[i] != null ? { meanderCurves: meanders[i] } : {}),
   }));
 }
 /** T86 item 16e: how a Frame element's corner FANS end at their centre -- the engine's own declaration (core/bricks

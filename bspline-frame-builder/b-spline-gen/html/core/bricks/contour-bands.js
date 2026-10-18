@@ -1136,7 +1136,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const sources = keep ? laidSources.filter((_, i) => keep[i]) : laidSources;
       const fanSides = keep && laidFanSides ? laidFanSides.filter((_, i) => keep[i]) : laidFanSides;
       // tagged before the drop: a run's place (its piece j of n) is the laid run's
-      const tagged = motif ? tagMotifRow(laidPieces, laidSources, enriched, motif, motifPlan, row, rows) : laidPieces;
+      const tagged = motif ? tagMotifRow(laidPieces, laidSources, enriched, motif, motifPlan, row, rows, band.meanderCurves) : laidPieces;
       const pieces = keep ? tagged.filter((_, i) => keep[i]) : tagged;
       // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };

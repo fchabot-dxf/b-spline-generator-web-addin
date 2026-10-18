@@ -220,6 +220,13 @@ export const DEFAULT = {
       // board saved before this existed has frameBandTileFactor absent entirely (a load replaces brickSettings
       // whole, never backfilled from this DEFAULT) -- app-init.js MIGRATIONS pins it to the band's own OLD size.
       frameBandTileFactor: [],
+      // Fred 2026-10-17 (seat E, via the advisor, scope turn): one entry per band INDEX, same convention as
+      // frameBandTileFactor above -- a missing/null index means "use that band's own declared meanderCurves"
+      // (library.js FRAME_PRESETS, flat-on-arc when absent). Only the Greek key band declares one today (true). A
+      // board saved before this existed has frameBandMeanderCurves absent entirely (a load replaces brickSettings
+      // whole, never backfilled from this DEFAULT) -- app-init.js MIGRATIONS pins it to false, the band's own OLD
+      // (flat-on-arc) behaviour.
+      frameBandMeanderCurves: [],
       // F35 item 10 follow-up (Fred): the Brush tool's own settings, shown only when Brush is the
       // active tool (main/brick-panel.js). `orientation` already had real engine support
       // (core/bricks/along-path.js's own opts.orientation); `profile` ('bricks' = Stripped,
