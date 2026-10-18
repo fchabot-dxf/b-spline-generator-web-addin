@@ -234,7 +234,7 @@ describe('the Greek key mosaic', () => {
   const PHOTO_STRIPS = { above: ['.', 'G', '.'], below: ['.', 'G', '.'] }; // white / green / white either side of the key
 
   it('the preset is declared: one 12-row header band of the greek_key grid, best at the 0.75 in chip', () => {
-    expect([...FRAME_PRESETS.greek_key_mosaic]).toEqual([{ widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key', tileFactor: 0.75 }]);
+    expect([...FRAME_PRESETS.greek_key_mosaic]).toEqual([{ widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key', tileFactor: 0.75, meanderCurves: true }]);
     expect(FRAME_PRESETS.greek_key_mosaic.bestSize).toBe(0.75);
     expect(BAND_MOTIFS.greek_key.unit).toBe('H'); // square cells, one brick height
     expect(tile.length).toBe(12);

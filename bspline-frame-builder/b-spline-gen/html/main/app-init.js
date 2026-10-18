@@ -697,6 +697,17 @@ export const MIGRATIONS = [
     when: (p) => p.brickSettings && p.brickSettings.frameBandPreset === 'greek_key_mosaic' && !p.brickSettings.frameBandTileFactor,
     apply: (p) => { p.brickSettings.frameBandTileFactor = [1]; },
   },
+  {
+    id: 'greek-key-meander-curves-legacy-flat',
+    // Fred 2026-10-17 (seat E, via the advisor): the Greek key mosaic's key now continues around an arc (library.js
+    // FRAME_PRESETS.greek_key_mosaic meanderCurves; BAND_MOTIFS.greek_key curveMeander). A board saved on it before
+    // this has no frameBandMeanderCurves key (a load replaces brickSettings whole) and laid flush on every arc: pin
+    // band 0 to false so it keeps laying byte-identical. Independent of the tileFactor migration above (a board can
+    // have either, both or neither). A board saved after (already an array, even empty) is untouched -- a fresh pick
+    // gets the meander.
+    when: (p) => p.brickSettings && p.brickSettings.frameBandPreset === 'greek_key_mosaic' && !p.brickSettings.frameBandMeanderCurves,
+    apply: (p) => { p.brickSettings.frameBandMeanderCurves = [false]; },
+  },
 ];
 
 export function runMigrations(p = P) {
