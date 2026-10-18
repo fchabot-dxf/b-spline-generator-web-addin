@@ -6,12 +6,36 @@
   },
   "seats": [
     {
+      "key": "seatA",
+      "name": "Seat A",
+      "station": "home-pc",
+      "branch": "seatA-cam-keep",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\seatA-camkeep",
+      "session": "b-spline-generator-web-addin-e0",
+      "shots": [
+        "seatA"
+      ]
+    },
+    {
+      "key": "seatB",
+      "name": "Seat B",
+      "station": "home-pc",
+      "branch": "seatB-pull-frame-shape",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\seatB-pull-frame-shape",
+      "session": "b-spline-generator-web-addin-25",
+      "shots": [
+        "seatB"
+      ]
+    },
+    {
       "key": "seatD",
       "name": "Seat D",
       "station": "home-pc",
-      "branch": "main",
+      "branch": "seatD-rails-ids",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "",
+      "checkout": "-wt\\seatD-rails-ids",
       "session": "b-spline-generator-web-addin-ac",
       "shots": [
         "seatD"
