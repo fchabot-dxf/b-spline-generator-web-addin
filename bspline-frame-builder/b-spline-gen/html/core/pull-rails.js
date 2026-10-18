@@ -23,14 +23,15 @@ function _canonicalRowExtent(extent, orientation) {
 
 /** `pulledCurves` = a Pull reply's own `curves` (b-spline-gen.py's _handle_pull_sketch shape: board-inches
  *  x1/y1/x2/y2 + railId + isConstruction on a line). Returns [{id, at}], one per pulled line whose railId is a
- *  real Send-tagged rail id (RAIL_ID_RE) -- a hand-drawn/legacy/construction curve has none and is skipped.
+ *  real Send-tagged rail id (RAIL_ID_RE) -- a hand-drawn/legacy curve has none and is skipped. isConstruction is NOT a filter: Send draws every rail
+ *  as a construction line (measured live, all 9 rails of a 7x9 board), the railId alone says it is one.
  *  `at` is null (not dropped -- the caller decides whether an out-of-extent rail still gets kept/reported) when
  *  the rail's own row now sits outside `extent` entirely (a degenerate/zero-height extent). */
 export function matchPulledRails(pulledCurves, { spacing, orientation, extent }) {
   const row = _canonicalRowExtent(extent, orientation);
   const out = [];
   for (const c of pulledCurves || []) {
-    if (c.type !== 'line' || c.isConstruction || !c.railId || !RAIL_ID_RE.test(c.railId)) continue;
+    if (c.type !== 'line' || !c.railId || !RAIL_ID_RE.test(c.railId)) continue;
     const a = orient({ i: c.x1 / spacing, j: c.y1 / spacing }, orientation);
     const b = orient({ i: c.x2 / spacing, j: c.y2 / spacing }, orientation);
     const j = (a.j + b.j) / 2; // the rail's own row (tolerant of float noise between its two ends)

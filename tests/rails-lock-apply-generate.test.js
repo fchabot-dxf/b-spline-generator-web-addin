@@ -170,3 +170,59 @@ describe('applyChangeList -> real generatePattern (advisor 45: "Apply must SHOW 
     expect(survivingTie).toBe(manualTie); // the SAME hand-drawn element, never cleared
   });
 });
+
+// Live Fusion round trip (seat D 2026-10-18): Send -> Pull -> Apply -> the lock badge. Two things broke it, both
+// invisible to the tests above (they hand-built `isConstruction: false` curves and never looked at the ids AFTER
+// Apply's own Generate): every real rail comes back from Fusion as a CONSTRUCTION line, and Apply's Generate minted
+// fresh rail ids (rail10..) while the custom entries kept the Send-time ones (rail1..), so no entry matched a drawn
+// rail and the lock badge (editor-interaction.js _customRailLockTargets, matched by id) never appeared.
+describe('Send -> Pull -> Apply -> Generate: a locked rail keeps its id and is findable (the lock badge)', () => {
+  it('rails pulled as construction lines (as Fusion returns them) move, lock, and the lock\'s id is on the drawn rail', async () => {
+    const editor = makeMockEditor();
+    const pattern = { ...PATTERN_DEFAULTS, seed: 1 };
+    await generatePattern(editor, pattern); // the Send-time rails: rail1..railN
+    const before = rails(editor).map((el) => ({ railId: el.attr(RAIL_ID_ATTR), y: el.attr('y1') }));
+    const ys = [...new Set(before.map((r) => r.y))].sort((a, b) => a - b);
+    const target = before.find((r) => r.y === ys[0]);
+    const newY = target.y + (ys[1] - ys[0]) / 4;
+
+    // the whole pulled reply: EVERY rail as a construction line, only one of them moved
+    const pulledCurves = before.map((r) => ({ type: 'line', isConstruction: true, railId: r.railId, x1: 0, y1: r === target ? newY : r.y, x2: 1, y2: r === target ? newY : r.y }));
+    await applyChangeList({ boardRows: [], layerGroups: [], frameRows: [] }, { editor, pulledCurves });
+
+    const custom = pattern.rails.custom;
+    expect(custom.length).toBeGreaterThan(0);
+    expect(custom.find((c) => c.id === target.railId)).toMatchObject({ locked: true });
+    // each lock entry names a rail that is drawn NOW -- the lock badge looks it up by exactly this id
+    for (const entry of custom) {
+      expect(rails(editor).some((el) => el.attr(RAIL_ID_ATTR) === entry.id)).toBe(true);
+    }
+    const moved = rails(editor).find((el) => el.attr(RAIL_ID_ATTR) === target.railId);
+    expect(Math.abs(moved.attr('y1') - newY)).toBeLessThan(1e-6);
+  });
+
+  it('a later plain Generate keeps the locked rail\'s id on its row, and no id is used twice', async () => {
+    const editor = makeMockEditor();
+    const pattern = { ...PATTERN_DEFAULTS, seed: 1 };
+    await generatePattern(editor, pattern);
+    const first = rails(editor)[0];
+    const y0 = first.attr('y1');
+    pattern.rails = { ...pattern.rails, custom: [{ id: first.attr(RAIL_ID_ATTR), at: 0.3, locked: true }] };
+    await generatePattern(editor, pattern);
+    await generatePattern(editor, pattern);
+    const ids = rails(editor).map((el) => el.attr(RAIL_ID_ATTR));
+    expect(new Set(ids).size).toBe(ids.length);
+    const locked = rails(editor).find((el) => el.attr(RAIL_ID_ATTR) === pattern.rails.custom[0].id);
+    expect(locked).toBeTruthy();
+    expect(locked.attr('y1')).not.toBe(y0);
+  });
+
+  it('a loaded board (editor counter back at 0) never mints a fresh rail with a locked rail\'s id', async () => {
+    const editor = makeMockEditor();
+    const pattern = { ...PATTERN_DEFAULTS, seed: 1, rails: { ...PATTERN_DEFAULTS.rails, custom: [{ id: 'rail7', at: 0.3, locked: true }] } };
+    await generatePattern(editor, pattern); // _nextRailId is undefined here, as after a project load
+    const ids = rails(editor).map((el) => el.attr(RAIL_ID_ATTR));
+    expect(ids.filter((i) => i === 'rail7')).toHaveLength(1);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
