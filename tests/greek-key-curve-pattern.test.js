@@ -26,4 +26,15 @@ describe('greek key on a curve lays a declared plain pattern, the straight run k
   it('the straight run is identical with curves on or off', () => {
     for (let r = 0; r < 12; r++) expect(reliefs(gk, r, true).slice(6)).toEqual(reliefs(gk, r, false).slice(6));
   });
+  it('meander: the key row, column by arc-length fraction -- same turn places in every row; border rows are rings', () => {
+    const arc = [{ type: 'arc', r: 6, theta1: 0, theta2: Math.PI / 2 }];
+    const src = Array(24).fill(0), pcs = src.map(() => ({ polygon: [] }));
+    const m = { ...gk, curvePattern: 'meander' };
+    const row = (r) => tagMotifRow(pcs, src, arc, m, { startColumn: 0, pitch: 0.75 }, r, 12, true).map((p) => p.relief);
+    // arc length 9.42 / (6 cols x 0.75) -> 2 periods over 24 pieces: the row repeats every 12 pieces
+    for (let r = 0; r < 12; r++) expect(row(r).slice(0, 12)).toEqual(row(r).slice(12));
+    expect(row(1)).toEqual(Array(24).fill('raised')); // tile row 1 is a full ring
+    expect(row(0)).toEqual(Array(24).fill('flush'));
+    expect(row(5)).not.toEqual(row(4)); // a key row, not a ring
+  });
 });
