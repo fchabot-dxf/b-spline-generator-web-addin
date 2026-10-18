@@ -104,12 +104,12 @@ export const CURVE_PATTERNS = Object.freeze({
 });
 /** `tile: true`: the motif's own tile row, its column = the piece's fraction of the run x (an integer count of the tile's
  *  periods that fits the arc at its contour radius, one cell = plan.pitch), so each row turns at the same places. */
-function curveRelief(pattern, row, rows, j, n, motif, prim, plan) {
+function curveRelief(pattern, row, rows, j, n, motif, prim, plan, periodsOverride) {
   const p = CURVE_PATTERNS[pattern];
   if (!p) return 'flush';
   if (p.tile && motif.grid) {
     const line = motif.grid.tile[row % motif.grid.tile.length];
-    const periods = Math.max(1, Math.round((prim.r * Math.abs(prim.theta2 - prim.theta1)) / (line.length * plan.pitch)));
+    const periods = periodsOverride || Math.max(1, Math.round((prim.r * Math.abs(prim.theta2 - prim.theta1)) / (line.length * plan.pitch)));
     return RELIEF_CHARS[line[Math.floor((j / n) * periods * line.length) % line.length]] || 'flush';
   }
   if (p.rows && p.rows.some((r) => (r === 'mid' ? row === rows >> 1 : mod(r, rows) === row))) return 'raised';
@@ -127,9 +127,19 @@ function runRelief(motif, plan, row, rows, j, n, src, primitives, curves) {
     if (isArc) return curves && motif.curvePattern ? curveRelief(motif.curvePattern, row, rows, j, n, motif, primitives[src], plan) : 'flush'; // a grid's columns do not line up row to row on a curve
     const { tile, corner } = motif.grid;
     const R = rows, c = plan.startColumn + j, cEnd = plan.startColumn + (n - 1 - j);
+    const line = tile[row % tile.length];
+    if (curves && motif.curvePattern) {
+      // a straight run of a band with the curve rule on: between its two corners the key's columns stretch / squeeze to a
+      // WHOLE number of periods (clean at both ends); a run with no room for one period lays the curve pattern instead
+      const mid = n + 2 * plan.startColumn - 2 * R, jLo = R - plan.startColumn;
+      if (mid >= line.length && c >= R && cEnd >= R) {
+        const periods = Math.floor(mid / line.length);
+        return RELIEF_CHARS[line[Math.floor(((j - jLo) / mid) * periods * line.length) % line.length]] || 'flush';
+      }
+      if (mid < line.length) return curveRelief(motif.curvePattern, row, rows, j, n, motif, null, plan, 1);
+    }
     if (c < R) return cellRelief(corner, row, c);
     if (cEnd < R) return cellRelief(corner, row, cEnd);
-    const line = tile[row % tile.length];
     return RELIEF_CHARS[line[mod(c, line.length)]] || 'flush';
   }
   if (j === 0 || j === n - 1) return motif.ends || 'flush';

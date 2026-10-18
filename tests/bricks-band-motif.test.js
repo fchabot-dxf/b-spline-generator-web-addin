@@ -31,7 +31,7 @@ function primitivesOf(board, W, H) {
   return sil && sil.primitives ? buildRibbonPrimitives(sil.primitives) : null;
 }
 const lay = (prims, preset, L, W, H) => generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1,
-  scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS[preset] } });
+  scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: typeof preset === 'string' ? FRAME_PRESETS[preset] : preset } });
 
 describe('BAND_MOTIFS / the motif presets are declared data', () => {
   it('relief levels: raised up, flush 0, recessed down; raised within the cap; the declared 1/8 in both ways', () => {
@@ -267,7 +267,7 @@ describe('the Greek key mosaic', () => {
   });
 
   it('laid on the 7x10 rectangle at 0.75 in: the tiles square (0.116 in, tileFactor 0.75), the top side reads the tile and the corner', () => {
-    const W = 7, H = 10, L = 0.75, s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, TF = FRAME_PRESETS.greek_key_mosaic[0].tileFactor, r = lay(primitivesOf('rect', W, H), 'greek_key_mosaic', L, W, H);
+    const W = 7, H = 10, L = 0.75, s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, TF = FRAME_PRESETS.greek_key_mosaic[0].tileFactor, r = lay(primitivesOf('rect', W, H), FRAME_PRESETS.greek_key_mosaic.map((b) => ({ ...b, meanderCurves: false })), L, W, H); // the saved-board (legacy) straight key: every 6 columns, no stretch
     const top = (row) => r.frameBricks.filter((b) => { const c = centroid(b.polygon); return b.rowIndex === row && c.y < c.x && c.y < W - c.x; })
       .sort((a, b) => centroid(a.polygon).x - centroid(b.polygon).x);
     for (let row = 0; row < 12; row++) {
