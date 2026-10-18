@@ -18,7 +18,7 @@ flows back through the report dict.
 import adsk.core
 import adsk.fusion
 
-from . import cam_workspace, mm_builder, setup_builder
+from . import cam_workspace, mm_builder, op_ledger, setup_builder
 
 
 # Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
@@ -29,11 +29,36 @@ _ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.M
 _ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
 
 
+def _declared_template_bases():
+    """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
+    return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
+            for spec in setup_builder.SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
+
+
+def _design_of(cam):
+    try:
+        return adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+    except Exception:
+        return None
+
+
+def _model_keys(models):
+    keys = set()
+    for i in range(models.count):
+        b = models.item(i) if hasattr(models, 'item') else models[i]
+        keys.add(getattr(b, 'entityToken', None) or id(b))
+    return keys
+
+
 def clear_addin_build(cam, logger=None):
     """Delete the Setups and MMs this addin's BUILD made -- found by the declared names (_ADDIN_SETUP_NAMES /
     _ADDIN_MM_NAMES, from SETUP_SPECS / MM_RULES); any other setup or MM stays. Returns {'setups': [names],
-    'mms': [names]} of what was removed. Used by BUILD before a fresh build and, H23 item 99 (Fred, CAM option (b)),
-    by the B-Spline Send before it imports (so a Send never drags a stale CAM build along).
+    'mms': [names]} of what was removed. Used by BUILD before a fresh build when the old one cannot be reused and by
+    the Send (clear_for_send) when the old build is broken.
+
+    Only what is provably ours goes (Fred, "Send stops wiping CAM"): a named setup that holds an operation not in
+    the add-in's record (op_ledger) stays, with everything in it, and a Manufacturing Model that any surviving setup
+    still references stays.
 
     Setups must be deleted before MMs because Setups reference bodies
     inside MMs (an MM with a dangling Setup reference can leave Fusion's
@@ -45,6 +70,8 @@ def clear_addin_build(cam, logger=None):
     same as before this cleanup existed).
     """
     removed = {'setups': [], 'mms': []}
+    design = _design_of(cam)
+    known = _declared_template_bases()
 
     # Pass 1: delete Setups with matching names. Iterate backward because
     # cam.setups is a live collection and deleteMe() mutates it.
@@ -56,6 +83,11 @@ def clear_addin_build(cam, logger=None):
             try:
                 if s.name in _ADDIN_SETUP_NAMES:
                     name = s.name
+                    foreign = op_ledger.foreign_operations(design, s, name, known)
+                    if foreign:
+                        _log(logger, f"CLEANUP: keeping Setup '{name}' -- it holds {len(foreign)} operation(s) the "
+                                     f"add-in did not make ({[getattr(o, 'name', '?') for o in foreign][:5]})", "INFO")
+                        continue
                     _log(logger, f"CLEANUP: deleting Setup '{name}'", "DEBUG")
                     s.deleteMe()
                     removed['setups'].append(name)
@@ -63,6 +95,17 @@ def clear_addin_build(cam, logger=None):
                 _log(logger, f"CLEANUP: deleteMe Setup at [{i}] raised: {type(e).__name__}: {e}", "WARNING")
     except Exception as e:
         _log(logger, f"CLEANUP: setup scan raised: {type(e).__name__}: {e}", "WARNING")
+
+    # What the surviving setups still reference (an MM under them must stay).
+    in_use = set()
+    try:
+        for i in range(cam.setups.count):
+            try:
+                in_use |= _model_keys(cam.setups.item(i).models)
+            except Exception:
+                continue
+    except Exception:
+        pass
 
     # Pass 2: delete MMs with matching names.
     try:
@@ -73,6 +116,9 @@ def clear_addin_build(cam, logger=None):
             try:
                 if mm.name in _ADDIN_MM_NAMES:
                     name = mm.name
+                    if in_use & {getattr(b, 'entityToken', None) or id(b) for b in setup_builder._collect_bodies(mm)}:
+                        _log(logger, f"CLEANUP: keeping MM '{name}' -- a setup that stays still uses it", "INFO")
+                        continue
                     _log(logger, f"CLEANUP: deleting MM '{name}'", "DEBUG")
                     mm.deleteMe()
                     removed['mms'].append(name)
@@ -84,6 +130,18 @@ def clear_addin_build(cam, logger=None):
     _log(logger, f"CLEANUP: deleted {len(removed['setups'])} setup(s) and {len(removed['mms'])} MM(s) from prior build"
          + (f": setups {removed['setups']}, MMs {removed['mms']}" if removed['setups'] or removed['mms'] else ""), "INFO")
     return removed
+
+
+def clear_for_send(cam, logger=None):
+    """What a Send does to the CAM before it replaces the bodies: NOTHING when the declared build is whole and valid
+    (the next BUILD reuses it in place and re-binds the setups' models -- Fred's operations, his edits and his own
+    setups stay), else the safe clear_addin_build for a broken / partial build. Returns what was removed, or None."""
+    reuse = setup_builder.find_reusable_build(
+        cam, {r: mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES}, logger)
+    if reuse is not None:
+        _log(logger, "SEND: the CAM build is whole -- left in place (the next BUILD re-binds it)", "INFO")
+        return None
+    return clear_addin_build(cam, logger)
 
 
 def _cleanup_previous_build(cam, logger):
