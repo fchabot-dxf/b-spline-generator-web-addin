@@ -104,22 +104,52 @@ export const CURVE_PATTERNS = Object.freeze({
 });
 /** `tile: true`: the motif's own tile row, its column = the piece's fraction of the run x (an integer count of the tile's
  *  periods that fits the arc at its contour radius, one cell = plan.pitch), so each row turns at the same places. */
-function curveRelief(pattern, row, rows, j, n, motif, prim, plan, periodsOverride) {
+function curveRelief(pattern, row, rows, j, n, motif, prim, plan, frac) {
   const p = CURVE_PATTERNS[pattern];
   if (!p) return 'flush';
   if (p.tile && motif.grid) {
     const line = motif.grid.tile[row % motif.grid.tile.length];
-    const periods = periodsOverride || Math.max(1, Math.round((prim.r * Math.abs(prim.theta2 - prim.theta1)) / (line.length * plan.pitch)));
-    return RELIEF_CHARS[line[Math.floor((j / n) * periods * line.length) % line.length]] || 'flush';
+    const periods = frac !== undefined ? 1 : Math.max(1, Math.round((prim.r * Math.abs(prim.theta2 - prim.theta1)) / (line.length * plan.pitch)));
+    return RELIEF_CHARS[line[Math.floor((frac !== undefined ? frac : j / n) * periods * line.length) % line.length]] || 'flush';
   }
   if (p.rows && p.rows.some((r) => (r === 'mid' ? row === rows >> 1 : mod(r, rows) === row))) return 'raised';
   return p.seq ? p.seq[j % p.seq.length] : 'flush';
 }
 
+/** The unit tangent of a contour primitive at its start (`atEnd` false) or end, in the contour's travelling direction. */
+function tangentOf(prim, atEnd) {
+  if (prim.type === 'line') { const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, L = Math.hypot(dx, dy); return { x: dx / L, y: dy / L }; }
+  const th = atEnd ? prim.theta2 : prim.theta1, d = Math.sign(prim.theta2 - prim.theta1) || 1;
+  return { x: -Math.sin(th) * d, y: Math.cos(th) * d };
+}
+/** How many cells a run's end side is cut back at the band's full depth (`rows` cells): its junction's cut bisects the turn, so it
+ *  moves tan(turn / 2) cells along per cell of depth -- back toward the run's middle on a convex turn (the inward side), away from it
+ *  on a concave one (the run keeps its whole length). */
+function endCutBack(prim, other, atEnd, rows) {
+  const t = tangentOf(prim, atEnd), o = tangentOf(other, !atEnd), cross = t.x * o.y - t.y * o.x, dot = t.x * o.x + t.y * o.y;
+  const convex = cross * (prim.nx * -t.y + prim.ny * t.x) * (atEnd ? 1 : -1) > 0;
+  return convex ? Math.abs(Math.tan(Math.atan2(Math.abs(cross), dot) / 2)) * rows : 0;
+}
+
+/** Where a piece of a straight run sits on the run's own lattice, in CELLS (pitch = one cell): `u` its centre along the run from the
+ *  contour's start vertex, `v` from its end, `len` the contour's length. The corner square is anchored at the contour's vertex (the
+ *  mitre only cuts the inner rows' pieces away), so u / v read the same for every row -- the columns line up row to row. An end
+ *  running into a curve's fan (`mitre*` false) carries no corner square; its key stops where the fan's cut leaves EVERY row
+ *  (`z0` / `z1`, the key zone in cells), so the key still ends on a whole period. */
+export function runCell(piece, primitives, src, pitch, rows) {
+  const prim = primitives[src], N = primitives.length, prev = primitives[(src + N - 1) % N], next = primitives[(src + 1) % N];
+  const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, L = Math.hypot(dx, dy);
+  const pts = piece.polygon, cx = pts.reduce((a, q) => a + q.x, 0) / pts.length, cy = pts.reduce((a, q) => a + q.y, 0) / pts.length;
+  const s = ((cx - prim.p0.x) * dx + (cy - prim.p0.y) * dy) / L, mitreStart = prev.type === 'line', mitreEnd = next.type === 'line';
+  const len = L / pitch;
+  return { u: s / pitch, v: (L - s) / pitch, len, mitreStart, mitreEnd,
+    z0: mitreStart ? rows : endCutBack(prim, prev, false, rows), z1: len - (mitreEnd ? rows : endCutBack(prim, next, true, rows)) };
+}
+
 /** The relief of piece j (of n) of one run, at row `row` of `rows`. `curves`: the band's own meanderCurves setting
  *  (false on a migrated legacy board -- app-init.js MIGRATIONS); with the motif's declared curvePattern it lays that
  *  pattern on an arc run instead of flush. Every straight run, and every motif without a curvePattern, is unchanged. */
-function runRelief(motif, plan, row, rows, j, n, src, primitives, curves) {
+function runRelief(motif, plan, row, rows, j, n, src, primitives, curves, piece) {
   if (motif.fill) return motif.fill;
   if (!(src >= 0)) return 'flush'; // a corner's fan slice or a quoin
   const isArc = primitives[src] && primitives[src].type === 'arc';
@@ -129,14 +159,20 @@ function runRelief(motif, plan, row, rows, j, n, src, primitives, curves) {
     const R = rows, c = plan.startColumn + j, cEnd = plan.startColumn + (n - 1 - j);
     const line = tile[row % tile.length];
     if (curves && motif.curvePattern) {
-      // a straight run of a band with the curve rule on: between its two corners the key's columns stretch / squeeze to a
-      // WHOLE number of periods (clean at both ends); a run with no room for one period lays the curve pattern instead
-      const mid = n + 2 * plan.startColumn - 2 * R, jLo = R - plan.startColumn;
-      if (mid >= line.length && c >= R && cEnd >= R) {
-        const periods = Math.floor(mid / line.length);
-        return RELIEF_CHARS[line[Math.floor(((j - jLo) / mid) * periods * line.length) % line.length]] || 'flush';
-      }
-      if (mid < line.length) return curveRelief(motif.curvePattern, row, rows, j, n, motif, null, plan, 1);
+      // a straight run of a band with the curve rule on, laid on ONE lattice read from where each piece physically sits, so
+      // every row of the run lines up with its neighbours whatever its pieces' count or size. u = the piece's centre along the
+      // run from the contour's start, v = from its end, in cells; a MITRED end carries the corner square, an end
+      // running into a curve's fan carries none. Between the two the key's columns
+      // stretch / squeeze to a WHOLE number of periods (clean at both ends); a run with no room for one lays the motif's
+      // shortPattern (whole rows) -- a key squeezed under one cell a column would only smear.
+      const { u, v, len, mitreStart, mitreEnd, z0, z1 } = runCell(piece, primitives, src, plan.pitch, R);
+      const midC = z1 - z0;
+      if (midC < line.length) return curveRelief(motif.shortPattern || motif.curvePattern, row, rows, j, n, motif, null, plan, Math.min(0.999, Math.max(0, u / len)));
+      if (mitreStart && u < R) return cellRelief(corner, row, Math.max(0, Math.floor(u)));
+      if (mitreEnd && v < R) return cellRelief(corner, row, Math.max(0, Math.floor(v)));
+      if (u < z0 || u > z1) return RELIEF_CHARS[line[mod(Math.floor(u < z0 ? u - z0 : u - z1), line.length)]] || 'flush'; // a fan's ragged cut: the key runs on
+      const uc = Math.floor(u) + 0.5; // the cell's centre: a piece a little off the lattice still reads its cell's column
+      return RELIEF_CHARS[line[Math.floor(((uc - z0) * Math.floor(midC / line.length) * line.length) / midC) % line.length]] || 'flush'; // whole periods, z0 -> z1
     }
     if (c < R) return cellRelief(corner, row, c);
     if (cEnd < R) return cellRelief(corner, row, cEnd);
@@ -158,8 +194,8 @@ export function tagMotifRow(pieces, sources, primitives, motif, plan, row, rows,
     let e = k + 1;
     while (e < pieces.length && sources[e] === sources[k]) e++;
     for (let j = 0; j < e - k; j++) {
-      const relief = runRelief(motif, plan, row, rows, j, e - k, sources[k], primitives, meanderCurves);
       const p = pieces[k + j];
+      const relief = runRelief(motif, plan, row, rows, j, e - k, sources[k], primitives, meanderCurves, p);
       // a raised piece of a motif declaring raisedTop 'flat' / joinRaised carries it (the height mask reads both)
       const raisedLook = relief === 'raised' ? { ...(motif.raisedTop === 'flat' ? { topFlat: true } : {}), ...(motif.joinRaised ? { joinRaised: true } : {}) } : {};
       out[k + j] = { ...p, relief, heightOffset: (p.heightOffset || 0) + (RELIEF_LEVELS[relief] || 0), ...raisedLook };
