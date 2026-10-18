@@ -276,7 +276,7 @@ export function showChangeListDialog(changeList, { onApply, onCancel } = {}, doc
 
   const win = doc.createElement('div');
   win.className = 'cad-modal-window';
-  win.style.width = '420px';
+  win.style.width = '420px'; win.style.maxWidth = 'calc(100vw - 24px)'; // phone first: 390 px wide
 
   const header = doc.createElement('div');
   header.className = 'cad-modal-header';
