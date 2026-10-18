@@ -25,6 +25,7 @@ import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
+from . import op_ledger
 from .cam_position import CAM_POSITION, WCS_SKETCH_NAME, stock_box_cm, wcs_point_cm
 from cam_utils import get_design
 
@@ -167,7 +168,7 @@ def apply_templates_to_existing_setups(cam, logger=None):
             _log(logger, f"APPLY TEMPLATES ({name}): no templates declared, skipping", "DEBUG")
             continue
         try:
-            _apply_cloud_templates(setup, cloud_templates, name, logger)
+            _apply_cloud_templates(setup, cloud_templates, name, logger, design=design)
             if spec.get('op_heights'):
                 _apply_op_heights(setup, name, logger)
             n_processed += 1
@@ -1072,7 +1073,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
                  "WARNING")
             cloud_templates = spec.get('cloud_templates') or []
         if cloud_templates:
-            _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+            _apply_cloud_templates(setup, cloud_templates, spec['name'], logger, design=design)
             if spec.get('op_heights'):
                 _apply_op_heights(setup, spec['name'], logger)
     else:
@@ -1270,7 +1271,7 @@ def _rename_created_operations(results, base_name, setup_name, logger):
     return renamed
 
 
-def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
+def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger, design=None):
     """Pull each named template from the user's cloud CAM library and stamp
     its operations into ``setup`` via Setup.createFromCAMTemplate.
 
@@ -1280,6 +1281,9 @@ def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
     must end in ``.f3dhsm-template``; we don't add it automatically so
     typos surface as missing-template warnings rather than silent skips.
     Missing templates log WARNING and are skipped; the rest still apply.
+
+    A template whose operations the setup still holds is NOT stamped again (op_ledger: by the recorded operation keys;
+    by operation name for a setup with no record) -- a second APPLY used to double every operation.
 
     Returns the count of templates successfully applied."""
     if not template_leaf_names:
@@ -1318,9 +1322,16 @@ def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
                  f"(available: {sorted(cloud_assets.keys())[:5]}...) — skipping",
                  "WARNING")
             continue
+        base_name = leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
+        has_record = op_ledger.load(design, setup_name) is not None
+        if (op_ledger.holds_template(design, setup, setup_name, leaf) if has_record
+                else op_ledger.named_like(setup, base_name)):
+            _log(logger, f"SETUP BUILD ({setup_name}): {leaf!r} already stamped -- skipped", "INFO")
+            continue
         try:
             tpl = tpl_lib.templateAtURL(url)
             results = setup.createFromCAMTemplate(tpl)
+            op_ledger.record(design, setup_name, leaf, results)
             # Fusion names each created Operation from whatever the template
             # author saved it with — usually lowercase boilerplate like
             # "pocket back" or auto-suffixed re-uses like "Morphed Spiral2 (2)".

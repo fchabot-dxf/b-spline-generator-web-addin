@@ -614,9 +614,10 @@ def _ensure_design_workspace():
     return False
 
 
-# H23 item 99 (Fred, CAM option (b)): a Send clears the CAM our BUILD made (its setups AND its Manufacturing Models,
-# found by the names CAM-builder declares -- SETUP_SPECS / MM_RULES -- via cam_coordinator.clear_addin_build); the
-# user presses BUILD + APPLY again afterwards (a full recreate, ~50 s). Anything else in the CAM workspace stays.
+# H23 item 99 -> Fred, "Send stops wiping CAM": a Send leaves a whole CAM build in place (the next BUILD reuses it and
+# re-binds the models; Fred's operations and setups stay). Only a broken / partial build is cleared, via
+# cam_coordinator.clear_for_send, and then only what is provably ours (a setup holding an operation the add-in did
+# not stamp stays, and so does an MM a surviving setup uses).
 CAM_BUILDER_DIR = os.path.join(_ADDIN_ROOT, 'CAM-builder')
 
 
@@ -645,9 +646,12 @@ def _clear_cam_build(des):
     try:
         cam = adsk.cam.CAM.cast(product)
         logger = types.SimpleNamespace(log=lambda msg, level='INFO': _log(f'[CAM CLEAR] {level}: {msg}'))
-        removed = _cam_coordinator().clear_addin_build(cam, logger)
+        removed = _cam_coordinator().clear_for_send(cam, logger)
     except Exception as e:
         _log(f'[CAM CLEAR] failed: {type(e).__name__}: {e} (engine {CAM_BUILDER_DIR})')
+        return None
+    if removed is None:
+        _log(f'[CAM CLEAR] the CAM build is whole -- left in place in {time.time() - t0:.1f}s (nothing deleted)')
         return None
     _log(f"[CAM CLEAR] removed setups={removed['setups']} mms={removed['mms']} in {time.time() - t0:.1f}s "
          f"(engine {CAM_BUILDER_DIR})")

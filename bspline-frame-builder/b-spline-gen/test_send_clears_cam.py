@@ -60,6 +60,9 @@ class _FakeCoordinator:
         logger and logger.log(f"CLEANUP: deleted {len(removed['setups'])} setup(s)", 'INFO')
         return removed
 
+    def clear_for_send(self, cam, logger=None):  # a broken / partial build: the safe clear
+        return self.clear_addin_build(cam, logger)
+
 
 def _doc_with_cam(cam):
     products = types.SimpleNamespace(itemByProductType=lambda t: cam if t == 'CAMProductType' else None)
@@ -106,7 +109,7 @@ def test_a_document_that_never_had_cam_raises_and_is_left_alone(monkeypatch):
 
 def test_a_failing_clear_is_logged_and_the_send_goes_on(monkeypatch):
     class _Boom:
-        def clear_addin_build(self, cam, logger=None):
+        def clear_for_send(self, cam, logger=None):
             raise RuntimeError('engine missing')
     logged = _patch(monkeypatch, _Boom())
     assert bsg._clear_cam_build(_doc_with_cam(types.SimpleNamespace())) is None
@@ -133,3 +136,12 @@ def test_the_clear_uses_cam_builders_own_declaration():
     src = open(path, encoding='utf-8').read()
     assert 'def clear_addin_build(cam, logger=None):' in src
     assert len(_declared_names()) >= 2
+
+
+def test_a_whole_build_is_left_in_place_and_the_log_says_so(monkeypatch):
+    class _Whole:
+        def clear_for_send(self, cam, logger=None):
+            return None   # cam_coordinator.clear_for_send: a reusable build deletes nothing
+    logged = _patch(monkeypatch, _Whole())
+    assert bsg._clear_cam_build(_doc_with_cam(types.SimpleNamespace())) is None
+    assert any('left in place' in m for m in logged) and not any('removed setups' in m for m in logged)
