@@ -35,7 +35,9 @@ import {
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
+  heightPickBricks, showHeightPicks,
 } from '../editor/editor-brick-tool.js';
+import { HEIGHT_STEP_IN, pickedIndices, togglePick, sharedLevel, setPickedLevel, stepPickedLevel, resetPicked, heightedCount } from '../core/bricks/height-records.js';
 import { openColorMosaic } from '../editor/editor-color.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -101,11 +103,11 @@ const BRICK_TOOLS = [
   // `subTools` (F35 item 22): the element tool's own sub-tools (BRICK_SUB_TOOLS below), shown in its section
   { id: 'wall', buttonId: 'brickTool_wall', iconSvg: () => brickToolIconSvg('wall'), label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
     tab: { order: 1, label: 'Wall' },
-    subTools: ['select', 'area'],
+    subTools: ['select', 'heights', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: FRAME_LABELS.brick, icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     tab: { order: 2, label: FRAME_LABELS.brick },
-    subTools: ['select'],
+    subTools: ['select', 'heights'],
     hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -1756,7 +1758,7 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement', 'heights'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
@@ -2754,6 +2756,9 @@ export const BRICK_SUB_TOOLS = Object.freeze({
   draw: { label: 'Draw', mode: 'brickBrush', title: 'Drag a stroke on the canvas to lay bricks along it.' },
   select: { label: 'Select', mode: 'brickElementSelect',
     title: 'Click a brick: its element is selected and this section edits only it. Esc deselects.' },
+  // Fred 2026-10-11: Heights = pick Wall / Frame bricks (tap, or drag a box) and Raise / Lower them (core/bricks/height-records.js)
+  heights: { label: 'Heights', mode: 'brickHeightPick',
+    title: 'Tap bricks to pick them (tap again to unpick), or drag a box around them; then Raise or Lower the picked bricks.' },
   // F35 item 43: Stripe has no tab of its own -- a sub-tool of the Brush tab that picks the Stripe TOOL (`tool`)
   stripe: { label: 'Stripe', tool: 'stripe', title: 'Tap a brush stroke to split it into alternating brick-style runs.' },
   area: { label: 'Area', mode: 'brickWallArea',
@@ -2882,6 +2887,79 @@ export function restyleSelectedStroke() {
   return changed;
 }
 let _subTool = 'select';
+
+/* Fred 2026-10-11 (Select raises / lowers bricks): the Heights sub-tool's row -- the not-yet-applied PICKS (the records' own
+ * shapes, core/bricks/height-records.js), the Raise / Lower step, and the board's raised-brick count. Every action writes
+ * P.brickSettings.heights and commits as a 'surface' change (3D only, one undo step). */
+let _heightPicks = [];
+let _heightStep = HEIGHT_STEP_IN;
+const _newHeightId = () => `h${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+function _clearHeightPicks() {
+  if (!_heightPicks.length) return;
+  _heightPicks = [];
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  showHeightPicks(editor, []);
+}
+function _applyHeights(next) {
+  P.brickSettings.heights = next;
+  commitBrickSetting('surface');
+  renderHeightPickRow();
+}
+export const heightPickState = () => ({ picks: _heightPicks.map((p) => ({ ...p })), step: _heightStep });
+export function renderHeightPickRow() {
+  if (typeof document === 'undefined') return;
+  const editor = window.svgEditor;
+  const on = (tool) => _activeTool === tool && _subTool === 'heights';
+  for (const tool of ['wall', 'frame']) {
+    const row = document.getElementById(`brickHeightPickRow_${tool}`);
+    if (!row) continue;
+    row.innerHTML = '';
+    row.style.display = on(tool) ? '' : 'none';
+    if (!on(tool)) continue;
+    const bricks = heightPickBricks(editor);
+    const records = P.brickSettings.heights || [];
+    const idx = pickedIndices(_heightPicks, bricks);
+    showHeightPicks(editor, [...idx].map((k) => bricks[k].polygon));
+    const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+    const btn = (id, text, title, fn, disabled) => {
+      const b = el('button', 'flex:1 1 64px; min-width:0; min-height:28px; width:auto; padding:2px 4px; white-space:nowrap;', text);
+      b.type = 'button'; b.className = 'cad-btn'; b.id = id; b.title = title; b.disabled = !!disabled;
+      b.addEventListener('click', fn);
+      return b;
+    };
+    const flex = (css) => el('div', `display:flex; gap:6px; align-items:center; flex-wrap:wrap; ${css || ''}`);
+    const level = sharedLevel(records, _heightPicks, bricks);
+    const chip = el('span', 'font-size:11px; border:1px solid #1e88e5; background:#e3f0fc; border-radius:10px; padding:2px 8px;',
+      idx.size ? `${idx.size} brick${idx.size === 1 ? '' : 's'} picked${level === null ? ' · mixed' : level ? ` · ${level > 0 ? '+' : ''}${level} in` : ''}` : 'No bricks picked');
+    chip.id = 'brickHeightPicked';
+    const top = flex('margin:0 0 6px;');
+    top.append(chip, el('span', 'font-size:10px; opacity:0.65;', 'tap to pick / unpick · drag a box · Esc clears'));
+    const stepRow = flex('margin:0 0 6px;');
+    const num = el('input', 'width:72px; min-height:28px; text-align:center;');
+    num.type = 'number'; num.id = 'brickHeightStep'; num.step = '0.015625'; num.value = String(_heightStep);
+    num.title = 'inches: Raise adds it, Lower takes it away; Set to value writes it as the level (+ proud, - recessed)';
+    num.addEventListener('change', () => { const v = Number(num.value); if (Number.isFinite(v)) _heightStep = Math.abs(v) || HEIGHT_STEP_IN; num.value = String(_heightStep); });
+    const none = !idx.size;
+    stepRow.append(
+      btn('brickHeightLower', '− Lower', 'Take the picked bricks down by the step', () => _applyHeights(stepPickedLevel(records, _heightPicks, -_heightStep, bricks, _newHeightId)), none),
+      num,
+      btn('brickHeightRaise', '+ Raise', 'Bring the picked bricks up by the step', () => _applyHeights(stepPickedLevel(records, _heightPicks, _heightStep, bricks, _newHeightId)), none));
+    const setRow = flex('margin:0 0 6px;');
+    setRow.append(
+      btn('brickHeightSet', 'Set to value', "Make the value above the picked bricks' level", () => _applyHeights(setPickedLevel(records, _heightPicks, Number(num.value) || 0, _newHeightId)), none),
+      btn('brickHeightReset', 'Reset height', 'Take the picked bricks back to no height', () => _applyHeights(resetPicked(records, _heightPicks, bricks, _newHeightId)), none));
+    const raised = heightedCount(records, bricks);
+    const total = el('div', 'font-size:11px; opacity:0.8; margin:0 0 10px; display:flex; gap:6px; align-items:center;');
+    total.id = 'brickHeightTotal';
+    total.append(el('span', null, `${raised} raised brick${raised === 1 ? '' : 's'}`));
+    if (records.length) {
+      const clear = btn('brickHeightClearAll', '✕ clear all', 'Remove every brick height on this board', () => { _heightPicks = []; _applyHeights([]); }, false);
+      clear.style.cssText = 'flex:0 0 auto; min-height:28px; width:auto; padding:2px 8px;';
+      total.append(clear);
+    }
+    row.append(top, stepRow, setRow, total);
+  }
+}
 let _selectedElement = null; // { id, kind } -- the selected Wall/Frame element (its record), or null
 
 export const selectedBrickElement = () => (_selectedElement ? { ..._selectedElement } : null);
@@ -2909,6 +2987,7 @@ function _renderSubTools() {
 }
 
 function _syncSubTools() {
+  queueMicrotask(renderHeightPickRow); // the Heights row follows the sub-tool
   for (const tool of BRICK_TOOLS) {
     for (const sid of tool.subTools || []) {
       document.getElementById(`brickSubTool_${tool.id}_${sid}`)?.classList.toggle('active', tool.id === _activeTool && sid === _subTool);
@@ -2942,6 +3021,14 @@ function _armSubTool(sid) {
   const def = BRICK_SUB_TOOLS[sid];
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   _subTool = sid;
+  if (sid !== 'heights') _clearHeightPicks();
+  if (editor && def && def.mode === 'brickHeightPick') { // Fred 2026-10-11: pick bricks to raise / lower
+    if (_selectedElement) selectBrickElement(null);
+    _subTool = sid;
+    editor._brickHeightTap = (pt) => { _heightPicks = togglePick(_heightPicks, pt, heightPickBricks(editor)); renderHeightPickRow(); };
+    editor._brickHeightBox = (region) => { _heightPicks = [..._heightPicks, { pick: 'region', region }]; renderHeightPickRow(); };
+    editor.setMode('brickHeightPick');
+  }
   if (editor && def && def.mode === 'brickElementSelect') {
     editor._brickElementSelect = (pt) => {
       const hit = brickElementAt(editor, pt);
@@ -2962,6 +3049,7 @@ function _armSubTool(sid) {
   }
   _syncSubTools();
   renderWallAreaRow();
+  renderHeightPickRow();
 }
 
 /** Select an element ({ id, kind }) -- its tool becomes the active one (its section shows), its bricks are
@@ -2990,6 +3078,7 @@ export function selectBrickElement(element) {
 }
 
 function selectTool(id, { keepSelection = false } = {}) {
+  if (id !== _activeTool) _clearHeightPicks(); // the picked bricks belong to the armed element's Heights sub-tool
   if (typeof document !== 'undefined') queueMicrotask(renderWallAreaRow); // the Area row follows the tool
   _disarmAccentClick(); // F35 item 15: a tool pick ends Click bricks
   if (!keepSelection && _selectedElement) {
@@ -3398,6 +3487,7 @@ export function initBrickPanel() {
   renderAccentList(document.getElementById('brickAccentList'));
   renderElementAccentRows(); // the Frame bands' + the Brush's Accent rows
   document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode({ kind: 'wall' }));
+  onPageEvent('heightPicksEsc', 'keydown', (e) => { if (e.key === 'Escape' && _heightPicks.length) { _clearHeightPicks(); renderHeightPickRow(); } }); // Heights: Esc clears the picked bricks
   // item 41: opening the builder renders its grid + previews (279 ms blocked at 900 px / CPU x4): its pill paints first
   document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder()
     : withLoadingStageShownFirst('openBuilder', openPatternBuilder)));

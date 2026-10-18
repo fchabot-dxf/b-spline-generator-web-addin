@@ -43,9 +43,9 @@ const FIXTURE = `
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
-  <div id="brickFrameSection"><div id="brickSubTools_frame"></div><div id="brickElementLabel_frame"></div></div><div id="brickFramePresetList"></div>
+  <div id="brickFrameSection"><div id="brickSubTools_frame"></div><div id="brickHeightPickRow_frame" style="display:none;"></div><div id="brickElementLabel_frame"></div></div><div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
-  <div id="brickWallSection"><div id="brickSubTools_wall"></div><div id="brickElementLabel_wall"></div></div><div id="brickPatternList"></div>
+  <div id="brickWallSection"><div id="brickSubTools_wall"></div><div id="brickHeightPickRow_wall" style="display:none;"></div><div id="brickElementLabel_wall"></div></div><div id="brickPatternList"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
   <div id="brickSetRow"></div>
   <div id="brickSizePresetList"></div>
@@ -143,7 +143,7 @@ describe('item 22 step 4: Select in the panel', () => {
     expect($('brickSubTool_wall_area').style.display).toBe('none');
     expect($('brickSubTool_frame_select')).toBeTruthy();
     expect($('brickSubTool_frame_area')).toBeNull(); // Frame = Select only
-    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['draw', 'select', 'stripe', 'area']); // F35 item 36: + the brushes' Draw; item 43: + Stripe (Brush's)
+    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['draw', 'select', 'heights', 'stripe', 'area']); // F35 item 36: + the brushes' Draw; item 43: + Stripe (Brush's)
     root.remove(); engineOpts.extra = ['wallRegion'];
     setup();
     expect($('brickSubTool_wall_area').style.display).toBe('');
@@ -179,5 +179,80 @@ describe('item 22 step 4: Select in the panel', () => {
     window.svgEditor._brickElementSelect({ x: 1.5, y: 0.1 });
     $('brickGenerate').click();
     expect(window.svgEditor._highlightLayer.added.filter((e) => !e.removed).map((e) => e.pts)).toEqual([SQ.wall]);
+  });
+});
+
+describe('Fred 2026-10-11: Wall / Frame > Heights -- pick bricks, Raise / Lower them (records in P.brickSettings.heights)', () => {
+  const tap = (pt) => window.svgEditor._brickHeightTap(pt);
+  it('the sub-tool arms the pick mode; a tap picks the brick under it, outlines it, and a second tap unpicks it', () => {
+    setup();
+    $('brickSubTool_wall_heights').click();
+    expect(window.svgEditor.modes.at(-1)).toBe('brickHeightPick');
+    expect($('brickHeightPickRow_wall').style.display).not.toBe('none');
+    expect($('brickHeightRaise').disabled).toBe(true); // nothing picked yet
+    const before = window.svgEditor._highlightLayer.added.length;
+    tap({ x: 1.5, y: 0.1 });
+    expect($('brickHeightPicked').textContent).toMatch(/^1 brick picked/);
+    expect(window.svgEditor._highlightLayer.added.length).toBeGreaterThan(before); // its outline
+    expect($('brickHeightRaise').disabled).toBe(false);
+    tap({ x: 1.5, y: 0.1 });
+    expect($('brickHeightPicked').textContent).toBe('No bricks picked');
+  });
+  it('Raise writes ONE record that re-matches the brick by point; Lower steps it back; Reset clears it; clear all empties the list', () => {
+    setup();
+    P.brickSettings.heights = [];
+    $('brickSubTool_wall_heights').click();
+    tap({ x: 1.5, y: 0.1 });
+    $('brickHeightRaise').click();
+    expect(P.brickSettings.heights).toHaveLength(1);
+    expect(P.brickSettings.heights[0]).toMatchObject({ level: 0.0625, pick: 'points', points: [{ x: 1.5, y: 0.1 }] });
+    expect($('brickHeightPicked').textContent).toMatch(/\+0\.0625 in/);
+    $('brickHeightRaise').click();
+    expect(P.brickSettings.heights.at(-1).level).toBe(0.125);
+    $('brickHeightLower').click();
+    expect(P.brickSettings.heights.at(-1).level).toBe(0.0625);
+    expect($('brickHeightTotal').textContent).toMatch(/^1 raised brick/);
+    $('brickHeightReset').click();
+    expect($('brickHeightTotal').textContent).toMatch(/^0 raised bricks/);
+    $('brickHeightClearAll').click();
+    expect(P.brickSettings.heights).toEqual([]);
+  });
+  it('a box drag hands a region pick: the whole bricks whose centroid is in it (on the Frame too)', () => {
+    setup();
+    P.brickSettings.heights = [];
+    $('brickTool_frame').click();
+    $('brickSubTool_frame_heights').click();
+    expect(window.svgEditor.modes.at(-1)).toBe('brickHeightPick');
+    window.svgEditor._brickHeightBox([{ x: 4.5, y: -1 }, { x: 6.5, y: -1 }, { x: 6.5, y: 1 }, { x: 4.5, y: 1 }]);
+    expect($('brickHeightPicked').textContent).toMatch(/^1 brick picked/);
+    $('brickHeightRaise').click();
+    expect(P.brickSettings.heights[0].pick).toBe('region');
+  });
+  it('picking another tool drops the picks', async () => {
+    setup();
+    $('brickSubTool_wall_heights').click();
+    tap({ x: 1.5, y: 0.1 });
+    $('brickTool_frame').click();
+    $('brickTool_wall').click();
+    $('brickSubTool_wall_heights').click();
+    expect($('brickHeightPicked').textContent).toBe('No bricks picked');
+  });
+  it('Heights and the Raised brush do not fight: the Raised tab stays, picking it drops the picks and leaves pick mode, and Esc then touches no heights', async () => {
+    setup();
+    P.brickSettings.heights = [];
+    expect($('brickTool_raisedBrush')).toBeTruthy(); // Fred (c): the Raised brush stays beside Heights
+    $('brickSubTool_wall_heights').click();
+    tap({ x: 1.5, y: 0.1 });
+    $('brickHeightRaise').click();
+    expect($('brickHeightPicked').textContent).toMatch(/^1 brick picked/); // Raise keeps the picks
+    $('brickTool_raisedBrush').click();
+    await Promise.resolve(); // the row follows the sub-tool on a microtask
+    expect(window.svgEditor.modes.at(-1)).not.toBe('brickHeightPick'); // Raised arms its own draw mode
+    expect($('brickHeightPickRow_wall').style.display).toBe('none');
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(P.brickSettings.heights).toHaveLength(1); // Esc is Heights' only while it holds picks
+    $('brickTool_wall').click();
+    $('brickSubTool_wall_heights').click();
+    expect($('brickHeightPicked').textContent).toBe('No bricks picked');
   });
 });
