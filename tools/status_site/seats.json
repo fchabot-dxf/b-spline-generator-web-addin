@@ -6,38 +6,25 @@
   },
   "seats": [
     {
-      "key": "seatA",
-      "name": "Seat A",
-      "station": "home-pc",
-      "branch": "pattern-defaults",
-      "task": "NEXT-SESSION.md",
-      "checkout": "-wt\\77-pd",
-      "session": "b-spline-generator-web-addin-77",
-      "shots": [
-        "seatA"
-      ]
-    },
-    {
       "key": "seatD",
       "name": "Seat D",
       "station": "home-pc",
-      "branch": "editor-pickers",
+      "branch": "main",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\bb-pk",
-      "session": "b-spline-generator-web-addin-bb",
+      "checkout": "",
+      "session": "b-spline-generator-web-addin-ac",
       "shots": [
-        "seatD",
-        "seatbb"
+        "seatD"
       ]
     },
     {
       "key": "seatE",
       "name": "Seat E",
       "station": "home-pc",
-      "branch": "curve-quoin",
+      "branch": "greek-key-curves",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\61-cq",
-      "session": "b-spline-generator-web-addin-61",
+      "checkout": "-wt\\seatE-gkc",
+      "session": "b-spline-generator-web-addin-d9",
       "shots": [
         "seatE"
       ]
