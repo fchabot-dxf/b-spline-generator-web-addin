@@ -23,6 +23,7 @@ from constrained_sketch_log import format_constrained_sketch_log
 from param_ownership import compute_stale_params
 # 2026-10-10: the panel's matte per-component finish (Fred) -- declared in panel_finish.py, a sibling module too.
 from panel_finish import apply_panel_finish
+from pull_frame_shape import read_frame_shape  # noqa: E402
 from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
                           new_board_offset_in, BOARD_SPACING_IN)
 from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
@@ -2079,7 +2080,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         toggle -- v2) would need `p.unit`-aware conversion, not the flat /2.54 below."""
         data = data or {}
         result = {'ok': False, 'sketchName': None, 'widthIn': None, 'heightIn': None, 'sizeSource': None,
-                  'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'boardParams': {}, 'error': None}
+                  'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'boardParams': {}, 'frameShape': {},
+                  'frameShapeReport': None, 'error': None}
         try:
             des = _active_design()
             if not des:
@@ -2288,6 +2290,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 xs, ys = [q[0] for q in seen], [q[1] for q in seen]
                 result['bounds'] = {'x0': min(xs), 'y0': min(ys), 'x1': max(xs), 'y1': max(ys)}
             result['curves'] = curves_out
+            # Part 2: the wood frame's sketch shape, read back by its seed ids (pull_frame_shape.py); its own failure
+            # never costs the lattice/board half of the pull.
+            try:
+                result['frameShape'], result['frameShapeReport'] = read_frame_shape(des, scope, data.get('frameSeedIds'))
+            except Exception as e:
+                result['frameShapeReport'] = {'error': str(e)}
+                _log(f"[PULL SKETCH] frame shape read failed: {e}")
             result['ok'] = True
             _log(f"[PULL SKETCH] Extracted {len(curves_out)} curves from sketch '{target_sketch.name}' "
                  f"(board {scope.board_id or 'legacy'})")

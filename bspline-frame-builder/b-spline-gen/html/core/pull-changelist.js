@@ -82,7 +82,7 @@ const LAYER_KEY = /^L[^_]+_(.+)$/;
  *  which editor layers belong to this board) -- [{ id, name, pattern }]; `frame` = P.frame, or null when this
  *  board has none. A Fusion param PULL_MAP doesn't declare, or one that already matches the app, is COUNTED
  *  (notMappedCount / keptCount), never silently dropped -- the advisor's own REPORT line. */
-export function buildChangeList(pullResult, { P, layers = [], frame = null }) {
+export function buildChangeList(pullResult, { P, layers = [], frame = null, frameShape = null }) {
   const boardParams = pullResult.boardParams || {};
   const boardRows = Number.isFinite(pullResult.widthIn) && Number.isFinite(pullResult.heightIn)
     ? diffScope('board', { widthIn: pullResult.widthIn, heightIn: pullResult.heightIn }, P) : [];
@@ -149,5 +149,13 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null }) {
   // never a rail to begin with, same filter pull-sketch.js's own onSketchPulled already applies).
   const curveCount = (pullResult.curves || []).filter((c) => !c.isConstruction).length;
 
-  return { boardRows, layerGroups, frameRows, keptCount, notMappedCount, curveCount };
+  // Part 2: the wood frame's sketch SHAPE (core/pull-frame-shape.js fitPulledFrameShape, run by the caller, which
+  // owns the defs + board): one row per handle that moved, seeded -- never a dimension. A row that fits outside the
+  // handle's feasible range starts unchecked (`apply: false`, detection only); an edit the handles cannot express
+  // is a note and writes nothing.
+  const frameShapeRows = ((frameShape && frameShape.status === 'changed') ? frameShape.rows : [])
+    .map((r) => ({ ...r, apply: !r.outOfRange }));
+  const frameShapeBeyond = frameShape && frameShape.status === 'beyond' ? frameShape.beyondIds : [];
+
+  return { boardRows, layerGroups, frameRows, frameShapeRows, frameShapeBeyond, keptCount, notMappedCount, curveCount };
 }

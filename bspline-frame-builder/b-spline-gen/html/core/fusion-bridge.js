@@ -9,6 +9,7 @@ import { fusLog } from './fusion-log.js';
 import { releaseHeldStage, holdLoadingStage } from './loading-signal.js';
 import FUSION_HOST from '../data/fusion-host.js';
 import { setHeaderFaceLabel } from './header-faces.js';
+import { frameSeedIds } from './frame-record.js';
 
 export { fusLog } from './fusion-log.js';
 
@@ -188,6 +189,7 @@ export function pullSketchFromFusion() {
         holdLoadingStage('pullSketch');
         adsk.fusionSendData('pull_sketch_from_fusion', JSON.stringify({
             board: { id: P.boardId || '' }, widthIn: P.widthIn, heightIn: P.heightIn,
+            frameSeedIds: frameSeedIds(), // part 2: the wood frame's own shape comes back
         }));
         fusLog('pull_sketch_from_fusion sent to Python');
     } else {

@@ -176,6 +176,14 @@ export function getFrameRecord() {
   return normalizeFrameRecord(P.frame);
 }
 
+/** The seed ids Pull from Fusion asks the add-in to read back (part 2: the wood frame's sketch shape): the
+ *  template's own line / arc seedMap entries -- pins and radius seeds are not curves that come back. Declared by the
+ *  template, so the Python side stays template-agnostic. [] = no frame. */
+export function frameSeedIds(record = getFrameRecord()) {
+  const tpl = (FRAME_DEFS.templates || []).find((t) => record && t.id === record.templateId);
+  return tpl ? (tpl.seedMap || []).filter((e) => e.kind === 'line' || e.kind === 'arc').map((e) => e.id) : [];
+}
+
 /** The ONE write path: normalize, store on P, persist, mark the project dirty.
  *  A template change resets the seeds (F9: they belong to that template's shape). */
 /** `opts.restored` (blind-spot audit B9): this write puts back an EARLIER record (the Frame tab's undo) --

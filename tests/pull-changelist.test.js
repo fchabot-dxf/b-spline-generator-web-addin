@@ -135,7 +135,7 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
 
   it('no boardParams / no size at all: an empty, harmless change list', () => {
     const result = buildChangeList({}, { P, layers: [layer1], frame });
-    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0 });
+    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], frameShapeRows: [], frameShapeBeyond: [], keptCount: 0, notMappedCount: 0, curveCount: 0 });
   });
 
   // live Fusion test (seat D 2026-10-16): a design with no tagged board is BoardNamer's own "legacy" identity

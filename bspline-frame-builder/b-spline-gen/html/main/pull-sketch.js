@@ -25,6 +25,8 @@ import { showToast } from '../core/toast.js';
 import { setFusionStatus, fusLog } from '../core/fusion-bridge.js';
 import { releaseHeldStage } from '../core/loading-signal.js';
 import { getFrameRecord } from '../core/frame-record.js';
+import FRAME_DEFS from '../data/frame-defs.js';
+import { fitPulledFrameShape } from '../core/pull-frame-shape.js';
 import { buildChangeList } from '../core/pull-changelist.js';
 import { showChangeListDialog, hasChanges, applyChangeList } from './pull-changelist.js';
 import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js';
@@ -112,7 +114,10 @@ export function onSketchPulled(raw) {
     // this layer actually have real lattice content right now" (export-flow.js's own gate for the same question).
     const layers = (editor._layers || []).filter((l) => l && l.pattern && latticeOwnedElementsOnLayer(editor, l.id, l.pattern).length > 0);
     const frame = getFrameRecord().templateId ? getFrameRecord() : null;
-    const changeList = buildChangeList(sizedData, { P, layers, frame });
+    // part 2: the wood frame's sketch shape, fitted back onto the template's own seeded handles
+    const frameShape = frame && data.frameShape && Object.keys(data.frameShape).length
+      ? fitPulledFrameShape(FRAME_DEFS, frame, { widthIn: P.widthIn, heightIn: P.heightIn }, data.frameShape) : null;
+    const changeList = buildChangeList(sizedData, { P, layers, frame, frameShape });
     if (hasChanges(changeList)) {
       // rails-lock slice: the RAW pulled curves ride along too -- applyChangeList's own rail-position write path
       // (applyPulledRailPositions) matches them by railId, independent of buildChangeList's own curveCount.

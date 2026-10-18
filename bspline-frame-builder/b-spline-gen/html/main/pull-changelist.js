@@ -32,6 +32,22 @@ function _row(label, fromText, toText) {
   return el;
 }
 
+/** A frame-shape row with its own Apply checkbox (row.apply is read back by applyChangeList). */
+function _shapeRow(row) {
+  const el = document.createElement('label');
+  el.className = 'pull-changelist-row';
+  el.style.minHeight = '28px'; // touch target, phone first
+  const box = document.createElement('input');
+  box.type = 'checkbox'; box.checked = row.apply !== false; box.style.minWidth = '20px'; box.style.minHeight = '20px';
+  box.addEventListener('change', () => { row.apply = box.checked; });
+  const text = document.createElement('span');
+  text.textContent = row.label;
+  const change = document.createElement('span');
+  change.textContent = `${_fmtIn(row.from)} → ${_fmtIn(row.to)}${row.outOfRange ? " ⚠ outside the Frame tab's range" : ''}`;
+  el.append(box, text, change);
+  return el;
+}
+
 function _groupHeader(text) {
   const el = document.createElement('div');
   el.className = 'pull-changelist-group-header';
@@ -69,6 +85,22 @@ function _renderBody(changeList) {
     body.appendChild(_divider());
   }
 
+  // Part 2: the wood frame's sketch SHAPE -- each moved handle is a checkbox row (one that fits outside the handle's
+  // feasible range starts unchecked and says so: detection only, never a clamp); an edit the handles cannot
+  // express is said, and nothing is written for it.
+  const shapeRows = changeList.frameShapeRows || [];
+  if (shapeRows.length) {
+    body.appendChild(_groupHeader(`Wood frame: shape changed (${shapeRows.length} handle${shapeRows.length === 1 ? '' : 's'} moved)`));
+    for (const row of shapeRows) body.appendChild(_shapeRow(row));
+    body.appendChild(_divider());
+  }
+  if ((changeList.frameShapeBeyond || []).length) {
+    const note = document.createElement('div');
+    note.className = 'pull-changelist-note';
+    note.textContent = `Wood frame: the sketch was edited beyond what the frame's handles can express (${changeList.frameShapeBeyond.join(', ')}) — left as is.`;
+    body.appendChild(note);
+  }
+
   // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry. A matched
   // one (a real Send-tagged railId, still a live rail here) gets its own position locked on Apply; one that
   // can't be matched (a hand-drawn/legacy curve, or a rail since deleted) is still counted here but Apply
@@ -91,7 +123,7 @@ function _renderBody(changeList) {
 /** True if there is anything to show at all -- an all-kept, no-curve pull has nothing for a dialog to say. */
 export function hasChanges(changeList) {
   return changeList.boardRows.length > 0 || changeList.layerGroups.length > 0 || changeList.frameRows.length > 0
-    || changeList.curveCount > 0;
+    || (changeList.frameShapeRows || []).length > 0 || (changeList.frameShapeBeyond || []).length > 0 || changeList.curveCount > 0;
 }
 
 /** The frame scope's own patch: a FULL copy of the current record (params included, one level deep), with every
@@ -176,8 +208,9 @@ function applyPulledRailPositions(editor, pulledCurves) {
  *  regardless of how long the async Generate(s) below still have left to run. */
 export async function applyChangeList(changeList, { editor, pulledCurves } = {}) {
   const { boardRows, layerGroups, frameRows } = changeList;
+  const shapeRows = (changeList.frameShapeRows || []).filter((r) => r.apply !== false); // the checked ones
   const hasRailMoves = editor && Array.isArray(pulledCurves) && pulledCurves.some((c) => c && c.railId);
-  if (!boardRows.length && !layerGroups.length && !frameRows.length && !hasRailMoves) return;
+  if (!boardRows.length && !layerGroups.length && !frameRows.length && !shapeRows.length && !hasRailMoves) return;
 
   let genPromise = null;
   recordStep('Pull from Fusion', ['frame', 'editorSvg'], () => {
@@ -195,7 +228,12 @@ export async function applyChangeList(changeList, { editor, pulledCurves } = {})
     // this is the one place left to sync P.editorSvg (data-editor-layers' own round-trip of that pattern config).
     const repainted = widthTriples.length && editor ? rewidthOwnedKindsAcrossLayers(editor, widthTriples) : 0;
 
-    if (frameRows.length) setFrameRecord(_frameApplyPatch(frameRows));
+    if (frameRows.length || shapeRows.length) {
+      const patch = frameRows.length ? _frameApplyPatch(frameRows) : { ...getFrameRecord() };
+      // the shape: the SEEDED handle values, merged over the record's own seeds (never a dimension or a param)
+      if (shapeRows.length) patch.seeds = { ...(patch.seeds || {}), ...Object.fromEntries(shapeRows.map((r) => [r.key, r.toFrac])) };
+      setFrameRecord(patch);
+    }
 
     // rails-lock slice: write pattern.rails.custom for every matched rail FIRST (synchronous -- computePattern
     // needs it in place before it runs), then Generate each touched layer, ASYNCHRONOUSLY, started here but
