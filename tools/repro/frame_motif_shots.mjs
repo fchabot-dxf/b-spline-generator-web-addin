@@ -30,6 +30,7 @@ const SHOTS = [
   ['greek_key_mosaic', 'greek_key_mosaic', '', 0.375, GREEK],
   ['hourglass_greek_key_mosaic', 'greek_key_mosaic', 'template_1', 0.375, GREEK],
   ['greek_key_mosaic_075', 'greek_key_mosaic', '', 0.75, GREEK], // the next chip up, to compare (a 2.4 in band)
+  ['brick_wall_colour', 'single_soldier', '', 1.25, { tint: ['#5a2a20', '#a5432e'] }], // seat A colour mock: a plain wall + frame
 ].filter((s) => !BOARDS || BOARDS.includes(s[0]));
 
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
@@ -120,6 +121,9 @@ for (const [tag, preset, template, size, look = {}] of SHOTS) {
   writeFileSync(`${OUT}/app_${tag}_2d.png`, Buffer.from(s2.result.data, 'base64'));
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false }); await sleep(1000);
   await click('editorApply', 2500); await settle();
+  // seat A colour mock: the 3D drape after the 2D tint (the drape rasters the editor's own SVG, fills included)
+  await view(0.55, 0.35, 17, 0, 0); await snap(`${OUT}/app_${tag}_3d_colour.png`);
+  if (look.top) { await view(0, 0, look.top[2], look.top[0], look.top[1]); await snap(`${OUT}/app_${tag}_3d_top_colour.png`); }
   report.push({ tag, tpl, presetClick: p, ...info });
   console.error(tag, JSON.stringify(info));
 }
