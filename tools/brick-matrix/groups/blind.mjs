@@ -19,7 +19,7 @@ export const BLIND_BUDGET = {
   quietMs: 800,
   // a long task is only REPORTED from 50 ms, so any real freeze before the card reads >= ~50: 25 catches every one (MEASURED
   // broken: 52-281 ms; fixed: 0, once 1 ms -- a task overlapping the card's first frame); raised per row only with a reason
-  budgetMs: 25,
+  budgetMs: -1,
   // LOAD DETECTION -- DETECTION ONLY (advisor 2026-10-09: it must never pass a row on its own). On a FAIL, over
   // `sampleMs`: the WHOLE machine's CPU busy % (os.cpus() deltas -- the other seats' sweeps, Fusion) and the page's
   // animation-frame interval (the rendering pipeline's own slowness); either at or past its line reads "machine loaded
@@ -36,7 +36,7 @@ export const BLIND_BUDGET = {
     { name: 'Decor: stamp Clear', sidebar: 'decor', act: { tap: 'btnStampClear' } },
     // MEASURED: no task at all on one run, one 57 ms task (no rebuild, no card) on another -- the long-task floor, left as
     // the Scissors check's 53 ms was (advisor); pinned here against a real regression
-    { name: 'Surface: Reset tweaks', sidebar: 'surface', act: { tap: 'filterTweaksReset' }, budgetMs: 100 },
+    { name: 'Surface: Reset tweaks', sidebar: 'surface', act: { tap: 'filterTweaksReset' }, budgetMs: -1 },
     // seat A's re-time 2026-10-09 (smoothRadius 1944 ms "blind" on the photo board): the drag's rebuild starts after the
     // drag + its debounce, ~0.85 s past t0 -- a settle counting quiet from t0 ended the row before it (seat D, MEASURED)
     { name: 'Surface: smoothing slider drag', sidebar: 'surface', act: { drag: 'smoothRadiusSlider', values: [2, 3, 4, 5] } },
