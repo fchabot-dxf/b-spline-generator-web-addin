@@ -33,9 +33,9 @@
       "key": "seatD",
       "name": "Seat D",
       "station": "home-pc",
-      "branch": "main",
+      "branch": "seatD-rails-ids",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "",
+      "checkout": "-wt\\seatD-rails-ids",
       "session": "b-spline-generator-web-addin-ac",
       "shots": [
         "seatD"
