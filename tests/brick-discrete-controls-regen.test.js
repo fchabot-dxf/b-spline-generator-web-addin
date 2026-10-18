@@ -41,7 +41,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, renderFramePresetList, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
-  setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
+  setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode, brickTabs,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor, elementSize, elementGroutProfile, elementGroutDepth } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -840,49 +840,11 @@ describe('turn 197 (88): a number box applies while typing, once the typing paus
   });
 });
 
-describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own section)', () => {
-  beforeEach(() => {
-    P.brickSettings.raisedLevelIn = 0.0625;
-    P.brickSettings.raisedMode = 'bricks';
-    engineOpts.extra = [];
+describe('turn 201 (retired UI, Fred 2026-10-11): the Raised brush has no tool button, tab or section any more', () => {
+  it('heights are set on picked bricks (Wall / Frame > Heights); a saved board raised strokes still lay and select (stroke-select.test.js)', () => {
     setup('wall');
-    window.svgEditor.setMode = vi.fn();
-  });
-  it('its own tool button; picking it arms the brush mode with live stroke overrides (Level + mode)', () => {
-    $('brickTool_raisedBrush').click();
-    expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
-    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
-    expect(window.svgEditor._brickStrokeOverrides()).toMatchObject({ setId: 1, rustic: 0, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set; item 29: + Rustic
-    expect(window.svgEditor._brickStrokeOverrides().grout.widthIn).toBe(0.034); // + its own joint (grout per element)
-    fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
-    expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
-    expect($('brickRaisedSection').style.display).not.toBe('none');
-  });
-  it('the plain Brush clears the Raised brush\'s overrides (item 23: only its own set is frozen in)', () => {
-    $('brickTool_raisedBrush').click();
-    $('brickTool_brush').click();
-    // item 29: + Rustic; + its joint; + (2026-10-11) the Brush's size, which every stroke follows
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, brickLengthIn: elementSize(P.brickSettings, 'brush'), grout: expect.objectContaining({ widthIn: 0.034 }) });
-  });
-  it('Grout mode shows and is pickable now the engine lists groutCut (T86 item 10); hidden + refused without it', () => {
-    const resync = () => document.dispatchEvent(new CustomEvent('brickSettingsRestored')); // the panel's full re-sync
-    engineOpts.drop = ['groutCut'];
-    $('brickTool_raisedBrush').click(); resync();
-    expect($('brickRaisedMode_grout').style.display).toBe('none');
-    setRaisedMode('grout');
-    expect(P.brickSettings.raisedMode).toBe('bricks'); // refused while hidden
-    engineOpts.drop = [];
-    resync();
-    expect($('brickRaisedMode_grout').style.display).toBe('');
-    setRaisedMode('grout');
-    expect(P.brickSettings.raisedMode).toBe('grout');
-    setRaisedMode('bricks');
-  });
-  it('Raised brush settings never make the Wall pending', () => {
-    $('brickTool_raisedBrush').click();
-    fire('brickRaisedLevel', 0.1, 'input');
-    expect(pending()).toBe(false);
-    expect(runBricks).not.toHaveBeenCalled();
+    expect($('brickTool_raisedBrush')).toBeNull();
+    expect(brickTabs().map((t) => t.id)).not.toContain('raisedBrush');
   });
 });
 

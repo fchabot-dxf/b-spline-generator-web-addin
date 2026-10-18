@@ -101,7 +101,7 @@ export const runGroup = (g) => MODULES[g].run();
 export { PEEK_LAYOUT, PANEL_FIT } from './layout.mjs';
 export { CLEAR_MENU } from './clear.mjs';
 export { LAY_WARNING, QUICK_FRAME_LAYS, BANDS_NOTE, WALL_NO_FRAME, CARVE_UNDER_FLAT } from './lay.mjs';
-export { SELECT_ELEMENT } from './select.mjs';
+export { SELECT_ELEMENT, SELECT_HEIGHTS } from './select.mjs';
 export { MIGRATION } from './migration.mjs';
 export { EDIT_PASSWORD_TEST } from './password.mjs';
 export { BRICK_LAYERS } from './layers.mjs';

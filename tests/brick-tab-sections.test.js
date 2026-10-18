@@ -63,10 +63,10 @@ describe('the declaration', () => {
   });
   it('Fred\'s placements: the grout colour and the role colours in each element\'s Colour (2026-10-15), the 2D look in General; widths in each element tab; crumble + top bias in General', () => {
     const tabsWith = (row) => Object.entries(BRICK_TAB_SECTIONS).filter(([, d]) => d.sections.some((s) => s.rows.includes(row))).map(([t]) => t);
-    expect(tabsWith('brickGroutPaintRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
-    expect(tabsWith('brickColourRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
+    expect(tabsWith('brickGroutPaintRow')).toEqual(['wall', 'frame', 'brush']);
+    expect(tabsWith('brickColourRow')).toEqual(['wall', 'frame', 'brush']);
     expect(tabsWith('brickLookModeRow')).toEqual(['general']);
-    expect(tabsWith('brickGroutWidthRow')).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
+    expect(tabsWith('brickGroutWidthRow')).toEqual(['wall', 'frame', 'brush']);
     expect(tabsWith('brickTopBiasRow')).toEqual(['general']);
     expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toEqual(['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']);
   });
@@ -123,7 +123,7 @@ describe('in the panel', () => {
     expect(shownSections('frame')).toEqual(before); // phase 4: the armed element's sections stay
     expect($(sectionDomId('general', 'look')).contains($('brickLook_colour'))).toBe(true); // Fred 2026-10-15: the grout colour moved to each Colour
     // the size + joint depth sit in every element tab's own Size & joint section (declared; one DOM row moved per tab)
-    for (const tab of ['wall', 'frame', 'brush', 'raisedBrush']) {
+    for (const tab of ['wall', 'frame', 'brush']) {
       const joint = BRICK_TAB_SECTIONS[tab].sections.find((x) => x.id === 'joint');
       expect(joint.rows, tab).toEqual(expect.arrayContaining(['brickSizeBlock', 'brickGroutWidthRow', 'brickGroutDepthRow']));
     }

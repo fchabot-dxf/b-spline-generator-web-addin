@@ -39,3 +39,90 @@ export function heightLevelsFor(records, bricks) {
   }
   return levels;
 }
+
+/* ---- the Select UI's side (Fred 2026-10-11: "Select raises / lowers the selected bricks"): a PICK is the not-yet-applied
+ * selection, in the records' own shapes ({ pick: 'points', points } | { pick: 'region', region }); Raise / Lower / Set
+ * turn it into records, Reset takes it back to zero. Pure: the panel hands in the bricks of this lay. ---- */
+
+/** The default Raise / Lower step, inches (the Accent level's own default, 1/16). */
+export const HEIGHT_STEP_IN = 0.0625;
+const roundLevel = (v) => Math.round(v * 10000) / 10000;
+
+/** The indices of `bricks` the picks (an array of { pick, points | region }) hold together. */
+export function pickedIndices(picks, bricks) {
+  const all = new Set();
+  for (const p of picks || []) for (const k of bricksPickedBy(p, bricks)) all.add(k);
+  return all;
+}
+
+/** A tap at `pt`: picks the brick under it, or UNpicks it when already picked. A brick held by a box (region) pick is
+ *  unpicked by turning that box into the points of its other bricks (a box cannot lose one brick otherwise). */
+export function togglePick(picks, pt, bricks) {
+  const k = bricks.findIndex((b) => pointInPolygon(pt.x, pt.y, b.polygon));
+  if (k < 0) return picks || [];
+  const out = [];
+  let held = false;
+  for (const p of picks || []) {
+    const mine = bricksPickedBy(p, bricks);
+    if (!mine.includes(k)) { out.push(p); continue; }
+    held = true;
+    const rest = p.pick === 'region'
+      ? mine.filter((j) => j !== k).map((j) => polygonCentroid(bricks[j].polygon))
+      : (p.points || []).filter((q) => !pointInPolygon(q.x, q.y, bricks[k].polygon));
+    if (rest.length) out.push({ pick: 'points', points: rest });
+  }
+  if (!held) {
+    // a tap joins the points pick already there, so one Raise writes ONE record for the bricks tapped
+    const at = out.findIndex((p) => p.pick !== 'region');
+    if (at >= 0) out[at] = { ...out[at], points: [...out[at].points, { x: pt.x, y: pt.y }] };
+    else out.push({ pick: 'points', points: [{ x: pt.x, y: pt.y }] });
+  }
+  return out;
+}
+
+/** The level the picked bricks share now (the records applied), or null when they differ (mixed) / nothing is picked. */
+export function sharedLevel(records, picks, bricks) {
+  const idx = pickedIndices(picks, bricks);
+  if (!idx.size) return null;
+  const levels = heightLevelsFor(records, bricks);
+  let shared;
+  for (const k of idx) {
+    const v = levels.get(k) || 0;
+    if (shared === undefined) shared = v; else if (shared !== v) return null;
+  }
+  return shared;
+}
+
+/** `records` + one record per pick at `level` (the latest wins). `newId` makes the record ids. */
+export function setPickedLevel(records, picks, level, newId) {
+  const lv = roundLevel(level);
+  return [...(records || []), ...(picks || []).map((p) => ({ id: newId(), level: lv, ...(p.pick === 'region' ? { pick: 'region', region: p.region.map((q) => ({ x: q.x, y: q.y })) } : { pick: 'points', points: p.points.map((q) => ({ x: q.x, y: q.y })) }) }))];
+}
+
+/** Raise (+) / Lower (-) the picked bricks by `step` from the level they share (mixed ones start from 0). */
+export function stepPickedLevel(records, picks, step, bricks, newId) {
+  const base = sharedLevel(records, picks, bricks) || 0;
+  return setPickedLevel(records, picks, base + step, newId);
+}
+
+/** Reset the picked bricks to no height: a zero record over them, then every zero record no earlier record needs is dropped. */
+export function resetPicked(records, picks, bricks, newId) {
+  const next = setPickedLevel(records, picks, 0, newId);
+  const out = [];
+  next.forEach((r, i) => {
+    if (r.level === 0) {
+      const mine = bricksPickedBy(r, bricks);
+      const earlier = next.slice(0, i).some((e) => e.level !== 0 && bricksPickedBy(e, bricks).some((k) => mine.includes(k)));
+      if (!earlier) return;
+    }
+    out.push(r);
+  });
+  return out;
+}
+
+/** How many bricks of this lay carry a height (a level other than 0). */
+export function heightedCount(records, bricks) {
+  let n = 0;
+  for (const v of heightLevelsFor(records, bricks).values()) if (v !== 0) n++;
+  return n;
+}

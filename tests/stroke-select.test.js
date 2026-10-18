@@ -142,7 +142,6 @@ describe('item 36: Select a stroke in the panel', () => {
   it('selecting a Raised stroke: its tool + ITS level and set come into the section', () => {
     setup();
     selectBrickElement({ id: 'beR1', kind: 'raisedBrush' });
-    expect($('brickTool_raisedBrush').classList.contains('active')).toBe(true);
     expect(P.brickSettings.raisedLevelIn).toBe(0.1);
     expect(P.brickSettings.setIds.raisedBrush).toBe(4);
     expect($('brickElementLabel_raisedBrush').textContent).toBe('Editing: this raised stroke');

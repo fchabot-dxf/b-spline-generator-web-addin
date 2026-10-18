@@ -1248,6 +1248,64 @@ export const brickElementSelectHandler = {
   },
 };
 
+/** Fred 2026-10-11 (Select raises / lowers bricks), the Heights sub-tool (editor._currentMode === 'brickHeightPick'): a tap
+ *  hands its board point to editor._brickHeightTap(pt); a drag draws a box and hands its corners to
+ *  editor._brickHeightBox(region) (a region pick: the WHOLE bricks whose centroid lies in it). */
+export const HEIGHT_BOX_MIN_IN = 0.15; // a drag shorter than this is a tap
+export const HEIGHT_BOX_PREVIEW = Object.freeze({ color: '#1e88e5', fillOpacity: 0.1 });
+export const brickHeightPickHandler = {
+  start(editor, pt, e) {
+    const raw = (e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : null) || pt;
+    editor._isDrawing = true; // the editor feeds update / finish only while a mode is drawing
+    editor._heightBoxStart = { x: raw.x, y: raw.y };
+    editor._heightBoxRect = null;
+  },
+  update(editor, pt) {
+    const a = editor._heightBoxStart;
+    if (!a) return;
+    const raw = pt;
+    if (Math.hypot(raw.x - a.x, raw.y - a.y) < HEIGHT_BOX_MIN_IN && !editor._heightBoxRect) return;
+    const host = editor._highlightLayer || editor._sketchLayer;
+    if (editor._heightBoxRect) { try { editor._heightBoxRect.remove(); } catch (_) { /* gone */ } }
+    editor._heightBoxRect = host.rect(Math.abs(raw.x - a.x), Math.abs(raw.y - a.y)).move(Math.min(a.x, raw.x), Math.min(a.y, raw.y))
+      .fill({ color: HEIGHT_BOX_PREVIEW.color, opacity: HEIGHT_BOX_PREVIEW.fillOpacity }).stroke({ color: HEIGHT_BOX_PREVIEW.color, width: 0.03 }).attr('pointer-events', 'none');
+    editor._heightBoxEnd = { x: raw.x, y: raw.y };
+  },
+  finish(editor) {
+    editor._isDrawing = false;
+    const a = editor._heightBoxStart, b = editor._heightBoxEnd;
+    const dragged = !!editor._heightBoxRect;
+    if (editor._heightBoxRect) { try { editor._heightBoxRect.remove(); } catch (_) { /* gone */ } }
+    editor._heightBoxRect = null; editor._heightBoxStart = null; editor._heightBoxEnd = null;
+    if (!a) return;
+    if (dragged && b && Math.hypot(b.x - a.x, b.y - a.y) >= HEIGHT_BOX_MIN_IN) {
+      if (typeof editor._brickHeightBox === 'function') editor._brickHeightBox([{ x: a.x, y: a.y }, { x: b.x, y: a.y }, { x: b.x, y: b.y }, { x: a.x, y: b.y }]);
+      return;
+    }
+    if (typeof editor._brickHeightTap === 'function') editor._brickHeightTap(a);
+  },
+};
+
+/** The Wall + Frame bricks of this lay as [{ polygon }] -- what the height records are matched against. */
+export function heightPickBricks(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"]`)].filter((n) => BRICK_RECORD_KINDS[n.getAttribute(BRICK_ATTR)]).map((n) => ({ polygon: _nodePolygon(n) }));
+}
+
+/** Outlines the picked bricks (indices into heightPickBricks) in the highlight layer; [] clears. */
+export function showHeightPicks(editor, polygons) {
+  if (!editor) return 0;
+  for (const h of editor._brickHeightOutline || []) { try { h.remove(); } catch (_) { /* gone with a reload */ } }
+  editor._brickHeightOutline = [];
+  if (!editor._highlightLayer) return 0;
+  for (const poly of polygons || []) {
+    editor._brickHeightOutline.push(editor._highlightLayer.polygon(poly.map((p) => `${p.x},${p.y}`).join(' ')).fill({ color: ELEMENT_SELECT_OUTLINE.color, opacity: 0.18 })
+      .stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: ELEMENT_SELECT_OUTLINE.widthIn }).attr('pointer-events', 'none'));
+  }
+  return editor._brickHeightOutline.length;
+}
+
 /** The Wall/Frame ELEMENT whose brick lies under `pt` -- { id: its record's id, kind } -- or null. The topmost
  *  brick wins (the last drawn). Brush bricks are their own strokes' business (not a record kind). */
 export function brickElementAt(editor, pt) {

@@ -47,8 +47,9 @@ describe('the declaration', () => {
     expect(open('layers')).toBe(true);
     expect(open('general')).toBe(false);
   });
-  it('Raised is ONE declaration (retiring with E\'s Select-on-bricks heights): removing it is one line', () => {
-    expect(BRICK_DRAWER_TREE.filter((b) => b.id === 'raisedBrush').length).toBe(1);
+  it('Raised is gone from the tree (Fred 2026-10-11: heights are set on picked bricks, Wall / Frame > Heights)', () => {
+    expect(BRICK_DRAWER_TREE.filter((b) => b.id === 'raisedBrush').length).toBe(0);
+    expect(brickTabs().map((t) => t.id)).not.toContain('raisedBrush');
   });
 });
 

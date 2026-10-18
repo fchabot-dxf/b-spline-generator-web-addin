@@ -17,7 +17,7 @@ import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { cutHandler } from './editor-cut-tool.js'; // SE16 ✂
 import { primitiveFromContourD, nearestOnContourPrimitive } from './editor-contour-cut.js';
 import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
-import { brickBrushHandler, brickAccentClickHandler, brickElementSelectHandler, brickWallAreaHandler } from './editor-brick-tool.js'; // F35 item 1, item 15, item 22
+import { brickBrushHandler, brickAccentClickHandler, brickElementSelectHandler, brickWallAreaHandler, brickHeightPickHandler } from './editor-brick-tool.js'; // F35 item 1, item 15, item 22
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer, isEditableByLayer } from './layers.js';
@@ -3122,6 +3122,7 @@ const modeHandlers = {
     brickAccentClick: brickAccentClickHandler, // F35 item 15: Custom raised accents, click bricks
     brickElementSelect: brickElementSelectHandler, // F35 item 22: Select a Wall / Frame element
     brickWallArea: brickWallAreaHandler, // F35 item 22 slice 2: paint a wall area
+    brickHeightPick: brickHeightPickHandler, // Fred 2026-10-11: Select bricks to raise / lower them
 };
 
 export function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
