@@ -92,15 +92,21 @@ function cellRelief(tile, row, col) {
 }
 const mod = (a, n) => ((a % n) + n) % n;
 
-/** The relief of piece j (of n) of one run, at row `row` of `rows`. */
-function runRelief(motif, plan, row, rows, j, n, src, primitives) {
+/** The relief of piece j (of n) of one run, at row `row` of `rows`. `meander`: the motif declares curveMeander AND
+ *  the band's own resolved setting agrees (false on a migrated legacy board -- app-init.js MIGRATIONS); it allows
+ *  real relief on an arc, and (via `colBase`/`total`, the run's own start position and the WHOLE row's piece count)
+ *  threads the grid's column phase continuously across the row's primitives instead of resetting it at each one.
+ *  Every other grid motif, and a non-meander greek_key band, keeps the old per-run j/n + flush-on-arc, byte-identical. */
+function runRelief(motif, plan, row, rows, j, n, src, primitives, meander, colBase, total) {
   if (motif.fill) return motif.fill;
   if (!(src >= 0)) return 'flush'; // a corner's fan slice or a quoin
   const isArc = primitives[src] && primitives[src].type === 'arc';
   if (motif.grid) {
-    if (isArc) return 'flush'; // a grid's columns do not line up row to row on a curve
+    if (isArc && !meander) return 'flush'; // a grid's columns do not line up row to row on a curve
     const { tile, corner } = motif.grid;
-    const R = rows, c = plan.startColumn + j, cEnd = plan.startColumn + (n - 1 - j);
+    const R = rows;
+    const gj = meander ? colBase + j : j, gn = meander ? total : n;
+    const c = plan.startColumn + gj, cEnd = plan.startColumn + (gn - 1 - gj);
     if (c < R) return cellRelief(corner, row, c);
     if (cEnd < R) return cellRelief(corner, row, cEnd);
     const line = tile[row % tile.length];
@@ -113,20 +119,27 @@ function runRelief(motif, plan, row, rows, j, n, src, primitives) {
 /**
  * Tags one laid row: each piece gets `relief` and its heightOffset + RELIEF_LEVELS[relief]. `sources[k]` = the primitive
  * piece k was laid from (primitive-ribbon.js ribbonPieces; -1 a fan slice, -2 a quoin); a RUN = consecutive pieces of one
- * source, j its piece's place in it (0 = the start corner). Returns new piece objects (the input is not touched).
+ * source, j its piece's place in it (0 = the start corner). `meanderCurves` is the BAND's own resolved setting
+ * (editor-brick-tool.js frameBandsOf; undefined for every band but a meander-capable one). Returns new piece objects
+ * (the input is not touched).
  */
-export function tagMotifRow(pieces, sources, primitives, motif, plan, row, rows) {
+export function tagMotifRow(pieces, sources, primitives, motif, plan, row, rows, meanderCurves) {
   const out = pieces.slice();
+  const meander = !!(motif.curveMeander && meanderCurves);
+  const total = pieces.length;
+  let colBase = 0;
   for (let k = 0; k < pieces.length;) {
     let e = k + 1;
     while (e < pieces.length && sources[e] === sources[k]) e++;
-    for (let j = 0; j < e - k; j++) {
-      const relief = runRelief(motif, plan, row, rows, j, e - k, sources[k], primitives);
+    const n = e - k;
+    for (let j = 0; j < n; j++) {
+      const relief = runRelief(motif, plan, row, rows, j, n, sources[k], primitives, meander, colBase, total);
       const p = pieces[k + j];
       // a raised piece of a motif declaring raisedTop 'flat' / joinRaised carries it (the height mask reads both)
       const raisedLook = relief === 'raised' ? { ...(motif.raisedTop === 'flat' ? { topFlat: true } : {}), ...(motif.joinRaised ? { joinRaised: true } : {}) } : {};
       out[k + j] = { ...p, relief, heightOffset: (p.heightOffset || 0) + (RELIEF_LEVELS[relief] || 0), ...raisedLook };
     }
+    colBase += n;
     k = e;
   }
   return out;
