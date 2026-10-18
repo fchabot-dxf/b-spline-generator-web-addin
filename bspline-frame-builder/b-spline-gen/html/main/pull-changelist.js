@@ -34,17 +34,20 @@ function _row(label, fromText, toText) {
 
 /** A frame-shape row with its own Apply checkbox (row.apply is read back by applyChangeList). */
 function _shapeRow(row) {
-  const el = document.createElement('label');
+  const el = document.createElement('div');
   el.className = 'pull-changelist-row';
-  el.style.minHeight = '28px'; // touch target, phone first
+  el.style.alignItems = 'center'; el.style.minHeight = '28px'; // touch target, phone first
+  const left = document.createElement('label'); // the box + its name: one tap target
+  left.style.display = 'flex'; left.style.flexDirection = 'row'; left.style.alignItems = 'center'; left.style.gap = '8px'; // base.css's global label is a column
   const box = document.createElement('input');
-  box.type = 'checkbox'; box.checked = row.apply !== false; box.style.minWidth = '20px'; box.style.minHeight = '20px';
+  box.type = 'checkbox'; box.checked = row.apply !== false; box.style.margin = '0';
   box.addEventListener('change', () => { row.apply = box.checked; });
   const text = document.createElement('span');
   text.textContent = row.label;
+  left.append(box, text);
   const change = document.createElement('span');
   change.textContent = `${_fmtIn(row.from)} → ${_fmtIn(row.to)}${row.outOfRange ? " ⚠ outside the Frame tab's range" : ''}`;
-  el.append(box, text, change);
+  el.append(left, change);
   return el;
 }
 
