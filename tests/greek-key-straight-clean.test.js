@@ -64,7 +64,11 @@ function measure(tpl, W, H, L = 0.75) {
       for (const [row, ps] of run.rows) if (new Set(ps.map((p) => p.relief)).size !== 1) { bad++; why.push(`${key} short run row ${row} mixed`); }
       continue;
     }
-    if (!run.mitreStart) { fanStart++; continue; } // KNOWN: a run STARTING at a curve's fan is laid from its own start, so its joints stagger row to row (the engine's per-row plan anchors every run at a mitre) -- not measurable as columns
+    if (!run.mitreStart) { // a run starting at a fan lays whole rows (fanStartPattern), checked against the declared ring rows
+      fanStart++;
+      for (const [row, ps] of run.rows) { const want = row === 1 || row === 10 ? 'raised' : 'flush'; if (ps.some((p) => p.relief !== want)) { bad++; why.push(`${key} fan-start row ${row} is not a uniform ${want} ring row`); } }
+      continue;
+    }
     if (kinds[first] !== 0) { bad++; why.push(`${key} key starts on tile col ${kinds[first]}`); }
     if (run.mitreEnd && kinds[last] !== P - 1) { bad++; why.push(`${key} key ends on tile col ${kinds[last]}`); }
     for (let i = first; i <= last; i++) {
@@ -78,7 +82,7 @@ function measure(tpl, W, H, L = 0.75) {
 describe('every straight run of a fresh Greek key band is a clean, whole-period key', () => {
   it.each([['template_1', 9, 12], ['template_1', 7, 9], ['template_10', 9, 12], ['template_11', 9, 12], ['template_11', 7, 9]])('%s %ix%i', (tpl, W, H) => {
     const m = measure(tpl, W, H);
-    console.log(tpl, W, H, JSON.stringify({ runs: m.checked, short: m.short, fanStartSkipped: m.fanStart, mismatches: m.bad }), m.why.slice(0, 8).join('; '));
+    console.log(tpl, W, H, JSON.stringify({ runs: m.checked, short: m.short, fanStartRings: m.fanStart, mismatches: m.bad }), m.why.slice(0, 8).join('; '));
     expect(m.checked).toBeGreaterThan(0);
     expect(m.why).toEqual([]);
   });

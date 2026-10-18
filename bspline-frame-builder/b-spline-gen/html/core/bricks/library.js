@@ -761,7 +761,7 @@ export const BAND_MOTIFS = Object.freeze({
   // curvePattern (Fred 2026-10-18, via the advisor): the key does NOT go round a curve (its columns do not line up row to
   // row there); a band with meanderCurves on lays this plain pattern along each arc row instead (band-motif.js
   // CURVE_PATTERNS: rings | along | plain). Flush on an arc when the band's meanderCurves is off (a saved board).
-  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, curvePattern: 'meander', shortPattern: 'rings', grid: {
+  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, curvePattern: 'meander', shortPattern: 'rings', fanStartPattern: 'rings', grid: {
     tile: ['......', 'RRRRRR', '......', 'RRRR.R', '...R.R', '.R.R.R', '.RRR.R', '.....R', 'RRRRRR', '......', 'RRRRRR', '......'],
     corner: [
       '............',

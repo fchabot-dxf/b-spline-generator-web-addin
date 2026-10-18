@@ -167,6 +167,9 @@ function runRelief(motif, plan, row, rows, j, n, src, primitives, curves, piece)
       // shortPattern (whole rows) -- a key squeezed under one cell a column would only smear.
       const { u, v, len, mitreStart, mitreEnd, z0, z1 } = runCell(piece, primitives, src, plan.pitch, R);
       const midC = z1 - z0;
+      // a run STARTING at a curve's fan: the engine lays every run of a row from one mitre-anchored lattice, so this run's joints
+      // stagger row to row; whole rows (fanStartPattern) are always aligned
+      if (!mitreStart && motif.fanStartPattern) return curveRelief(motif.fanStartPattern, row, rows, j, n, motif, null, plan, 0);
       if (midC < line.length) return curveRelief(motif.shortPattern || motif.curvePattern, row, rows, j, n, motif, null, plan, Math.min(0.999, Math.max(0, u / len)));
       if (mitreStart && u < R) return cellRelief(corner, row, Math.max(0, Math.floor(u)));
       if (mitreEnd && v < R) return cellRelief(corner, row, Math.max(0, Math.floor(v)));
