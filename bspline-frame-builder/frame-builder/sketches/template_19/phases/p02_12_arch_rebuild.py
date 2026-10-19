@@ -74,11 +74,16 @@ def get_block(ui_data=None):
     volumes (previously identical at both ends); the unseeded default stays byte-identical (nothing
     here changes what the LEFT/RIGHT endpoints of an un-dragged `top_edge` physically are, and the
     minor-arc midpoint of an unchanged circle is itself unchanged).
+
+    2026-10-18 (seat B, MEASURED live): the apex above no longer reads the 'short-arc-mid' of top_edge as it stands HERE. That circle
+    is not the seed circle: top_edge's radius is a free DOF, and pinning its second end (p02_03's top_edge_pin_E) flips the arc onto a
+    different reflex circle (T18 7x9 R 2.633 -> 6.925, sagitta 0.825 -> 0.270; 5x7, 9x12 the same). The apex is read from
+    `top_apex_anchor`, a Fixed construction Point p02_03 drops while top_edge is still the seed circle, so the rebuilt arch is the seed arch.
     """
     seq = [
         {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'Points': [
             {'SeedFrom': {'id': 'top_edge', 'side': 'left'}},
-            {'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}},
+            {'SeedFrom': {'id': 'top_apex_anchor', 'side': 'point'}},
             {'SeedFrom': {'id': 'top_edge', 'side': 'right'}},
         ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
         {'Type': 'Fix', 'Targets': ['top_edge:S', 'top_edge:E']},

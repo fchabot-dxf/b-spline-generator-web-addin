@@ -28,7 +28,7 @@
           -1.0
         ]
       },
-      "volume": 8.01034
+      "volume": 8.07738
     },
     "frame_right": {
       "bbox": {
@@ -43,22 +43,22 @@
           -1.0
         ]
       },
-      "volume": 8.01034
+      "volume": 8.07738
     },
     "frame_top": {
       "bbox": {
         "max": [
           4.25,
-          4.95028,
+          5.75,
           0.0
         ],
         "min": [
           -4.25,
-          3.70948,
+          3.88824,
           -1.0
         ]
       },
-      "volume": 5.9043
+      "volume": 6.24126
     }
   },
   "meta": {
@@ -66,7 +66,7 @@
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 12,
-    "recorded": "2026-10-04",
+    "recorded": "2026-10-18",
     "recorder": "tools/repro/record_frame_parity.py",
     "template": "template_19",
     "timelineHealthy": true,
@@ -77,7 +77,7 @@
     "bbox": {
       "max": [
         4.25,
-        4.95028,
+        5.75,
         0.75
       ],
       "min": [
@@ -86,7 +86,7 @@
         0.0
       ]
     },
-    "volume": 63.17675
+    "volume": 66.71258
   },
   "sketch2_shape_outline": {
     "arc_hip_L": {
@@ -362,7 +362,7 @@
     "top_edge": {
       "center": [
         0.0,
-        -8.5246
+        -1.06518
       ],
       "construction": false,
       "end": [
@@ -371,9 +371,9 @@
       ],
       "mid": [
         0.0,
-        4.95028
+        5.75
       ],
-      "radius": 13.47488,
+      "radius": 6.81518,
       "start": [
         4.25,
         4.2625
@@ -552,7 +552,7 @@
       ],
       "start": [
         -3.5,
-        3.70948
+        3.88824
       ],
       "type": "line"
     },
@@ -564,28 +564,28 @@
       ],
       "start": [
         3.5,
-        3.70948
+        3.88824
       ],
       "type": "line"
     },
     "inner_proj_top_edge": {
       "center": [
         0.0,
-        -8.5246
+        -1.06518
       ],
       "construction": false,
       "end": [
         -3.5,
-        3.70948
+        3.88824
       ],
       "mid": [
         0.0,
-        4.20028
+        5.0
       ],
-      "radius": 12.72488,
+      "radius": 6.06518,
       "start": [
         3.5,
-        3.70948
+        3.88824
       ],
       "type": "arc"
     },
@@ -617,7 +617,7 @@
       "construction": false,
       "end": [
         3.5,
-        3.70948
+        3.88824
       ],
       "start": [
         4.25,
@@ -629,7 +629,7 @@
       "construction": false,
       "end": [
         -3.5,
-        3.70948
+        3.88824
       ],
       "start": [
         -4.25,
@@ -826,7 +826,7 @@
     "proj_top_edge": {
       "center": [
         0.0,
-        -8.5246
+        -1.06518
       ],
       "construction": false,
       "end": [
@@ -835,9 +835,9 @@
       ],
       "mid": [
         0.0,
-        4.95028
+        5.75
       ],
-      "radius": 13.47488,
+      "radius": 6.81518,
       "start": [
         4.25,
         4.2625
@@ -919,7 +919,7 @@
   },
   "sketch3_profiles": [
     {
-      "area": 84.51434,
+      "area": 79.7999,
       "bbox": {
         "max": [
           5.625,
@@ -949,7 +949,7 @@
       }
     },
     {
-      "area": 8.01034,
+      "area": 8.07738,
       "bbox": {
         "max": [
           -2.12621,
@@ -964,26 +964,26 @@
       }
     },
     {
-      "area": 5.9043,
+      "area": 6.24126,
       "bbox": {
         "max": [
           4.25,
-          5.67506,
+          7.65281,
           0.0
         ],
         "min": [
           -4.25,
-          3.70948,
+          3.88824,
           0.0
         ]
       }
     },
     {
-      "area": 56.49818,
+      "area": 60.74158,
       "bbox": {
         "max": [
           3.5,
-          4.71078,
+          6.36128,
           0.0
         ],
         "min": [
@@ -994,7 +994,7 @@
       }
     },
     {
-      "area": 8.01034,
+      "area": 8.07738,
       "bbox": {
         "max": [
           4.25,

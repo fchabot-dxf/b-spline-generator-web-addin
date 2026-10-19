@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "ea84f5983ac68c6e695b5adfad742ece9e0015627ca928410faf0acf5d26cdf3",
+  "sourceHash": "0350c6ae96b86a3e3c33016560619ec37ea7c22d7fe2ef2a0ed4158b1ac3af97",
   "templates": [
     {
       "features": [
@@ -13572,6 +13572,19 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
+                  "ID": "top_apex_anchor",
+                  "IsConstruction": true,
+                  "Points": [
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "short-arc-mid"
+                      }
+                    }
+                  ],
+                  "Type": "Point"
+                },
+                {
                   "ID": "top_S_anchor",
                   "IsConstruction": true,
                   "Points": [
@@ -13600,7 +13613,8 @@ export default {
                 {
                   "Targets": [
                     "top_S_anchor",
-                    "top_E_anchor"
+                    "top_E_anchor",
+                    "top_apex_anchor"
                   ],
                   "Type": "Fix"
                 },
@@ -14208,8 +14222,8 @@ export default {
                     },
                     {
                       "SeedFrom": {
-                        "id": "top_edge",
-                        "side": "short-arc-mid"
+                        "id": "top_apex_anchor",
+                        "side": "point"
                       }
                     },
                     {
@@ -15275,6 +15289,19 @@ export default {
                   "Type": "Arc3Point"
                 },
                 {
+                  "ID": "top_apex_anchor",
+                  "IsConstruction": true,
+                  "Points": [
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "short-arc-mid"
+                      }
+                    }
+                  ],
+                  "Type": "Point"
+                },
+                {
                   "ID": "top_S_anchor",
                   "IsConstruction": true,
                   "Points": [
@@ -15303,7 +15330,8 @@ export default {
                 {
                   "Targets": [
                     "top_S_anchor",
-                    "top_E_anchor"
+                    "top_E_anchor",
+                    "top_apex_anchor"
                   ],
                   "Type": "Fix"
                 },
@@ -15911,8 +15939,8 @@ export default {
                     },
                     {
                       "SeedFrom": {
-                        "id": "top_edge",
-                        "side": "short-arc-mid"
+                        "id": "top_apex_anchor",
+                        "side": "point"
                       }
                     },
                     {

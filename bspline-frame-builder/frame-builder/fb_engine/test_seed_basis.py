@@ -147,21 +147,28 @@ def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal(
     assert isinstance(pts[1], list) and "SeedFrom" not in pts[1]
 
 
-def test_template_18_arch_rebuild_tracks_top_edges_live_endpoints_and_its_own_minor_arc_mid():
-    """H23 item 78c / turn 550: Template 18's own copy of the arch-rebuild phase uses the NEW
-    SeedFrom mode for all 3 points, including the apex -- `side: 'short-arc-mid'`, the source arc's
-    own CURRENT minor-arc midpoint, needing no stored apex height at all and correct for every
-    archRise (unlike T10's own literal-apex rebuild above, kept on the old behavior per turn 552's
-    own advisor decision -- T10 stays exactly as it was, this fix is T18-only for now)."""
-    sk2 = resolve_template("template_18")[0]["Sketches"][1]
-    rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
-                if st.get("ID") == "top_edge" and st.get("Rebuild")]
+@pytest.mark.parametrize("tid", ["template_18", "template_19"])
+def test_arch_rebuild_apex_comes_from_the_anchor_captured_before_the_pins(tid):
+    """2026-10-18 (seat B, MEASURED live): top_edge's radius is a free DOF, and pinning its second end flips the arc onto a different
+    reflex circle (T18 7x9 R 2.633 -> 6.925). Reading 'short-arc-mid' off the arc AFTER the pins therefore rebuilt a much flatter arch
+    than the seed (sagitta 0.270 vs 0.825). The apex is now a Fixed construction Point taken from the seed circle BEFORE the pins, and
+    the rebuild passes through it. (H23 item 78c's end tracking, left/right of the live top_edge, is unchanged.)"""
+    sk2 = resolve_template(tid)[0]["Sketches"][1]
+    seq = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])]
+    rebuilds = [st for st in seq if st.get("ID") == "top_edge" and st.get("Rebuild")]
     assert len(rebuilds) == 1
     pts = rebuilds[0]["Points"]
-    assert len(pts) == 3
     assert pts[0] == {"SeedFrom": {"id": "top_edge", "side": "left"}}
     assert pts[2] == {"SeedFrom": {"id": "top_edge", "side": "right"}}
-    assert pts[1] == {"SeedFrom": {"id": "top_edge", "side": "short-arc-mid"}}
+    assert pts[1] == {"SeedFrom": {"id": "top_apex_anchor", "side": "point"}}
+    pos = {}
+    for i, st in enumerate(seq):
+        pos.setdefault(st.get("ID") or st.get("Name"), i)  # first occurrence: p02_12 rebuilds top_edge under the same ID
+    anchor = seq[pos["top_apex_anchor"]]
+    assert anchor["Type"] == "Point" and anchor["Points"] == [{"SeedFrom": {"id": "top_edge", "side": "short-arc-mid"}}]
+    assert pos["top_edge"] < pos["top_apex_anchor"] < pos["top_edge_pin_S"] < pos["top_edge_pin_E"]
+    fix = next(st for st in seq if st.get("Type") == "Fix" and "top_S_anchor" in st.get("Targets", []))
+    assert "top_apex_anchor" in fix["Targets"]
 
 
 def _has_seedfrom(step):

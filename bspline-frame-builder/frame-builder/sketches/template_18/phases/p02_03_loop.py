@@ -106,9 +106,13 @@ def get_block(ui_data=None):
             ['0.001', LY],
             [HW, CY],
         ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
+        # The arch's own apex, captured NOW, while top_edge is still the seed circle (before the pins below): pinning its second end
+        # flips this free-radius arc onto a different, reflex circle (MEASURED live, T18 7x9 R 2.633 -> 6.925), whose minor arc
+        # is far flatter than the seed. p02_12 rebuilds top_edge through this fixed point, so the final arch is the seed arch.
+        {'ID': 'top_apex_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}}], 'IsConstruction': True},
         {'ID': 'top_S_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'left'}}], 'IsConstruction': True},
         {'ID': 'top_E_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'right'}}], 'IsConstruction': True},
-        {'Type': 'Fix', 'Targets': ['top_S_anchor', 'top_E_anchor']},
+        {'Type': 'Fix', 'Targets': ['top_S_anchor', 'top_E_anchor', 'top_apex_anchor']},
         {'Type': 'Coincident', 'Targets': ['top_edge:S', 'top_S_anchor'], 'Name': 'top_edge_pin_S'},
         {'Type': 'Coincident', 'Targets': ['top_edge:E', 'top_E_anchor'], 'Name': 'top_edge_pin_E'},
 

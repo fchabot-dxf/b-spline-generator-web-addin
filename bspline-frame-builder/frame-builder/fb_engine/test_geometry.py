@@ -178,6 +178,16 @@ def test_seed_from_short_arc_mid_picks_the_minor_arc_bisector_point():
     assert entity.geometry.y == pytest.approx(5, abs=1e-9)
 
 
+def test_seed_from_point_side_reads_a_bare_point_sources_own_position():
+    """2026-10-18: T18/T19's top_apex_anchor is a bare Point (no start/end/centre); `side: 'point'` is its own position."""
+    ctx = _ctx()
+    ctx.entity_map[S] = {'top_apex_anchor': FakePoint(0.25, 3.5)}
+    sketch = FakeSketch()
+    geom = {'ID': 'apex', 'Points': [{'SeedFrom': {'id': 'top_apex_anchor', 'side': 'point'}}]}
+    entity = geometry._create_point(ctx, sketch, S, geom, 'apex')
+    assert (entity.geometry.x, entity.geometry.y) == pytest.approx((0.25, 3.5))
+
+
 def test_seed_from_short_arc_mid_follows_the_chord_to_the_other_side():
     """The mirror of the case above (chord below centre instead of above) -- the minor arc's own
     midpoint must flip to the BOTTOM of the circle, proving this isn't hardcoded to "always +y" (the
