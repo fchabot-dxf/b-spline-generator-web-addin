@@ -70,7 +70,7 @@ function makeChangeList({ editor }) {
         ],
       }],
       frameRows: [{ fusionParam: 'frame_thickness', scope: 'frame', appPath: 'params.frame_thickness', label: 'Frame thickness', unit: 'in', from: 0.75, to: 0.8, changed: true }],
-      keptCount: 0, notMappedCount: 0, curveCount: 0,
+      keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0,
     },
   };
 }
@@ -130,7 +130,7 @@ describe('applyChangeList: board + layer + frame rows, one undo step', () => {
     const editor = makeMockEditor();
     const before = globalHistoryLog.length;
 
-    applyChangeList({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0 }, { editor });
+    applyChangeList({ boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0 }, { editor });
 
     expect(globalHistoryLog.length).toBe(before);
     expect(applyParam).not.toHaveBeenCalled();
@@ -140,7 +140,7 @@ describe('applyChangeList: board + layer + frame rows, one undo step', () => {
   it('works with no editor at all when only board/frame rows are present (no layer rows, no SVG to re-paint)', () => {
     const changeList = {
       boardRows: [{ fusionParam: 'widthIn', scope: 'board', appPath: 'widthIn', label: 'Width', unit: 'in', from: 7, to: 10, changed: true }],
-      layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0,
+      layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0,
     };
     P.seed = (P.seed || 0) + 1;
 

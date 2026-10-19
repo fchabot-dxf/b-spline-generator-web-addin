@@ -6,7 +6,7 @@
  * the export wizard and the editor's own modal already use, not a new dialog system. Nothing changes until Apply;
  * Cancel removes the dialog and writes nothing.
  */
-import { applyRows } from '../core/pull-changelist.js';
+import { applyRows, summarizeRails } from '../core/pull-changelist.js';
 import { applyParam } from './param-manager.js';
 import { getFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers, PATTERN_DEFAULTS, generatePattern } from '../editor/editor-lattice-pattern.js';
@@ -104,14 +104,15 @@ function _renderBody(changeList) {
     body.appendChild(note);
   }
 
-  // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry. A matched
-  // one (a real Send-tagged railId, still a live rail here) gets its own position locked on Apply; one that
-  // can't be matched (a hand-drawn/legacy curve, or a rail since deleted) is still counted here but Apply
-  // leaves it alone -- so this stays a plain count, not a promise every one of them will move.
-  if (changeList.curveCount > 0) {
+  // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry. Apply locks
+  // every matched rail (a real Send-tagged railId, still a live rail here) at its Fusion position, moved or not;
+  // `railsMoved` = those Fusion actually moved. A curve with no live rail is neither counted nor touched.
+  if (changeList.railsLocked > 0) {
     const note = document.createElement('div');
     note.className = 'pull-changelist-note';
-    note.textContent = `${changeList.curveCount} rail${changeList.curveCount === 1 ? '' : 's'} moved in Fusion — Apply locks each one at its new position.`;
+    const moved = changeList.railsMoved === 0 ? 'No rail moved in Fusion' : `${changeList.railsMoved} rail${changeList.railsMoved === 1 ? '' : 's'} moved in Fusion`;
+    const lock = changeList.railsLocked === 1 ? 'Apply locks it at its Fusion position.' : `Apply locks all ${changeList.railsLocked} at their Fusion positions.`;
+    note.textContent = `${moved}. ${lock}`;
     body.appendChild(note);
   }
 
@@ -126,7 +127,7 @@ function _renderBody(changeList) {
 /** True if there is anything to show at all -- an all-kept, no-curve pull has nothing for a dialog to say. */
 export function hasChanges(changeList) {
   return changeList.boardRows.length > 0 || changeList.layerGroups.length > 0 || changeList.frameRows.length > 0
-    || (changeList.frameShapeRows || []).length > 0 || (changeList.frameShapeBeyond || []).length > 0 || changeList.curveCount > 0;
+    || (changeList.frameShapeRows || []).length > 0 || (changeList.frameShapeBeyond || []).length > 0 || changeList.railsLocked > 0;
 }
 
 /** The frame scope's own patch: a FULL copy of the current record (params included, one level deep), with every
@@ -139,6 +140,19 @@ function _frameApplyPatch(frameRows) {
   const patch = { ...cur, params: { ...cur.params } };
   applyRows(frameRows, patch);
   return patch;
+}
+
+/** The change list's rail counts, from the editor's live rails: a rail counts only where applyPulledRailPositions
+ *  below would lock it (a live rail element whose layer still has a pattern). */
+export function railsSummaryFor(editor, pulledCurves) {
+  return summarizeRails(pulledCurves, (railId) => {
+    const el = editor && _findRailElementById(editor, railId);
+    if (!el) return null;
+    const patternLayer = resolvePatternLayer(editor, getElementLayer(el));
+    if (!(patternLayer && patternLayer.pattern)) return null;
+    const n = (k) => parseFloat(el.node.getAttribute(k));
+    return { x: (n('x1') + n('x2')) / 2, y: (n('y1') + n('y2')) / 2 };
+  });
 }
 
 /** Rails custom-position + lock slice (seat D 2026-10-16; advisor 45, Fred's pre-decided design): the Pull-Apply

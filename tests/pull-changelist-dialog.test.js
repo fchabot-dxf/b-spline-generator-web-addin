@@ -13,9 +13,9 @@ const SOME_CHANGES = {
   boardRows: [{ fusionParam: 'widthIn', label: 'Width', from: 7, to: 8 }],
   layerGroups: [{ layerId: '3', layerName: 'Layer 1', rows: [{ fusionParam: 'node_diameter', label: 'Node diameter', from: 0.25, to: 0.3 }] }],
   frameRows: [{ fusionParam: 'frame_thickness', label: 'Frame thickness', from: 0.75, to: 0.8 }],
-  keptCount: 2, notMappedCount: 1, curveCount: 4,
+  keptCount: 2, notMappedCount: 1, railsLocked: 9, railsMoved: 2,
 };
-const NO_CHANGES = { boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, curveCount: 0 };
+const NO_CHANGES = { boardRows: [], layerGroups: [], frameRows: [], keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0 };
 
 describe('hasChanges: whether there is anything at all to show', () => {
   it('false for an empty list, true for any one non-empty field', () => {
@@ -23,7 +23,7 @@ describe('hasChanges: whether there is anything at all to show', () => {
     expect(hasChanges({ ...NO_CHANGES, boardRows: [{}] })).toBe(true);
     expect(hasChanges({ ...NO_CHANGES, layerGroups: [{}] })).toBe(true);
     expect(hasChanges({ ...NO_CHANGES, frameRows: [{}] })).toBe(true);
-    expect(hasChanges({ ...NO_CHANGES, curveCount: 1 })).toBe(true); // informational-only still counts as "something to say"
+    expect(hasChanges({ ...NO_CHANGES, railsLocked: 1 })).toBe(true); // Apply locks it: something to say
   });
 });
 
@@ -56,13 +56,20 @@ describe('showChangeListDialog: the rows it renders', () => {
   it('the informational rails note and the kept/not-mapped summary', () => {
     showChangeListDialog(SOME_CHANGES);
     const body = document.querySelector('.pull-changelist-body');
-    expect(body.querySelector('.pull-changelist-note').textContent).toBe('4 rails moved in Fusion — Apply locks each one at its new position.');
+    expect(body.querySelector('.pull-changelist-note').textContent).toBe('2 rails moved in Fusion. Apply locks all 9 at their Fusion positions.');
     expect(body.querySelector('.pull-changelist-summary').textContent).toBe('Kept in Fusion: 2 unchanged · Not mapped: 1 param');
   });
 
-  it('no rails moved: no note at all (not "0 rails moved")', () => {
-    showChangeListDialog({ ...SOME_CHANGES, curveCount: 0 });
+  it('no live rail matched: no rails note at all', () => {
+    showChangeListDialog({ ...SOME_CHANGES, railsLocked: 0, railsMoved: 0 });
     expect(document.querySelector('.pull-changelist-note')).toBeNull();
+  });
+
+  it('the wording follows the numbers: none moved, one moved, a lone rail', () => {
+    const note = (c) => { document.body.innerHTML = ''; showChangeListDialog({ ...SOME_CHANGES, ...c }); return document.querySelector('.pull-changelist-note').textContent; };
+    expect(note({ railsLocked: 9, railsMoved: 0 })).toBe('No rail moved in Fusion. Apply locks all 9 at their Fusion positions.');
+    expect(note({ railsLocked: 9, railsMoved: 1 })).toBe('1 rail moved in Fusion. Apply locks all 9 at their Fusion positions.');
+    expect(note({ railsLocked: 1, railsMoved: 1 })).toBe('1 rail moved in Fusion. Apply locks it at its Fusion position.');
   });
 
   it('a lone layer group with no board/frame rows: only that group shows', () => {
