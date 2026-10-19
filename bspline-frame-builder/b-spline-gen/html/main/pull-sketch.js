@@ -28,7 +28,7 @@ import { getFrameRecord } from '../core/frame-record.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import { fitPulledFrameShape } from '../core/pull-frame-shape.js';
 import { buildChangeList } from '../core/pull-changelist.js';
-import { showChangeListDialog, hasChanges, applyChangeList } from './pull-changelist.js';
+import { showChangeListDialog, hasChanges, applyChangeList, railsSummaryFor } from './pull-changelist.js';
 import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js';
 
 /** The add-in's reply action, and the loading stage held while it walks the sketch. */
@@ -117,10 +117,10 @@ export function onSketchPulled(raw) {
     // part 2: the wood frame's sketch shape, fitted back onto the template's own seeded handles
     const frameShape = frame && data.frameShape && Object.keys(data.frameShape).length
       ? fitPulledFrameShape(FRAME_DEFS, frame, { widthIn: P.widthIn, heightIn: P.heightIn }, data.frameShape) : null;
-    const changeList = buildChangeList(sizedData, { P, layers, frame, frameShape });
+    const changeList = buildChangeList(sizedData, { P, layers, frame, frameShape, rails: railsSummaryFor(editor, data.curves) });
     if (hasChanges(changeList)) {
       // rails-lock slice: the RAW pulled curves ride along too -- applyChangeList's own rail-position write path
-      // (applyPulledRailPositions) matches them by railId, independent of buildChangeList's own curveCount.
+      // (applyPulledRailPositions) matches them by railId, independent of buildChangeList's own rail counts.
       showChangeListDialog(changeList, { onApply: (cl) => applyChangeList(cl, { editor, pulledCurves: data.curves }) });
     }
   } catch (e) {

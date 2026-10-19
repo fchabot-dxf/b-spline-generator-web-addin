@@ -114,3 +114,25 @@ describe('a card from the request to the reply; a named handler', () => {
     expect(src).not.toMatch(/addLayer\(editor, \{ name: 'Fusion Sketch' \}\)/); // the inline branch is gone
   });
 });
+
+describe('the change list counts the rails, not the edge lines (live: 9 rails showed "18 rails moved")', () => {
+  // 9 live rails drawn by Send at y 1..9 (a rail element = x1/y1/x2/y2 on its node, data-layer 1 whose pattern owns it)
+  const rail = (id, y) => ({ node: { getAttribute: (k) => ({ 'data-rail-id': id, x1: '1', y1: String(y), x2: '7', y2: String(y), 'data-layer': '1' })[k] ?? null, hasAttribute: () => true }, attr: (k) => (k === 'data-layer' ? '1' : undefined), addClass() {}, removeClass() {}, hasClass: () => false });
+  const RAIL_Y = { rail1: 1, rail2: 2, rail3: 2.8, rail4: 4, rail5: 5, rail6: 6.3, rail7: 7, rail8: 8, rail9: 9 }; // rail3 +0.2 / rail6 -0.3 in Fusion
+  const curves = Object.entries(RAIL_Y).flatMap(([id, y]) => [
+    { type: 'line', d: `M 1 ${y + 0.125} L 7 ${y + 0.125}`, x1: 1, y1: y + 0.125, x2: 7, y2: y + 0.125, isConstruction: false, railId: null },
+    { type: 'line', d: `M 7 ${y - 0.125} L 1 ${y - 0.125}`, x1: 7, y1: y - 0.125, x2: 1, y2: y - 0.125, isConstruction: false, railId: null },
+    { type: 'line', d: `M 1 ${y} L 7 ${y}`, x1: 1, y1: y, x2: 7, y2: y, isConstruction: true, railId: id },
+  ]);
+  it('2 rails moved, Apply locks all 9 -- and says so', () => {
+    const { ed } = editor();
+    ed._layers = [{ id: '1', pattern: { orientation: 'horizontal' } }];
+    const live = Array.from({ length: 9 }, (_, i) => rail(`rail${i + 1}`, i + 1));
+    const base = ed._sketchLayer.children;
+    ed._sketchLayer.children = () => ({ toArray: () => [...base().toArray(), ...live], forEach: (fn) => [...base().toArray(), ...live].forEach(fn) });
+    window.svgEditor = ed;
+    onSketchPulled(reply({ curves }));
+    const note = document.querySelector('#pullChangeListOverlay .pull-changelist-note');
+    expect(note.textContent).toBe('2 rails moved in Fusion. Apply locks all 9 at their Fusion positions.');
+  });
+});

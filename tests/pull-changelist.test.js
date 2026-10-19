@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  normalizeLayerParams, layerParamsFor, compareScope, diffScope, applyRows, buildChangeList, CHANGE_EPS_IN,
+  normalizeLayerParams, layerParamsFor, compareScope, diffScope, applyRows, buildChangeList, summarizeRails, CHANGE_EPS_IN,
 } from '../bspline-frame-builder/b-spline-gen/html/core/pull-changelist.js';
 
 describe('normalizeLayerParams: stroke_width (rails+ties linked) folds into both PULL_MAP rows', () => {
@@ -135,7 +135,7 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
 
   it('no boardParams / no size at all: an empty, harmless change list', () => {
     const result = buildChangeList({}, { P, layers: [layer1], frame });
-    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], frameShapeRows: [], frameShapeBeyond: [], keptCount: 0, notMappedCount: 0, curveCount: 0 });
+    expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], frameShapeRows: [], frameShapeBeyond: [], keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0 });
   });
 
   // live Fusion test (seat D 2026-10-16): a design with no tagged board is BoardNamer's own "legacy" identity
@@ -179,19 +179,36 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
   });
 });
 
-describe('curveCount: rails move freely in Fusion (no driving param) -- informational only, never applied', () => {
-  it('counts non-construction curves only -- a construction line was never a rail to begin with', () => {
-    const pullResult = {
-      curves: [
-        { type: 'line', d: 'M 0 0 L 1 0', isConstruction: false },
-        { type: 'line', d: 'M 0 1 L 1 1', isConstruction: false },
-        { type: 'line', d: 'M 0 2 L 1 2', isConstruction: true },
-      ],
-    };
-    expect(buildChangeList(pullResult, { P: {}, layers: [], frame: null }).curveCount).toBe(2);
+describe('rails: how many Apply locks, how many Fusion moved (real shapes: 9 rails = 18 edge lines + 9 centre lines)', () => {
+  // what Python's _handle_pull_sketch returns for a 7 x 9 lattice board: per rail two edge lines (no railId) and one
+  // construction centre line carrying railId; rail3 +0.2 and rail6 -0.3 moved in Fusion (rails sit at 1..9)
+  const RAIL_Y = { rail1: 1, rail2: 2, rail3: 2.8, rail4: 4, rail5: 5, rail6: 6.3, rail7: 7, rail8: 8, rail9: 9 };
+  const curves = Object.entries(RAIL_Y).flatMap(([id, y]) => [
+    { type: 'line', x1: 1, y1: y + 0.125, x2: 7, y2: y + 0.125, isConstruction: false, railId: null },
+    { type: 'line', x1: 7, y1: y - 0.125, x2: 1, y2: y - 0.125, isConstruction: false, railId: null },
+    { type: 'line', x1: 1, y1: y, x2: 7, y2: y, isConstruction: true, railId: id },
+  ]);
+  const live = (id) => ({ x: 4, y: Number(id.slice(4)) }); // the rails as Send drew them
+  it('2 moved of 9 locked -- not the 18 edge lines', () => {
+    expect(summarizeRails(curves, live)).toEqual({ locked: 9, moved: 2 });
   });
-
-  it('no curves at all: 0, not undefined', () => {
-    expect(buildChangeList({}, { P: {}, layers: [], frame: null }).curveCount).toBe(0);
+  it('buildChangeList carries the summary; without one both are 0', () => {
+    const cl = buildChangeList({ curves }, { P: {}, layers: [], frame: null, rails: summarizeRails(curves, live) });
+    expect([cl.railsLocked, cl.railsMoved]).toEqual([9, 2]);
+    const none = buildChangeList({ curves }, { P: {}, layers: [], frame: null });
+    expect([none.railsLocked, none.railsMoved]).toEqual([0, 0]);
+  });
+  it('a curve with no live rail is not counted (Apply leaves it alone); a rail repeated is counted once', () => {
+    const only3 = (id) => (id === 'rail3' ? live(id) : null);
+    expect(summarizeRails([...curves, ...curves], only3)).toEqual({ locked: 1, moved: 1 });
+    expect(summarizeRails([{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 0, railId: null }], live)).toEqual({ locked: 0, moved: 0 });
+  });
+  it('vertical rails compare across x; a shift under the noise floor is not a move', () => {
+    const v = [{ type: 'line', x1: 3.2, y1: 0, x2: 3.2, y2: 9, isConstruction: true, railId: 'rail3' }];
+    expect(summarizeRails(v, () => ({ x: 3, y: 4.5 }))).toEqual({ locked: 1, moved: 1 });
+    expect(summarizeRails(v, () => ({ x: 3.2 + CHANGE_EPS_IN / 2, y: 4.5 }))).toEqual({ locked: 1, moved: 0 });
+  });
+  it('no curves at all: 0 and 0', () => {
+    expect(summarizeRails(undefined, live)).toEqual({ locked: 0, moved: 0 });
   });
 });
