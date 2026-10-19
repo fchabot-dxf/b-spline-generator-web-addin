@@ -25,7 +25,7 @@ import {
   LATTICE_ATTR, RAIL_ID_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder, userLockedLayersOf, toastLayersLeftAsIs } from './layers.js';
 import { OVERRIDE_COLOR_ATTR, applyColorOverride } from './editor-piece-override.js';
 import { latticeChains, JOINT_TOL, minPieceLength } from './editor-lattice-chains.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
@@ -2688,6 +2688,12 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // (now-gone) id, or an entry that was never created, is never matched
   // against a live child's data-layer attribute.
   const kindLayerList = [kindLayerIds.rails, kindLayerIds.ties, kindLayerIds.nodes].filter(Boolean);
+  // Layer lock (Fred 2026-10-18): a kind whose layer the user locked is left EXACTLY as it is -- its pieces are neither
+  // cleared nor re-emitted below -- and the run says so, naming the layer.
+  const lockedLayers = userLockedLayersOf(editor, kindLayerList);
+  const lockedIds = new Set(lockedLayers.map((l) => String(l.id)));
+  const kindLocked = (kind) => !!kindLayerIds[kind] && lockedIds.has(String(kindLayerIds[kind]));
+  toastLayersLeftAsIs(lockedLayers);
   const occupied = _collectOccupied(editor, kindLayerList, spacing);
   // Fred (protected rails): read what the user styled BEFORE the owned pieces are cleared. The row fractions are
   // measured against the extent the rails were drawn in (railSpan, stored by the previous run).
@@ -2706,7 +2712,7 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   // ever holds one pattern's generated content at a time). T76 (SE17):
   // one pattern now spans THREE such layers (rails/ties/nodes), not one.
   editor._sketchLayer.children().toArray().forEach((ch) => {
-    if (ch && ch.node && kindLayerList.includes(ch.node.getAttribute('data-layer')) && ch.node.hasAttribute(OWNERSHIP_ATTR)) {
+    if (ch && ch.node && kindLayerList.includes(ch.node.getAttribute('data-layer')) && !lockedIds.has(ch.node.getAttribute('data-layer')) && ch.node.hasAttribute(OWNERSHIP_ATTR)) {
       ch.remove();
     }
   });
@@ -2744,7 +2750,7 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
     if (n) editor._nextRailId = Math.max(editor._nextRailId || 0, +n[1]);
   }
   for (const seg of segments) {
-    if (seg.kind !== 'rail') continue;
+    if (seg.kind !== 'rail' || kindLocked('rails')) continue;
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
     const el = tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
@@ -2754,14 +2760,15 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
     }
   }
   // a protection that found no matching piece this run is given up (Fred: "in doubt give up the protection")
-  if (keptProtected.length) PATTERN.protectedRails = keptProtected;
+  if (kindLocked('rails')) { /* rails left as they are: their protection record stays as it was */ }
+  else if (keptProtected.length) PATTERN.protectedRails = keptProtected;
   else delete PATTERN.protectedRails;
   // H20 item 6: kindLayerIds.ties/.nodes is absent when the user deleted
   // that layer (_ensureKindLayers skips recreating a removedKinds entry) —
   // guarded so a removed kind's loop never runs (which would otherwise set
   // _activeLayer to undefined and let ensureActiveLayer/emitSegment spin up
   // a stray new layer to emit into, resurrecting the deleted kind anyway).
-  if (kindLayerIds.ties) {
+  if (kindLayerIds.ties && !kindLocked('ties')) {
     editor._activeLayer = kindLayerIds.ties;
     editor._color = colors.ties;
     for (const seg of segments) {
@@ -2771,7 +2778,7 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
       tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
     }
   }
-  if (kindLayerIds.nodes) {
+  if (kindLayerIds.nodes && !kindLocked('nodes')) {
     editor._activeLayer = kindLayerIds.nodes;
     editor._color = colors.nodes;
     for (const p of nodePoints) {

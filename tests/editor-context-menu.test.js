@@ -38,7 +38,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js
 }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js', () => ({ openColorMosaic }));
 // brickElementNodes (item 22 slice 3): a node of no brick element is just itself -- these fakes are plain lines
-vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer, syncLayerZOrder: () => {}, brickElementNodes: (editor, node) => (node ? [node] : []) }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer, syncLayerZOrder: () => {}, brickElementNodes: (editor, node) => (node ? [node] : []),
+  isUserLocked: (l) => !!(l && l.userLocked), isOnUserLockedLayer: (editor, el) => !!(editor._layers || []).find((l) => String(l.id) === String(el.layer) && l.userLocked) }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js', () => ({
   pieceKindOf: (...args) => pieceKindOf(...args), applyColorOverride,
 }));
@@ -236,6 +237,24 @@ describe('each action runs the EXISTING command, not a reimplementation', () => 
     editor._sketchLayer = { children: () => ({ toArray: () => [railA, tie, railB] }) };
     CONTEXT_MENU_ITEMS.find((i) => i.id === 'select-all-kind').run(editor, target({ editor, kind: 'rails' }));
     expect(editor._selectedElements).toEqual([railA, railB]);
+  });
+
+  it('layer lock: Select all <kind> skips pieces of a locked layer (the lock keeps them out of any selection)', () => {
+    const free = fakeEl({ kind: 'rails' }); const cut = fakeEl({ kind: 'rails' });
+    free.layer = '1'; cut.layer = '2';
+    pieceKindOf.mockImplementation(() => 'rails');
+    const editor = makeEditor();
+    editor._layers = [{ id: '1', name: 'Layer 1' }, { id: '2', name: 'Layer 2', userLocked: true }];
+    editor._sketchLayer = { children: () => ({ toArray: () => [free, cut] }) };
+    CONTEXT_MENU_ITEMS.find((i) => i.id === 'select-all-kind').run(editor, target({ editor, kind: 'rails' }));
+    expect(editor._selectedElements).toEqual([free]);
+  });
+
+  it('layer lock: Move to layer offers only unlocked layers (a locked layer takes nothing)', () => {
+    const editor = makeEditor();
+    editor._layers = [{ id: '1', name: 'Layer 1' }, { id: '2', name: 'Layer 2', userLocked: true }];
+    const subItems = CONTEXT_MENU_ITEMS.find((i) => i.id === 'move-to-layer').submenu(editor, target({ editor, kind: 'line', selection: [fakeEl()] }));
+    expect(subItems.map((s) => s.label)).toEqual(['Layer 1', 'New layer…']);
   });
 
   it('Paste/Select all/Fit view call their own existing functions', () => {

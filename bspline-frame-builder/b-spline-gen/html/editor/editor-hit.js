@@ -8,7 +8,7 @@
  *   - getNearbyElement: finds the closest element under a click point,
  *     filtered to the active layer.
  */
-import { isEditableByLayer, isOnVisibleLayer } from './layers.js';
+import { isEditableByLayer, isOnVisibleLayer, isOnUserLockedLayer } from './layers.js';
 import { isSelectableInTab } from './editor-tab-selectable.js';
 import { worldPoint, worldBbox } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
@@ -208,6 +208,23 @@ export function getNodes(el) {
 // unless every element happens to share an identical transform; kept
 // consistent units instead of adding precision that would make ranking
 // among multiple candidates wrong.
+/** The layer lock's own question (Fred 2026-10-18): is there a piece of a USER-LOCKED, shown layer under this point?
+ *  getNearbyElement never returns one (isEditableByLayer / isOnVisibleLayer refuse it), so a tap on a locked piece
+ *  picks nothing; this finds it so the press can SAY why. Same bbox test as getNearbyElement. */
+export function lockedPieceAt(editor, pt, tol = 0.1) {
+    if (!editor._sketchLayer) return null;
+    for (const el of editor._sketchLayer.children().toArray()) {
+        if (!isOnUserLockedLayer(editor, el)) continue;
+        const cls = (el.node && el.node.getAttribute && el.node.getAttribute('class')) || '';
+        if (cls.includes('layer-hidden')) continue;
+        if (!isSelectableInTab(editor, el)) continue;
+        const b = worldBbox(el);
+        const buffer = tol + ((parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01) / 2);
+        if (pt.x >= b.x - buffer && pt.x <= b.x2 + buffer && pt.y >= b.y - buffer && pt.y <= b.y2 + buffer) return el;
+    }
+    return null;
+}
+
 export function getNearbyElement(editor, pt, tol = 0.1, opts = {}) {
     if (!editor._sketchLayer) return null;
     // SE7h add-on: 'select'/'node' modes pass anyVisibleLayer so a click

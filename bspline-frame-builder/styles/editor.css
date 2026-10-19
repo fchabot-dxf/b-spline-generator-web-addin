@@ -1545,6 +1545,15 @@
 .layer-showcolor.active .pal-d4 { fill: #1e88e5; }
 .layer-showcolor:not(.active) svg { filter: grayscale(1); opacity: 0.5; }
 
+/* Layer lock (Fred 2026-10-18): a padlock after the colour button -- open outline when unlocked, solid on red when
+   locked (red = distinct from the blue on-state of the eye / 3D / colour toggles). A locked row is hatched with a
+   dimmed italic name; its pieces on the canvas are drawn pale (layers.js adds .layer-locked, user lock only). */
+.layer-lock { color: #6b7280; }
+.layer-lock.active { background: #b4232a; color: #fff; }
+.layer-row.is-locked .layer-name { opacity: 0.6; font-style: italic; }
+.layer-row.is-locked { background: repeating-linear-gradient(135deg, rgba(180, 35, 42, 0.07) 0 6px, transparent 6px 12px); }
+#editorSVGContainer .layer-locked { opacity: 0.45; }
+
 /* MOB2 (Nodes checkboxes) / T49 (Border checkbox) originally grew these to
    32px with a `margin:-8px` trick to fake back the original 16px layout
    footprint — Chrome's UA stylesheet resets `padding` on

@@ -20,7 +20,7 @@ import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
 import { brickBrushHandler, brickAccentClickHandler, brickElementSelectHandler, brickWallAreaHandler, brickHeightPickHandler } from './editor-brick-tool.js'; // F35 item 1, item 15, item 22
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer, isEditableByLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer, isEditableByLayer, isUserLocked, toastLayerLocked } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, updateHistoryButtons, updateSnapTargetHighlight, clearSnapTargetHighlight } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
@@ -35,7 +35,7 @@ import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.j
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta, viewScale } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover, snapToGrid, SNAP_POLICY } from './editor-grid.js';
-import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
+import { getDynamicTolerance, pastClickThreshold, lockedPieceAt } from './editor-hit.js';
 import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX, beginSnapGesture, endSnapGesture, watchSnapTargets } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
@@ -576,6 +576,8 @@ export function cancelCurrentDrawing(editor) {
 }
 
 function _pasteFromClipboard(editor, clip) {
+    const active = (editor._layers || []).find((l) => String(l.id) === getActiveLayer(editor));
+    if (isUserLocked(active)) { toastLayerLocked(active); return; } // layer lock: nothing is added to a locked layer
     if (!editor._sketchLayer) return;
     const sketchNode = editor._sketchLayer.node;
     const activeLayer = ensureActiveLayer(editor);
@@ -623,7 +625,11 @@ function handleDblClick(editor, e) {
     }
 }
 
-function handleStart(editor, e) {
+/** The modes whose press starts WRITING onto the active layer (layer lock: refused while it is locked). Erase, Cut, Stripe
+ *  and the brick pickers act on existing pieces, which the same lock keeps out of reach (isOnVisibleLayer / the eraser). */
+const LAYER_WRITING_MODES = new Set(['draw', 'line', 'rect', 'circle', 'text', 'lattice', 'brickBrush', 'brickWallArea']);
+
+export function handleStart(editor, e) {
     dbg('TEXT-DBG', `handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
     // H13: every drag starts fresh -- a drag that begins already snapped in
     // place (e.g. the previous one also ended snapped) must still tick
@@ -647,6 +653,20 @@ function handleStart(editor, e) {
         const c = el('editorSVGContainer');
         if (c) c.classList.add('panning');
         return;
+    }
+
+    // Layer lock (Fred 2026-10-18): a tool that WRITES onto the active layer refuses while that layer is locked, and a
+    // press with Select / Node on a locked layer's piece (which can never be picked) says why.
+    if (LAYER_WRITING_MODES.has(editor._currentMode)) {
+        const active = (editor._layers || []).find((l) => String(l.id) === getActiveLayer(editor));
+        if (isUserLocked(active)) { toastLayerLocked(active); return; }
+    } else if (editor._currentMode === 'select' || editor._currentMode === 'node') {
+        const at = editor._getMousePoint(e);
+        const tol = getDynamicTolerance(editor, 10, 'slopPx');
+        if (!editor._getNearbyElement(at, tol, { anyVisibleLayer: true })) {
+            const lockedEl = lockedPieceAt(editor, at, tol);
+            if (lockedEl) toastLayerLocked((editor._layers || []).find((l) => String(l.id) === getElementLayer(lockedEl)));
+        }
     }
 
     // SE7m: touch commits at the MARKER position, not the raw finger

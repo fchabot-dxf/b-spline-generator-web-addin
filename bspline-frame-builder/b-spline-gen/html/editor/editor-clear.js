@@ -5,12 +5,12 @@
  *
  *   clearArtworkLayers(editor) -- every art layer and its content goes (lattice / shape-lattice pattern state
  *     lives on the layers, so it goes with them); the Bricks layer and its bricks stay; a fresh Layer 1 is made
- *     active, as on a new board.
+ *     active, as on a new board. A user-LOCKED layer (layers.js isUserLocked) and everything on it is left as it is.
  *   clearBrickElements(editor) -- every brick element (Wall, Frame, Brush bricks and the strokes' spines) goes;
  *     the Bricks layer stays. The Wall/Frame element RECORDS (item 22) are on that layer, so they go too: no
  *     element is left, nothing re-lays.
  */
-import { addLayer, setActiveLayer, isBricksLayer, isBrickToolNode, BRICK_RECORD_ATTR } from './layers.js';
+import { addLayer, setActiveLayer, isBricksLayer, isBrickToolNode, isUserLocked, isOnUserLockedLayer, BRICK_RECORD_ATTR } from './layers.js';
 
 const _layerIdOf = (child) => String(child.attr ? child.attr('data-layer') : child.node?.getAttribute?.('data-layer'));
 
@@ -25,14 +25,14 @@ export function clearArtworkLayers(editor) {
   if (typeof editor._deselect === 'function') editor._deselect();
   // every non-brick node goes, on every layer; a layer that still holds brick elements stays (the legacy Bricks
   // layer, or an art layer with bricks on it), every other layer goes
-  for (const ch of _childrenOf(editor)) if (!_isBrickElementNode(ch)) ch.remove();
+  for (const ch of _childrenOf(editor)) if (!_isBrickElementNode(ch) && !isOnUserLockedLayer(editor, ch)) ch.remove();
   const holding = new Set(_childrenOf(editor).map(_layerIdOf));
-  const kept = (editor._layers || []).filter((l) => isBricksLayer(l) || holding.has(String(l.id)));
+  const kept = (editor._layers || []).filter((l) => isBricksLayer(l) || isUserLocked(l) || holding.has(String(l.id)));
   editor._layers = kept;
   editor._activeLayer = null;
   // audit v3 #1: a kept PLAIN layer (it holds bricks, slice 3) is already an art layer -- it becomes the active one;
   // a fresh "Layer 1" is added only when none is left (none kept, or only the legacy brick layer), as before
-  const plain = kept.find((l) => !isBricksLayer(l));
+  const plain = kept.find((l) => !isBricksLayer(l) && !isUserLocked(l)); // a locked layer is never the one to draw on
   if (plain) { setActiveLayer(editor, plain.id); return; }
   // a new board's first art layer (its default name counts every layer, the Bricks one too); the caller's commit
   // makes it one undo step
@@ -44,5 +44,5 @@ export function clearArtworkLayers(editor) {
 export function clearBrickElements(editor) {
   if (typeof editor._deselect === 'function') editor._deselect();
   // every brick element node (pieces, spines, records), on whatever layer it is; art stays
-  for (const ch of _childrenOf(editor)) if (_isBrickElementNode(ch)) ch.remove();
+  for (const ch of _childrenOf(editor)) if (_isBrickElementNode(ch) && !isOnUserLockedLayer(editor, ch)) ch.remove();
 }

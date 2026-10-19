@@ -23,6 +23,7 @@ import { P } from '../core/state.js';
 import { isEditorOpen } from '../core/history.js';
 import { clearArtworkLayers, clearBrickElements } from '../editor/editor-clear.js';
 import { resetArtworkToFresh } from '../editor/editor-io.js';
+import { isUserLocked, toastLayersLeftAsIs } from '../editor/layers.js';
 import { clearFrame } from '../editor/editor-frame-profile.js';
 import { refreshGuides } from '../editor/editor-guides.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -64,10 +65,14 @@ export async function runClear(optionId, editor = (typeof window !== 'undefined'
   _clearing = true;
   try {
     for (const k of option.kinds) if (!CLEAR_KINDS[k].editor) CLEAR_KINDS[k].run(editor);
-    if (editorKinds.includes('artwork') && editorKinds.includes('bricks')) {
+    // a locked layer (layers.js isUserLocked) is left as it is: with one, the two clears run one by one (each skips it)
+    // instead of the whole-drawing reset
+    const lockedLayers = (editor._layers || []).filter(isUserLocked);
+    if (editorKinds.includes('artwork') && editorKinds.includes('bricks') && !lockedLayers.length) {
       resetArtworkToFresh(editor); // both at once = exactly a new board's drawing (the SAME function open() uses)
     } else {
       for (const k of editorKinds) CLEAR_KINDS[k].run(editor);
+      if (editorKinds.length) toastLayersLeftAsIs(lockedLayers);
     }
     if (editorKinds.length) {
       refreshGuides(editor);

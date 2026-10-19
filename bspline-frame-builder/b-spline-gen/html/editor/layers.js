@@ -59,6 +59,7 @@ import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { dbg } from '../core/debug.js';
 import { commitEdit } from './editor-commit.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
+import { showToast } from '../core/toast.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -229,12 +230,67 @@ export function isJobLocked(layer) {
   return !!(layer && layer.jobLocked);
 }
 
+/** Layer lock (Fred 2026-10-18: "a layer I have already cut must not change"): a MANUAL, all-or-nothing lock the user
+ *  sets on a Layers-panel row. A SEPARATE flag from jobLocked -- main/job-timeline-lock.js syncLayerLocks rewrites
+ *  jobLocked on every timeline sync, which would wipe a manual lock -- but ONE mechanism: isLayerLocked reads both,
+ *  and every gate below (isEditableByLayer / isOnVisibleLayer, so editor-hit.js and the marquee) goes through it.
+ *  Stored only when true (absent = unlocked, so a board saved before the lock is byte-identical); persisted with the
+ *  layer (editor-io.js _PERSISTED_LAYER_FIELDS); NOT part of Undo (editor.js _restoreState keeps the live flags). */
+export function isUserLocked(layer) {
+  return !!(layer && layer.userLocked);
+}
+export function isLayerLocked(layer) {
+  return isJobLocked(layer) || isUserLocked(layer);
+}
+const _layerOfNode = (editor, node) => {
+  const id = node && typeof node.attr !== 'function' && typeof node.getAttribute === 'function' // a plain DOM node or an svg.js one
+    ? String(node.getAttribute('data-layer') ?? '0') : getElementLayer(node);
+  return (Array.isArray(editor._layers) ? editor._layers : []).find((l) => String(l.id) === id) || null;
+};
+/** Is this drawn node on a layer the user locked? (The eraser, Clear and every picker ask this.) */
+export function isOnUserLockedLayer(editor, node) {
+  return isUserLocked(_layerOfNode(editor, node));
+}
+/** The toast every refused edit shows -- one wording, naming the layer. */
+export function toastLayerLocked(layer) {
+  showToast(`"${layer && layer.name}" is locked \u2014 unlock it in Layers to change it`, 'warn');
+}
+/** Generate / Regenerate leave a locked layer exactly as it is (Fred's answer 3); say so, naming each. */
+export function toastLayersLeftAsIs(layers) {
+  for (const l of layers || []) showToast(`"${l.name}" is locked, left as it is`, 'warn');
+}
+/** The user-locked layers among `layerIds` (ids as strings), as records. */
+export function userLockedLayersOf(editor, layerIds) {
+  const ids = new Set((layerIds || []).filter((i) => i != null).map(String));
+  return (Array.isArray(editor._layers) ? editor._layers : []).filter((l) => ids.has(String(l.id)) && isUserLocked(l));
+}
+
+/** Lock / unlock a layer. NOT an edit: no undo step, never touched by Undo / Redo (Fred 2026-10-18) -- it just
+ *  repaints and asks the host to persist. Locking drops any selected piece of that layer. */
+export function setLayerLocked(editor, id, locked) {
+  if (!Array.isArray(editor._layers)) return;
+  const layer = editor._layers.find((l) => String(l.id) === String(id));
+  if (!layer) return;
+  if (locked) layer.userLocked = true; else delete layer.userLocked;
+  if (locked) {
+    const sel = (editor._selectedElements || []).filter((el) => getElementLayer(el) !== String(layer.id));
+    if (sel.length !== (editor._selectedElements || []).length) {
+      if (sel.length && typeof editor._selectMany === 'function') editor._selectMany(sel);
+      else if (typeof editor._deselect === 'function') editor._deselect();
+    }
+  }
+  renderLayersPanel(editor);
+  applyLayerState(editor);
+  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  else if (editor._onChange) editor._onChange();
+}
+
 export function isEditableByLayer(editor, node) {
   const layerId = getElementLayer(node);
   if (layerId !== getActiveLayer(editor)) return false;
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return !isJobLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
+  return !isLayerLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 /** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
@@ -255,7 +311,7 @@ export function isOnVisibleLayer(editor, node) {
   const layerId = getElementLayer(node);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return (!layer || layer.visible !== false) && !isJobLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
+  return (!layer || layer.visible !== false) && !isLayerLocked(layer) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 // ----------- Data ops -----------
@@ -408,6 +464,7 @@ function removeLayer(editor, id) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
+  if (isUserLocked(editor._layers[idx])) { toastLayerLocked(editor._layers[idx]); return; } // a locked layer is never deleted
 
   // Fired BEFORE the splice below, so a hook can still see the full roster
   // (including whichever OTHER layer owns this one's pattern, if any).
@@ -637,10 +694,11 @@ function _layerStateMaps(editor) {
   // lives in styles/editor.css next to .layer-hidden/.inactive-layer, the
   // two classes this same loop already manages the same way.
   const colorById = new Map(layers.map(l => [l.id, showsColor(l)]));
-  return { activeLayer, visById, colorById };
+  const lockedById = new Map(layers.map(l => [l.id, isUserLocked(l)]));
+  return { activeLayer, visById, colorById, lockedById };
 }
 
-function _applyLayerClasses(child, { activeLayer, visById, colorById }) {
+function _applyLayerClasses(child, { activeLayer, visById, colorById, lockedById }) {
     const layerId = getElementLayer(child);
     const isActive = layerId === activeLayer;
     const isVisible = visById.has(layerId) ? visById.get(layerId) : true;
@@ -660,6 +718,9 @@ function _applyLayerClasses(child, { activeLayer, visById, colorById }) {
     else            child.removeClass('layer-hidden');
     if (!showColor) child.addClass('layer-no-color');
     else            child.removeClass('layer-no-color');
+    // layer lock: the pale look (styles/editor.css .layer-locked); user lock only -- a timeline lock keeps its look
+    if (lockedById && lockedById.get(layerId)) child.addClass('layer-locked');
+    else if (child.hasClass && child.hasClass('layer-locked')) child.removeClass('layer-locked');
 }
 
 // ----------- Panel rendering -----------
@@ -669,6 +730,13 @@ function _eyeOpenSVG() {
 }
 function _eyeClosedSVG() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-6.5 0-10-7-10-7a18.27 18.27 0 0 1 4.06-5.06"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6.5 0 10 7 10 7a18.27 18.27 0 0 1-2.16 3.19"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`;
+}
+/** Layer lock icons: an open padlock (unlocked) / a closed one (locked), same 24-box stroke style as the eye. */
+function _lockOpenSVG() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>`;
+}
+function _lockClosedSVG() {
+  return `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none"/></svg>`;
 }
 /** T27: the showColor toggle's icon — a paint palette, same stroke style
  *  as the eye icons above, so the row's three toggles read as one family
@@ -1081,12 +1149,30 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   // styles/base.css — this row's own "C1" look is what that shared
   // component was generalized FROM), right of the name, instead of three
   // separate square buttons to its left.
+  // Layer lock (Fred 2026-10-18): the 4th button -- a padlock, red when locked. Not an edit: no undo step.
+  const lockedNow = isUserLocked(layer);
+  const lockBtn = document.createElement('button');
+  lockBtn.type = 'button';
+  lockBtn.className = 'editor-fillmode-btn layer-lock' + (lockedNow ? ' active' : '');
+  lockBtn.innerHTML = lockedNow ? _lockClosedSVG() : _lockOpenSVG();
+  lockBtn.title = lockedNow
+    ? 'Locked: nothing on this layer can be picked, moved, added or erased (click to unlock)'
+    : 'Unlocked (click to lock this layer)';
+  lockBtn.setAttribute('aria-label', lockedNow ? 'Unlock layer' : 'Lock layer');
+  lockBtn.setAttribute('aria-pressed', String(lockedNow));
+  lockBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setLayerLocked(editor, layer.id, !lockedNow);
+  });
+  if (lockedNow) row.classList.add('is-locked');
+
   const toggleGroup = document.createElement('div');
   toggleGroup.setAttribute('role', 'group');
   toggleGroup.className = 'segmented-group';
   toggleGroup.appendChild(vis);
   toggleGroup.appendChild(carveBtn);
   toggleGroup.appendChild(colorBtn);
+  toggleGroup.appendChild(lockBtn);
 
   const name = document.createElement('span');
   name.className = 'layer-name';
@@ -1116,6 +1202,11 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   if (isOnlyLayer) {
     del.disabled = true;
     del.title = 'Cannot delete the only remaining layer';
+    del.style.opacity = '0.4';
+    del.style.cursor = 'not-allowed';
+  } else if (lockedNow) { // a locked layer is never deleted (Fred 2026-10-18)
+    del.disabled = true;
+    del.title = 'Locked: unlock this layer to delete it';
     del.style.opacity = '0.4';
     del.style.cursor = 'not-allowed';
   } else {

@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer, LOCKED_ATTR } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer, LOCKED_ATTR, isUserLocked, isOnUserLockedLayer, toastLayersLeftAsIs, toastLayerLocked } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
@@ -1234,11 +1234,29 @@ export function syncAccentHighlight(editor, accent, seed) {
   return raised.size;
 }
 
+/** Layer lock: the user-locked layer whose laid brick lies under `pt` (board inches), or null. The brick pickers (accent
+ *  click, element Select) refuse a press there, saying why -- the same toast every locked edit shows. */
+function lockedBrickLayerAt(editor, pt) {
+  const root = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!root || !root.querySelectorAll || !pt) return null;
+  for (const n of root.querySelectorAll(`[${BRICK_GEN_ATTR}="1"]`)) {
+    if (!isOnUserLockedLayer(editor, n)) continue;
+    if (pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return layerById(editor, n.getAttribute('data-layer'));
+  }
+  return null;
+}
+function _refusedOnLockedBrick(editor, pt) {
+  const layer = lockedBrickLayerAt(editor, pt);
+  if (layer) toastLayerLocked(layer);
+  return !!layer;
+}
+
 /** F35 item 15, Custom "Click bricks" (editor._currentMode === 'brickAccentClick'): a click hands its
  *  UNSNAPPED board point to editor._brickAccentClick (main/brick-panel.js), which toggles that brick. */
 export const brickAccentClickHandler = {
   start(editor, pt, e) {
     const raw = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+    if (_refusedOnLockedBrick(editor, raw || pt)) return;
     if (typeof editor._brickAccentClick === 'function') editor._brickAccentClick(raw || pt);
   },
 };
@@ -1248,6 +1266,7 @@ export const brickAccentClickHandler = {
 export const brickElementSelectHandler = {
   start(editor, pt, e) {
     const raw = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+    if (_refusedOnLockedBrick(editor, raw || pt)) return;
     if (typeof editor._brickElementSelect === 'function') editor._brickElementSelect(raw || pt);
   },
 };
@@ -1294,7 +1313,8 @@ export const brickHeightPickHandler = {
 export function heightPickBricks(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return [];
-  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"]`)].filter((n) => BRICK_RECORD_KINDS[n.getAttribute(BRICK_ATTR)]).map((n) => ({ polygon: _nodePolygon(n) }));
+  // layer lock: a locked layer's bricks are never picked (their carve height stays as it is)
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"]`)].filter((n) => BRICK_RECORD_KINDS[n.getAttribute(BRICK_ATTR)] && !isOnUserLockedLayer(editor, n)).map((n) => ({ polygon: _nodePolygon(n) }));
 }
 
 /** Outlines the picked bricks (indices into heightPickBricks) in the highlight layer; [] clears. */
@@ -1548,7 +1568,23 @@ export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
   return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null, noFrameElement: true };
 }
 
+/** Layer lock (Fred 2026-10-18): the kinds of `kinds` a lay may touch -- a Wall / Frame whose element sits on a user-locked
+ *  layer (its record's; a wall area's own layer too) is left exactly as it is, and the lay says so, naming the layer.
+ *  A read-only lookup: it never creates a kind layer. */
+export function layableKinds(editor, kinds = BRICK_KINDS) {
+  const left = [];
+  const ok = kinds.filter((k) => {
+    const own = [layerOfElement(editor, k), ...(k === 'wall' ? wallAreaRecords(editor).map((a) => a.layer) : [])].filter(isUserLocked);
+    for (const l of own) if (!left.includes(l)) left.push(l);
+    return !own.length;
+  });
+  if (left.length) toastLayersLeftAsIs(left);
+  return ok;
+}
+
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
+  kinds = layableKinds(editor, kinds);
+  if (!kinds.length) return { wallCount: 0, frameCount: 0, bandsReduced: null };
   frameGeom = frameGeomForLay(editor, frameGeom, kinds); // item 42
   // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
   // item 64: only the kinds laid NOW resolve a layer (resolving creates a kind layer: never on a mere lookup -- measured: a
@@ -1629,6 +1665,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
  *  drawing and Cancel's restored document all carry the key of the bricks they hold. */
 export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
+  kinds = layableKinds(editor, kinds); // a locked kind was not laid: its record is left as it is
   // item 22: each laid element's record keeps the settings it was laid with (its own, per element) and, from a
   // committed lay, the key of them (step 3). The record itself is what makes the element exist (audit B1: a Wall
   // the bands squeezed to zero bricks keeps its record, so the next lay brings it back).
@@ -2186,6 +2223,7 @@ export function regenerateOwnedBrickElements(editor) {
   for (const el of spineEls) {
     const elementId = el.attr(BRICK_ELEMENT_ATTR);
     if (!elementId) continue;
+    if (isOnUserLockedLayer(editor, el)) continue; // layer lock: a locked layer's strokes stay exactly as they are
     const [a, b] = pieceEnds(el);
     const settings = decodeBrickSettings(el.attr(BRICK_SETTINGS_ATTR));
     if (!settings) continue;
@@ -2196,11 +2234,12 @@ export function regenerateOwnedBrickElements(editor) {
   }
 
   // only the BRUSH strokes' own bricks -- Wall/Frame bricks carry an owner too since item 22 (their record)
-  children.filter((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush').forEach((el) => el.remove());
+  children.filter((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush' && !isOnUserLockedLayer(editor, el)).forEach((el) => el.remove());
   // F35 item 55: every stroke's grout node goes too (a deleted stroke must not leave one); each keeps its PAINT -- the
   // grout paint is per kind, never frozen into a stroke -- read back here and handed to its redraw
   const groutPaint = new Map();
   for (const g of editor._sketchLayer.node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"][${GROUT_OF_ATTR}="brush"]`)) {
+    if (isOnUserLockedLayer(editor, g)) continue; // layer lock: a locked stroke keeps its grout too
     const fill = g.getAttribute('fill');
     groutPaint.set(g.getAttribute(BRICK_OWNER_ATTR), { color: fill && fill !== 'none' ? fill : null, paintInsetIn: Number(g.getAttribute(GROUT_INSET_ATTR)) || 0 });
     g.remove();

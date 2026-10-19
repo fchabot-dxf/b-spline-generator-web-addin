@@ -584,7 +584,12 @@ export class VectorEditor {
             // Audit (batch 3): a COPY -- the live layers never share a pattern object with an undo-stack entry
             // (a shallow copy made the next panel edit rewrite the restored step in place; its settings were
             // then gone for good)
+            const liveLocks = new Map((this._layers || []).map((l) => [String(l.id), !!l.userLocked]));
             this._layers = _cloneLayers(state.layers);
+            // the layer lock is a protection setting, not an edit (Fred 2026-10-18): Undo / Redo keep the live flag
+            for (const l of this._layers) {
+                if (liveLocks.get(String(l.id))) l.userLocked = true; else delete l.userLocked;
+            }
         }
         if (isObj && 'activeLayer' in state) {
             this._activeLayer = state.activeLayer;

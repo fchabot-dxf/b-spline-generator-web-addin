@@ -33,7 +33,7 @@ import {
     loadClipper,
     multiPolygonToPathData,
 } from './editor-expand-union.js';
-import { applyLayerState, isLockedNode } from './layers.js';
+import { applyLayerState, isLockedNode, isOnUserLockedLayer, userLockedLayersOf, toastLayerLocked } from './layers.js';
 import { isSelectableInTab } from './editor-tab-selectable.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { transformPoint } from './editor-coords.js';
@@ -118,6 +118,7 @@ export async function finishEraserStroke(editor) {
 
     const children = editor._sketchLayer.children().toArray();
     let anyChanged = false;
+    const touchedLocked = new Set(); // locked layers the swipe crossed (said once, below)
 
     for (const el of children) {
         // The preview is already removed, but be defensive.
@@ -127,6 +128,7 @@ export async function finishEraserStroke(editor) {
         const cls = el.node.getAttribute('class') || '';
         if (cls.includes('layer-hidden')) continue;
         if (isLockedNode(el)) continue; // item 55: the grout shape is the Brick tab's
+        if (isOnUserLockedLayer(editor, el)) { const near = _sampleElement(el); if (near && _bboxesIntersect(near, eraserRing)) touchedLocked.add(el.attr('data-layer')); continue; } // layer lock: nothing erased from it
         // Fred 2026-10-10 (EDITOR_TAB_SELECTABLE): the eraser acts on the open tab's own kind only -- MEASURED on main: one
         // swipe in Artwork across a stone frame erased 15 frame bricks
         if (!isSelectableInTab(editor, el)) continue;
@@ -139,6 +141,7 @@ export async function finishEraserStroke(editor) {
         }
     }
 
+    for (const l of userLockedLayersOf(editor, [...touchedLocked])) toastLayerLocked(l);
     if (anyChanged) {
         applyLayerState(editor);
         if (typeof editor.pushState === 'function') editor.pushState();

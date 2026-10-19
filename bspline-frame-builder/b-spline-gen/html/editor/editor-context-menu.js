@@ -62,7 +62,7 @@ import { CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { cutAt, join, cutIntent } from './editor-cut-tool.js';
 import { copySelection, pasteClipboard, selectAllVisible, selectAllInActiveLayer } from './editor-interaction.js';
-import { applyLayerState, addLayer, brickElementNodes } from './layers.js';
+import { applyLayerState, addLayer, brickElementNodes, isUserLocked, isOnUserLockedLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
 import { selectAllLabelFor } from './editor-tab-selectable.js';
 import { commitEdit } from './editor-commit.js';
@@ -142,7 +142,7 @@ export const CONTEXT_MENU_ITEMS = [
     appliesTo: (kind) => kind === 'rails' || kind === 'ties' || kind === 'nodes',
     when: () => true,
     run(editor, target) {
-      const all = editor._sketchLayer.children().toArray().filter((el) => pieceKindOf(el) === target.kind);
+      const all = editor._sketchLayer.children().toArray().filter((el) => pieceKindOf(el) === target.kind && !isOnUserLockedLayer(editor, el));
       editor._selectMany(all);
     },
   },
@@ -156,7 +156,7 @@ export const CONTEXT_MENU_ITEMS = [
     appliesTo: (kind) => kind !== 'empty' && !LATTICE_OWNED_KINDS.has(kind),
     when: () => true,
     submenu(editor, target) {
-      const items = (editor._layers || []).map((layer) => ({
+      const items = (editor._layers || []).filter((layer) => !isUserLocked(layer)).map((layer) => ({ // a locked layer takes nothing
         label: layer.name,
         run: () => _moveSelectionToLayer(editor, target.selection, layer.id),
       }));
