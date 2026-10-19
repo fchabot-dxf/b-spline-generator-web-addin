@@ -1,5 +1,6 @@
 import { P, DEFAULT, loadLastSession, saveLastSession, markBootRestoreComplete } from '../core/state.js';
 import { encodeLayersAttr, decodeLayersAttr } from '../editor/layers-attr.js';
+import { reopenKeepingLocks } from '../editor/layers.js';
 import { jobProjectOf, deriveJobSteps, normalizeJobTimeline } from '../core/job-timeline.js';
 import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
@@ -1019,7 +1020,7 @@ export function initSvgEditor(preview) {
         // hides relative to this call.
         restoreEditorSnapshotState();
         saveLastSession();
-        window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+        reopenKeepingLocks(window.svgEditor, editorRestoreSvg(), P.widthIn, P.heightIn); // a layer lock survives Cancel (Fred 2026-10-18)
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
         await refreshDrape(preview);

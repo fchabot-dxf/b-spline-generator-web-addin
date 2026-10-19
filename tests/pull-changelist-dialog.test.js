@@ -72,6 +72,13 @@ describe('showChangeListDialog: the rows it renders', () => {
     expect(note({ railsLocked: 1, railsMoved: 1 })).toBe('1 rail moved in Fusion. Apply locks it at its Fusion position.');
   });
 
+  it('a locked layer is named and left: nothing for Apply to lock, or only the unlocked rails counted', () => {
+    const note = (c) => { document.body.innerHTML = ''; showChangeListDialog({ ...NO_CHANGES, ...c }); return document.querySelector('.pull-changelist-note').textContent; };
+    expect(note({ railsLocked: 0, railsMoved: 2, railsSkipped: ['Rails'] })).toBe('2 rails moved in Fusion. "Rails" is locked, left as it is.');
+    expect(note({ railsLocked: 5, railsMoved: 2, railsSkipped: ['Rails'] })).toBe('2 rails moved in Fusion. Apply locks all 5 at their Fusion positions. "Rails" is locked, left as it is.');
+    expect(hasChanges({ ...NO_CHANGES, railsSkipped: ['Rails'] })).toBe(true); // Fusion still has something to show
+  });
+
   it('a lone layer group with no board/frame rows: only that group shows', () => {
     showChangeListDialog({ ...NO_CHANGES, layerGroups: SOME_CHANGES.layerGroups });
     const body = document.querySelector('.pull-changelist-body');

@@ -265,6 +265,27 @@ export function userLockedLayersOf(editor, layerIds) {
   return (Array.isArray(editor._layers) ? editor._layers : []).filter((l) => ids.has(String(l.id)) && isUserLocked(l));
 }
 
+/** Reopen the editor on `svg` (Cancel restoring the board as it was opened; a global Undo / Redo restoring a step's drawing)
+ *  WITHOUT touching the lock (Fred 2026-10-18: a lock is a protection setting, not an edit): the layers that were locked
+ *  stay locked, by id, and an unlock stays unlocked. The host is told (a commit) only when the reopened roster differed,
+ *  so the saved drawing carries the lock too. */
+export function reopenKeepingLocks(editor, svg, w, h) {
+  const live = new Map((Array.isArray(editor._layers) ? editor._layers : []).map((l) => [String(l.id), isUserLocked(l)]));
+  editor.open(svg, w, h);
+  let changed = false;
+  for (const l of Array.isArray(editor._layers) ? editor._layers : []) {
+    const want = live.get(String(l.id));
+    if (want === undefined || want === isUserLocked(l)) continue;
+    if (want) l.userLocked = true; else delete l.userLocked;
+    changed = true;
+  }
+  if (!changed) return;
+  renderLayersPanel(editor);
+  applyLayerState(editor);
+  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  else if (editor._onChange) editor._onChange();
+}
+
 /** Lock / unlock a layer. NOT an edit: no undo step, never touched by Undo / Redo (Fred 2026-10-18) -- it just
  *  repaints and asks the host to persist. Locking drops any selected piece of that layer. */
 export function setLayerLocked(editor, id, locked) {

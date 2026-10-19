@@ -147,6 +147,7 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null, fram
   // how many of those Fusion actually moved (seat D 2026-10-18: the note counted the 18 edge lines of 9 rails).
   const railsLocked = rails ? rails.locked : 0;
   const railsMoved = rails ? rails.moved : 0;
+  const railsSkipped = rails && rails.skipped ? rails.skipped : []; // names of locked layers Apply leaves as they are
 
   // Part 2: the wood frame's sketch SHAPE (core/pull-frame-shape.js fitPulledFrameShape, run by the caller, which
   // owns the defs + board): one row per handle that moved, seeded -- never a dimension. A row that fits outside the
@@ -156,25 +157,29 @@ export function buildChangeList(pullResult, { P, layers = [], frame = null, fram
     .map((r) => ({ ...r, apply: !r.outOfRange }));
   const frameShapeBeyond = frameShape && frameShape.status === 'beyond' ? frameShape.beyondIds : [];
 
-  return { boardRows, layerGroups, frameRows, frameShapeRows, frameShapeBeyond, keptCount, notMappedCount, railsLocked, railsMoved };
+  return { boardRows, layerGroups, frameRows, frameShapeRows, frameShapeBeyond, keptCount, notMappedCount, railsLocked, railsMoved, railsSkipped };
 }
 
 /** The rails a Pull will touch: the pulled lines that carry a Send-tagged railId AND still have a live rail drawn
  *  (the same match main/pull-changelist.js applyPulledRailPositions makes -- Apply locks exactly these, once each),
  *  and how many of those sit somewhere else than the rail drawn now (the offset across the rail, past CHANGE_EPS_IN).
- *  `liveCentreOf(railId)` -> the live rail's centre {x, y}, or null when there is none. Pure. */
+ *  `liveCentreOf(railId)` -> the live rail's centre {x, y}, or null when there is none; `lockedLayer` = the NAME of its layer when
+ *  the user locked it (layers.js isUserLocked): Apply leaves that rail as it is, so it is not counted in `locked` but its layer
+ *  is named in `skipped`, and `moved` still counts it (what Fusion has). Pure. */
 export function summarizeRails(pulledCurves, liveCentreOf) {
   const seen = new Set();
   let locked = 0;
   let moved = 0;
+  const skipped = [];
   for (const c of pulledCurves || []) {
     if (!c || c.type !== 'line' || !c.railId || seen.has(c.railId)) continue;
     const live = liveCentreOf(c.railId);
     if (!live) continue;
     seen.add(c.railId);
-    locked++;
     const across = Math.abs(c.x2 - c.x1) >= Math.abs(c.y2 - c.y1) ? (c.y1 + c.y2) / 2 - live.y : (c.x1 + c.x2) / 2 - live.x;
     if (Math.abs(across) > CHANGE_EPS_IN) moved++;
+    if (live.lockedLayer) { if (!skipped.includes(live.lockedLayer)) skipped.push(live.lockedLayer); continue; }
+    locked++;
   }
-  return { locked, moved };
+  return { locked, moved, skipped };
 }

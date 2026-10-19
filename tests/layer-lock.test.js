@@ -20,7 +20,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import {
-  isJobLocked, isUserLocked, isLayerLocked, isEditableByLayer, isOnVisibleLayer, setLayerLocked, renderLayerList,
+  isJobLocked, isUserLocked, isLayerLocked, isEditableByLayer, isOnVisibleLayer, setLayerLocked, renderLayerList, reopenKeepingLocks,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { getNearbyElement, lockedPieceAt } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js';
 import { syncLayerLocks } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-lock.js';
@@ -528,5 +528,39 @@ describe('the other ways in: paste, the brick pickers, the height picks', () => 
     expect(ed._brickAccentClick).not.toHaveBeenCalled();
     expect(ed._brickElementSelect).not.toHaveBeenCalled();
     expect(toasts()).toEqual(Array(2).fill('"Wall" is locked — unlock it in Layers to change it')); // once per picker (the real toast dedupes the text)
+  });
+});
+
+describe('Cancel (and a global Undo that reopens the drawing) keeps the lock', () => {
+  /** open() = the editor rebuilding its roster from the saved drawing, which knows nothing of a lock set since */
+  function reopenEditor(savedRoster) {
+    const editor = {
+      _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Rails', visible: true }], _activeLayer: '0',
+      _sketchLayer: { children: () => ({ toArray: () => [], forEach() {} }) },
+      open: vi.fn(() => { editor._layers = savedRoster.map((l) => ({ ...l })); }),
+      _notifyChange: vi.fn(),
+    };
+    return editor;
+  }
+  it('a layer locked in the session is still locked after Cancel reopens the board as it was opened', () => {
+    const editor = reopenEditor([{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Rails', visible: true }]);
+    editor._layers[1].userLocked = true;
+    reopenKeepingLocks(editor, '<svg/>', 7, 9);
+    expect(editor.open).toHaveBeenCalledWith('<svg/>', 7, 9);
+    expect(editor._layers[1].userLocked).toBe(true);
+    expect(editor._layers[0].userLocked).toBeUndefined();
+    expect(editor._notifyChange).toHaveBeenCalledWith('commit'); // so the saved drawing carries it
+  });
+  it('a layer unlocked in the session stays unlocked even if the reopened drawing says locked; a layer the drawing lacks is dropped', () => {
+    const editor = reopenEditor([{ id: '0', name: 'Layer 1', visible: true, userLocked: true }]);
+    editor._layers[0].userLocked = undefined;
+    reopenKeepingLocks(editor, '<svg/>', 7, 9);
+    expect(editor._layers).toHaveLength(1);
+    expect(isUserLocked(editor._layers[0])).toBe(false);
+  });
+  it('nothing differs: no commit is sent', () => {
+    const editor = reopenEditor([{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Rails', visible: true }]);
+    reopenKeepingLocks(editor, '<svg/>', 7, 9);
+    expect(editor._notifyChange).not.toHaveBeenCalled();
   });
 });

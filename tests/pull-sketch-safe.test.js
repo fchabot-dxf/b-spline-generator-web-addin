@@ -136,3 +136,29 @@ describe('the change list counts the rails, not the edge lines (live: 9 rails sh
     expect(note.textContent).toBe('2 rails moved in Fusion. Apply locks all 9 at their Fusion positions.');
   });
 });
+
+describe('Pull from Fusion onto a LOCKED Rails layer: shown, then left exactly as it is on Apply', () => {
+  const rail = (id, y) => ({ node: { getAttribute: (k) => ({ 'data-rail-id': id, x1: '1', y1: String(y), x2: '7', y2: String(y), 'data-layer': '1' })[k] ?? null, hasAttribute: () => true }, attr: (k) => (k === 'data-layer' ? '1' : undefined), addClass() {}, removeClass() {}, hasClass: () => false });
+  const RAIL_Y = { rail1: 1, rail2: 2, rail3: 2.8, rail4: 4, rail5: 5, rail6: 6.3, rail7: 7, rail8: 8, rail9: 9 };
+  const curves = Object.entries(RAIL_Y).flatMap(([id, y]) => [
+    { type: 'line', d: `M 1 ${y + 0.125} L 7 ${y + 0.125}`, x1: 1, y1: y + 0.125, x2: 7, y2: y + 0.125, isConstruction: false, railId: null },
+    { type: 'line', d: `M 7 ${y - 0.125} L 1 ${y - 0.125}`, x1: 7, y1: y - 0.125, x2: 1, y2: y - 0.125, isConstruction: false, railId: null },
+    { type: 'line', d: `M 1 ${y} L 7 ${y}`, x1: 1, y1: y, x2: 7, y2: y, isConstruction: true, railId: id },
+  ]);
+  it('the dialog says 2 moved and names the locked layer; Apply writes no custom rail positions into the pattern', async () => {
+    const { ed } = editor();
+    const pattern = { orientation: 'horizontal' };
+    ed._layers = [{ id: '1', name: 'Rails', pattern, userLocked: true }];
+    const live = Array.from({ length: 9 }, (_, i) => rail(`rail${i + 1}`, i + 1));
+    const base = ed._sketchLayer.children;
+    ed._sketchLayer.children = () => ({ toArray: () => [...base().toArray(), ...live], forEach: (fn) => [...base().toArray(), ...live].forEach(fn) });
+    window.svgEditor = ed;
+    onSketchPulled(reply({ curves }));
+    const overlay = document.getElementById('pullChangeListOverlay');
+    expect(overlay.querySelector('.pull-changelist-note').textContent).toBe('2 rails moved in Fusion. "Rails" is locked, left as it is.');
+    overlay.querySelector('.cad-btn-primary').click(); // Apply
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pattern.rails).toBeUndefined(); // no custom positions written: data and drawing agree
+    expect(showToast).toHaveBeenCalledWith('"Rails" is locked, left as it is', 'warn');
+  });
+});

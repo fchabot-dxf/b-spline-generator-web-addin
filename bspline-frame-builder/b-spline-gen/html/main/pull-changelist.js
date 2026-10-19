@@ -12,7 +12,7 @@ import { getFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { resolvePatternLayer, rewidthOwnedKindsAcrossLayers, PATTERN_DEFAULTS, generatePattern } from '../editor/editor-lattice-pattern.js';
 import { recordStep } from '../core/history.js';
 import { _findRailElementById } from '../editor/editor-interaction.js';
-import { getElementLayer } from '../editor/layers.js';
+import { getElementLayer, isUserLocked, toastLayersLeftAsIs } from '../editor/layers.js';
 import { latticeExtentFor } from '../editor/editor-sketch-manifest.js';
 import { matchPulledRails } from '../core/pull-rails.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
@@ -107,12 +107,14 @@ function _renderBody(changeList) {
   // rails move freely in Fusion now (no driving param) -- their new positions come back as geometry. Apply locks
   // every matched rail (a real Send-tagged railId, still a live rail here) at its Fusion position, moved or not;
   // `railsMoved` = those Fusion actually moved. A curve with no live rail is neither counted nor touched.
-  if (changeList.railsLocked > 0) {
+  const skipped = changeList.railsSkipped || [];
+  if (changeList.railsLocked > 0 || skipped.length) {
     const note = document.createElement('div');
     note.className = 'pull-changelist-note';
     const moved = changeList.railsMoved === 0 ? 'No rail moved in Fusion' : `${changeList.railsMoved} rail${changeList.railsMoved === 1 ? '' : 's'} moved in Fusion`;
-    const lock = changeList.railsLocked === 1 ? 'Apply locks it at its Fusion position.' : `Apply locks all ${changeList.railsLocked} at their Fusion positions.`;
-    note.textContent = `${moved}. ${lock}`;
+    const lock = changeList.railsLocked === 0 ? '' : changeList.railsLocked === 1 ? 'Apply locks it at its Fusion position.' : `Apply locks all ${changeList.railsLocked} at their Fusion positions.`;
+    // a layer the user locked (layers.js isUserLocked) is left exactly as it is: Apply writes nothing for it
+    note.textContent = [`${moved}.`, lock, ...skipped.map((n) => `"${n}" is locked, left as it is.`)].filter(Boolean).join(' ');
     body.appendChild(note);
   }
 
@@ -127,7 +129,7 @@ function _renderBody(changeList) {
 /** True if there is anything to show at all -- an all-kept, no-curve pull has nothing for a dialog to say. */
 export function hasChanges(changeList) {
   return changeList.boardRows.length > 0 || changeList.layerGroups.length > 0 || changeList.frameRows.length > 0
-    || (changeList.frameShapeRows || []).length > 0 || (changeList.frameShapeBeyond || []).length > 0 || changeList.railsLocked > 0;
+    || (changeList.frameShapeRows || []).length > 0 || (changeList.frameShapeBeyond || []).length > 0 || changeList.railsLocked > 0 || (changeList.railsSkipped || []).length > 0;
 }
 
 /** The frame scope's own patch: a FULL copy of the current record (params included, one level deep), with every
@@ -142,6 +144,9 @@ function _frameApplyPatch(frameRows) {
   return patch;
 }
 
+/** The layer record a drawn rail is on. */
+const _layerRecord = (editor, el) => (editor._layers || []).find((l) => String(l.id) === getElementLayer(el)) || null;
+
 /** The change list's rail counts, from the editor's live rails: a rail counts only where applyPulledRailPositions
  *  below would lock it (a live rail element whose layer still has a pattern). */
 export function railsSummaryFor(editor, pulledCurves) {
@@ -150,8 +155,9 @@ export function railsSummaryFor(editor, pulledCurves) {
     if (!el) return null;
     const patternLayer = resolvePatternLayer(editor, getElementLayer(el));
     if (!(patternLayer && patternLayer.pattern)) return null;
+    const own = _layerRecord(editor, el);
     const n = (k) => parseFloat(el.node.getAttribute(k));
-    return { x: (n('x1') + n('x2')) / 2, y: (n('y1') + n('y2')) / 2 };
+    return { x: (n('x1') + n('x2')) / 2, y: (n('y1') + n('y2')) / 2, lockedLayer: isUserLocked(own) ? own.name : null };
   });
 }
 
@@ -171,11 +177,14 @@ function applyPulledRailPositions(editor, pulledCurves) {
   const touched = new Set();
   if (!editor || !Array.isArray(pulledCurves) || !pulledCurves.length) return touched;
   const byPattern = new Map(); // pattern object -> its own matched curves
+  const leftAsIs = new Set(); // locked layers a pulled rail sits on
   for (const curve of pulledCurves) {
     if (!curve || curve.type !== 'line' || !curve.railId) continue;
     const el = _findRailElementById(editor, curve.railId);
     if (!el) continue;
     const layerId = getElementLayer(el);
+    const own = _layerRecord(editor, el);
+    if (isUserLocked(own)) { leftAsIs.add(own); continue; } // layer lock: a locked layer's rails are left exactly as they are
     const patternLayer = resolvePatternLayer(editor, layerId);
     const pattern = patternLayer && patternLayer.pattern;
     if (!pattern) continue;
@@ -199,6 +208,7 @@ function applyPulledRailPositions(editor, pulledCurves) {
     pattern.rails = { ...(pattern.rails || PATTERN_DEFAULTS.rails), custom };
     touched.add(pattern);
   }
+  toastLayersLeftAsIs([...leftAsIs]);
   return touched;
 }
 

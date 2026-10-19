@@ -1,6 +1,6 @@
 import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession, flushSessionSave } from '../core/state.js';
-import { renderLayersPanel } from '../editor/layers.js';
+import { renderLayersPanel, reopenKeepingLocks } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt, UNDO_KEEPS } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -126,7 +126,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   if (restoredSvg !== null) {
     P.editorSvg = restoredSvg;
     const editorForStep = (typeof window !== 'undefined') ? window.svgEditor : null;
-    if (editorForStep) editorForStep.open(restoredSvg, P.widthIn, P.heightIn);
+    if (editorForStep) reopenKeepingLocks(editorForStep, restoredSvg, P.widthIn, P.heightIn); // Undo / Redo never change a layer lock
     saveLastSession();
   }
 
