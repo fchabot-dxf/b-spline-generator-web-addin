@@ -61,7 +61,7 @@ export const EDITOR_TABS = [
     modes: ['select'] },
   // F35 item 43: no left rail -- the Brick tools are the tab strip at the top of its own panel (#editorToolbarBrick)
   { id: 'brick', clears: 'bricks', label: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: null,
-    modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick', 'brickElementSelect', 'brickWallArea', 'brickHeightPick'],
+    modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick', 'brickElementSelect', 'brickWallArea', 'brickHeightPick', 'brickBlocks'],
     // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
     // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
     // floor). The Brick panel's pinned Generate -- at peek only 10 of its 32 px showed.

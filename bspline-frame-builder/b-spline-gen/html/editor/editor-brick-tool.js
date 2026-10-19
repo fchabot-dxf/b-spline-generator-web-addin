@@ -1309,6 +1309,62 @@ export const brickHeightPickHandler = {
   },
 };
 
+/** Fred 2026-10-18 (mid-course blocks UI, mockup 1245), the Blocks sub-tool (editor._currentMode === 'brickBlocks'): a TAP hands
+ *  its board point to editor._brickBlockTap(pt) -- the panel places a block there, or takes away the one under it. */
+export const brickBlocksHandler = {
+  start(editor, pt, e) {
+    const raw = (e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : null) || pt;
+    if (typeof editor._brickBlockTap === 'function') editor._brickBlockTap({ x: raw.x, y: raw.y });
+  },
+};
+
+/** The id of the mid-course block whose laid piece lies under `pt` (board inches), or null. The engine lays a block as a Frame
+ *  piece whose brick id is `block-<id>` (core/bricks/frame-blocks.js). */
+export function frameBlockAt(editor, pt) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !pt) return null;
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)) {
+    const id = n.getAttribute('data-brick-id') || '';
+    if (id.startsWith('block-') && pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return id.slice('block-'.length);
+  }
+  return null;
+}
+
+/** Is a laid FRAME piece under `pt`? (A Blocks tap lands on the frame's own bricks -- Fred: "tap the frame's run".) */
+export function frameBrickAt(editor, pt) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !pt) return false;
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)) if (pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return true;
+  return false;
+}
+
+/** Marks each declared block on the canvas (a ring + its id) in the highlight layer; [] clears. */
+export function showBlockMarks(editor, blocks) {
+  if (!editor) return 0;
+  for (const h of editor._brickBlockMarks || []) { try { h.remove(); } catch (_) { /* gone with a reload */ } }
+  editor._brickBlockMarks = [];
+  if (!editor._highlightLayer) return 0;
+  for (const b of blocks || []) {
+    if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+    const ring = editor._highlightLayer.circle(0.16).center(b.x, b.y).fill('none').stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: 0.025 }).attr('pointer-events', 'none');
+    editor._brickBlockMarks.push(ring);
+    if (typeof editor._highlightLayer.text === 'function') {
+      const label = editor._highlightLayer.text(String(b.id)).font({ size: 0.16 }).fill(ELEMENT_SELECT_OUTLINE.color).move(b.x + 0.1, b.y - 0.28).attr('pointer-events', 'none');
+      editor._brickBlockMarks.push(label);
+    }
+  }
+  return editor._brickBlockMarks.length;
+}
+
+/** Would the engine lay these blocks? The candidate lay's `blocksSkipped` ([{ id, why }]), from ONE engine pass over the frame with
+ *  `blocks` declared -- nothing drawn, nothing cleared (the engine decides; the panel only asks before it writes a block). */
+export function blocksRefusal(editor, settings, frameGeom, blocks) {
+  if (!frameGeom || frameGeom.noFrameElement) return [];
+  const geom = frameGeomForLay(editor, frameGeom, ['frame']);
+  const input = _layInput(editor, { ...settings, frameBlocks: blocks }, geom);
+  return generateBricks(input).blocksSkipped || [];
+}
+
 /** The Wall + Frame bricks of this lay as [{ polygon }] -- what the height records are matched against. */
 export function heightPickBricks(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
@@ -1660,7 +1716,8 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
   const wallCount = !lays('wall') ? 0 : areas.length ? areaLays.reduce((n, l) => n + l.bricks.length, 0) : bricks.length;
   return { wallCount, frameCount: lays('frame') ? frameBricks.length : 0,
-    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null, ...(lays('frame') && result.archFit ? { archFit: result.archFit } : {}) };
+    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null, ...(lays('frame') && result.archFit ? { archFit: result.archFit } : {}),
+    ...(lays('frame') && result.blocksSkipped ? { blocksSkipped: result.blocksSkipped } : {}) }; // mid-course blocks that placed nothing
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on

@@ -35,8 +35,9 @@ import {
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
-  heightPickBricks, showHeightPicks,
+  heightPickBricks, showHeightPicks, frameBlockAt, frameBrickAt, showBlockMarks, blocksRefusal,
 } from '../editor/editor-brick-tool.js';
+import { isUserLocked, toastLayerLocked } from '../editor/layers.js';
 import { HEIGHT_STEP_IN, pickedIndices, togglePick, sharedLevel, setPickedLevel, stepPickedLevel, resetPicked, heightedCount } from '../core/bricks/height-records.js';
 import { openColorMosaic } from '../editor/editor-color.js';
 import {
@@ -107,7 +108,7 @@ const BRICK_TOOLS = [
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: FRAME_LABELS.brick, icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     tab: { order: 2, label: FRAME_LABELS.brick },
-    subTools: ['select', 'heights'],
+    subTools: ['select', 'heights', 'blocks'],
     hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -1916,6 +1917,11 @@ export function bandsReducedText(note) {
   if ((note.steps || []).some((s) => s.step === 'narrow')) parts.push('bricks cut to the row depth');
   return parts.join('; ') + '.';
 }
+export function blocksSkippedText(skipped) {
+  const list = skipped || [];
+  const why = [...new Set(list.map((s) => blockReasonText(s.why)))].join('; ');
+  return `${list.length} block${list.length === 1 ? '' : 's'} placed nothing (${why}).`;
+}
 /** `where` = which note line shows it: none = the lay warnings (sidebar + editor Brick tab), 'frame' = the Frame
  *  section's own note line. `text` may read the counts. */
 export const BRICK_LAY_WARNINGS = Object.freeze([
@@ -1928,6 +1934,9 @@ export const BRICK_LAY_WARNINGS = Object.freeze([
   { id: 'bandsReduced', where: 'frame', text: (c) => bandsReducedText(c.bandsReduced),
     when: (c) => !!c.bandsReduced },
   // 2026-10-11: the Frame preset's arch (Arch + keystone) found no place in this frame -- detection only, nothing changes
+  // Fred 2026-10-18: a mid-course block a saved board declares that places nothing (core/bricks/frame-blocks.js blocksSkipped) -- said,
+  // never removed (a loaded board's settings are not rewritten)
+  { id: 'blocksSkipped', where: 'frame', text: (c) => blocksSkippedText(c.blocksSkipped), when: (c) => !!(c.blocksSkipped && c.blocksSkipped.length) },
   { id: 'archTooNarrow', where: 'frame', text: 'The arch does not fit inside this frame at this brick size: try a smaller brick size or a larger board.',
     when: (c) => c.archFit === 'archTooNarrow' },
 ]);
@@ -2759,6 +2768,9 @@ export const BRICK_SUB_TOOLS = Object.freeze({
   // Fred 2026-10-11: Heights = pick Wall / Frame bricks (tap, or drag a box) and Raise / Lower them (core/bricks/height-records.js)
   heights: { label: 'Heights', mode: 'brickHeightPick',
     title: 'Tap bricks to pick them (tap again to unpick), or drag a box around them; then Raise or Lower the picked bricks.' },
+  // Fred 2026-10-18 (mid-course blocks, core/bricks/frame-blocks.js): tap the Frame's run to place a block, tap a block to take it away
+  blocks: { label: 'Blocks', mode: 'brickBlocks',
+    title: 'Tap the frame\'s run where a block should go: it snaps to whole bricks, 1.1 in square, and clears what is under it. Tap a block to take it away.' },
   // F35 item 43: Stripe has no tab of its own -- a sub-tool of the Brush tab that picks the Stripe TOOL (`tool`)
   stripe: { label: 'Stripe', tool: 'stripe', title: 'Tap a brush stroke to split it into alternating brick-style runs.' },
   area: { label: 'Area', mode: 'brickWallArea',
@@ -2960,6 +2972,77 @@ export function renderHeightPickRow() {
     row.append(top, stepRow, setRow, total);
   }
 }
+/* Fred 2026-10-18 (mid-course blocks, mockup 1245): the Blocks sub-tool's row. A tap on the Frame's run asks the engine (one dry pass,
+ * blocksRefusal) whether a block can go there: yes = P.brickSettings.frameBlocks gains { id, x, y } and the Frame re-lays through the
+ * usual commit (its loading card, one undo step); no = nothing is written and the row says why. A tap on a laid block takes it away.
+ * The reasons are the engine's own `why` strings (frame-blocks.js), worded here. */
+export const BLOCK_SKIP_REASONS = Object.freeze({
+  'no run here': 'there is no frame run under that spot',
+  'run too short': 'the frame run there is too short for a block',
+  'arc too tight': 'the arc there is too tight for a block',
+  'too near a corner': 'that spot is too near a corner',
+  'meets another block': 'it would meet another block',
+});
+export const blockReasonText = (why) => BLOCK_SKIP_REASONS[why] || String(why);
+let _blocksNote = null;
+const _round4 = (v) => Math.round(v * 10000) / 10000;
+const _nextBlockId = (blocks) => `b${1 + Math.max(0, ...blocks.map((b) => Number(/^b(\d+)$/.exec(String(b.id))?.[1]) || 0))}`;
+function _applyBlocks(next) {
+  P.brickSettings.frameBlocks = next;
+  commitBrickSetting('generate');
+  renderBlocksRow();
+}
+function _blockTap(pt) {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  const frameLayer = layerOfElement(editor, 'frame');
+  if (isUserLocked(frameLayer)) { toastLayerLocked(frameLayer); return; } // layer lock: nothing is added to or taken from a locked layer
+  const blocks = Array.isArray(P.brickSettings.frameBlocks) ? P.brickSettings.frameBlocks : [];
+  const hit = frameBlockAt(editor, pt);
+  if (hit) { _blocksNote = null; _applyBlocks(blocks.filter((b) => b.id !== hit)); return; }
+  if (!frameBrickAt(editor, pt)) { _blocksNote = 'Tap one of the frame\'s own bricks to place a block there.'; renderBlocksRow(); return; } // a tap lands on the frame\'s run
+  const frameGeom = resolveFrameGeom(editor);
+  if (!frameGeom || frameGeom.noFrameElement) { _blocksNote = 'There is no Frame to put a block on -- pick a frame preset first.'; renderBlocksRow(); return; }
+  const added = { id: _nextBlockId(blocks), x: _round4(pt.x), y: _round4(pt.y) };
+  const refused = blocksRefusal(editor, P.brickSettings, frameGeom, [...blocks, added]).find((s) => s.id === added.id);
+  if (refused) { _blocksNote = `Not placed: ${blockReasonText(refused.why)}.`; renderBlocksRow(); return; }
+  _blocksNote = null;
+  _applyBlocks([...blocks, added]);
+}
+export const blocksState = () => ({ blocks: (P.brickSettings.frameBlocks || []).map((b) => ({ ...b })), note: _blocksNote });
+export function renderBlocksRow() {
+  if (typeof document === 'undefined') return;
+  const editor = window.svgEditor;
+  const row = document.getElementById('brickBlocksRow_frame');
+  const on = _activeTool === 'frame' && _subTool === 'blocks';
+  const blocks = Array.isArray(P.brickSettings.frameBlocks) ? P.brickSettings.frameBlocks : [];
+  showBlockMarks(editor, on ? blocks : []);
+  if (!row) return;
+  row.innerHTML = '';
+  row.style.display = on ? '' : 'none';
+  if (!on) return;
+  const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+  const flex = (css) => el('div', `display:flex; gap:6px; align-items:center; flex-wrap:wrap; ${css || ''}`);
+  if (!blocks.length) {
+    const none = el('div', 'font-size:11px; opacity:0.85; margin:0 0 6px;', 'Tap the frame\'s run where a block should go. It snaps to whole bricks, 1.1 in square, and clears what is under it. Tap a block to take it away.');
+    none.id = 'brickBlocksHint';
+    row.append(none);
+  } else {
+    const top = flex('margin:0 0 6px;');
+    const chip = el('span', 'font-size:11px; border:1px solid #1e88e5; background:#e3f0fc; border-radius:10px; padding:2px 8px;', `${blocks.length} block${blocks.length === 1 ? '' : 's'}`);
+    chip.id = 'brickBlocksCount';
+    const clear = el('button', 'flex:0 0 auto; min-height:28px; width:auto; padding:2px 8px;', '\u2715 clear all');
+    clear.type = 'button'; clear.className = 'cad-btn'; clear.id = 'brickBlocksClearAll'; clear.title = 'Take every block away: the Frame lays as it did before';
+    clear.addEventListener('click', () => {
+      const frameLayer = layerOfElement(window.svgEditor, 'frame');
+      if (isUserLocked(frameLayer)) { toastLayerLocked(frameLayer); return; }
+      _blocksNote = null; _applyBlocks([]);
+    });
+    top.append(chip, el('span', 'font-size:10px; opacity:0.65;', 'tap a block to remove'), clear);
+    row.append(top);
+  }
+  if (_blocksNote) { const note = el('div', 'font-size:11px; color:#b4232a; margin:0 0 6px;', _blocksNote); note.id = 'brickBlocksNote'; row.append(note); }
+}
 let _selectedElement = null; // { id, kind } -- the selected Wall/Frame element (its record), or null
 
 export const selectedBrickElement = () => (_selectedElement ? { ..._selectedElement } : null);
@@ -2988,6 +3071,7 @@ function _renderSubTools() {
 
 function _syncSubTools() {
   queueMicrotask(renderHeightPickRow); // the Heights row follows the sub-tool
+  queueMicrotask(renderBlocksRow); // so does the Blocks row
   for (const tool of BRICK_TOOLS) {
     for (const sid of tool.subTools || []) {
       document.getElementById(`brickSubTool_${tool.id}_${sid}`)?.classList.toggle('active', tool.id === _activeTool && sid === _subTool);
@@ -3022,6 +3106,13 @@ function _armSubTool(sid) {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   _subTool = sid;
   if (sid !== 'heights') _clearHeightPicks();
+  if (sid !== 'blocks') _blocksNote = null;
+  if (editor && def && def.mode === 'brickBlocks') { // Fred 2026-10-18: tap the frame's run to place / remove a mid-course block
+    if (_selectedElement) selectBrickElement(null);
+    _subTool = sid;
+    editor._brickBlockTap = (pt) => _blockTap(pt);
+    editor.setMode('brickBlocks');
+  }
   if (editor && def && def.mode === 'brickHeightPick') { // Fred 2026-10-11: pick bricks to raise / lower
     if (_selectedElement) selectBrickElement(null);
     _subTool = sid;
@@ -3050,6 +3141,7 @@ function _armSubTool(sid) {
   _syncSubTools();
   renderWallAreaRow();
   renderHeightPickRow();
+  renderBlocksRow();
 }
 
 /** Select an element ({ id, kind }) -- its tool becomes the active one (its section shows), its bricks are
