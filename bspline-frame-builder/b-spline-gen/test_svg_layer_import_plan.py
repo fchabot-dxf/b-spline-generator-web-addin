@@ -309,3 +309,17 @@ def test_lattice_boundary_entry_builds_FIRST_under_its_own_declared_name():
     assert first['build_constrained'] is True
     assert first['import_svg'] is False
     assert ordered[1]['sketch_name'].startswith('L1 - ')  # everyone else keeps the established scheme
+
+
+def test_a_manifest_layer_with_no_leftover_svg_writes_only_its_constrained_sketch_no_plain_twin():
+    """The plain 'Source - Lx' twin (seat D 2026-10-20): export-flow now strips a sibling kind-layer's owned content, so such a
+    layer arrives with an empty svg beside its manifest -- the plan builds the [constrained] sketch and imports NO plain one.
+    A layer with genuine leftover svg (hand-drawn) still imports it beside the manifest."""
+    layers = [
+        {'index': 2, 'config': {'profile': 'vbit', 'depth': 0.08}, 'svg': '', 'sketchManifest': {'kind': 'ties'}},
+        {'index': 3, 'config': {'profile': 'vbit', 'depth': 0.15}, 'svg': '<svg><path d="M5 5 L6 6"/></svg>',
+         'sketchManifest': {'kind': 'rails'}},
+        {'index': 4, 'config': {'profile': 'ballnose', 'depth': 0.18}, 'svg': '<svg><path d="M1 1 L2 2"/></svg>'},
+    ]
+    plan = _bspline_gen._svg_layer_import_plan(layers, True)
+    assert [(p['build_constrained'], p['import_svg']) for p in plan] == [(True, False), (True, True), (False, True)]

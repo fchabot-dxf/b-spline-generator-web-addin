@@ -144,6 +144,18 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
     return { svg: svg || (excludePattern ? '' : l.svg), declined, declinedKinds };
 }
 
+/** The plain SVG a layer sends BESIDE its manifest: whatever is left once the pattern's own owned content is stripped
+ *  (hand-drawn or detached pieces). The pattern to strip is the one the MANIFEST resolved (resolvePatternLayer, the same
+ *  lookup _fusionLayerManifest uses): only the primary (rails) layer holds `.pattern`, its sibling kind-layers (ties, nodes,
+ *  contour) carry a `patternOwner` pointer, so asking the layer object for `.pattern` stripped nothing on them and their whole
+ *  owned content went out a SECOND time as a plain 'Source - Lx' sketch next to the [constrained] one (seat D 2026-10-20,
+ *  measured: ties 1874 chars, nodes 3400 chars). A layer WITHOUT a manifest (a plain art layer) is untouched.
+ *  Returns {svg, declined, declinedKinds} like _fusionLayerSvg. */
+export async function _fusionLayerPlainSvg(editor, l, manifest) {
+    const resolved = manifest ? resolvePatternLayer(editor, l.id) : null;
+    return _fusionLayerSvg(editor, l, manifest && resolved && resolved.pattern);
+}
+
 /** F35 item 11 (Fred: "I just want it sent with bspline"): the board's generated brick polygons
  *  (wall/frame/brush), as ONE Fusion-ready SVG string (the Bricks sketch), or '' when there's nothing
  *  to send (the explicit "no bricks" case, distinct from append's "no instruction" null, see
@@ -627,9 +639,8 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     const manifests = options.includeSVG
         ? layersToExport.map((l) => _fusionLayerManifest(editor, l))
         : [];
-    const editorLayerFor = (l) => (Array.isArray(editor && editor._layers) ? editor._layers.find((el) => el.id === l.id) : null);
     const fusionResults = options.includeSVG
-        ? await Promise.all(layersToExport.map((l, i) => _fusionLayerSvg(editor, l, manifests[i] && editorLayerFor(l).pattern)))
+        ? await Promise.all(layersToExport.map((l, i) => _fusionLayerPlainSvg(editor, l, manifests[i])))
         : [];
     const bakedLayers = options.includeSVG
         ? await Promise.all(fusionResults.map(async (r, i) => {
