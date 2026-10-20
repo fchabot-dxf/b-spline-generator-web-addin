@@ -107,6 +107,20 @@ truth — declarative table, edit there to add/change setups.
 
 ---
 
+## Hole chain (node holes) -- the one operation the add-in makes itself
+
+`cam_engine/hole_chain.py` (`HOLE_CHAINS`, read by one builder; `SETUP_SPECS['B-spline Back']['hole_chain']`): after the
+templates, BUILD / APPLY stamps two 3D pockets on EVERY whole circle of the panel's `... [constrained]` Source sketch
+(the one with the most circles): op A (3/16, rest OFF) then op B (1/8, rest ON from 'previousOperations'), both
+stock-to-leave -0.6 in, bottom 'from stock bottom', top 'from stock top' -0.3 in, step 0.01 in, plunge ramp. Measured live
+on a copy of Fred's file: all 20 holes reach 0.352 to 0.4745 in past the far face (A) and B refines to 0.372 to 0.4845.
+Never rest source 'bodies' (it stops at the panel body: ~0.15 only). The ops are recorded in `op_ledger`
+(`hole-chain:node_holes`), so a second APPLY adds nothing; an op whose boundary circles moved (or cannot be read) is
+re-bound, one that still matches is left alone (its toolpath stays valid). Hand-added pocket ops are never touched (an
+INFO line names them). A CAM expression cannot read a design user parameter (live: "Failed to evaluate expression"), so
+the stock to leave is a literal on each op. After `syncManufacturingModel()` in a scratch document even fresh ops crashed
+the generator (0xffffffff): re-import before testing again.
+
 ## Generic mode — N-sided indexed machining
 
 The generic dispatch (`build_setups_generic` in `setup_builder.py`,

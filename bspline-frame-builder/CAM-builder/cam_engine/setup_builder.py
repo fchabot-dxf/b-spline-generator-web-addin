@@ -26,6 +26,7 @@ import adsk.fusion
 
 from . import parameter_introspect as pi
 from . import op_ledger
+from . import hole_chain
 from .cam_position import CAM_POSITION, WCS_SKETCH_NAME, stock_box_cm, wcs_point_cm
 from cam_utils import get_design
 
@@ -155,6 +156,7 @@ def apply_templates_to_existing_setups(cam, logger=None):
         if setup is None:
             _log(logger, f"APPLY TEMPLATES: setup '{name}' not in CAM tree, skipping", "DEBUG")
             continue
+        design = None
         try:
             from . import template_assignments as _tpl_overrides
             design = adsk.fusion.Design.cast(
@@ -166,11 +168,13 @@ def apply_templates_to_existing_setups(cam, logger=None):
             cloud_templates = spec.get('cloud_templates') or []
         if not cloud_templates:
             _log(logger, f"APPLY TEMPLATES ({name}): no templates declared, skipping", "DEBUG")
+            _apply_hole_chain(cam, setup, spec, design, None, logger)
             continue
         try:
             _apply_cloud_templates(setup, cloud_templates, name, logger, design=design)
             if spec.get('op_heights'):
                 _apply_op_heights(setup, name, logger)
+            _apply_hole_chain(cam, setup, spec, design, None, logger)
             n_processed += 1
         except Exception as e:
             _log(logger, f"APPLY TEMPLATES ({name}): raised {type(e).__name__}: {e}", "WARNING")
@@ -870,6 +874,9 @@ SETUP_SPECS = [
             'Pocket back.f3dhsm-template',
             'Morphed Spiral.f3dhsm-template',
         ],
+        # The node-hole operations (hole_chain.HOLE_CHAINS): two 3D pockets on every hole circle, a larger tool first,
+        # then a smaller one with rest machining from the previous operations. Stamped after the templates.
+        'hole_chain': 'node_holes',
     },
     {
         'name':         'B-spline Top',
@@ -1062,6 +1069,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # (BUILD phase of the split flow; APPLY TOOLPATHS handles templates
     # later via apply_templates_to_existing_setups()).
     if not skip_templates:
+        design = None
         try:
             from . import template_assignments as _tpl_overrides
             design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
@@ -1076,6 +1084,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
             _apply_cloud_templates(setup, cloud_templates, spec['name'], logger, design=design)
             if spec.get('op_heights'):
                 _apply_op_heights(setup, spec['name'], logger)
+        _apply_hole_chain(cam, setup, spec, design, mm, logger)
     else:
         _log(logger, f"SETUP BUILD ({spec['name']}): skip_templates=True, templates deferred", "DEBUG")
 
@@ -1269,6 +1278,29 @@ def _rename_created_operations(results, base_name, setup_name, logger):
                          "WARNING")
                     break
     return renamed
+
+
+def _apply_hole_chain(cam, setup, spec, design, mm, logger):
+    """The spec's declared hole chain (spec['hole_chain'] -> hole_chain.HOLE_CHAINS), made once, re-bound when stale.
+    ``mm`` is the setup's Manufacturing Model, looked up by its declared name when the caller has none. Never raises."""
+    key = spec.get('hole_chain')
+    if not key:
+        return None
+    try:
+        if mm is None:
+            from . import mm_builder
+            want = mm_builder._mm_display_name(spec['mm_rule'])
+            mm = next((cam.manufacturingModels.item(i) for i in range(cam.manufacturingModels.count)
+                       if cam.manufacturingModels.item(i).name == want), None)
+        if mm is None:
+            _log(logger, f"HOLE CHAIN ({spec['name']}): its Manufacturing Model is not in the CAM tree -- skipped", "WARNING")
+            return None
+        if design is None:
+            design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+        return hole_chain.build_hole_chain(setup, mm, design, key, logger)
+    except Exception as e:
+        _log(logger, f"HOLE CHAIN ({spec['name']}): raised {type(e).__name__}: {e}", "WARNING")
+        return None
 
 
 def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger, design=None):
