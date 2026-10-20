@@ -346,6 +346,41 @@
       color: #b00020; font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0;
     }
     .op-remove-btn:hover { opacity: 0.7; }
+
+    /* ── Toolpaths list (cam-op-list.js): buttons, states and text only -- no input fields ───────────────────── */
+    .tp-card { background:#fff; border:1px solid var(--cad-border-standard); border-radius:var(--cad-radius-md); padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+    .tp-card:empty { display:none; }
+    .tp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .tp-title { font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--cad-text-main); }
+    .tp-sum { font-size:10px; color:var(--cad-text-muted); margin-top:2px; }
+    .tp-btn { font:600 11px Inter, system-ui, sans-serif; min-height:28px; padding:0 10px; border-radius:6px; border:1px solid var(--cad-border-standard); background:#fff; color:var(--cad-text-main); cursor:pointer; white-space:nowrap; }
+    .tp-btn.primary { background:var(--cad-accent-blue); border-color:var(--cad-accent-blue); color:#fff; }
+    .tp-btn.stop { background:#fff; border-color:#b00020; color:#b00020; }
+    .tp-btn[disabled] { opacity:.45; cursor:default; }
+    .tp-group { border-top:1px solid var(--cad-border-soft); padding-top:6px; display:flex; flex-direction:column; gap:4px; }
+    .tp-ghead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .tp-gname { font-size:11px; font-weight:700; color:var(--cad-text-main); }
+    .tp-gcount { font-size:10px; color:var(--cad-text-muted); font-weight:500; margin-left:6px; }
+    .tp-row { display:flex; align-items:center; gap:8px; padding:5px 6px; background:#f8f8f8; border:1px solid var(--cad-border-soft); border-radius:6px; min-height:40px; }
+    .tp-row.running { background:#eef5ff; border-color:#b9d4ff; }
+    .tp-row.supp { opacity:.62; }
+    .tp-ico { width:16px; height:16px; flex:none; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#fff; background:#c9c9c9; }
+    .tp-ico.valid { background:var(--cad-accent-green); } .tp-ico.stale, .tp-ico.warn { background:#d98a00; } .tp-ico.error { background:#b00020; }
+    .tp-ico.run { background:none; border:2px solid #b9d4ff; border-top-color:var(--cad-accent-blue); animation:tpspin 1s linear infinite; }
+    @keyframes tpspin { to { transform:rotate(360deg); } }
+    .tp-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+    .tp-name { font-size:11px; font-weight:600; color:var(--cad-text-main); white-space:nowrap; overflow:hidden; display:flex; align-items:center; gap:5px; }
+    .tp-nm { overflow:hidden; text-overflow:ellipsis; }
+    .tp-tag { font-size:8px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:1px 5px; border-radius:8px; background:#e8e8e8; color:#555; flex:none; }
+    .tp-tag.hand { background:#efe7ff; color:#5b3aa8; } .tp-tag.supp { background:#eee; color:#777; }
+    .tp-sub { font-size:10px; color:var(--cad-text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tp-sub b { font-weight:600; } .tp-sub .valid { color:var(--cad-accent-green); } .tp-sub .stale, .tp-sub .warn { color:#b76b00; } .tp-sub .error { color:#b00020; } .tp-sub .run { color:var(--cad-accent-blue); }
+    .tp-bar { height:3px; border-radius:2px; background:#dbe8ff; overflow:hidden; margin-top:3px; }
+    .tp-bar i { display:block; height:100%; width:35%; background:var(--cad-accent-blue); animation:tpbar 1.4s ease-in-out infinite; }
+    @keyframes tpbar { 0% { margin-left:-35%; } 100% { margin-left:100%; } }
+    .tp-run { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:#eef5ff; border:1px solid #b9d4ff; font-size:11px; color:#0a4280; }
+    .tp-runline { font-size:10px; opacity:.8; }
+    .tp-note { font-size:10px; color:#8a5a00; background:#fff8e8; border:1px solid #f1deb2; border-radius:6px; padding:5px 8px; }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -377,6 +412,10 @@
     <!-- ══════════════════════════ B-SPLINE tab ══════════════════════════ -->
     <div id="tab-bspline" class="cam-tab">
     <main class="cam-scroll">
+
+      <!-- The Toolpaths list: each operation by setup, its state and its own Generate (cam-op-list.js, painted from the
+           add-in's 'op_states'). Buttons, states and text only. -->
+      <section class="tp-card" id="toolpaths-card" aria-label="Toolpaths"></section>
 
       <!-- Each card carries:
            - data-setup: short key used by the existing status JS (stock,
@@ -708,6 +747,7 @@
 <script type="module" src="../../../b-spline-gen/html/core/fusion-memory-line.js"></script>
 <div id="fusion-memory-line" class="fusion-memory-line" hidden role="status" aria-live="polite"></div>
 <script type="module" src="./cam-setup-state.js"></script>
+<script type="module" src="./cam-op-list.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -737,6 +777,7 @@
       send('list_cam_templates');
       send('get_template_assignments');
       send('get_setup_states'); // the cards show the doc as it is (a palette opened on a built doc)
+      send('get_op_states');    // the Toolpaths list the same way
     } else if (currentMode === 'generic' && !bootedGeneric) {
       bootedGeneric = true;
       send('init');
@@ -808,6 +849,16 @@
   // a setup entry from the add-in (a report, or the doc as it is on open) -> its card, by the declared map
   // (cam-setup-state.js)
   // ...and the header line from the whole list (cam-setup-state.js headerSummary)
+  // ── The Toolpaths list (cam-op-list.js): painted from the add-in's 'op_states'; buttons, states and text only ───────
+  function paintOpList(payload) {
+    const root = document.getElementById('toolpaths-card');
+    if (root && window.camOpList) window.camOpList.renderOpList(root, payload, send);
+  }
+  // the list follows what Fred does in Fusion (an edited tool flips an op to 'out of date'): on focus and every few seconds
+  function pollOpStates() { if (!document.hidden && currentMode === 'bspline' && bootedBspline) send('get_op_states'); }
+  setInterval(pollOpStates, 4000);
+  window.addEventListener('focus', pollOpStates);
+
   function showSetupList(list) {
     (list || []).forEach(showSetupEntry);
     const head = document.getElementById('status-summary-bspline');
@@ -1564,16 +1615,18 @@
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
         if (action === 'fusion_memory') { if (window.paintFusionMemory) window.paintFusionMemory(payload); return; } // detection only
         if (action === 'setup_states') { showSetupList(payload.setups); return; }
+        if (action === 'op_states') { paintOpList(payload); return; }
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
         // name — gated on which tab actually triggered it, since the two
         // payload shapes are genuinely different (Builder: fixed SETUP_KEYS
         // dots; Studio: per-component state + setups_built count). ──────
-        // item 70: the work is over -- unless the toolpaths still follow (the card stays through them, Fred 2026-10-07)
-        if (action === 'report' && window.camLoading && !payload.toolpaths_pending) window.camLoading.end();
+        // item 70: the work is over (APPLY / BUILD generate nothing since 2026-10-20: the report closes the card)
+        if (action === 'report' && window.camLoading) window.camLoading.end();
         if (action === 'report') flushPageLogRing(); // item 101: the page's own trail, incl. lines lost mid-build
         if (action === 'report' && currentMode === 'bspline') {
+          send('get_op_states'); // a BUILD / APPLY changed the operations
           if (payload.msg) {
             const ok = payload.ok !== false;
             setStatus((ok ? '✓ ' : '✗ ') + payload.msg);

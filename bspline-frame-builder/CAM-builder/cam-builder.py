@@ -42,6 +42,8 @@ REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
 BUILD_STEP_EVENT_ID = 'CamBuilder_BuildStep'  # F35 item 70: one BUILD step per tick (_advance_build)
 AXISPICK_EVENT_ID = 'CamStudio_AxisPick'   # deferred viewport pick for WCS X/Y
+OPQUEUE_EVENT_ID  = 'CamBuilder_OpQueueTick'  # the Toolpaths list's generation queue: one non-blocking tick at a time
+OPQUEUE_TICK_S    = 0.5   # how often the next tick is scheduled while a generation runs
 
 PALETTE_NAME      = 'CAM'
 PALETTE_WIDTH     = 460
@@ -285,6 +287,12 @@ def _dispatch_palette_action(action, data):
             _do_get_template_assignments()
         elif action == 'get_setup_states':
             _do_get_setup_states()
+        elif action == 'get_op_states':
+            _do_get_op_states()
+        elif action == 'generate_ops':
+            _do_generate_ops(data)
+        elif action == 'stop_generate':
+            _do_stop_generate()
         elif action == 'set_template_assignments':
             _do_set_template_assignments(data)
         elif action == 'init':
@@ -1393,8 +1401,6 @@ def _run_apply_after_build():
 def _send_build_report(report):
     """The build's report to the palette, then the actions that waited for it, in order -- except an APPLY when the
     build has just applied (it would apply the templates a second time: doubled operations)."""
-    if (report.get('apply') or {}).get('ok'):
-        report['toolpaths_pending'] = True  # the card stays open through the toolpaths (_DeferredTPGenHandler)
     _log("CKPT DOGEN 5: sending build-phase report to HTML")
     _send_to_html('report', report)
     _log("CKPT DOGEN 6: report sent")
@@ -1501,23 +1507,152 @@ def _do_get_setup_states():
         _log_error("_do_get_setup_states\n" + traceback.format_exc())
 
 
+# ---------------------------------------------------------------------------
+# The Toolpaths list: each operation's state and its generation queue (cam_engine/op_states.py, op_queue.py)
+# ---------------------------------------------------------------------------
+
+_gen_queue = None
+
+
+def _engine_module(name):
+    """A cam_engine module, loading the engine once if it is not loaded yet. NOT _load_engine() on every call: that
+    wipes the modules and starts a new log session, and the list polls."""
+    if 'cam_engine' not in sys.modules:
+        _load_engine()
+    return importlib.import_module('cam_engine.' + name)
+
+
+def _get_queue():
+    """The one generation queue. Re-made (keeping its last times) when the engine was reloaded under it."""
+    global _gen_queue
+    oq = _engine_module('op_queue')
+    if _gen_queue is None or not isinstance(_gen_queue, oq.GenerationQueue):
+        old = _gen_queue
+        _gen_queue = oq.GenerationQueue()
+        if old is not None and not old.active:
+            _gen_queue.durations.update(old.durations)
+    return _gen_queue
+
+
+def _active_cam():
+    doc = adsk.core.Application.get().activeDocument
+    return (adsk.cam.CAM.cast(doc.products.itemByProductType('CAMProductType')) if doc else None), doc
+
+
+def _op_states_payload():
+    """{'setups': [{name, ops: [...]}], 'run': the queue's snapshot} for the Toolpaths list."""
+    st = _engine_module('op_states')
+    cam, doc = _active_cam()
+    design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+    return {'setups': st.snapshot(cam, design, st.addin_op_names()) if cam else [], 'run': _get_queue().snapshot()}
+
+
+def _do_get_op_states():
+    """The list opens, the palette gets focus, or the page's poll: the doc's operations as they are (read-only)."""
+    try:
+        _send_to_html('op_states', _op_states_payload())
+    except Exception:
+        _log_error("_do_get_op_states\n" + traceback.format_exc())
+
+
+def _do_generate_ops(data):
+    """A row's Generate (``targets`` [[setup, key]]) or Generate all missing (``scope`` 'missing', ``setup`` or None).
+    Only RECORDS the request: every Fusion call happens in the tick (generateToolpath crashes Fusion from an HTML handler)."""
+    try:
+        q = _get_queue()
+        ok = (q.request_missing(data.get('setup')) if data.get('scope') == 'missing'
+              else q.request_ops([(t[0], t[1]) for t in data.get('targets') or []]))
+        if ok:
+            _warm_pending[0] = True
+            adsk.core.Application.get().fireCustomEvent(OPQUEUE_EVENT_ID, '{}')
+        else:
+            _log("OP QUEUE: a generation is already running -- request refused (one at a time)")
+        _send_to_html('op_states', _op_states_payload())
+    except Exception:
+        _log_error("_do_generate_ops\n" + traceback.format_exc())
+
+
+def _do_stop_generate():
+    """Stop: recorded now, done in the next tick (cam.clearToolpath on the running op is a real cancel, measured)."""
+    try:
+        _get_queue().stop()
+        adsk.core.Application.get().fireCustomEvent(OPQUEUE_EVENT_ID, '{}')
+    except Exception:
+        _log_error("_do_stop_generate\n" + traceback.format_exc())
+
+
+_warm_pending = [False]
+
+
+def _warm_cam_engine():
+    """Fusion's CAM calculator needs to be awake before the first generateToolpath of a run (the deferred TPGen's
+    warm-up, kept): switch to the Manufacture workspace if it is not the active one and let Fusion settle a beat."""
+    import time
+    try:
+        ui = adsk.core.Application.get().userInterface
+        if ui.activeWorkspace.id != 'CAMEnvironment':
+            for k in range(ui.workspaces.count):
+                ws = ui.workspaces.item(k)
+                if ws.id == 'CAMEnvironment':
+                    ws.activate()
+                    _log("OP QUEUE: switched to the Manufacture workspace")
+                    break
+            end = time.time() + 1.5
+            while time.time() < end:
+                adsk.doEvents()
+                time.sleep(0.05)
+    except Exception as e:
+        _log(f"OP QUEUE: warm-up failed (non-fatal): {e}", "WARNING")
+
+
+def _schedule_queue_tick():
+    threading.Timer(OPQUEUE_TICK_S, lambda: adsk.core.Application.get().fireCustomEvent(OPQUEUE_EVENT_ID, '{}')).start()
+
+
+def _queue_tick():
+    """One NON-BLOCKING step of the queue, in the main loop (a CustomEvent): starts the next op or looks at the running
+    one, then tells the palette. The palette stays live through a long generation."""
+    q = _get_queue()
+    try:
+        cam, _doc = _active_cam()
+        if cam is None:
+            q.stop()
+        if _warm_pending[0]:
+            _warm_pending[0] = False
+            _warm_cam_engine()
+        for ev in q.tick(cam):
+            _log(f"OP QUEUE: {ev}")
+    except Exception:
+        _log_error("_queue_tick\n" + traceback.format_exc())
+        q.stop()
+    _send_to_html('op_states', _op_states_payload())
+    if q.active:
+        _schedule_queue_tick()
+
+
+class _OpQueueHandler(adsk.core.CustomEventHandler):
+    def notify(self, args):
+        try:
+            _queue_tick()
+        except Exception:
+            _log_error("op queue tick\n" + traceback.format_exc())
+
+
 def _do_apply_toolpaths():
     """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
     ok, msg = _apply_toolpaths()
-    _send_to_html('report', {'ok': ok, 'msg': msg, **({'toolpaths_pending': True} if ok else {})})
+    _send_to_html('report', {'ok': ok, 'msg': msg})
 
 
 def _apply_toolpaths(post_stages=True):
-    """Phase 2 of the split flow: apply templates + run toolpath gen. Returns (ok, msg); sends no report.
+    """Phase 2 of the split flow: apply the templates (and the declared operations). Returns (ok, msg); sends no report.
 
     Run by the APPLY TOOLPATHS button and, since H23 item 101 (Fred: "simply add the step in a splash load image"),
     at the end of every BUILD (its own declared step, camBuildApply -- post_stages=False: APPLY's own steps are not
     in the BUILD sequence). This function:
       1. Applies cloud templates to all existing setups (per SETUP_SPECS)
-      2. Fires the deferred TPGen event which:
-         - Captures/replays the Table Attach Point token
-         - Forces all tool numbers to 1
-         - Runs cam.generateAllToolpaths(False)
+    It generates NOTHING (Fred, 2026-10-20): toolpaths are generated from the Toolpaths list, one operation at a time
+    (cam_engine/op_queue.py).
     """
     try:
         _load_engine()
@@ -1551,19 +1686,9 @@ def _apply_toolpaths(post_stages=True):
         _log_error("APPLY TOOLPATHS: template apply raised\n" + traceback.format_exc())
         return False, 'Template apply raised — see log.'
 
-    # Kick off deferred toolpath generation (also handles Table Attach
-    # token capture/replay + tool renumber via the existing handler).
-    _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
-    if post_stages:
-        _post_cam_stage('camToolpaths')  # F35 item 70
-    fake_report = {
-        'ok': True,
-        'mode': 'bspline',
-        'setups': [{'name': cam.setups.item(i).name, 'ok': True}
-                   for i in range(cam.setups.count)],
-    }
-    _kick_off_toolpath_generation(fake_report)
-    return True, f'Templates applied to {n} setup(s). Toolpath generation in progress.'
+    # Fred (2026-10-20): APPLY only STAMPS the operations. Each toolpath is generated from the Toolpaths list (its own
+    # Generate button, or "Generate all missing"), one at a time -- nothing is generated here.
+    return True, f'Templates applied to {n} setup(s). Generate the toolpaths from the Toolpaths list.'
 
 
 # ---------------------------------------------------------------------------
@@ -2232,6 +2357,16 @@ def _register_refresh_event():
         _build_step_event.add(h_bs)
         _refresh_handlers.append(h_bs)
 
+        # The Toolpaths list's generation queue (same lifecycle): one non-blocking tick per event.
+        try:
+            app.unregisterCustomEvent(OPQUEUE_EVENT_ID)
+        except Exception:
+            pass
+        _opqueue_event = app.registerCustomEvent(OPQUEUE_EVENT_ID)
+        h_oq = _OpQueueHandler()
+        _opqueue_event.add(h_oq)
+        _refresh_handlers.append(h_oq)
+
         # Deferred WCS axis pick (GENERIC tab). Same lifecycle/context reason:
         # selectEntity must not run inside the HTML palette event handler.
         global _axispick_event
@@ -2450,6 +2585,10 @@ def stop(context):
             pass
         try:
             app.unregisterCustomEvent(AXISPICK_EVENT_ID)
+        except Exception:
+            pass
+        try:
+            app.unregisterCustomEvent(OPQUEUE_EVENT_ID)
         except Exception:
             pass
     _refresh_event = None

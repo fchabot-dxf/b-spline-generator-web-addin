@@ -2,8 +2,9 @@
 Fred (2026-10-07: "the load splash could list all the steps"; the steps "grow live"): the BUILD / APPLY loading card
 stays open through the toolpaths -- its last declared step is 'generating the toolpaths' (cam-stages.js camTpgen) and
 each LATER generation pass (item 95) joins the open card as its own step ("toolpaths, pass N"), sent with the change
-that declares it (cam_stage 'grow'). The toolpath report closes the card; the BUILD / APPLY report leaves it open
-(toolpaths_pending). The page side: tests/loading-steps-list.test.js + tests/cam-stages.test.js.
+that declares it (cam_stage 'grow'). Since 2026-10-20 that is the GENERIC tab's generation only: the B-spline BUILD /
+APPLY generate nothing (the Toolpaths list does), so their reports close the card. The page side:
+tests/loading-steps-list.test.js + tests/cam-stages.test.js.
 """
 import json
 import os
@@ -56,7 +57,10 @@ def test_a_grown_step_is_sent_and_an_undeclared_one_without_a_grow_is_not(monkey
     assert any('undeclared stage id' in m for m in logged)
 
 
-def test_the_build_and_apply_reports_keep_the_card_while_toolpaths_follow(monkeypatch):
+def test_the_build_and_apply_reports_close_the_card_because_nothing_is_generated_after_them(monkeypatch):
+    """Fred, 2026-10-20: APPLY only STAMPS the operations; toolpaths are generated from the Toolpaths list, one op at a
+    time. So no report keeps the card open (no toolpaths_pending), and APPLY never fires the deferred generation."""
+    import inspect
     cb, events = _addin(monkeypatch)
     cb._do_generate(confirmed=True)
     for _ in range(6):
@@ -66,10 +70,9 @@ def test_the_build_and_apply_reports_keep_the_card_while_toolpaths_follow(monkey
     cb._apply_after_build = None
     cb._send_build_report({'ok': True, 'msg': 'x', 'apply': {'ok': True, 'msg': 'Applied.'}})
     cb._send_build_report({'ok': True, 'msg': 'x', 'apply': {'ok': False, 'msg': 'No CAM product.'}})
-    assert [p.get('toolpaths_pending') for a, p in sent] == [True, None]
+    assert [p.get('toolpaths_pending') for a, p in sent] == [None, None]
     sent.clear()
     monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: (True, 'done'))
     cb._do_apply_toolpaths()
-    monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: (False, 'No setups.'))
-    cb._do_apply_toolpaths()
-    assert [p.get('toolpaths_pending') for a, p in sent] == [True, None]
+    assert sent == [('report', {'ok': True, 'msg': 'done'})]
+    assert '_kick_off_toolpath_generation' not in inspect.getsource(inspect.unwrap(cb.__dict__['_do_apply_toolpaths']))

@@ -18,7 +18,7 @@ beforeAll(async () => {
 afterEach(() => resetLoadingSignal());
 
 describe('every declared sequence lists its steps on a card', () => {
-  for (const seqId of ['apply', 'newSeed', 'projectLoad', 'sessionRestore', 'export', 'send', 'camBuild', 'camApply']) {
+  for (const seqId of ['apply', 'newSeed', 'projectLoad', 'sessionRestore', 'export', 'send', 'camBuild']  /* camApply is ONE step since 2026-10-20 (it only stamps): no step list */) {
     it(`${seqId}: each step in turn -- earlier ones done, this one current, the rest pending`, async () => {
       const stages = LOADING_SEQUENCES[seqId].stages;
       expect(stages.length).toBeGreaterThan(1);
@@ -40,11 +40,11 @@ describe('every declared sequence lists its steps on a card', () => {
     expect(currentLoadingStage()).toMatchObject({ id: 'bricks', text: 'Computing - laying bricks', surface: 'card' });
     expect(currentLoadingSteps()).toBe(null);
   });
-  it('CAM BUILD runs APPLY as its own 5th step (H23 item 101), the toolpaths after it', async () => {
-    expect(CAM_STAGES.sequences.camBuild).toEqual(['camWcs', 'camCleanup', 'camModels', 'camSetups', 'camBuildApply', 'camTpgen']);
+  it('CAM BUILD runs APPLY as its own 5th and LAST step (H23 item 101; no toolpaths after it since 2026-10-20)', async () => {
+    expect(CAM_STAGES.sequences.camBuild).toEqual(['camWcs', 'camCleanup', 'camModels', 'camSetups', 'camBuildApply']);
     beginLoadingSequence('camBuild');
     await holdLoadingStage('camBuildApply');
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: applying toolpaths, step 5 of 6');
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: applying toolpaths, step 5 of 5');
     expect(currentLoadingSteps().find((s) => s.id === 'camBuildApply')).toEqual({ id: 'camBuildApply', label: 'Fusion: applying toolpaths', state: 'current' });
   });
 });
@@ -54,7 +54,7 @@ describe('the list itself', () => {
     beginLoadingSequence('camBuild');
     await holdLoadingStage('camWcs');
     await holdLoadingStage('camModels');
-    expect(currentLoadingSteps().map((s) => s.state)).toEqual(['done', 'skipped', 'current', 'pending', 'pending', 'pending']);
+    expect(currentLoadingSteps().map((s) => s.state)).toEqual(['done', 'skipped', 'current', 'pending', 'pending']);
   });
   it('a pill shows no list, and no sequence = no list', async () => {
     await holdLoadingStage('bricks');
@@ -73,66 +73,32 @@ describe('the steps grow live', () => {
     await holdLoadingStage('camModels');
     expect(growLoadingSequence({ insertAfter: 'camSetups', step: { id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2' } })).toBe(true);
     expect(currentLoadingSteps().map((s) => `${s.id}:${s.state}`)).toEqual(
-      ['camWcs:skipped', 'camCleanup:skipped', 'camModels:current', 'camSetups:pending', 'camTpgenPass2:pending', 'camBuildApply:pending', 'camTpgen:pending']);
+      ['camWcs:skipped', 'camCleanup:skipped', 'camModels:current', 'camSetups:pending', 'camTpgenPass2:pending', 'camBuildApply:pending']);
     await holdLoadingStage('camTpgenPass2');
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 2, step 5 of 7');
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 2, step 5 of 6');
     expect(currentLoadingSteps()[4]).toEqual({ id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2', state: 'current' });
     expect(LOADING_SEQUENCES.camBuild.stages).not.toContain('camTpgenPass2');
     expect(LOADING_STAGES.camTpgenPass2).toBeTruthy();
   });
   it('a whole new list from the reporter replaces the list; the CAM stage report carries it (cam-loading.js)', async () => {
     window.camLoading.begin('camApply');
-    await window.camLoading.stage('camTemplates', { steps: ['camTemplates', 'camToolpaths', { id: 'camTpgenPass3', label: 'Fusion: toolpaths, pass 3' }] });
-    expect(currentLoadingSteps().map((s) => s.id)).toEqual(['camTemplates', 'camToolpaths', 'camTpgenPass3']);
-    expect(growLoadingSequence({ insertAfter: 'camToolpaths', step: 'camToolpaths' })).toBe(false); // already listed
+    await window.camLoading.stage('camTemplates', { steps: ['camTemplates', 'camBuildApply', { id: 'camTpgenPass3', label: 'Fusion: toolpaths, pass 3' }] });
+    expect(currentLoadingSteps().map((s) => s.id)).toEqual(['camTemplates', 'camBuildApply', 'camTpgenPass3']);
+    expect(growLoadingSequence({ insertAfter: 'camBuildApply', step: 'camBuildApply' })).toBe(false); // already listed
   });
   it('nothing grows without a running sequence', () => {
     expect(growLoadingSequence({ steps: ['camWcs'] })).toBe(false);
   });
 });
 
-describe('the CAM card stays through the toolpaths (Fred, 2026-10-07)', () => {
-  it('the toolpath step ends BUILD and APPLY; each later pass grows the open card after the previous step', async () => {
-    expect(CAM_STAGES.sequences.camBuild.at(-1)).toBe('camTpgen');
-    expect(CAM_STAGES.sequences.camApply.at(-1)).toBe('camTpgen');
-    window.camLoading.begin('camBuild');
-    await window.camLoading.stage('camTpgen');
-    await window.camLoading.stage('camTpgenPass2', { insertAfter: 'camTpgen', step: { id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2' } });
-    await window.camLoading.stage('camTpgenPass3', { insertAfter: 'camTpgenPass2', step: { id: 'camTpgenPass3', label: 'Fusion: toolpaths, pass 3' } });
-    expect(currentLoadingSteps().slice(-3).map((s) => `${s.label}:${s.state}`)).toEqual(
-      ['Fusion: generating the toolpaths:done', 'Fusion: toolpaths, pass 2:done', 'Fusion: toolpaths, pass 3:current']);
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 3, step 8 of 8');
-  });
-});
-
-
-describe('the spinner sits on the working step (Fred 2026-10-07: "make the spinner on the working item")', () => {
-  const card = () => document.getElementById('loading-stage');
-  const spinners = () => [...card().querySelectorAll('.loading-stage-spinner')];
-  it('on a card with a list: ONE spinner, inside the current line (no dot there), never in the headline', async () => {
-    beginLoadingSequence('camBuild');
-    for (const id of ['camWcs', 'camModels', 'camSetups']) {
-      await holdLoadingStage(id);
-      expect(spinners()).toHaveLength(1);
-      const li = spinners()[0].parentElement;
-      expect(li.tagName).toBe('LI');
-      expect(li.dataset.stage).toBe(id);
-      expect(li.dataset.state).toBe('current');
-      expect(li.hasAttribute('data-spinner')).toBe(true);
-      expect(li.textContent).toBe(stepLabel(id)); // the label is untouched (the spinner has no text)
-      expect(card().querySelectorAll('li[data-spinner]')).toHaveLength(1); // done / pending lines keep their marks
-      expect(card().querySelector('.loading-stage-text').textContent).toBe(currentLoadingStage().text);
+describe('BUILD and APPLY generate nothing (Fred, 2026-10-20): their cards end at the last stamping step', () => {
+  it('neither sequence names a toolpath step; the Toolpaths list generates, op by op', () => {
+    expect(CAM_STAGES.sequences.camBuild.at(-1)).toBe('camBuildApply');
+    expect(CAM_STAGES.sequences.camApply).toEqual(['camTemplates']);
+    for (const seq of Object.values(CAM_STAGES.sequences)) {
+      expect(seq).not.toContain('camTpgen');
+      expect(seq).not.toContain('camToolpaths');
     }
-  });
-  it('a pill, and a card with no list, keep the spinner at the start of the card', async () => {
-    beginLoadingSequence('camBuild');
-    await holdLoadingStage('camModels');
-    resetLoadingSignal();
-    await holdLoadingStage('bricks'); // a pill
-    expect(spinners()).toHaveLength(1);
-    expect(card().firstElementChild).toBe(spinners()[0]);
-    resetLoadingSignal();
-    await holdLoadingStage('cloudLoad'); // a card outside any sequence
-    expect(card().firstElementChild).toBe(spinners()[0]);
+    expect(CAM_STAGES.stages.map((x) => x.id)).not.toContain('camToolpaths');
   });
 });

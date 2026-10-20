@@ -65,7 +65,7 @@ HOLE_CHAINS = {
 }
 
 # strategies a hand-added hole pocket can carry (the strategy parameter reads 'pocket_new', operation.strategy 'pocket_clearing')
-_POCKET_STRATEGIES = ('pocket_clearing', 'pocket_new')
+POCKET_STRATEGIES = ('pocket_clearing', 'pocket_new')
 
 
 def tool_json(tool, dia_in, name):
@@ -229,7 +229,7 @@ def _build(setup, mm, design, chain, out, logger):
     ops = op_ledger._ops(setup)
     mine = [o for o in ops if op_ledger.op_key(o) in set((op_ledger.load(design, setup_name) or {}).get(leaf, []))]
     foreign = [o for o in op_ledger.foreign_operations(design, setup, setup_name)
-               if getattr(o, 'strategy', None) in _POCKET_STRATEGIES]
+               if getattr(o, 'strategy', None) in POCKET_STRATEGIES]
     if foreign:
         _log(logger, f"HOLE CHAIN ({setup_name}): hand-added pocket operation(s) {[o.name for o in foreign]} left as they "
              f"are -- they may cut the holes a second time (suppress them if the chain replaces them)")

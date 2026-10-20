@@ -121,6 +121,23 @@ INFO line names them). A CAM expression cannot read a design user parameter (liv
 the stock to leave is a literal on each op. After `syncManufacturingModel()` in a scratch document even fresh ops crashed
 the generator (0xffffffff): re-import before testing again.
 
+## Toolpaths list (one operation at a time)
+
+BUILD / APPLY only STAMP the operations (templates + the hole chain); they generate nothing (Fred, 2026-10-20). The CAM
+palette's Toolpaths card (`ui/html/cam-op-list.js`, painted from the add-in's `op_states`) lists every operation by setup,
+in order, with its tool, its state and its own Generate / Regenerate / Retry / Stop button, plus "Generate missing" per
+setup and "Generate all missing". Buttons, states and text only -- no input fields. Hand-added operations (not in the
+ledger) are listed, tagged and can be generated, never changed or deleted; suppressed ones are skipped.
+- States are read from Fusion (`cam_engine/op_states.py`): suppressed / error / none / stale (`hasToolpath` but not
+  `isToolpathValid`: Fred edited a tool or setting -- Fusion flips it at once) / warn / valid. Folders are walked
+  (`setup.allOperations`).
+- `cam_engine/op_queue.py`: ONE op at a time. The palette's actions only record the request; a CustomEvent tick
+  (`OPQUEUE_EVENT_ID`, every 0.5 s while active) does every Fusion call and never blocks, so the palette stays live through a
+  20-minute op. Progress = `op.generatingProgress` ('58.5%'); Stop = `cam.clearToolpath(op)` on the running op (a real
+  cancel, ~1 s, measured); the next op waits until `op.isGenerating` drops (it outlives the future); an op that never
+  finishes is cancelled after `PER_OP_TIMEOUT_S` and the queue stops there; ops left empty without an error are retried once
+  (H23 item 95). The palette polls `get_op_states` on boot, focus and every 4 s, and after each BUILD / APPLY report.
+
 ## Generic mode — N-sided indexed machining
 
 The generic dispatch (`build_setups_generic` in `setup_builder.py`,
