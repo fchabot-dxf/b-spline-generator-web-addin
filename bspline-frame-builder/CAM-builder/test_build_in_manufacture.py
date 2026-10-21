@@ -34,7 +34,6 @@ def _run(eng, monkeypatch, acquire_ok):
     doc = types.SimpleNamespace(products=types.SimpleNamespace(itemByProductType=lambda t: des))
     eng.adsk.fusion.Design = type('Design', (), {'cast': staticmethod(lambda x: x)})
     app = types.SimpleNamespace(activeDocument=doc)
-    monkeypatch.setattr(sb, 'ensure_wcs_sketches', lambda d, l=None: seen.append('wcs'))
     monkeypatch.setattr(sb, 'find_reusable_build', lambda cam, names, logger=None: None)
     monkeypatch.setattr(co, '_cleanup_previous_build', lambda cam, logger: seen.append('cleanup'))
     monkeypatch.setattr(mm, 'build_all_mms', lambda cam, d, c, l: seen.append('build_mms') or {r: object() for r in mm.MM_RULES})

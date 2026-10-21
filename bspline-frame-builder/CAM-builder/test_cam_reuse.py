@@ -203,7 +203,6 @@ def _run_coordinator(eng, monkeypatch, reuse):
     doc = types.SimpleNamespace(products=types.SimpleNamespace(itemByProductType=lambda t: des))
     eng.adsk.fusion.Design = type('Design', (), {'cast': staticmethod(lambda x: x)})
     app = types.SimpleNamespace(activeDocument=doc)
-    monkeypatch.setattr(sb, 'ensure_wcs_sketches', lambda d, l=None: seen.append('wcs'))
     monkeypatch.setattr(sb, 'find_reusable_build', lambda cam, names, logger=None: reuse)
     monkeypatch.setattr(co, '_cleanup_previous_build', lambda cam, logger: seen.append('cleanup'))
     monkeypatch.setattr(mm, 'build_all_mms', lambda cam, d, c, l: seen.append('build_mms') or {r: object() for r in mm.MM_RULES})
@@ -217,9 +216,9 @@ def _run_coordinator(eng, monkeypatch, reuse):
 def test_coordinator_reuses_in_place(eng, monkeypatch):
     reuse = {'mms': {r: object() for r in eng.mm.MM_RULES}, 'setups': {}}
     rep, seen = _run_coordinator(eng, monkeypatch, reuse)
-    assert seen == ['wcs', 'in_place'] and rep['reused'] is True and rep['ok'] is True
+    assert seen == ['in_place'] and rep['reused'] is True and rep['ok'] is True
 
 
 def test_coordinator_falls_back_to_the_full_recreate(eng, monkeypatch):
     rep, seen = _run_coordinator(eng, monkeypatch, None)
-    assert seen == ['wcs', 'cleanup', 'build_mms', 'build_setups'] and rep['reused'] is False and rep['ok'] is True
+    assert seen == ['cleanup', 'build_mms', 'build_setups'] and rep['reused'] is False and rep['ok'] is True
