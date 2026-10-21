@@ -63,7 +63,7 @@ def _drain(steps, seen):
 def test_the_pipeline_pauses_at_each_declared_step_before_its_work(eng, monkeypatch):
     seen_steps = []
     rep, seen = _run_coordinator_steps(eng, monkeypatch, None, seen_steps)
-    assert seen_steps == ['step:camWcs', 'wcs', 'step:camCleanup', 'cleanup', 'step:camModels', 'build_mms',
+    assert seen_steps == ['step:camWcs', 'step:camCleanup', 'cleanup', 'step:camModels', 'build_mms',
                           'step:camSetups', 'build_setups']
     assert rep['ok'] is True
 
@@ -71,7 +71,7 @@ def test_the_pipeline_pauses_at_each_declared_step_before_its_work(eng, monkeypa
 def test_a_reused_build_pauses_at_its_two_steps(eng, monkeypatch):
     seen_steps = []
     rep, _ = _run_coordinator_steps(eng, monkeypatch, {'mms': {r: object() for r in eng.mm.MM_RULES}, 'setups': {}}, seen_steps)
-    assert seen_steps == ['step:camWcs', 'wcs', 'step:camSetups', 'in_place'] and rep['reused'] is True
+    assert seen_steps == ['step:camWcs', 'step:camSetups', 'in_place'] and rep['reused'] is True
 
 
 def _run_coordinator_steps(eng, monkeypatch, reuse, out):
@@ -84,7 +84,6 @@ def _run_coordinator_steps(eng, monkeypatch, reuse, out):
     doc = _t.SimpleNamespace(products=_t.SimpleNamespace(itemByProductType=lambda t: des))
     eng.adsk.fusion.Design = type('Design', (), {'cast': staticmethod(lambda x: x)})
     app = _t.SimpleNamespace(activeDocument=doc)
-    monkeypatch.setattr(sb, 'ensure_wcs_sketches', lambda d, l=None: out.append('wcs'))
     monkeypatch.setattr(sb, 'find_reusable_build', lambda cam, names, logger=None: reuse)
     monkeypatch.setattr(co, '_cleanup_previous_build', lambda cam, logger: out.append('cleanup'))
     monkeypatch.setattr(mm, 'build_all_mms', lambda cam, d, c, l: out.append('build_mms') or {r: object() for r in mm.MM_RULES})
@@ -97,7 +96,7 @@ def _run_coordinator_steps(eng, monkeypatch, reuse, out):
 
 def test_run_still_runs_the_whole_pipeline_in_one_call_with_on_stage(eng, monkeypatch):
     rep, seen = _run_coordinator(eng, monkeypatch, None)
-    assert seen == ['wcs', 'cleanup', 'build_mms', 'build_setups'] and rep['ok'] is True
+    assert seen == ['cleanup', 'build_mms', 'build_setups'] and rep['ok'] is True
 
 
 class TestTheDeferredBuild:

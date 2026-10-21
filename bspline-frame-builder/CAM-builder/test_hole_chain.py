@@ -367,4 +367,6 @@ def test_the_other_setup_specs_and_the_back_templates_are_unchanged(eng):
     assert hashlib.sha256(blob.encode()).hexdigest() == PIN
 
 
-PIN = 'e3ab1e09aa39b6c6e6b9d9b4dd16b89e471160d2778f776f63d97c561abf1a60'
+# Re-pinned 2026-10-21 for ONE declared change: 'wcs_point' ('back' / 'flipped') left Back and Top (the origin is Fusion's stock box
+# point 'top 1', no helper sketch). Verified: re-adding just those two keys reproduces the old hash e3ab1e09aa39...
+PIN = '68af41144357f9b5724f29ce033675598d077f4cfff8344aa40a2d229d26dcb7'

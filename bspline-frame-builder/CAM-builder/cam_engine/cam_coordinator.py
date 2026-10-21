@@ -327,13 +327,6 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
     else:
         # ── B-spline: the declared MM_RULES / SETUP_SPECS pipeline ─────────────
 
-        # H23 item 82: the shared WCS points go into the SOURCE design (moved in place on a
-        # later BUILD), so every MM carries its own copy for its setups to bind.
-        try:
-            setup_builder.ensure_wcs_sketches(design, logger)
-        except Exception as e:
-            _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
-
         # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + setup, by its declared name,
         # present and valid) and re-applies the declared configuration in place (~1 s,
         # measured); otherwise today's full recreate (cleanup, then MMs, then setups).

@@ -380,6 +380,15 @@
     @keyframes tpbar { 0% { margin-left:-35%; } 100% { margin-left:100%; } }
     .tp-run { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:#eef5ff; border:1px solid #b9d4ff; font-size:11px; color:#0a4280; }
     .tp-runline { font-size:10px; opacity:.8; }
+    /* ── Stock card (cam-stock.js): exactly three number fields + Clear, nothing else ───────────────────────── */
+    .stk-fields { display:flex; gap:8px; align-items:flex-end; }
+    .stk-field { display:flex; flex-direction:column; gap:2px; font-size:9px; font-weight:700; color:var(--cad-text-muted); letter-spacing:.04em; }
+    .stk-field input { width:64px; height:28px; font-size:12px; border:1px solid var(--cad-border-standard); border-radius:4px; padding:0 6px; }
+    .stk-field input.warn { border-color:#d98a00; }
+    .stk-status { font-size:11px; color:var(--cad-text-muted); font-weight:600; }
+    .stk-status.set { color:#0a4280; }
+    .stk-clear { height:28px; font-size:11px; padding:0 10px; }
+    .stk-note { font-size:10px; color:var(--cad-text-muted); }
     .tp-note { font-size:10px; color:#8a5a00; background:#fff8e8; border:1px solid #f1deb2; border-radius:6px; padding:5px 8px; }
   </style>
 </head>
@@ -415,6 +424,21 @@
 
       <!-- The Toolpaths list: each operation by setup, its state and its own Generate (cam-op-list.js, painted from the
            add-in's 'op_states'). Buttons, states and text only. -->
+      <!-- The Stock card (cam-stock.js): the B-spline setups' stock box, X / Y / Z in inches. Empty = default; filled = the
+           next BUILD / APPLY writes it. The one exception to "no input fields": exactly these three (+ Clear). -->
+      <section class="cam-card" id="stock-card" aria-label="Stock">
+        <div class="cam-card-head"><div class="cam-card-title">Stock &mdash; B-spline setups</div><span style="font-size:10px;color:var(--cad-text-muted);">inches</span></div>
+        <div class="stk-fields">
+          <label class="stk-field">X<input type="number" id="bs-stock-x" step="0.01" min="0" placeholder="X"></label>
+          <label class="stk-field">Y<input type="number" id="bs-stock-y" step="0.01" min="0" placeholder="Y"></label>
+          <label class="stk-field">Z<input type="number" id="bs-stock-z" step="0.01" min="0" placeholder="Z"></label>
+          <button type="button" class="cad-btn stk-clear" id="bs-stock-clear">Clear</button>
+        </div>
+        <div class="stk-status" id="bs-stock-status"></div>
+        <div class="tp-note" id="bs-stock-warn" hidden></div>
+        <div class="stk-note" id="bs-stock-note"></div>
+      </section>
+
       <section class="tp-card" id="toolpaths-card" aria-label="Toolpaths"></section>
 
       <!-- Each card carries:
@@ -748,6 +772,7 @@
 <div id="fusion-memory-line" class="fusion-memory-line" hidden role="status" aria-live="polite"></div>
 <script type="module" src="./cam-setup-state.js"></script>
 <script type="module" src="./cam-op-list.js"></script>
+<script type="module" src="./cam-stock.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -759,6 +784,8 @@
   let bootedGeneric = false;
 
   function switchMode(mode) {
+    // leaving a tab takes its ghost out of the viewport (the Stock card's box, the GENERIC tab's stock + triad)
+    if (mode !== currentMode && window.adsk && window.adsk.fusionSendData) send('preview_clear');
     currentMode = mode;
     document.getElementById('tab-bspline').classList.toggle('hidden', mode !== 'bspline');
     document.getElementById('tab-generic').classList.toggle('hidden', mode !== 'generic');
@@ -778,6 +805,7 @@
       send('get_template_assignments');
       send('get_setup_states'); // the cards show the doc as it is (a palette opened on a built doc)
       send('get_op_states');    // the Toolpaths list the same way
+      send('get_stock');        // the Stock card: the saved box, the default and what the part needs
     } else if (currentMode === 'generic' && !bootedGeneric) {
       bootedGeneric = true;
       send('init');
@@ -849,6 +877,52 @@
   // a setup entry from the add-in (a report, or the doc as it is on open) -> its card, by the declared map
   // (cam-setup-state.js)
   // ...and the header line from the whole list (cam-setup-state.js headerSummary)
+  // ── The Stock card (cam-stock.js): three number fields, a status line, a detection-only warning ────────────────────
+  let stockNeeds = null, stockTimer = null;
+  const stockEls = () => ({ x: document.getElementById('bs-stock-x'), y: document.getElementById('bs-stock-y'), z: document.getElementById('bs-stock-z') });
+  function stockRead() { const f = stockEls(); return window.camStock.readFields(f.x.value, f.y.value, f.z.value); }
+  function stockPaint() {
+    if (!window.camStock) return;
+    const st = stockRead(), f = stockEls();
+    const line = document.getElementById('bs-stock-status');
+    line.textContent = window.camStock.statusLine(st);
+    line.classList.toggle('set', st.kind === 'box');
+    const warn = window.camStock.warningText(st, stockNeeds);
+    const w = document.getElementById('bs-stock-warn');
+    w.textContent = warn; w.hidden = !warn;
+    for (const k of ['x', 'y', 'z']) f[k].classList.toggle('warn', !!warn);
+    document.getElementById('bs-stock-note').textContent = window.camStock.STOCK_NOTE;
+  }
+  // typing: paint at once, then (debounced) save the box and redraw the preview in Fusion; all three empty clears both
+  function stockEdited() {
+    stockPaint();
+    clearTimeout(stockTimer);
+    stockTimer = setTimeout(() => {
+      const st = stockRead(), req = window.camStock.requestFor(st);
+      if (!req) return;
+      send(req.action, req.data);
+      send('preview_stock_bspline', { dims: st.kind === 'box' ? st.dims : null });
+    }, 250);
+  }
+  function stockInfo(info) {
+    stockNeeds = info.needs || null;
+    const f = stockEls();
+    if (document.activeElement !== f.x && document.activeElement !== f.y && document.activeElement !== f.z) {
+      const d = info.dims || ['', '', ''];
+      f.x.value = d[0]; f.y.value = d[1]; f.z.value = d[2];
+    }
+    stockPaint();
+  }
+  (function bindStockCard() {
+    const f = stockEls();
+    if (!f.x) return;
+    for (const k of ['x', 'y', 'z']) f[k].addEventListener('input', stockEdited);
+    document.getElementById('bs-stock-clear').addEventListener('click', () => { f.x.value = f.y.value = f.z.value = ''; stockEdited(); });
+    // the card paints its default line at once; the module loads as a deferred script, so wait for it
+    const first = () => (window.camStock ? stockPaint() : setTimeout(first, 50));
+    first();
+  })();
+
   // ── The Toolpaths list (cam-op-list.js): painted from the add-in's 'op_states'; buttons, states and text only ───────
   function paintOpList(payload) {
     const root = document.getElementById('toolpaths-card');
@@ -891,6 +965,9 @@
   function runPreview() {
     setStatus('preview · classifying bodies...');
     send('preview_bodies');
+    // the stock box too: the typed one, or the default when the card is empty (the PREVIEW button shows what a BUILD would use)
+    const st = window.camStock ? stockRead() : null;
+    send('preview_stock_bspline', { dims: st && st.kind === 'box' ? st.dims : null, showDefault: true });
   }
 
   // item 70: the declared BUILD / APPLY steps on the loading card, painted BEFORE the request leaves (cam-loading.js)
@@ -1616,6 +1693,7 @@
         if (action === 'fusion_memory') { if (window.paintFusionMemory) window.paintFusionMemory(payload); return; } // detection only
         if (action === 'setup_states') { showSetupList(payload.setups); return; }
         if (action === 'op_states') { paintOpList(payload); return; }
+        if (action === 'stock_info') { stockInfo(payload); return; }
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event

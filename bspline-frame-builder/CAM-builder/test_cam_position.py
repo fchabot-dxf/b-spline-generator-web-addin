@@ -97,27 +97,30 @@ class _Op:
 
 
 class _Vec:
-    def __init__(self, z):
-        self.z = z
+    def __init__(self, x=0.0, y=0.0, z=0.0):
+        self.x, self.y, self.z = x, y, z
 
 
 class _Frame:
-    """workCoordinateSystem stand-in: only the resolved Z axis direction matters here."""
-    def __init__(self, z_up):
-        self._z = _Vec(1.0 if z_up else -1.0)
+    """workCoordinateSystem stand-in: the resolved axis directions. ``swap_xy`` = B-spline Back's frame (the setup's X is the
+    MODEL's Y and its Y the MODEL's X, measured live); otherwise X/Y are the model's."""
+    def __init__(self, z_up, swap_xy=False):
+        self._x = _Vec(y=1.0) if swap_xy else _Vec(x=1.0)
+        self._y = _Vec(x=1.0) if swap_xy else _Vec(y=1.0)
+        self._z = _Vec(z=1.0 if z_up else -1.0)
 
     def getAsCoordinateSystem(self):
-        return (None, None, None, self._z)
+        return (None, self._x, self._y, self._z)
 
 
 class _Setup:
-    def __init__(self, ops=(), z_up=True):
+    def __init__(self, ops=(), z_up=True, swap_xy=False):
         self.name = 'S'
         self.stockMode = None
         self.stockSolids = None
         self.parameters = _Params()
         self.operations = _Coll(ops)
-        self.workCoordinateSystem = _Frame(z_up)
+        self.workCoordinateSystem = _Frame(z_up, swap_xy)
 
 
 class _SketchPoint:
@@ -180,11 +183,6 @@ def test_stock_box_and_points_around_the_real_7x9_clean_panel(eng):
     assert [round(v / IN, 4) for v in box['y']] == [-5.0, 5.0]
     assert [round(v / IN, 4) for v in box['z']] == [0.032, 2.032]
     assert [round(v / IN, 4) for v in p.stock_dims_cm(box)] == [8.0, 10.0, 2.0]
-    # = where today's stock box point 'top 1' lands on each side once the stock sits on the panel bottom
-    # (measured live, real 7x9 Send: Back (x min, y min, its frame top = world bottom -- Back's WCS Z
-    # points DOWN), Top (x max, y min, world top)).
-    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'back')] == [-4.0, -5.0, 0.032]
-    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'flipped')] == [4.0, -5.0, 2.032]
 
 
 # ---------------------------------------------------------------------------
@@ -203,10 +201,13 @@ def test_back_and_top_share_the_declared_position(eng):
     assert back['mm_rule'] == top['mm_rule'] == 'bspline_set'
     assert top['stock_intent'] == 'from_prev_setup' and top['continue_machining'] is True
     assert back['stock_box'] == 'stock'
-    assert (back['wcs_point'], top['wcs_point']) == ('back', 'flipped')
+    # the origin: Fusion's own stock box point 'top 1', the SAME box point and no sketch point, on both sides
     for s in (back, top):
-        assert s['wcs_point'] in eng.pos.CAM_POSITION['wcs_points']
+        assert 'wcs_point' not in s
+        assert (s['wcs_origin'], s['box_point']) == ('box_point', 'top 1')
         assert s['op_heights'] is True
+    # ONE shared stock box: only Back writes a box (the flipped setup takes the previous setup's stock): neither gets its own
+    assert back['stock_box'] == 'stock' and 'stock_box' not in top and top['stock_intent'] == 'from_prev_setup'
 
 
 def test_no_previous_setup_stock_across_mms(eng):
@@ -272,18 +273,14 @@ def test_stock_box_sits_on_the_world_bottom_in_either_frame(eng, z_up, z_mode):
     assert w['job_stockFixedXOffset'] == w['job_stockFixedYOffset'] == w['job_stockFixedZOffset'] == '0 in'
 
 
-def test_wcs_binds_this_mms_own_copy_of_the_declared_point(eng):
-    s = _Setup()
-    assert eng.sb._bind_wcs_point(s, _MM('mmA'), 'flipped', 'S', None)
-    assert s.parameters.itemByName('wcs_origin_mode').expression == "'point'"
-    bound = s.parameters.itemByName('wcs_origin_point').value.value
-    assert bound == [('proxy', 'mmA', (1.0, 2.0, 3.0), 'mmA:wrapper')]
-
-
-def test_wcs_point_missing_is_reported_not_faked(eng):
-    s = _Setup()
-    assert not eng.sb._bind_wcs_point(s, _MM('mmA', sides=('back',)), 'flipped', 'S', None)
-    assert s.parameters.itemByName('wcs_origin_mode').expression is None
+def test_no_helper_sketch_machinery_remains(eng):
+    """Fred 2026-10-20: the WCS origin is Fusion's own stock box point, no sketch. The helper sketch points, their binding and the
+    declared points are gone (measured: 'top 1' on the shared box = the old points to 0.0000 mm, Back and flipped)."""
+    for name in ('ensure_wcs_sketches', '_bind_wcs_point', '_find_wcs_point', '_source_panel_bbox_cm'):
+        assert not hasattr(eng.sb, name), name
+    assert not hasattr(eng.pos, 'wcs_point_cm') and not hasattr(eng.pos, 'WCS_SKETCH_NAME')
+    assert 'wcs_points' not in eng.pos.CAM_POSITION
+    assert not hasattr(eng.co.setup_builder, 'ensure_wcs_sketches')
 
 
 def test_every_fixed_box_setup_writes_a_declared_box(eng):

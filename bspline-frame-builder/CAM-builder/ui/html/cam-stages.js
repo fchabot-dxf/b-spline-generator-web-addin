@@ -4,7 +4,7 @@
 // stay pure JSON. The palette shows "Waiting - Fusion: <label>, step i of n" on the shared loading card.
 export default {
   "stages": [
-    { "id": "camWcs", "label": "preparing the stock sketches" },
+    { "id": "camWcs", "label": "preparing the Manufacture workspace" },
     { "id": "camCleanup", "label": "clearing the old setups" },
     { "id": "camModels", "label": "building the Manufacturing Models" },
     { "id": "camSetups", "label": "building the Setups" },

@@ -11,8 +11,10 @@ model bottom) and one declared WCS point, both read back identically, also under
               z_in tall, its bottom on the model's world bottom (bottom + outline are the same for Clean
               and Stamped).
               The MM-Stock placeholder is built from the same two numbers.
-  wcs_points  the shared WCS origins, as corners of that box ('min'/'max' per axis; 'z' is 'top'/'bottom'),
-              one per setup side; a setup names its side with spec['wcs_point'].
+  origin      Fusion's own STOCK BOX POINT 'top 1' on that one box (spec['wcs_origin'] / ['box_point']), for BOTH sides:
+              measured 0.0000 mm from the old shared helper points (Back and flipped), follows the box when the model
+              changes, and needs no sketch. The two setups must keep sharing ONE box (the flipped one takes the previous
+              setup's stock): a box of their own put them 0.25 in apart (item 82's measurement).
   op_heights  written on every 3D operation (op_heights['strategies']) of a setup that declares
               spec['op_heights'] = True: Top = Stock top, Bottom = Stock bottom + bottom_offset (Fusion's
               default bottom offset is verticalStockToLeave, 0.5 mm -- measured -- so it is stated here).
@@ -41,14 +43,6 @@ CAM_POSITION = {
         'xy_mode':      'center',
         'z_align':      'world_bottom',
     },
-    # Each side's point = where today's stock box point 'top 1' lands on that side once the stock sits on
-    # the panel bottom (measured live, real 7x9 Send, item 82 acceptance): Back -> x min, y min, its frame
-    # top = the world BOTTOM; Top (flipped) -> x max, y min, the world top. Same convention as before,
-    # now one declared point per side instead of a per-setup stock corner.
-    'wcs_points': {
-        'back':    {'x': 'min', 'y': 'min', 'z': 'bottom'},
-        'flipped': {'x': 'max', 'y': 'min', 'z': 'top'},
-    },
     'op_heights': {
         'top':           "'from stock top'",
         'bottom':        "'from stock bottom'",
@@ -63,9 +57,6 @@ CAM_POSITION = {
                        'horizontal', 'blend'),
     },
 }
-
-# Name of the hidden sketch holding the WCS points (one sketch per z level is not needed: the points carry z).
-WCS_SKETCH_NAME = '__cam_wcs'
 
 IN_CM = 2.54
 
@@ -84,13 +75,6 @@ def stock_box_cm(panel_min_cm, panel_max_cm, position=CAM_POSITION):
         'y': (y0 - half, y1 + half),
         'z': (z0, z0 + st['z_in'] * IN_CM),
     }
-
-
-def wcs_point_cm(box, side, position=CAM_POSITION):
-    """(x, y, z) in cm of the declared WCS point for a setup side ('back' / 'flipped') on a stock box."""
-    corner = position['wcs_points'][side]
-    pick = {'min': 0, 'max': 1, 'bottom': 0, 'top': 1}
-    return tuple(box[axis][pick[corner[axis]]] for axis in ('x', 'y', 'z'))
 
 
 def stock_dims_cm(box):

@@ -37,7 +37,7 @@ describe('the CAM steps, declared once', () => {
 describe('window.camLoading (the palette calls it)', () => {
   it('begin paints the first step of the sequence; stage moves on; end closes it', async () => {
     await window.camLoading.begin('camBuild');
-    expect(currentLoadingStage()).toEqual({ id: 'camWcs', text: 'Waiting - Fusion: preparing the stock sketches, step 1 of 5', surface: 'card' });
+    expect(currentLoadingStage()).toEqual({ id: 'camWcs', text: 'Waiting - Fusion: preparing the Manufacture workspace, step 1 of 5', surface: 'card' });
     await window.camLoading.stage('camSetups');
     expect(currentLoadingStage().text).toBe('Waiting - Fusion: building the Setups, step 4 of 5');
     window.camLoading.end();

@@ -293,6 +293,12 @@ def _dispatch_palette_action(action, data):
             _do_generate_ops(data)
         elif action == 'stop_generate':
             _do_stop_generate()
+        elif action == 'get_stock':
+            _do_get_stock()
+        elif action == 'set_stock':
+            _do_set_stock(data)
+        elif action == 'preview_stock_bspline':
+            _do_preview_stock_bspline(data)
         elif action == 'set_template_assignments':
             _do_set_template_assignments(data)
         elif action == 'init':
@@ -553,6 +559,43 @@ def _resolve_token_dir(design, token):
     return None
 
 
+def _stock_box_corners(center, half):
+    """The 8 corners (cm) of a box: ``center`` (x, y, z) and ``half`` sizes (hx, hy, hz). Pure."""
+    cx, cy, cz = center
+    hx, hy, hz = half
+    return [(cx - hx, cy - hy, cz - hz), (cx + hx, cy - hy, cz - hz),
+            (cx + hx, cy + hy, cz - hz), (cx - hx, cy + hy, cz - hz),
+            (cx - hx, cy - hy, cz + hz), (cx + hx, cy - hy, cz + hz),
+            (cx + hx, cy + hy, cz + hz), (cx - hx, cy + hy, cz + hz)]
+
+
+def _draw_stock_box(grp, C):
+    """Draw the stock ghost into custom-graphics group ``grp``: a translucent pale-yellow mesh (like Fusion's native stock
+    display) with crisp edges over it. The ONE drawing both tabs use (the GENERIC tab's preview and the B-SPLINE Stock card)."""
+    def _eff(r, g, b, a=255):
+        return adsk.fusion.CustomGraphicsSolidColorEffect.create(adsk.core.Color.create(r, g, b, a))
+
+    try:
+        flat = [v for p in C for v in p]
+        coords = adsk.fusion.CustomGraphicsCoordinates.create(flat)
+        tris = [0, 1, 2, 0, 2, 3,  4, 6, 5, 4, 7, 6,  0, 5, 1, 0, 4, 5,
+                3, 2, 6, 3, 6, 7,  0, 3, 7, 0, 7, 4,  1, 6, 2, 1, 5, 6]
+        mesh = grp.addMesh(coords, tris, [], [])
+        mesh.color = _eff(228, 224, 150, 90)
+    except Exception:
+        pass
+    for a, b2 in [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6),
+                  (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]:
+        c = adsk.fusion.CustomGraphicsCoordinates.create(
+            [C[a][0], C[a][1], C[a][2], C[b2][0], C[b2][1], C[b2][2]])
+        ln = grp.addLines(c, [0, 1], False)
+        ln.color = _eff(120, 116, 60)
+        try:
+            ln.weight = 1
+        except Exception:
+            pass
+
+
 def _do_studio_preview(data=None):
     """Draw the stock-ghost + WCS triad for the current palette settings.
 
@@ -626,25 +669,7 @@ def _do_studio_preview(data=None):
         hy = _half('y', mn.y, mx.y)
         hz = _half('z', mn.z, mx.z)
 
-        C = [(cx - hx, cy - hy, cz - hz), (cx + hx, cy - hy, cz - hz),
-             (cx + hx, cy + hy, cz - hz), (cx - hx, cy + hy, cz - hz),
-             (cx - hx, cy - hy, cz + hz), (cx + hx, cy - hy, cz + hz),
-             (cx + hx, cy + hy, cz + hz), (cx - hx, cy + hy, cz + hz)]
-
-        # Solid translucent stock box (like Fusion's native stock display):
-        # a filled mesh in pale yellow, with crisp edges drawn over it.
-        try:
-            flat = [v for p in C for v in p]
-            coords = adsk.fusion.CustomGraphicsCoordinates.create(flat)
-            tris = [0, 1, 2, 0, 2, 3,  4, 6, 5, 4, 7, 6,  0, 5, 1, 0, 4, 5,
-                    3, 2, 6, 3, 6, 7,  0, 3, 7, 0, 7, 4,  1, 6, 2, 1, 5, 6]
-            mesh = grp.addMesh(coords, tris, [], [])
-            mesh.color = _eff(228, 224, 150, 90)
-        except Exception:
-            pass
-        for a, b2 in [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6),
-                      (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]:
-            _seg(C[a], C[b2], (120, 116, 60), 1)
+        _draw_stock_box(grp, _stock_box_corners((cx, cy, cz), (hx, hy, hz)))
 
         # WCS triad — oriented along the PICKED X/Y axes (+ flips) so the user
         # can see which way each axis points and judge whether to flip it.
@@ -1505,6 +1530,77 @@ def _do_get_setup_states():
         _send_to_html('setup_states', {'setups': _tg.setup_states(cam)})
     except Exception:
         _log_error("_do_get_setup_states\n" + traceback.format_exc())
+
+
+# ---------------------------------------------------------------------------
+# The Stock card: the B-spline setups' stock box (cam_engine/stock_dims.py), saved on the Design, previewed in the viewport
+# ---------------------------------------------------------------------------
+
+def _stock_info_payload():
+    """{'dims': saved [x, y, z] in, or None = default; 'default': the declared box in; 'needs': the panel + frame extent in}."""
+    sd = _engine_module('stock_dims')
+    doc = adsk.core.Application.get().activeDocument
+    design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+    dims = sd.load(design)
+    default = sd.default_dims_in(design) if design else None
+    return {'dims': list(dims) if dims else None, 'default': list(default) if default else None,
+            'needs': sd.part_extent_in(design) if design else None}
+
+
+def _do_get_stock():
+    """The card opens: the saved box, the default and what the part needs (read-only)."""
+    try:
+        _send_to_html('stock_info', _stock_info_payload())
+    except Exception:
+        _log_error("_do_get_stock" + chr(10) + traceback.format_exc())
+
+
+def _do_set_stock(data):
+    """The card was edited: save the three sizes on the Design (null / invalid = clear = default), then report the card."""
+    try:
+        sd = _engine_module('stock_dims')
+        doc = adsk.core.Application.get().activeDocument
+        design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+        dims = data.get('dims')
+        sd.save(design, dims)
+        _log(f"STOCK CARD: {'saved ' + str(sd.load(design)) + ' in' if sd.load(design) else 'cleared (default)'}")
+        _send_to_html('stock_info', _stock_info_payload())
+    except Exception:
+        _log_error("_do_set_stock" + chr(10) + traceback.format_exc())
+
+
+def _do_preview_stock_bspline(data):
+    """Draw the stock box in the viewport (custom graphics, the GENERIC tab's ghost): the typed size, or -- when the card is
+    empty and the PREVIEW button asked (``showDefault``) -- the declared default; nothing drawn (and any old ghost removed)
+    otherwise. Same centring as the real box: centred on the panel in X / Y, bottom on the model's world bottom."""
+    try:
+        sd = _engine_module('stock_dims')
+        app = adsk.core.Application.get()
+        doc = app.activeDocument
+        design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+        _clear_studio_preview()
+        if not design:
+            return
+        dims = sd.parse_dims(data.get('dims'))
+        if dims is None and data.get('showDefault'):
+            dims = sd.default_dims_in(design)
+        panel = sd.panel_bbox_cm(design)
+        if dims is None or panel is None:
+            return
+        (x0, y0, z0), (x1, y1, _z1) = panel
+        half = tuple(v * sd.IN_CM / 2.0 for v in dims)
+        center = ((x0 + x1) / 2.0, (y0 + y1) / 2.0, z0 + half[2])
+        grp = design.rootComponent.customGraphicsGroups.add()
+        global _studio_preview_group
+        _studio_preview_group = grp
+        corners = _stock_box_corners(center, half)
+        _draw_stock_box(grp, corners)
+        if app.activeViewport:
+            app.activeViewport.refresh()
+        _send_to_html('stock_preview', {'ok': True, 'dims': list(dims), 'drawn_in': [
+            round((max(c[k] for c in corners) - min(c[k] for c in corners)) / sd.IN_CM, 4) for k in range(3)]})
+    except Exception:
+        _log_error("_do_preview_stock_bspline" + chr(10) + traceback.format_exc())
 
 
 # ---------------------------------------------------------------------------
