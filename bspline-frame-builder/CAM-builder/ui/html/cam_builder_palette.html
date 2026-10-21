@@ -784,6 +784,8 @@
   let bootedGeneric = false;
 
   function switchMode(mode) {
+    // leaving a tab takes its ghost out of the viewport (the Stock card's box, the GENERIC tab's stock + triad)
+    if (mode !== currentMode && window.adsk && window.adsk.fusionSendData) send('preview_clear');
     currentMode = mode;
     document.getElementById('tab-bspline').classList.toggle('hidden', mode !== 'bspline');
     document.getElementById('tab-generic').classList.toggle('hidden', mode !== 'generic');

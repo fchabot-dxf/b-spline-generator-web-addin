@@ -149,7 +149,7 @@ def test_build_setup_writes_no_attribute_on_the_fresh_setup(eng, monkeypatch):
     cam = types.SimpleNamespace(setups=types.SimpleNamespace(createInput=lambda t: types.SimpleNamespace(models=None),
                                                              add=lambda inp: fresh))
     monkeypatch.setattr(sb, '_collect_bodies', lambda mm: [])
-    monkeypatch.setattr(sb, '_configure_setup', lambda setup, mm, spec, logger: None)
+    monkeypatch.setattr(sb, '_configure_setup', lambda setup, mm, spec, logger, **kw: None)
     spec = next(s for s in sb.SETUP_SPECS if s['name'] == 'B-spline Back')
     out = sb.build_setup(cam, {spec['mm_rule']: types.SimpleNamespace(name='MM')}, spec, skip_templates=True, skip_machine=True)
     assert out is fresh and fresh.name == 'B-spline Back'
@@ -158,38 +158,23 @@ def test_build_setup_writes_no_attribute_on_the_fresh_setup(eng, monkeypatch):
 
 # ---- the in-place update ----
 
-def test_update_in_place_rebinds_models_and_reapplies_the_declared_config(eng, monkeypatch):
+def test_update_in_place_rebinds_models_and_writes_nothing_else(eng, monkeypatch):
+    """Fred 2026-10-20: a re-BUILD leaves a hand-set stock and origin alone -- only the model re-bind runs."""
     sb = eng.sb
     cam, names = _full_build(eng)
     back = next(s for s in cam.setups if s.name == 'B-spline Back')
     back.operations = _Coll([_Op('adaptive'), _Op('pocket2d')])
     reuse = sb.find_reusable_build(cam, names)
     calls = []
-    # the real _configure_setup runs; only its adsk-touching leaves are recorded
-    monkeypatch.setattr(sb.pi, 'set_choice', lambda *a, **k: None)
-    monkeypatch.setattr(sb, '_get_origin_axes', lambda logger: ('X', 'Y'))
-    monkeypatch.setattr(sb, '_set_entity_param', lambda params, n, e, s, l: calls.append(('axis', s, n)))
-    monkeypatch.setattr(sb, '_set_bool_param', lambda *a, **k: None)
-    monkeypatch.setattr(sb, '_set_expr_param', lambda *a, **k: True)
-    monkeypatch.setattr(sb, '_log_wcs_readback', lambda *a, **k: None)
-    monkeypatch.setattr(sb, '_set_stock_mode', lambda setup, intent, name, logger: calls.append(('stock', name, intent)))
-    monkeypatch.setattr(sb, '_bind_wcs_point', lambda setup, mm, side, name, logger: calls.append(('wcs', name, side, mm.name)) or True)
-    monkeypatch.setattr(sb, '_apply_stock_box', lambda setup, name, logger, key='stock': calls.append(('box', name, key)))
-    monkeypatch.setattr(sb, '_apply_op_heights', lambda setup, name, logger: calls.append(('heights', name)))
+    for leaf in ('_configure_setup', '_apply_stock_box', '_apply_op_heights', '_set_stock_mode'):
+        monkeypatch.setattr(sb, leaf, lambda *a, _n=leaf, **k: calls.append(_n))
     monkeypatch.setattr(sb, '_propagate_part_position_pass', lambda setups, logger, cam=None: calls.append(('pass2', len(setups))))
     out = sb.update_setups_in_place(cam, reuse)
     assert [s.name for s in out] == [s['name'] for s in sb.SETUP_SPECS]
     for spec in sb.SETUP_SPECS:                       # models re-bound to the MM's CURRENT body, as an ObjectCollection
         s = reuse['setups'][spec['name']]
         assert isinstance(s.models, _Coll) and list(s.models) == [f"{spec['mm_rule']}-body"]
-    # the declared box is RE-APPLIED on every box setup, the WCS point on every point setup, the axes on all
-    assert ('box', 'B-spline Back', 'stock') in calls and ('box', 'Frame', 'frame_stock') in calls
-    assert ('wcs', 'B-spline Back', 'back', names['bspline_set']) in calls
-    assert ('wcs', 'B-spline Top', 'flipped', names['bspline_set']) in calls
-    assert sum(1 for c in calls if c[0] == 'axis') == 2 * len(sb.SETUP_SPECS)
-    assert ('heights', 'B-spline Back') in calls     # setups with ops + op_heights declared
-    assert ('heights', 'B-spline Top') not in calls  # no ops on this one in the fake
-    assert calls[-1] == ('pass2', len(sb.SETUP_SPECS))
+    assert calls == [('pass2', len(sb.SETUP_SPECS))]  # no stock, origin, orientation or heights write
 
 
 # ---- the coordinator chooses ----

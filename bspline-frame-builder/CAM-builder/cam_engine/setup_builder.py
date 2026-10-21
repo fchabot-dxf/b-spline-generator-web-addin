@@ -1593,6 +1593,12 @@ def update_setups_in_place(cam, reuse, logger=None):
     return out
 
 
+def _model_axis_of(v):
+    """0 / 1 / 2 = the model axis (X / Y / Z) a unit direction ``v`` (.x .y .z) points along (its largest component)."""
+    comps = (abs(v.x), abs(v.y), abs(v.z))
+    return comps.index(max(comps))
+
+
 def _apply_stock_box(setup, setup_name, logger, box_key='stock', dims_in=None):
     """Write a fixed stock box on a live setup: the declared one (CAM_POSITION[box_key]), or -- ``dims_in`` (x, y, z) inches in
     the MODEL's axes, the Stock card's box -- exactly that size.
