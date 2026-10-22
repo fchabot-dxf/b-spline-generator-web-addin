@@ -35,7 +35,7 @@ describe('pullSketchFromFusion & sketch_pulled pipeline', () => {
         expect(JSON.parse(sendFn.mock.calls[0][1]).board).toEqual({ id: '' });
     });
 
-    it('dispatching sketch_pulled creates Fusion Sketch layer and populates curves', async () => {
+    it('dispatching sketch_pulled adds NO layer and draws no curve (Fred 2026-10-14: Pull never adds layers)', async () => {
         // Import main to attach listener
         await import('../bspline-frame-builder/b-spline-gen/html/main/main.js');
 
@@ -102,32 +102,18 @@ describe('pullSketchFromFusion & sketch_pulled pipeline', () => {
             detail: { action: 'sketch_pulled', data: JSON.stringify(payload) }
         });
 
-        expect(mockEditor._layers.length).toBe(1);
-        expect(mockEditor._layers[0].name).toBe('Fusion Sketch');
-        expect(children.length).toBe(2); // 2 non-construction curves
-        expect(children[0].d).toBe('M 1 2 L 3 4');
-        expect(children[0].attrs['data-layer']).toBe(mockEditor._layers[0].id);
-        expect(mockEditor.pushState).toHaveBeenCalled();
-        expect(mockEditor._notifyChange).toHaveBeenCalledWith('commit');
+        // untagged curves (no Send railId) are noted, not added: no layer, no drawn path, no editor undo step
+        expect(mockEditor._layers.length).toBe(0);
+        expect(children.length).toBe(0);
+        expect(mockEditor.pushState).not.toHaveBeenCalled();
+        expect(mockEditor._notifyChange).not.toHaveBeenCalled();
 
-        // Now test second pull replaces previous curves rather than duplicating
-        const payload2 = {
-            ok: true,
-            sketchName: 'SE15 Constrained Sketch',
-            widthIn: 7.0,
-            heightIn: 9.0,
-            curves: [
-                { type: 'line', d: 'M 5 5 L 6 6', isConstruction: false }
-            ]
-        };
-
+        // a second pull still adds nothing
         handleFusionHandshake({
-            detail: { action: 'sketch_pulled', data: JSON.stringify(payload2) }
+            detail: { action: 'sketch_pulled', data: JSON.stringify({ ...payload, curves: [{ type: 'line', d: 'M 5 5 L 6 6', isConstruction: false }] }) }
         });
-
-        expect(mockEditor._layers.length).toBe(1); // keeps same layer
-        expect(children.length).toBe(1); // previous 2 removed, 1 new added
-        expect(children[0].d).toBe('M 5 5 L 6 6');
+        expect(mockEditor._layers.length).toBe(0);
+        expect(children.length).toBe(0);
     });
 
     it('dispatching sketch_pulled with ok=false reports warning without touching layers', async () => {

@@ -7,20 +7,20 @@
  * sketch reaches past it; the curve types the pull left out (or failed to read) are said, never dropped in
  * silence; the loading card is held from the request to here.
  *
- * STEP (a) SCOPE NOTE: the curve-import target is still the 'Fusion Sketch' layer, same as before this slice --
- * Fred's rails-custom-position-+-lock slice (Send-tagged rail ids, pulled curves reshape the real lattice rails in
- * place) replaces this specific piece later; it's its own slice after this one (advisor 2026-10-16), not this one.
+ * PULL NEVER ADDS LAYERS (Fred 2026-10-14; seat P 2026-10-22 removed the leftover): a pull only modifies the
+ * current project -- params -> app settings through the declared PULL_MAP (change-list dialog), Send-tagged curves
+ * reshape their own elements (applyChangeList's rail positions); an untagged curve is NOTED (a count in the toast), never
+ * added. The old 'Fusion Sketch' carving layer (written before the dialog, kept on Cancel) is retired: a Cancel leaves
+ * the project exactly as it was.
  * Board-scoping (the part that matters for this step) already lives entirely on the Python side (b-spline-gen.py's
  * BoardScope) -- this module only sends/reads the board id and applies whatever curves/size come back.
  *
  * STEP (b) (seat D 2026-10-16): board/layer/frame PARAMETERS no longer apply themselves on the reply -- they go
  * through the change-list dialog (core/pull-changelist.js buildChangeList + main/pull-changelist.js
- * showChangeListDialog/applyChangeList), Fred's "nothing changes until Apply" rule. The curve import above is
- * unconditional/unchanged (step (a) scope); PULL_MAP's own rows (width/height, node/rail/tie width, frame
- * settings) are what the dialog gates.
+ * showChangeListDialog/applyChangeList), Fred's "nothing changes until Apply" rule: until Apply this module writes
+ * NOTHING (no layer, no editor state, no undo step).
  */
 import { P } from '../core/state.js';
-import { addLayer, setActiveLayer } from '../editor/layers.js';
 import { showToast } from '../core/toast.js';
 import { setFusionStatus, fusLog } from '../core/fusion-bridge.js';
 import { releaseHeldStage } from '../core/loading-signal.js';
@@ -34,8 +34,6 @@ import { latticeOwnedElementsOnLayer } from '../editor/editor-lattice-pattern.js
 /** The add-in's reply action, and the loading stage held while it walks the sketch. */
 export const SKETCH_PULLED = 'sketch_pulled';
 export const PULL_SKETCH_STAGE = 'pullSketch';
-/** The layer the pulled curves replace their previous copy on (step (a) only -- see the module doc comment). */
-export const PULLED_LAYER_NAME = 'Fusion Sketch';
 /** How a skipped / failed curve collection is said (the add-in's PULL_SKETCH_UNSUPPORTED + its own curve kinds). */
 export const PULLED_CURVE_WORDS = Object.freeze({
   sketchFixedSplines: 'fixed spline', sketchControlPointSplines: 'control-point spline', sketchEllipses: 'ellipse',
@@ -59,8 +57,9 @@ export function pulledSketchNotes(data, board = { widthIn: P.widthIn, heightIn: 
   return notes;
 }
 
-/** The 'sketch_pulled' reply: the curves onto their layer (unconditional); board/layer/frame param changes go
- *  through the change-list dialog, shown only when there's something to show. */
+/** The 'sketch_pulled' reply: a report (toast + status; untagged curves counted, never added), then the
+ *  board/layer/frame param changes through the change-list dialog, shown only when there's something to show.
+ *  Writes nothing to the project itself -- only Apply does (main/pull-changelist.js applyChangeList). */
 export function onSketchPulled(raw) {
   releaseHeldStage(); // the card held since the request (fusion-bridge.js pullSketchFromFusion)
   try {
@@ -71,37 +70,19 @@ export function onSketchPulled(raw) {
       showToast(errMsg, 'warn');
       return;
     }
+    // Send-tagged curves (a railId) reshape their own rails on Apply; any other curve is only COUNTED here -- never
+    // drawn, never put on a layer (Fred 2026-10-14). Construction lines are not the sketch's geometry.
     const curves = data.curves || [];
-    // Prefer non-construction curves (the carved slots, outlines, holes)
-    const targetCurves = curves.filter((c) => !c.isConstruction);
-    const toImport = targetCurves.length > 0 ? targetCurves : curves;
+    const untagged = curves.filter((c) => c && !c.railId && !c.isConstruction).length;
     const notes = pulledSketchNotes(data);
+    if (untagged) notes.unshift(`${untagged} curve${untagged === 1 ? '' : 's'} not made by Send ${untagged === 1 ? 'was' : 'were'} noted, not added.`);
     const editor = window.svgEditor;
     if (!editor) {
       setFusionStatus('Editor not initialized', 'warn');
       return;
     }
-
-    if (toImport.length > 0) {
-      let layer = (editor._layers || []).find((l) => l.name === PULLED_LAYER_NAME);
-      if (!layer) layer = addLayer(editor, { name: PULLED_LAYER_NAME });
-      setActiveLayer(editor, layer.id);
-      if (editor._sketchLayer) {
-        editor._sketchLayer.children().toArray().filter((ch) => String(ch.attr('data-layer')) === String(layer.id)).forEach((ch) => ch.remove());
-        toImport.forEach((c) => {
-          if (c.d) editor._sketchLayer.path(c.d).fill('none').stroke({ width: 0.05, color: '#000000' }).attr('data-layer', layer.id);
-        });
-      }
-      if (typeof editor.pushState === 'function') editor.pushState();
-      if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-      setFusionStatus(`Pulled ${toImport.length} curves from "${data.sketchName}" ✓`, 'ok');
-      showToast([`✓ Pulled ${toImport.length} curves from "${data.sketchName}"`, ...notes].join(' '), notes.length ? 'warn' : 'ok');
-    } else {
-      // No drawable curves -- the pull may still carry PARAMETER changes (node diameter, frame thickness, ...)
-      // below, so this is a status note, not an early return.
-      setFusionStatus('No curves found in Fusion sketch', 'warn');
-      showToast([`Sketch "${data.sketchName}" has no curves to import.`, ...notes].join(' '), 'warn');
-    }
+    setFusionStatus(`Pulled from "${data.sketchName}" ✓`, 'ok');
+    showToast([`✓ Pulled from "${data.sketchName}"`, ...notes].join(' '), notes.length ? 'warn' : 'ok');
 
     // PULL_MAP's own rows (board size, layer widths, frame settings) -- gated behind the change-list dialog's
     // Apply, Fred's "nothing changes until Apply" rule. "the board follows THIS BOARD's own size only" (never a
@@ -109,8 +90,7 @@ export function onSketchPulled(raw) {
     // unless this board's own Fusion parameters declared a size (sizeSource 'fusion').
     const sizedData = data.sizeSource === 'fusion' ? data : { ...data, widthIn: undefined, heightIn: undefined };
     // live Fusion test (seat D 2026-10-16): a bare `.pattern` check isn't enough -- a layer can carry a stale/
-    // inherited pattern object with nothing actually drawn from it (the 'Fusion Sketch' layer this same pull just
-    // created above got exactly that), and latticeOwnedElementsOnLayer is the already-declared answer to "does
+    // inherited pattern object with nothing actually drawn from it, and latticeOwnedElementsOnLayer is the already-declared answer to "does
     // this layer actually have real lattice content right now" (export-flow.js's own gate for the same question).
     const layers = (editor._layers || []).filter((l) => l && l.pattern && latticeOwnedElementsOnLayer(editor, l.id, l.pattern).length > 0);
     const frame = getFrameRecord().templateId ? getFrameRecord() : null;

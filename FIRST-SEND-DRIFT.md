@@ -40,3 +40,15 @@ was not measured.
 
 Repro: `node tools/repro/first_send_drift/cdp.mjs start`, then `eval helpers.js`, then `eval x*.js`
 (`reload` re-injects the stub; `x4`/`x5` embed a real Fusion Pull reply).
+
+## Fixed (seat P, 2026-10-22; Fred's 2026-10-14 "PULL NEVER ADDS LAYERS")
+
+`onSketchPulled` no longer adds the 'Fusion Sketch' layer, draws nothing and writes no editor state / undo step. Untagged
+curves (no Send railId, not construction) are a count in the report toast ("N curves not made by Send were noted, not
+added"); Send-tagged curves still reshape their own rails, on Apply. Re-measured in the real palette (fresh profile):
+dialog open and after Cancel -- layers, editorSvg, activeLayerIdx and the terrain hash are identical to before the Pull.
+Saved boards: unaffected (Pull path only; no Send / load / generate code changed).
+
+Frame rows "(none) -> 0.75" / "(none) -> 0.25": template_1's own defaults are frame_thickness 0.75 and
+boundingboxoffset 0.25 (data/frame-defs.js; `frameParam` falls back to them when the record has no value), so on a
+record with `params: {}` those rows restate what the frame already lays with. Measure only; nothing hidden yet.
