@@ -146,10 +146,11 @@ def _is_hand_added(key, name, ours, known_names):
     return op_ledger.base_name(name) not in known_names
 
 
-def snapshot(cam, design, known_names=frozenset()):
+def snapshot(cam, design, known_names=frozenset(), apply_of=None):
     """[{'name': setup, 'ops': [{key, name, tool, rest, strategy, state, why, src ('addin' | 'hand'), dup}]}] in setup /
     operation order. Returns [] with no CAM. ``known_names``: the names the add-in renames its operations to (the
-    fallback for a setup with no ledger record -- op_ledger.foreign_operations)."""
+    fallback for a setup with no ledger record -- op_ledger.foreign_operations). ``apply_of(setup name)``: the setup's own
+    APPLY button state ({'enabled', 'why'}, or None for a setup with no declared role -- setup_builder.apply_state)."""
     out = []
     if cam is None:
         return out
@@ -171,7 +172,7 @@ def snapshot(cam, design, known_names=frozenset()):
                 'dup': bool(hand and has_chain and state != 'suppressed' and strategy in hole_chain.POCKET_STRATEGIES
                             and _selects_circles(o)),
             })
-        out.append({'name': s.name, 'ops': rows})
+        out.append({'name': s.name, 'ops': rows, 'apply': apply_of(s.name) if apply_of else None})
     return out
 
 

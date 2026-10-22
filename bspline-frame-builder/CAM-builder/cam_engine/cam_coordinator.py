@@ -30,9 +30,8 @@ _ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPEC
 
 
 def _declared_template_bases():
-    """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
-    return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
-            for spec in setup_builder.SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
+    """The names the add-in renames its stamped operations to (setup_builder._declared_template_bases)."""
+    return setup_builder._declared_template_bases()
 
 
 def _design_of(cam):
@@ -96,14 +95,10 @@ def clear_addin_build(cam, logger=None):
     except Exception as e:
         _log(logger, f"CLEANUP: setup scan raised: {type(e).__name__}: {e}", "WARNING")
 
-    # What the surviving setups still reference (an MM under them must stay).
-    in_use = set()
+    # The setups that survive (an MM any of them has a model under must stay -- by path, setup_builder.mm_in_use).
+    survivors = []
     try:
-        for i in range(cam.setups.count):
-            try:
-                in_use |= _model_keys(cam.setups.item(i).models)
-            except Exception:
-                continue
+        survivors = [cam.setups.item(i) for i in range(cam.setups.count)]
     except Exception:
         pass
 
@@ -116,7 +111,7 @@ def clear_addin_build(cam, logger=None):
             try:
                 if mm.name in _ADDIN_MM_NAMES:
                     name = mm.name
-                    if in_use & {getattr(b, 'entityToken', None) or id(b) for b in setup_builder._collect_bodies(mm)}:
+                    if setup_builder.mm_in_use(mm, survivors):
                         _log(logger, f"CLEANUP: keeping MM '{name}' -- a setup that stays still uses it", "INFO")
                         continue
                     _log(logger, f"CLEANUP: deleting MM '{name}'", "DEBUG")
@@ -330,6 +325,7 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
         # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + setup, by its declared name,
         # present and valid) and re-applies the declared configuration in place (~1 s,
         # measured); otherwise today's full recreate (cleanup, then MMs, then setups).
+        adopted = {}
         reuse = setup_builder.find_reusable_build(
             cam, {r: mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES}, logger)
         report['reused'] = reuse is not None
@@ -349,6 +345,14 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
                 _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
             yield 'camModels'
             mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+            # What a kept (hand-built) setup holds is ADOPTED, never duplicated: only the roles with no setup are built.
+            try:
+                adopted = setup_builder.adopted_setups(cam, logger)
+                if adopted:
+                    setup_builder.warn_unadopted_roles(cam, adopted, logger)
+            except Exception as e:
+                _log(logger, f"COORDINATOR: role adoption raised {type(e).__name__}: {e}", "WARNING")
+                adopted = {}
 
         for rule in mm_builder.MM_RULES:
             report['mms'][rule] = (rule in mms)
@@ -361,7 +365,8 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
         else:
             setups = setup_builder.build_all_setups(cam, mms, logger,
                                                     skip_templates=skip_templates,
-                                                    skip_machine=skip_machine)
+                                                    skip_machine=skip_machine,
+                                                    adopted=adopted)
         built_names = {s.name for s in setups}
         for spec in setup_builder.SETUP_SPECS:
             report['setups'].append({

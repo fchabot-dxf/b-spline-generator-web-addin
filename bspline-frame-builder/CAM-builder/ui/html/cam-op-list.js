@@ -79,13 +79,15 @@ export function rowView(op, run) {
   return { key: op.key, name: op.name, dot: running ? 'run' : def.dot, running, suppressed: op.state === 'suppressed', tags, sub, button };
 }
 
-/** A setup group: its title counts, and the "Generate missing (n)" button. */
+/** A setup group: its title counts, its own APPLY button (``setup.apply`` from the add-in: {enabled, why}, null = the setup
+ *  carries no declared role, so no button) and the "Generate missing (n)" button. */
 export function groupView(setup, run) {
   const ops = setup.ops || [];
   const missing = missingCount(ops);
   return {
     name: setup.name,
     count: ops.length ? `${ops.filter(isGenerated).length}/${ops.length} generated` : 'no operations',
+    apply: setup.apply ? { label: 'Apply', disabled: !!(run && run.on) || !setup.apply.enabled, why: setup.apply.enabled ? '' : (setup.apply.why || '') } : null,
     button: ops.length ? { label: `Generate missing (${missing})`, disabled: !!(run && run.on) || missing === 0 } : null,
     rows: ops.map((o) => rowView(o, run)),
   };
@@ -155,8 +157,14 @@ export function renderOpList(root, payload, send) {
     const gh = el(doc, 'div', 'tp-ghead');
     const nm = el(doc, 'div', 'tp-gname', g.name); nm.append(el(doc, 'span', 'tp-gcount', g.count));
     gh.append(nm);
+    if (g.apply) {
+      const a = btn(doc, g.apply, 'apply', () => send('apply_setup', { setup: g.name }));
+      a.title = g.apply.why || 'Stamp the declared operations (the templates and the hole chain) this setup does not have yet';
+      gh.append(a);
+    }
     if (g.button) gh.append(btn(doc, g.button, '', () => send('generate_ops', { scope: 'missing', setup: g.name })));
     grp.append(gh);
+    if (g.apply && g.apply.why) grp.append(el(doc, 'div', 'tp-note', `APPLY is off for ${g.name}: ${g.apply.why}.`));
     for (const r of g.rows) {
       const row = el(doc, 'div', `tp-row${r.running ? ' running' : ''}${r.suppressed ? ' supp' : ''}`);
       row.append(el(doc, 'span', `tp-ico ${r.dot}`, ({ valid: '✓', stale: '!', warn: '!', error: '×' })[r.dot] || ''));

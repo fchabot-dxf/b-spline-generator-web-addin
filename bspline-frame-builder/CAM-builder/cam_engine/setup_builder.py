@@ -123,7 +123,25 @@ def _assign_default_machine(setup, setup_name, logger):
     return g_success or h_success
 
 
-def apply_templates_to_existing_setups(cam, logger=None):
+def _declared_template_bases():
+    """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
+    return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
+            for spec in SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
+
+
+def apply_state(cam, design, setup_name):
+    """What the Toolpaths list shows for a setup's own APPLY button: None when the setup carries no declared role (nothing
+    to apply), else {'enabled': bool, 'why': str}. A hand-built setup is disabled with the reason (op_ledger.hand_built)."""
+    for spec in SETUP_SPECS:
+        found = bind_roles(cam).get(spec['name'], [])
+        if len(found) == 1 and found[0].name == setup_name:
+            if op_ledger.hand_built(design, found[0], spec['name'], _declared_template_bases()):
+                return {'enabled': False, 'why': 'built by hand -- APPLY adds nothing to it'}
+            return {'enabled': True, 'why': ''}
+    return None
+
+
+def apply_templates_to_existing_setups(cam, logger=None, only=None):
     """Apply cloud templates to every setup whose name matches SETUP_SPECS.
 
     Iterates SETUP_SPECS to find each spec's declared ``cloud_templates``
@@ -141,14 +159,10 @@ def apply_templates_to_existing_setups(cam, logger=None):
     """
     if cam is None:
         return 0
-    # Build a name → setup index
-    live_by_name = {}
-    for i in range(cam.setups.count):
-        s = cam.setups.item(i)
-        try:
-            live_by_name[s.name] = s
-        except Exception:
-            continue
+    # role name -> its setup (exact name, then alias: bind_roles); ``only`` = one live setup's name (the per-setup APPLY)
+    live_by_name = {n: v[0] for n, v in bind_roles(cam, logger).items() if len(v) == 1}
+    if only is not None:
+        live_by_name = {n: s for n, s in live_by_name.items() if s.name == only}
 
     n_processed = 0
     for spec in SETUP_SPECS:
@@ -167,6 +181,10 @@ def apply_templates_to_existing_setups(cam, logger=None):
         except Exception as e:
             _log(logger, f"APPLY TEMPLATES ({name}): override lookup failed ({e}); using spec defaults", "WARNING")
             cloud_templates = spec.get('cloud_templates') or []
+        if op_ledger.hand_built(design, setup, name, _declared_template_bases()):
+            _log(logger, f"APPLY TEMPLATES ({name}): skipped -- built by hand (no add-in record, and it holds "
+                         f"operation(s) the add-in did not make); nothing is added to it", "INFO")
+            continue
         if not cloud_templates:
             _log(logger, f"APPLY TEMPLATES ({name}): no templates declared, skipping", "DEBUG")
             _apply_hole_chain(cam, setup, spec, design, None, logger)
@@ -829,6 +847,8 @@ def _propagate_part_position_pass(setups, logger, cam=None):
 SETUP_SPECS = [
     {
         'name':         'Stock',
+        'role':         'stock',
+        'aliases':      [],        # other names a hand-built file calls this role (bind_roles): exact name first, then these
         'mm_rule':      'stock',
         'stock_intent': 'auto_bbox',
         # Orientation mirrors the B-spline Top setup so the stock blank
@@ -857,6 +877,8 @@ SETUP_SPECS = [
     # when the model changes, and needs no sketch (Fred 2026-10-20).
     {
         'name':         'B-spline Back',
+        'role':         'back',
+        'aliases':      [],        # other names a hand-built file calls this role (bind_roles): exact name first, then these
         'mm_rule':      'bspline_set',
         # Fixed-box stock = CAM_POSITION['stock'] (the box the MM-Stock placeholder is built from),
         # dims WRITTEN (an unwritten FixedBoxStock defaults to 13 x 10 in X/Y -- measured).
@@ -882,6 +904,8 @@ SETUP_SPECS = [
     },
     {
         'name':         'B-spline Top',
+        'role':         'top',
+        'aliases':      ['B-spline to pp )'],        # other names a hand-built file calls this role (bind_roles): exact name first, then these
         'mm_rule':      'bspline_set',       # same MM as Back: PreviousSetupStock carries no warning
         # 'from_prev_setup' tells Fusion to inherit the stock state from
         # the previous setup's IPV (in-process view) — i.e. the material
@@ -914,6 +938,8 @@ SETUP_SPECS = [
     },
     {
         'name':         'Frame',
+        'role':         'frame',
+        'aliases':      [],        # other names a hand-built file calls this role (bind_roles): exact name first, then these
         'mm_rule':      'frame',
         'stock_intent': 'fixed_box',
         'stock_box':    'frame_stock',       # H23 item 82b: dims written (was Fusion's 13 x 10 default)
@@ -931,7 +957,7 @@ SETUP_SPECS = [
 ]
 
 
-def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=False):
+def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=False, adopted=None):
     """Build all four Setups. Returns ``[Setup, Setup, Setup, Setup]``.
 
     Resolves the Ultimate Bee Fence component once before the loop so
@@ -960,7 +986,11 @@ def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=F
     # the sim doc isn't loaded yet when build_all_setups is entered,
     # which is why we don't attempt fence resolution here.
     setups = []
+    adopted = adopted or {}
     for spec in SETUP_SPECS:
+        if spec['name'] in adopted:                    # a hand-built setup already holds this role: never a second one
+            setups.append(adopted[spec['name']])
+            continue
         setup = build_setup(cam, mms, spec, logger,
                             skip_templates=skip_templates,
                             skip_machine=skip_machine)
@@ -1529,9 +1559,42 @@ def _set_stock_mode(setup, intent, setup_name, logger):
 # BUILD with the tag write patched out generated 7/7. So BUILD writes NO attribute on a setup.
 
 
+def bind_roles(cam, logger=None):
+    """{spec name: [setups]} -- each declared role's existing setups, matched by EXACT name first, then by a declared alias
+    (SETUP_SPECS 'aliases'), nothing else (Fred: never guess). A setup that matches no role is never touched. A role with
+    one match is ADOPTED: BUILD does not create a second setup for it."""
+    live = []
+    for i in range(cam.setups.count):
+        live.append(cam.setups.item(i))
+    out = {}
+    for spec in SETUP_SPECS:
+        exact = [s for s in live if s.name == spec['name']]
+        out[spec['name']] = exact or [s for s in live if s.name in (spec.get('aliases') or [])]
+    return out
+
+
+def adopted_setups(cam, logger=None):
+    """{spec name: setup} for the roles that have exactly one valid setup (exact name or alias)."""
+    return {n: v[0] for n, v in bind_roles(cam, logger).items() if len(v) == 1 and v[0].isValid}
+
+
+def warn_unadopted_roles(cam, adopted, logger=None):
+    """A visible WARNING for every role BUILD has to create because no setup carries its name or an alias, naming the setups
+    that matched no role (so a mis-named setup shows up instead of silently duplicating)."""
+    matched = {s.name for v in bind_roles(cam).values() for s in v}
+    stray = [cam.setups.item(i).name for i in range(cam.setups.count) if cam.setups.item(i).name not in matched]
+    for spec in SETUP_SPECS:
+        if spec['name'] not in adopted:
+            _log(logger, f"ROLES: {spec['role'].capitalize()}: no setup named {spec['name']!r} or an alias "
+                         f"({spec.get('aliases') or []}); created {spec['name']!r}; "
+                         + (f"{', '.join(repr(n) for n in stray)} not adopted, not touched" if stray else "no other setup to adopt"),
+                 "WARNING")
+
+
 def find_reusable_build(cam, mm_names_by_rule, logger=None):
     """{'mms': {rule: mm}, 'setups': {spec name: setup}} when the whole declared build exists and is valid, else
-    None (the caller then does today's full recreate). Setups by their SETUP_SPECS name, MMs by `mm_names_by_rule`."""
+    None (the caller then does today's full recreate). Setups by their role (bind_roles: SETUP_SPECS name, then
+    alias), MMs by `mm_names_by_rule`."""
     mms = {}
     by_name = {}
     for j in range(cam.manufacturingModels.count):
@@ -1543,13 +1606,10 @@ def find_reusable_build(cam, mm_names_by_rule, logger=None):
             _log(logger, f"REUSE: MM {name!r} missing or invalid -> full recreate", "INFO")
             return None
         mms[rule] = m
-    named = {}
-    for i in range(cam.setups.count):
-        s = cam.setups.item(i)
-        named.setdefault(s.name, []).append(s)
+    roles = bind_roles(cam, logger)
     setups = {}
     for spec in SETUP_SPECS:
-        found = named.get(spec['name'], [])
+        found = roles.get(spec['name'], [])
         if len(found) != 1 or not found[0].isValid:
             _log(logger, f"REUSE: setup {spec['name']!r} missing, duplicated or invalid -> full recreate", "INFO")
             return None
@@ -1557,8 +1617,50 @@ def find_reusable_build(cam, mm_names_by_rule, logger=None):
     return {'mms': mms, 'setups': setups}
 
 
+def model_path(model):
+    """The Manufacture-tree path a setup's model sits under: an MM occurrence's own fullPathName, a body proxy's
+    assemblyContext.fullPathName; None when it has neither."""
+    try:
+        if str(getattr(model, 'objectType', '')).endswith('Occurrence'):
+            return model.fullPathName
+        ctx = model.assemblyContext
+        return ctx.fullPathName if ctx is not None else None
+    except Exception:
+        return None
+
+
+def mm_in_use(mm, setups):
+    """True when any of ``setups`` has a model under this MM: its path equals the MM occurrence's path or continues it
+    ('+'). Measured on Fred's file: a setup bound to the WHOLE MM holds an Occurrence, one bound to bodies holds body proxies
+    whose tokens differ from the MM's own bodies', so token equality (the old check) called a used MM unused."""
+    try:
+        base = mm.occurrence.fullPathName
+    except Exception:
+        base = None
+    own = {getattr(b, 'entityToken', None) or id(b) for b in _collect_bodies(mm)}   # the old check, kept as one more way to match
+    for s in setups:
+        try:
+            models = [s.models.item(i) for i in range(s.models.count)]
+        except Exception:
+            continue
+        for m in models:
+            p = model_path(m)
+            if base and p and (p == base or p.startswith(base + '+')):
+                return True
+            if (getattr(m, 'entityToken', None) or id(m)) in own:
+                return True
+    return False
+
+
 def _rebind_models(setup, mm, setup_name, logger):
     """Point the setup at its MM's CURRENT bodies (a Send replaces them; the MM snapshot follows the design)."""
+    try:
+        held = [setup.models.item(i) for i in range(setup.models.count)]
+    except Exception:
+        held = []
+    if any(str(getattr(m, 'objectType', '')).endswith('Occurrence') for m in held):
+        _log(logger, f"REUSE ({setup_name}): bound to the whole Manufacturing Model (an occurrence) -- models left as they are", "INFO")
+        return 0                                       # the add-in only ever binds bodies: this one is the user's
     bodies = _collect_bodies(mm)
     if not bodies:
         return 0

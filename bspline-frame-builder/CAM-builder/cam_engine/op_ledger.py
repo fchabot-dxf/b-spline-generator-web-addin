@@ -107,6 +107,13 @@ def _ops(setup):
         return []
 
 
+def hand_built(design, setup, setup_name: str, known_names=frozenset()) -> bool:
+    """THE predicate for "APPLY adds nothing here" (Fred 2026-10-21): the setup was built by hand -- the add-in never
+    recorded anything for it AND it holds operations the add-in did not make. Setups with a record, empty setups and
+    wholly add-in-built ones are not."""
+    return load(design, setup_name) is None and bool(foreign_operations(design, setup, setup_name, known_names))
+
+
 def foreign_operations(design, setup, setup_name: str, known_names=frozenset()) -> list:
     """The setup's operations that are NOT provably the add-in's: not in the record. When nothing was ever
     recorded for the setup (a file from before the record), an operation counts as ours only if its name is one of

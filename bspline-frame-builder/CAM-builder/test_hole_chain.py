@@ -369,4 +369,5 @@ def test_the_other_setup_specs_and_the_back_templates_are_unchanged(eng):
 
 # Re-pinned 2026-10-21 for ONE declared change: 'wcs_point' ('back' / 'flipped') left Back and Top (the origin is Fusion's stock box
 # point 'top 1', no helper sketch). Verified: re-adding just those two keys reproduces the old hash e3ab1e09aa39...
-PIN = '68af41144357f9b5724f29ce033675598d077f4cfff8344aa40a2d229d26dcb7'
+# Re-pinned 2026-10-21 (seatD-legacy) for ONE declared change: every setup spec gained 'role' and 'aliases' (bind_roles).
+PIN = '5bdd3935cf9f5a0dcbcc176647c2c84a720c74d9e4c085fdf242a984cbb90ca9'

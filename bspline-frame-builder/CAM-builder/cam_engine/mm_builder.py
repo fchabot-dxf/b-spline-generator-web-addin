@@ -103,6 +103,11 @@ def build_all_mms(cam, design, classifier, logger=None):
 
     out = {}
     for rule in MM_RULES:
+        kept = _existing_mm(cam, rule)
+        if kept is not None:                           # a kept setup still uses it (clear_addin_build): never a second copy
+            _log(logger, f"MM BUILD ({rule}): '{kept.name}' already exists and is in use -- kept", "INFO")
+            out[rule] = kept
+            continue
         mm = build_mm(cam, design, rule, classifier, logger)
         if mm:
             out[rule] = mm
@@ -172,6 +177,19 @@ def _ensure_cam_builder_user_parameters(source_design, logger):
                 _log(logger, f"ENSURE PARAMS: add returned None for '{name}'", "WARNING")
         except Exception as e:
             _log(logger, f"ENSURE PARAMS: add '{name}' raised: {e}", "WARNING")
+
+
+def _existing_mm(cam, rule):
+    """The valid MM already carrying this rule's declared name, or None."""
+    name = _mm_display_name(rule)
+    try:
+        for i in range(cam.manufacturingModels.count):
+            m = cam.manufacturingModels.item(i)
+            if m.name == name and m.isValid:
+                return m
+    except Exception:
+        pass
+    return None
 
 
 def build_mm(cam, design, rule, classifier, logger=None):

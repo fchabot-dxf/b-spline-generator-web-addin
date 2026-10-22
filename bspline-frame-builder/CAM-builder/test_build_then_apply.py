@@ -26,7 +26,7 @@ def _run(monkeypatch, report_ok=True, apply_result=(True, 'Applied.'), apply_rai
             return {'ok': False, 'mode': 'bspline', 'mms': {}, 'setups': []}
         monkeypatch.setattr(cb, '_engine', type('E', (), {'run_steps': staticmethod(run_steps)}), raising=False)
 
-    def apply(post_stages=True):
+    def apply(post_stages=True, only=None):
         events.append(('apply', post_stages))
         if apply_raises:
             raise RuntimeError('boom')
@@ -59,9 +59,9 @@ def test_an_apply_that_raised_still_reports_and_ends_the_build(monkeypatch):
     assert not cb._build_running()
 
 
-def test_the_apply_button_still_posts_its_own_steps_and_report(monkeypatch):
+def test_a_setups_own_apply_posts_its_own_steps_and_report(monkeypatch):
     cb, fired, events = TestTheDeferredBuild()._module(monkeypatch)
-    monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: events.append(('apply', post_stages)) or (True, 'done'))
-    cb._do_apply_toolpaths()
+    monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True, only=None: events.append(('apply', post_stages)) or (True, 'done'))
+    cb._do_apply_setup({'setup': 'Frame'})
     assert ('apply', True) in events
     assert _reports(events) == ['done']
