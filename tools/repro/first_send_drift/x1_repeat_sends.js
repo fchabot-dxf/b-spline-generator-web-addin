@@ -1,0 +1,1 @@
+(async()=>{ const h=window.__h; const r={}; r.fp0=await h.fp(); r.S1=await h.send(); r.fp1=await h.fp(); r.S2=await h.send(); r.fp2=await h.fp(); r.S3=await h.send(); return JSON.stringify(r,null,1); })()
