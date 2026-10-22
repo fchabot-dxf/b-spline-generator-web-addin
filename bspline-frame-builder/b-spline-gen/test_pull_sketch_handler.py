@@ -83,8 +83,10 @@ def _sketch(name, parent, lines=(), fitted=(), ellipses=0, cp_splines=0):
 
 
 class _Param:
-    def __init__(self, name, value_in):
-        self.name, self.value = name, value_in * IN
+    def __init__(self, name, value_in, unit='in'):
+        # Fusion stores a length in cm; a UNITLESS parameter (unit '') holds its plain number
+        self.name, self.unit = name, unit
+        self.value = value_in * IN if unit == 'in' else value_in
 
 
 class _ParamCollection:
@@ -119,8 +121,8 @@ class Design:
         self.attrs.append(types.SimpleNamespace(groupName=BOARD_ATTR[0], name=BOARD_ATTR[1], value=bid, parent=b))
         return b
 
-    def param(self, name, value_in):
-        self._params[name] = _Param(name, value_in)
+    def param(self, name, value_in, unit='in'):
+        self._params[name] = _Param(name, value_in, unit)
 
     @property
     def allParameters(self):
@@ -178,6 +180,32 @@ def test_board_a_params_are_stripped_of_the_board_prefix_only_layer_prefix_kept(
     assert res['boardParams']['frame_thickness'] == pytest.approx(0.8)
     assert res['boardParams']['fred_custom_margin'] == pytest.approx(2.5)  # Fred's own: present, the app decides "not mapped"
     assert 'widthIn' not in res['boardParams'] and 'heightIn' not in res['boardParams']  # already their own fields
+
+
+# ---- the seed: a UNITLESS board param comes back as its plain number, never divided by 2.54 --------------------
+def test_an_old_file_with_no_seed_param_returns_no_seed_key(two_boards):
+    assert 'seed' not in two_boards('bRoseid')['boardParams']
+
+
+@pytest.fixture
+def seeded(two_boards):
+    def run(board_id, seed):
+        two_boards('bRoseid')  # builds the fixture's design (and points _active_design at it)
+        bsg._active_design().param('bRoseid_seed', seed, unit='')
+        return bsg.PaletteHTMLEventHandler()._handle_pull_sketch({'board': {'id': board_id}})
+    return run
+
+
+def test_the_seed_comes_back_exact_not_divided_by_2_54(seeded):
+    res = seeded('bRoseid', 4821)
+    assert res['ok'] is True
+    assert res['boardParams']['seed'] == 4821  # 4821 / 2.54 would be 1898.03...
+    assert res['boardParams']['frame_thickness'] == pytest.approx(0.8)  # a length is still in inches
+
+
+def test_board_bs_pull_never_sees_board_as_seed(seeded):
+    res = seeded('bOakid', 4821)
+    assert 'seed' not in res['boardParams']
 
 
 def test_board_bs_params_never_leak_board_as_and_vice_versa(two_boards):

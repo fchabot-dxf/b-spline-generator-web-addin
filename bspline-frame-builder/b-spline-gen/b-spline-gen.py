@@ -1351,6 +1351,8 @@ def _sync_user_parameters(design, params, namer=None):
     param_map = {
         'widthIn':  ('widthIn', 'in'),
         'heightIn': ('heightIn', 'in'),
+        # the terrain's seed: a plain integer, UNITLESS (unit '') -- a Fusion file carries its seed, Pull brings it back
+        'seed':     ('seed', ''),
     }
 
     user_params = design.userParameters
@@ -1361,13 +1363,18 @@ def _sync_user_parameters(design, params, namer=None):
             f_name = namer.name(f_name)  # Send targets S2: "<boardId>_widthIn" in a tagged board; the legacy board: as is
         if key in params:
             val = params[key]
+            if not unit:
+                try:
+                    val = int(val)  # a unitless count: exact, never '42.0' (Fusion reads the text as the expression)
+                except (TypeError, ValueError):
+                    continue
             try:
                 existing = user_params.itemByName(f_name)
                 if existing:
                     skip_write = False
                     if not _expression_is_numeric(existing.expression):
                         # Resolved value comes back from Fusion in cm.
-                        resolved_in = existing.value / 2.54
+                        resolved_in = existing.value / 2.54 if unit else existing.value
                         if abs(resolved_in - float(val)) < EPS_IN:
                             # Palette already matches the formula — preserve it.
                             skip_write = True
@@ -2083,8 +2090,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         is deliberately generic (every board-owned param, not just the ones PULL_MAP declares) -- core/pull-map.js
         on the app side is the ONE place that decides which of these it recognizes; an unrecognized one is counted
         in the change list's own "not mapped" line, not filtered out here (Python stays param-schema-agnostic).
-        All v1 PULL_MAP params are length-type ("in"); a future unitless one (a Shape Lattice preset, a ck_*
-        toggle -- v2) would need `p.unit`-aware conversion, not the flat /2.54 below."""
+        Length params ("in") come back in inches (/2.54); a UNITLESS one (the seed) comes back as its plain
+        number, read through `p.unit == ''`."""
         data = data or {}
         result = {'ok': False, 'sketchName': None, 'widthIn': None, 'heightIn': None, 'sizeSource': None,
                   'bounds': None, 'curves': [], 'skipped': {}, 'failed': {}, 'boardParams': {}, 'frameShape': {},
@@ -2155,7 +2162,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     base = namer.base(name)
                     if base in ('widthIn', 'heightIn'):
                         continue
-                    result['boardParams'][base] = p.value / 2.54
+                    # a length is in cm (/2.54 -> inches); a UNITLESS one (the seed) is its plain number, never /2.54
+                    result['boardParams'][base] = p.value if getattr(p, 'unit', None) == '' else p.value / 2.54
                 except Exception as e:
                     _log(f"boardParams read failed for a parameter: {e}")
 

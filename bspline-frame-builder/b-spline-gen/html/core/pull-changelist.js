@@ -84,12 +84,24 @@ const LAYER_KEY = /^L[^_]+_(.+)$/;
  *  (notMappedCount / keptCount), never silently dropped -- the advisor's own REPORT line. */
 export function buildChangeList(pullResult, { P, layers = [], frame = null, frameShape = null, rails = null }) {
   const boardParams = pullResult.boardParams || {};
-  const boardRows = Number.isFinite(pullResult.widthIn) && Number.isFinite(pullResult.heightIn)
-    ? diffScope('board', { widthIn: pullResult.widthIn, heightIn: pullResult.heightIn }, P) : [];
-
-  const layerGroups = [];
+  // the board's own PULL_MAP rows: the size (only when Fusion sent BOTH) and every other 'board'-scope param Fusion
+  // holds (the seed) -- compareScope skips a param Fusion has no value for, so an old file adds no row
+  const sizeKnown = Number.isFinite(pullResult.widthIn) && Number.isFinite(pullResult.heightIn);
+  const boardFusion = { ...(sizeKnown ? { widthIn: pullResult.widthIn, heightIn: pullResult.heightIn } : {}) };
+  for (const entry of PULL_MAP) {
+    if (entry.scope === 'board' && entry.fusionParam !== 'widthIn' && entry.fusionParam !== 'heightIn') boardFusion[entry.fusionParam] = boardParams[entry.fusionParam];
+  }
+  const boardCompared = compareScope('board', boardFusion, P);
+  const boardRows = boardCompared.filter((r) => r.changed);
   const claimedRawKeys = new Set();
   let keptCount = 0;
+  for (const r of boardCompared) {
+    if (r.fusionParam === 'widthIn' || r.fusionParam === 'heightIn') continue; // the size has always been its own fields
+    claimedRawKeys.add(r.fusionParam);
+    if (!r.changed) keptCount++;
+  }
+
+  const layerGroups = [];
 
   for (const layer of layers) {
     const prefix = `L${layer.id}_`;

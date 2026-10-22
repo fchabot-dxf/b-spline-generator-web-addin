@@ -24,6 +24,7 @@
 export const PULL_MAP = Object.freeze([
   Object.freeze({ fusionParam: 'widthIn', scope: 'board', appPath: 'widthIn', label: 'Width', unit: 'in' }),
   Object.freeze({ fusionParam: 'heightIn', scope: 'board', appPath: 'heightIn', label: 'Height', unit: 'in' }),
+  Object.freeze({ fusionParam: 'seed', scope: 'board', appPath: 'seed', label: 'Seed', unit: '' }),
 
   Object.freeze({ fusionParam: 'node_diameter', scope: 'layer', appPath: 'widths.nodeDiameter', label: 'Node diameter', unit: 'in', kind: 'nodes' }),
   Object.freeze({ fusionParam: 'rail_width', scope: 'layer', appPath: 'widths.rails', label: 'Rail width', unit: 'in', kind: 'rails' }),

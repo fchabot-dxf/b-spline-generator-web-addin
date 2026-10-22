@@ -24,6 +24,8 @@ import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 // dialog at all, not even the rows that DID have a real `from`).
 const _fmtIn = (v) => (Number.isFinite(v) ? `${v.toFixed(2)}"` : '(none)');
 const ROW_LABEL = (row) => row.label;
+// a row's value text follows its declared unit (core/pull-map.js): '' = a plain number (the seed), else inches
+const _fmtVal = (row, v) => (row.unit === '' ? (Number.isFinite(v) ? String(v) : '(none)') : _fmtIn(v));
 
 function _row(label, fromText, toText) {
   const el = document.createElement('div');
@@ -72,19 +74,19 @@ function _renderBody(changeList) {
 
   if (changeList.boardRows.length) {
     body.appendChild(_groupHeader('Board'));
-    for (const row of changeList.boardRows) body.appendChild(_row(ROW_LABEL(row), _fmtIn(row.from), _fmtIn(row.to)));
+    for (const row of changeList.boardRows) body.appendChild(_row(ROW_LABEL(row), _fmtVal(row, row.from), _fmtVal(row, row.to)));
     body.appendChild(_divider());
   }
 
   for (const group of changeList.layerGroups) {
     body.appendChild(_groupHeader(`${group.layerName} · Lattice`));
-    for (const row of group.rows) body.appendChild(_row(ROW_LABEL(row), _fmtIn(row.from), _fmtIn(row.to)));
+    for (const row of group.rows) body.appendChild(_row(ROW_LABEL(row), _fmtVal(row, row.from), _fmtVal(row, row.to)));
     body.appendChild(_divider());
   }
 
   if (changeList.frameRows.length) {
     body.appendChild(_groupHeader('Wood frame'));
-    for (const row of changeList.frameRows) body.appendChild(_row(ROW_LABEL(row), _fmtIn(row.from), _fmtIn(row.to)));
+    for (const row of changeList.frameRows) body.appendChild(_row(ROW_LABEL(row), _fmtVal(row, row.from), _fmtVal(row, row.to)));
     body.appendChild(_divider());
   }
 

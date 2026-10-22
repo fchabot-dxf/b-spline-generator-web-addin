@@ -41,6 +41,14 @@ describe('showChangeListDialog: the rows it renders', () => {
     expect(body.textContent).toContain('Frame thickness');
   });
 
+  it('a Seed row shows plain numbers, never inches', () => {
+    showChangeListDialog({ ...NO_CHANGES, boardRows: [{ fusionParam: 'seed', label: 'Seed', unit: '', from: 42, to: 4821 }] });
+    const row = document.querySelector('.pull-changelist-row');
+    expect(row.textContent).toContain('Seed');
+    expect(row.textContent).toContain('42 → 4821');
+    expect(row.textContent).not.toContain('"');
+  });
+
   // live Fusion test (seat D 2026-10-16): a row with no prior app value (core/pull-changelist.js's own diffScope --
   // "the app has no value yet (undefined): counts as changed, the row still shows, from is undefined") used to
   // throw (v.toFixed on undefined) and silently swallow the WHOLE dialog, caught by onSketchPulled's own try/

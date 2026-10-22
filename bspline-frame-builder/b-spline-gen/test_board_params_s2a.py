@@ -102,6 +102,39 @@ def test_the_legacy_board_syncs_exactly_the_old_names(adsk_vi):
     assert d.userParameters.names() == ['heightIn', 'widthIn']
 
 
+# ---- the seed: a UNITLESS integer board parameter, same namer, same ownership tag ------------------------------
+class _UnitRecordingParams(Params):
+    def add(self, name, value_input, unit, comment):
+        p = super().add(name, value_input, unit, comment)
+        p.unit = unit
+        return p
+
+
+def test_send_writes_the_seed_as_a_unitless_integer_under_the_boards_name(adsk_vi):
+    d = types.SimpleNamespace(userParameters=_UnitRecordingParams())
+    bsg._sync_user_parameters(d, {'widthIn': 9, 'heightIn': 12, 'seed': 48213}, BOARD)
+    seed = d.userParameters.itemByName('ka1b2c3d_seed')
+    assert (seed.expression, seed.unit) == ('48213', '')  # no 'in'; the text Fusion reads is the exact integer
+
+
+def test_the_seed_is_exact_for_a_large_or_float_seed_and_updates_in_place(adsk_vi):
+    d = types.SimpleNamespace(userParameters=_UnitRecordingParams())
+    bsg._sync_user_parameters(d, {'seed': 99999.0}, BOARD)  # JSON gives a float for a whole number sometimes
+    assert d.userParameters.itemByName('ka1b2c3d_seed').expression == '99999'
+    bsg._sync_user_parameters(d, {'seed': 123456789012}, BOARD)  # re-send: the SAME parameter, the exact digits
+    assert d.userParameters.names() == ['ka1b2c3d_seed']
+    assert d.userParameters.itemByName('ka1b2c3d_seed').expression == '123456789012'
+
+
+def test_the_legacy_board_names_the_seed_plainly_and_a_send_without_a_seed_adds_none(adsk_vi):
+    d = types.SimpleNamespace(userParameters=_UnitRecordingParams())
+    bsg._sync_user_parameters(d, {'widthIn': 7, 'heightIn': 9, 'seed': 5}, BoardNamer())
+    assert d.userParameters.names() == ['heightIn', 'seed', 'widthIn']
+    d2 = types.SimpleNamespace(userParameters=_UnitRecordingParams())
+    bsg._sync_user_parameters(d2, {'widthIn': 7, 'heightIn': 9}, BoardNamer())
+    assert d2.userParameters.names() == ['heightIn', 'widthIn']
+
+
 def test_a_lattice_manifest_is_named_for_its_board_and_layer():
     manifest = {'layerId': '3', 'parameters': [{'name': 'stroke_width', 'value': 0.07, 'unit': 'in'},
                                               {'name': 'lattice_spacing', 'value': 0.25, 'unit': 'in'}],

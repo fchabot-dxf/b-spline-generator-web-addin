@@ -133,6 +133,37 @@ describe('buildChangeList: the full change list -- board, per-layer groups, fram
     expect(result.notMappedCount).toBe(0); // not this board's problem to report
   });
 
+  // the seed (Send stores it as a unitless Fusion parameter; Pull brings it back as boardParams.seed)
+  it('a seed that differs from the app: ONE Seed row, plain numbers, no size rows', () => {
+    const pullResult = { widthIn: 7, heightIn: 9, boardParams: { seed: 4821 } };
+    const result = buildChangeList(pullResult, { P: { ...P, seed: 42 }, layers: [], frame: null });
+    expect(result.boardRows).toEqual([{ fusionParam: 'seed', scope: 'board', appPath: 'seed', label: 'Seed', unit: '', from: 42, to: 4821, changed: true }]);
+    expect(result.notMappedCount).toBe(0); // the seed is a mapped param
+  });
+
+  it('the same seed: no row, counted as unchanged (kept), not as not-mapped', () => {
+    const result = buildChangeList({ widthIn: 7, heightIn: 9, boardParams: { seed: 42 } }, { P: { ...P, seed: 42 }, layers: [], frame: null });
+    expect(result.boardRows).toEqual([]);
+    expect(result.keptCount).toBe(1);
+    expect(result.notMappedCount).toBe(0);
+  });
+
+  it('an old Fusion file with no seed parameter: no Seed row, nothing counted', () => {
+    const result = buildChangeList({ widthIn: 7, heightIn: 9, boardParams: { frame_thickness: 0.9 } }, { P: { ...P, seed: 42 }, layers: [], frame: null });
+    expect(result.boardRows).toEqual([]);
+    expect(result.keptCount).toBe(0);
+  });
+
+  it('a seed changes together with the size: both board rows, size first', () => {
+    const result = buildChangeList({ widthIn: 8, heightIn: 9, boardParams: { seed: 7 } }, { P: { ...P, seed: 42 }, layers: [], frame: null });
+    expect(result.boardRows.map((r) => r.fusionParam)).toEqual(['widthIn', 'seed']);
+  });
+
+  it('a seed with no size in the reply (the pull placed curves on the palette board) still shows its row', () => {
+    const result = buildChangeList({ boardParams: { seed: 7 } }, { P: { ...P, seed: 42 }, layers: [], frame: null });
+    expect(result.boardRows.map((r) => r.fusionParam)).toEqual(['seed']);
+  });
+
   it('no boardParams / no size at all: an empty, harmless change list', () => {
     const result = buildChangeList({}, { P, layers: [layer1], frame });
     expect(result).toEqual({ boardRows: [], layerGroups: [], frameRows: [], frameShapeRows: [], frameShapeBeyond: [], keptCount: 0, notMappedCount: 0, railsLocked: 0, railsMoved: 0, railsSkipped: [] });
