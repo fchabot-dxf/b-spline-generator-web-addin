@@ -306,8 +306,8 @@ def test_apply_adds_nothing_to_his_hand_built_back_and_frame_and_logs_why(eng, m
     assert _Stamper.stamps == 0 and 'B-spline Back' not in chain and 'Frame' not in chain   # no template ops, no Holes A/B chain
     assert {s.name: [o.name for o in s.operations] for s in setups} == before
     skipped = [m for lvl, m in lines if lvl == 'INFO' and 'skipped' in m and 'built by hand' in m]
-    assert len(skipped) == 2 and any("'B-spline Back'" in m or '(B-spline Back)' in m for m in skipped)
-    assert any('(Frame)' in m for m in skipped)
+    assert len(skipped) == 3                                                       # Back, the flipped one (by its alias) and Frame
+    assert any('(B-spline Back)' in m for m in skipped) and any('(Frame)' in m for m in skipped)
 
 
 def test_apply_still_stamps_a_setup_with_an_addin_record_and_an_empty_one(eng, monkeypatch):
@@ -331,3 +331,36 @@ def test_the_hand_built_predicate_is_one_place(eng):
     assert led.hand_built(des, setups[4], 'Setup7', known) is False               # empty
     led.record(des, 'B-spline Back', 'x', [setups[1].operations[0]])
     assert led.hand_built(des, setups[1], 'B-spline Back', known) is False        # it has a record
+
+
+# ---------------------------------------------------------------------------
+# each setup's own APPLY (Fred 2026-10-21): no all-setups APPLY
+# ---------------------------------------------------------------------------
+
+def test_a_setups_apply_state_is_off_with_the_reason_when_hand_built_and_absent_without_a_role(eng):
+    cam, setups, _ = _freds_file(eng)
+    des = cam.parentDocument.products.itemByProductType('DesignProductType')
+    st = lambda n: eng.sb.apply_state(cam, des, n)
+    assert st('B-spline Back')['enabled'] is False and 'built by hand' in st('B-spline Back')['why']
+    assert st('B-spline to pp )')['enabled'] is False                           # the flipped role, by its alias
+    assert st('Setup7') is None                                                  # no declared role: no button
+    setups[1].operations.clear()
+    assert st('B-spline Back') == {'enabled': True, 'why': ''}                  # nothing foreign left: Apply is on
+
+
+def test_the_snapshot_carries_each_setups_apply_state(eng):
+    cam, setups, _ = _freds_file(eng)
+    des = cam.parentDocument.products.itemByProductType('DesignProductType')
+    from cam_engine import op_states
+    snap = op_states.snapshot(cam, des, set(), apply_of=lambda n: eng.sb.apply_state(cam, des, n))
+    by = {g['name']: g['apply'] for g in snap}
+    assert by['Setup7'] is None and by['B-spline Back']['enabled'] is False and by['Frame']['enabled'] is False
+
+
+def test_a_setups_own_apply_stamps_only_that_setup(eng, monkeypatch):
+    cam, setups, chain = _apply_world(eng, monkeypatch)
+    for s in setups[1:4]:
+        s.operations.clear()                                                     # nothing hand-built: every role is applicable
+    eng.sb.apply_templates_to_existing_setups(cam, only='Frame')
+    assert _Stamper.stamps == 1 and setups[3].operations.count == 2 and setups[1].operations.count == 0
+    assert 'B-spline Back' not in chain

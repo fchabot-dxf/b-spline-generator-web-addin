@@ -137,7 +137,7 @@ class TestTheDeferredBuild:
             return {'ok': True, 'mode': 'bspline', 'mms': {'stock': True}, 'setups': [{'name': 'Setup 1', 'ok': True}]}
         monkeypatch.setattr(cb, '_engine', type('E', (), {'run_steps': staticmethod(run_steps)}), raising=False)
         # H23 item 101: the build's own APPLY step (the APPLY core, mocked)
-        monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: events.append(('apply', post_stages)) or (True, 'Applied.'))
+        monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True, only=None: events.append(('apply', post_stages)) or (True, 'Applied.'))
         return cb, fired, events
 
     def test_the_html_handler_returns_before_the_build_starts(self, monkeypatch):
@@ -178,11 +178,11 @@ class TestTheDeferredBuild:
     def test_a_waiting_apply_is_dropped_when_the_build_has_just_applied(self, monkeypatch):
         # H23 item 101: replaying it would apply the templates a second time (doubled operations)
         cb, fired, events = self._module(monkeypatch)
-        monkeypatch.setattr(cb, '_do_apply_toolpaths', lambda: events.append('apply button ran'))
+        monkeypatch.setattr(cb, '_do_apply_setup', lambda data: events.append('apply button ran'))
         cb._do_generate(confirmed=True)
         cb._advance_build()
         import types as _t
-        cb._CamHtmlEventHandler().notify(_t.SimpleNamespace(action='apply_toolpaths', data='{}'))
+        cb._CamHtmlEventHandler().notify(_t.SimpleNamespace(action='apply_setup', data='{}'))
         for _ in range(5):
             cb._advance_build()
         assert 'apply button ran' not in events

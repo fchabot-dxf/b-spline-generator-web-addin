@@ -559,13 +559,6 @@
         </div>
       </div>
 
-      <div class="cam-action-section">
-        <div class="cam-action-label">3. Toolpaths</div>
-        <div class="cam-action-body">
-          <button class="cad-btn cad-btn-primary" id="apply-toolpaths-btn" type="button" onclick="runApplyToolpaths()" title="Apply cloud templates to setups and run toolpath generation.">APPLY TOOLPATHS</button>
-        </div>
-      </div>
-
       <div class="cam-pipeline">
         <strong>Pipeline:</strong>
         Build 3 Manufacturing Models &rarr; attach 4 Setups.
@@ -827,7 +820,7 @@
   // trail of each user action (PAGE_LOG_ACTIONS) -- click, stage begin, painted, sent, what fusionSendData returned --
   // sends each line as 'page_log' (the add-in logs it at once, never behind a build) and re-sends the whole ring with
   // the next build report, so a line whose own send was lost during a blocked step still reaches the log.
-  const PAGE_LOG_ACTIONS = ['build', 'apply_toolpaths'];
+  const PAGE_LOG_ACTIONS = ['build', 'apply_setup'];
   const PAGE_LOG = [];
   const PAGE_LOG_MAX = 60;
   function pageLog(msg) {
@@ -926,7 +919,7 @@
   // ── The Toolpaths list (cam-op-list.js): painted from the add-in's 'op_states'; buttons, states and text only ───────
   function paintOpList(payload) {
     const root = document.getElementById('toolpaths-card');
-    if (root && window.camOpList) window.camOpList.renderOpList(root, payload, send);
+    if (root && window.camOpList) window.camOpList.renderOpList(root, payload, (action, data) => (action === 'apply_setup' ? runApplySetup(data.setup) : send(action, data)));
   }
   // the list follows what Fred does in Fusion (an edited tool flips an op to 'out of date'): on focus and every few seconds
   function pollOpStates() { if (!document.hidden && currentMode === 'bspline' && bootedBspline) send('get_op_states'); }
@@ -1016,10 +1009,11 @@
     send('sync_table_attach');
   }
 
-  function runApplyToolpaths() {
+  // a setup row's OWN Apply (the Toolpaths list); there is no all-setups APPLY button (Fred 2026-10-21)
+  function runApplySetup(name) {
     pageLog('APPLY click');
-    setStatus('applying templates + generating toolpaths...');
-    withCamStages('camApply', () => send('apply_toolpaths', { mode: 'bspline' }));
+    setStatus('applying the templates to ' + name + '...');
+    withCamStages('camApply', () => send('apply_setup', { setup: name }));
   }
 
   /* ───────────────────────── Template browser ─────────────────────────

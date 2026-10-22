@@ -55,7 +55,7 @@ describe('the CAM palette wiring', () => {
 
   it('BUILD and APPLY begin their sequence BEFORE sending; build_confirm and report end it; cam_stage holds the step', () => {
     expect(PALETTE).toMatch(/withCamStages\('camBuild', \(\) => send\('build'/);
-    expect(PALETTE).toMatch(/withCamStages\('camApply', \(\) => send\('apply_toolpaths'/);
+    expect(PALETTE).toMatch(/withCamStages\('camApply', \(\) => send\('apply_setup'/);
     expect(PALETTE).toMatch(/action === 'build_confirm'\) \{ if \(window\.camLoading\) window\.camLoading\.end\(\)/);
     expect(PALETTE).toMatch(/action === 'cam_stage'\) \{ if \(window\.camLoading && payload\.id\) window\.camLoading\.stage\(payload\.id, payload\.grow\)/);
     expect(PALETTE).toMatch(/action === 'report' && window\.camLoading\) window\.camLoading\.end\(\)/); // APPLY / BUILD generate nothing: the report closes the card (Fred, 2026-10-20)

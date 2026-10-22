@@ -275,8 +275,8 @@ def _dispatch_palette_action(action, data):
             _do_add_machine()
         elif action == 'sync_table_attach':
             _do_sync_table_attach()
-        elif action == 'apply_toolpaths':
-            _do_apply_toolpaths()
+        elif action == 'apply_setup':
+            _do_apply_setup(data)
         elif action == 'list_cam_templates':
             _do_list_cam_templates()
             # Piggyback the deployed version stamp on the first boot pull.
@@ -1393,7 +1393,8 @@ def _finish_build(report, failed=False):
     """The build's steps are over. H23 item 101 (Fred: "simply add the step in a splash load image"; an APPLY clicked
     during a blocked BUILD step never reaches the page): a BUILD that built ends with APPLY, as its own declared step
     (cam-stages.js camBuild: camBuildApply) -- posted now, run on the next tick so the palette paints it first
-    (_run_apply_after_build), then ONE report. A failed build reports at once. The APPLY TOOLPATHS button stays."""
+    (_run_apply_after_build), then ONE report. A failed build reports at once. There is no all-setups APPLY button
+    (Fred 2026-10-21): only each setup's own APPLY in the Toolpaths list."""
     global _apply_after_build
     if not failed:
         # Friendly completion message for the palette status bar.
@@ -1432,8 +1433,8 @@ def _send_build_report(report):
     waiting = list(_actions_waiting)
     _actions_waiting.clear()
     for action, data in waiting:
-        if action == 'apply_toolpaths' and (report.get('apply') or {}).get('ok'):
-            _log("[CAM BUILD] a waiting 'apply_toolpaths' is dropped: the build has just applied")
+        if action == 'apply_setup' and (report.get('apply') or {}).get('ok'):
+            _log("[CAM BUILD] a waiting 'apply_setup' is dropped: the build has just applied")
             continue
         _dispatch_palette_action(action, data)
 
@@ -1640,7 +1641,9 @@ def _op_states_payload():
     st = _engine_module('op_states')
     cam, doc = _active_cam()
     design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
-    return {'setups': st.snapshot(cam, design, st.addin_op_names()) if cam else [], 'run': _get_queue().snapshot()}
+    sb = _engine_module('setup_builder')
+    return {'setups': st.snapshot(cam, design, st.addin_op_names(), apply_of=lambda n: sb.apply_state(cam, design, n)) if cam else [],
+            'run': _get_queue().snapshot()}
 
 
 def _do_get_op_states():
@@ -1734,13 +1737,13 @@ class _OpQueueHandler(adsk.core.CustomEventHandler):
             _log_error("op queue tick\n" + traceback.format_exc())
 
 
-def _do_apply_toolpaths():
-    """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
-    ok, msg = _apply_toolpaths()
+def _do_apply_setup(data):
+    """A setup row's own APPLY (``setup`` = its name): stamp the declared operations into that one setup, then report."""
+    ok, msg = _apply_toolpaths(only=(data or {}).get('setup'))
     _send_to_html('report', {'ok': ok, 'msg': msg})
 
 
-def _apply_toolpaths(post_stages=True):
+def _apply_toolpaths(post_stages=True, only=None):
     """Phase 2 of the split flow: apply the templates (and the declared operations). Returns (ok, msg); sends no report.
 
     Run by the APPLY TOOLPATHS button and, since H23 item 101 (Fred: "simply add the step in a splash load image"),
@@ -1776,7 +1779,7 @@ def _apply_toolpaths(post_stages=True):
         _log("APPLY TOOLPATHS: applying templates to existing setups")
         if post_stages:
             _post_cam_stage('camTemplates')  # F35 item 70
-        n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
+        n = _sb.apply_templates_to_existing_setups(cam, logger=_logger, only=only)
         _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
     except Exception:
         _log_error("APPLY TOOLPATHS: template apply raised\n" + traceback.format_exc())

@@ -175,3 +175,25 @@ describe('the palette wiring', () => {
     expect(MODULE).not.toMatch(/el\(doc, '(input|select|textarea)'/);
   });
 });
+
+describe('a setup\'s own APPLY (Fred 2026-10-21): no all-setups APPLY, one button on each setup row', () => {
+  const withApply = (name, apply, ops = [op('A', 'none')]) => ({ name, ops, apply });
+  it('a setup with a declared role gets an Apply button; one with none gets no button', () => {
+    expect(groupView(withApply('B-spline Back', { enabled: true, why: '' }), {}).apply).toEqual({ label: 'Apply', disabled: false, why: '' });
+    expect(groupView(withApply('Setup7', null), {}).apply).toBeNull();
+  });
+  it('a hand-built setup shows it disabled with the reason', () => {
+    const g = groupView(withApply('B-spline Back', { enabled: false, why: 'built by hand -- APPLY adds nothing to it' }), {});
+    expect(g.apply.disabled).toBe(true);
+    expect(g.apply.why).toMatch(/built by hand/);
+  });
+  it('is off while a generation runs', () => {
+    expect(groupView(withApply('Frame', { enabled: true, why: '' }), { on: true }).apply.disabled).toBe(true);
+  });
+  it('the palette has no all-setups APPLY button, and no new input field', () => {
+    expect(PALETTE).not.toMatch(/apply-toolpaths-btn|APPLY TOOLPATHS<|runApplyToolpaths/);
+    expect(PALETTE).toMatch(/function runApplySetup\(name\)/);
+    expect(MODULE).toMatch(/send\('apply_setup', \{ setup: g\.name \}\)/);
+    expect(MODULE).not.toMatch(/<input|createElement\('input'/);
+  });
+});

@@ -4,7 +4,7 @@
 // Meaning (cam_engine/stock_dims.py): the TOTAL box in the MODEL's axes (X across the panel, Y up it, Z through it),
 // centred on the panel, its bottom on the model's world bottom, ONE box shared by the Back and flipped setups.
 //   all three EMPTY  = default: a new setup gets the declared box; an EXISTING setup keeps whatever stock it has
-//   all three FILLED = Fred's explicit intent: the next BUILD / APPLY writes that box to the B-spline setups
+//   all three FILLED = Fred's explicit intent: the next BUILD writes that box to the B-spline setups
 // Detection only: a box smaller than the panel + frame gets an amber warning; nothing is clamped or blocked.
 
 /** '7.5' -> 7.5; '' -> null; garbage / <= 0 -> NaN (not a usable size). */
@@ -51,6 +51,6 @@ export function requestFor(state) {
 }
 
 /** The card's note under the status line, the same text in the mockup Fred approved. */
-export const STOCK_NOTE = 'PREVIEW (top bar) draws this box in Fusion as you type. A filled box is written to the Back and flipped setups on the next BUILD / APPLY, and toolpaths made earlier then show out of date in the list.';
+export const STOCK_NOTE = 'PREVIEW (top bar) draws this box in Fusion as you type. A filled box is written to the Back and flipped setups on the next BUILD, and toolpaths made earlier then show out of date in the list.';
 
 if (typeof window !== 'undefined') window.camStock = { readFields, statusLine, warningText, requestFor, STOCK_NOTE };

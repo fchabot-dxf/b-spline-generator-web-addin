@@ -129,7 +129,19 @@ def _declared_template_bases():
             for spec in SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
 
 
-def apply_templates_to_existing_setups(cam, logger=None):
+def apply_state(cam, design, setup_name):
+    """What the Toolpaths list shows for a setup's own APPLY button: None when the setup carries no declared role (nothing
+    to apply), else {'enabled': bool, 'why': str}. A hand-built setup is disabled with the reason (op_ledger.hand_built)."""
+    for spec in SETUP_SPECS:
+        found = bind_roles(cam).get(spec['name'], [])
+        if len(found) == 1 and found[0].name == setup_name:
+            if op_ledger.hand_built(design, found[0], spec['name'], _declared_template_bases()):
+                return {'enabled': False, 'why': 'built by hand -- APPLY adds nothing to it'}
+            return {'enabled': True, 'why': ''}
+    return None
+
+
+def apply_templates_to_existing_setups(cam, logger=None, only=None):
     """Apply cloud templates to every setup whose name matches SETUP_SPECS.
 
     Iterates SETUP_SPECS to find each spec's declared ``cloud_templates``
@@ -147,14 +159,10 @@ def apply_templates_to_existing_setups(cam, logger=None):
     """
     if cam is None:
         return 0
-    # Build a name → setup index
-    live_by_name = {}
-    for i in range(cam.setups.count):
-        s = cam.setups.item(i)
-        try:
-            live_by_name[s.name] = s
-        except Exception:
-            continue
+    # role name -> its setup (exact name, then alias: bind_roles); ``only`` = one live setup's name (the per-setup APPLY)
+    live_by_name = {n: v[0] for n, v in bind_roles(cam, logger).items() if len(v) == 1}
+    if only is not None:
+        live_by_name = {n: s for n, s in live_by_name.items() if s.name == only}
 
     n_processed = 0
     for spec in SETUP_SPECS:

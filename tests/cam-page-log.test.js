@@ -13,7 +13,7 @@ const grab = (re) => { const m = HTML.match(re); if (!m) throw new Error(`not fo
 const SRC = [
   grab(/const PAGE_LOG_ACTIONS[\s\S]*?\n  function send\(action, payload\) \{[\s\S]*?\n  \}/),
   grab(/function withCamStages\(sequenceId, go\) \{[\s\S]*?\n  \}/),
-  grab(/function runApplyToolpaths\(\) \{[\s\S]*?\n  \}/),
+  grab(/function runApplySetup\(name\) \{[\s\S]*?\n  \}/),
 ].join('\n');
 
 function palette({ throwOnPageLog = false } = {}) {
@@ -22,7 +22,7 @@ function palette({ throwOnPageLog = false } = {}) {
     adsk: { fusionSendData: (action, data) => { if (throwOnPageLog && action === 'page_log') throw new Error('blocked'); sent.push([action, JSON.parse(data)]); return ''; } },
     camLoading: { begin: () => Promise.resolve() },
   };
-  const api = new Function('window', 'setStatus', `${SRC}; return { runApplyToolpaths, flushPageLogRing, send, PAGE_LOG };`)(window, () => {});
+  const api = new Function('window', 'setStatus', `${SRC}; return { runApplySetup, flushPageLogRing, send, PAGE_LOG };`)(window, () => {});
   return { api, sent, window };
 }
 const trail = (sent) => sent.filter(([a]) => a === 'page_log').flatMap(([, d]) => d.lines.map((l) => l.slice(13)));
@@ -30,15 +30,15 @@ const trail = (sent) => sent.filter(([a]) => a === 'page_log').flatMap(([, d]) =
 describe('the CAM palette trails each BUILD / APPLY click', () => {
   it('an APPLY click logs click -> begin -> painted -> send -> sent, each as its own page_log, then sends the action', async () => {
     const { api, sent } = palette();
-    api.runApplyToolpaths();
+    api.runApplySetup('B-spline Back');
     await new Promise((r) => setTimeout(r, 0));
-    expect(trail(sent)).toEqual(['APPLY click', 'camApply begin', 'camApply painted -> send', 'send apply_toolpaths', 'sent apply_toolpaths -> ""']);
-    expect(sent.filter(([a]) => a === 'apply_toolpaths')).toEqual([['apply_toolpaths', { action: 'apply_toolpaths', mode: 'bspline' }]]);
+    expect(trail(sent)).toEqual(['APPLY click', 'camApply begin', 'camApply painted -> send', 'send apply_setup', 'sent apply_setup -> ""']);
+    expect(sent.filter(([a]) => a === 'apply_setup')).toEqual([['apply_setup', { action: 'apply_setup', setup: 'B-spline Back' }]]);
     expect(sent.find(([a]) => a === 'page_log')[1].lines[0]).toMatch(/^\d\d:\d\d:\d\d\.\d{3} APPLY click$/);
   });
   it('a line whose own send fails stays in the ring, and the report re-sends the whole ring', async () => {
     const { api, sent, window } = palette({ throwOnPageLog: true });
-    api.runApplyToolpaths();
+    api.runApplySetup('B-spline Back');
     await new Promise((r) => setTimeout(r, 0));
     expect(trail(sent)).toEqual([]);
     window.adsk.fusionSendData = (action, data) => { sent.push([action, JSON.parse(data)]); return ''; };

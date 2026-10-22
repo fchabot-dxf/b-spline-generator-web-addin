@@ -21,7 +21,7 @@ def _handler(monkeypatch):
     cb = _import_module()
     logged, ran = [], []
     monkeypatch.setattr(cb, '_log', lambda msg, level='INFO': logged.append(msg))
-    for fn in ('_do_generate', '_do_apply_toolpaths', '_do_preview'):
+    for fn in ('_do_generate', '_do_apply_setup', '_do_preview'):
         monkeypatch.setattr(cb, fn, lambda *a, _fn=fn, **k: ran.append(_fn))
     send = lambda action, data: cb._CamHtmlEventHandler().notify(types.SimpleNamespace(action=action, data=json.dumps(data)))
     return send, logged, ran
@@ -32,8 +32,8 @@ def test_page_log_lines_are_logged_on_arrival_and_never_dispatched(monkeypatch):
     send('page_log', {'action': 'page_log', 'lines': ['08:20:12.828 APPLY click', '08:20:12.900 camApply begin']})
     assert logged == ['[PAGE] 08:20:12.828 APPLY click', '[PAGE] 08:20:12.900 camApply begin']
     assert ran == []
-    send('apply_toolpaths', {'action': 'apply_toolpaths'})  # the real action still runs as before
-    assert ran == ['_do_apply_toolpaths']
+    send('apply_setup', {'action': 'apply_setup', 'setup': 'Frame'})  # the real action still runs as before
+    assert ran == ['_do_apply_setup']
 
 
 def test_the_ring_resend_is_marked(monkeypatch):

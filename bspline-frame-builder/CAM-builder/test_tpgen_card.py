@@ -72,7 +72,7 @@ def test_the_build_and_apply_reports_close_the_card_because_nothing_is_generated
     cb._send_build_report({'ok': True, 'msg': 'x', 'apply': {'ok': False, 'msg': 'No CAM product.'}})
     assert [p.get('toolpaths_pending') for a, p in sent] == [None, None]
     sent.clear()
-    monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: (True, 'done'))
-    cb._do_apply_toolpaths()
+    monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True, only=None: (True, 'done'))
+    cb._do_apply_setup({'setup': 'Frame'})
     assert sent == [('report', {'ok': True, 'msg': 'done'})]
-    assert '_kick_off_toolpath_generation' not in inspect.getsource(inspect.unwrap(cb.__dict__['_do_apply_toolpaths']))
+    assert '_kick_off_toolpath_generation' not in inspect.getsource(inspect.unwrap(cb.__dict__['_do_apply_setup']))
