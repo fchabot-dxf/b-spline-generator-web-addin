@@ -30,9 +30,8 @@ _ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPEC
 
 
 def _declared_template_bases():
-    """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
-    return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
-            for spec in setup_builder.SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
+    """The names the add-in renames its stamped operations to (setup_builder._declared_template_bases)."""
+    return setup_builder._declared_template_bases()
 
 
 def _design_of(cam):

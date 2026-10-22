@@ -123,6 +123,12 @@ def _assign_default_machine(setup, setup_name, logger):
     return g_success or h_success
 
 
+def _declared_template_bases():
+    """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
+    return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
+            for spec in SETUP_SPECS for leaf in (spec.get('cloud_templates') or [])}
+
+
 def apply_templates_to_existing_setups(cam, logger=None):
     """Apply cloud templates to every setup whose name matches SETUP_SPECS.
 
@@ -167,6 +173,10 @@ def apply_templates_to_existing_setups(cam, logger=None):
         except Exception as e:
             _log(logger, f"APPLY TEMPLATES ({name}): override lookup failed ({e}); using spec defaults", "WARNING")
             cloud_templates = spec.get('cloud_templates') or []
+        if op_ledger.hand_built(design, setup, name, _declared_template_bases()):
+            _log(logger, f"APPLY TEMPLATES ({name}): skipped -- built by hand (no add-in record, and it holds "
+                         f"operation(s) the add-in did not make); nothing is added to it", "INFO")
+            continue
         if not cloud_templates:
             _log(logger, f"APPLY TEMPLATES ({name}): no templates declared, skipping", "DEBUG")
             _apply_hole_chain(cam, setup, spec, design, None, logger)

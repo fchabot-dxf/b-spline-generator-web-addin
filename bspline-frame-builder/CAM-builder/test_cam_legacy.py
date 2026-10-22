@@ -262,3 +262,72 @@ def test_a_whole_addin_built_tree_is_reused_in_place_exactly_as_before(eng, monk
     rep, seen, lg = _build(eng, monkeypatch, cam)
     assert rep['reused'] is True and seen == []
     assert all(len(s.models) == 1 for s in setups)                              # body-bound: re-bound to the MM's body as before
+
+
+# ---------------------------------------------------------------------------
+# APPLY adds nothing to a setup built by hand (Fred 2026-10-21)
+# ---------------------------------------------------------------------------
+
+from test_cam_keep import _wire_cloud, _Operation as _KeepOp   # noqa: E402
+
+
+class _Stamper(_LegacySetup):
+    """A legacy setup whose createFromCAMTemplate ADDS the template's operations (like Fusion's)."""
+    stamps = 0
+
+    def createFromCAMTemplate(self, tpl):
+        made = [_KeepOp(f'raw-{i}') for i in range(tpl.n_ops)]
+        for o in made:
+            self.operations.append(o)
+        type(self).stamps += 1
+        return made
+
+
+def _apply_world(eng, monkeypatch):
+    cam, setups, mms = _freds_file(eng)
+    for i, s in enumerate(setups):
+        setups[i].__class__ = _Stamper
+    leaves = {'Pocket back.f3dhsm-template': 2}
+    for spec in eng.sb.SETUP_SPECS:
+        monkeypatch.setitem(spec, 'cloud_templates', list(leaves) if spec['name'] in ('B-spline Back', 'Frame') else [])
+    _wire_cloud(eng, monkeypatch, leaves)
+    chain = []
+    monkeypatch.setattr(eng.sb, '_apply_hole_chain', lambda cam_, setup, spec, design, mm, logger: chain.append(setup.name))
+    _Stamper.stamps = 0
+    return cam, setups, chain
+
+
+def test_apply_adds_nothing_to_his_hand_built_back_and_frame_and_logs_why(eng, monkeypatch):
+    cam, setups, chain = _apply_world(eng, monkeypatch)
+    before = {s.name: [o.name for o in s.operations] for s in setups}
+    lines = []
+    lg = types.SimpleNamespace(log=lambda m, lvl='INFO': lines.append((lvl, m)))
+    eng.sb.apply_templates_to_existing_setups(cam, lg)
+    assert _Stamper.stamps == 0 and 'B-spline Back' not in chain and 'Frame' not in chain   # no template ops, no Holes A/B chain
+    assert {s.name: [o.name for o in s.operations] for s in setups} == before
+    skipped = [m for lvl, m in lines if lvl == 'INFO' and 'skipped' in m and 'built by hand' in m]
+    assert len(skipped) == 2 and any("'B-spline Back'" in m or '(B-spline Back)' in m for m in skipped)
+    assert any('(Frame)' in m for m in skipped)
+
+
+def test_apply_still_stamps_a_setup_with_an_addin_record_and_an_empty_one(eng, monkeypatch):
+    cam, setups, chain = _apply_world(eng, monkeypatch)
+    back = setups[1]
+    des = cam.parentDocument.products.itemByProductType('DesignProductType')
+    eng.led = __import__('cam_engine.op_ledger', fromlist=['x'])
+    eng.led.record(des, 'B-spline Back', 'Pocket back.f3dhsm-template', [back.operations[0]])   # the add-in recorded this setup
+    setups[3].operations.clear()                                                  # an empty Frame
+    eng.sb.apply_templates_to_existing_setups(cam)
+    assert _Stamper.stamps == 1 and setups[3].operations.count == 2               # the empty Frame is stamped
+    assert 'B-spline Back' in chain                                               # and the recorded Back still gets its chain step
+
+
+def test_the_hand_built_predicate_is_one_place(eng):
+    cam, setups, _ = _freds_file(eng)
+    des = cam.parentDocument.products.itemByProductType('DesignProductType')
+    led = __import__('cam_engine.op_ledger', fromlist=['x'])
+    known = eng.sb._declared_template_bases()
+    assert led.hand_built(des, setups[1], 'B-spline Back', known) is True         # no record + ops it did not make
+    assert led.hand_built(des, setups[4], 'Setup7', known) is False               # empty
+    led.record(des, 'B-spline Back', 'x', [setups[1].operations[0]])
+    assert led.hand_built(des, setups[1], 'B-spline Back', known) is False        # it has a record

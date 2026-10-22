@@ -122,8 +122,9 @@ def test_apply_after_fred_deleted_nothing_and_added_an_op_keeps_his_op_and_adds_
 
 def test_the_ledger_records_only_what_was_stamped_not_freds_ops(eng, monkeypatch):
     cam, design, back, _ = _world(eng, monkeypatch)
+    eng.sb.apply_templates_to_existing_setups(cam)       # the add-in stamps first (an empty setup)
     fred = _Operation('Fred dup')
-    back.operations.append(fred)                         # in the setup BEFORE the first APPLY
+    back.operations.append(fred)
     eng.sb.apply_templates_to_existing_setups(cam)
     ours = [o for o in back.operations if o is not fred]
     assert len(ours) == 2
