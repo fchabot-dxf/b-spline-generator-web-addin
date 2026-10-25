@@ -959,6 +959,23 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Queued (Fred 2026-10-24) — FRAME-SPLIT: the Frame cut as ONE piece or TWO pieces, declared in the CAM builder
+Fred cuts the frame in two setups when he has no board long enough ("sometimes I don't have large enough pieces").
+His hand-built file (6x9 12oct) today: setups "Frame" (bodies frame_bottom + frame_right, stock 24.5 x 3.625 in x
+44 mm, stock placed from the LEFT end + 2 in, WCS box point bottom 1, flipY) and "Frame (2)" (the other bars via an MM
+copy, same X/Y, 50 mm thick, from the RIGHT end, box point bottom 3, no flipY), each with the same 3 passes.
+Today `SETUP_SPECS` (CAM-builder/cam_engine/setup_builder.py) declares ONE Frame setup with 2 templates. Change, as data:
+1. ONE frame pass list shared by every frame setup: rough (`cadre Pocket 4`), morph finish (`cadre Morphed Spiral 3`),
+   FINAL ROUGH = rest machining from previous ops, bottom 0.125 in from lowest, 0.02 in stock to leave (in Fred's file it
+   is a modified copy of cadre Pocket 4 — it needs saving as its own cloud template; name TBD with Fred).
+2. A declared FRAME LAYOUT: 'one' -> setup "Frame" (all 4 bars); 'two' -> "Frame A" = bottom + right, "Frame B" =
+   top + left (Fred: always that split). Per piece: its bars, stock end (left/right), WCS box point.
+3. Stock: length + width shared; THICKNESS PER PIECE (Fred: "two thickness" — the halves can be different boards).
+4. Palette Frame card: "Cut as: [One piece | Two pieces]" + the thickness field(s).
+5. Hand-built files: aliases bind "Frame" / "Frame (2)" to the pieces (no duplicate setups).
+Tests: one vs two expands to 1 / 2 setups from the same pass list; per-piece thickness lands in each stock box;
+aliases adopt the hand-built pair.
+
 ## Queued (Fred's queue) — SNAP-SPLIT: separate GRID snap and GEOMETRY snap for manual moves (Fred 2026-09-26)
 Fred: "on manual moving, geometry snaps if snapping is on (need snapping distinction, for geometry and grid)". Today the
 editor has ONE toggle (`#editorGridSnap` "SNAP", grid only; Alt = off-grid). Change: two declared snap modes, each its own
