@@ -959,6 +959,14 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Shipped (Asus, 2026-10-24) — FRAME-SPLIT (as built): `cam_engine/frame_layout.py` (pieces, presets 1-4, validation,
+saved on the Design as `CAMBuilder` / `frame::layout`); `setup_builder.setup_specs(design)` expands the ONE Frame spec into
+"Frame" or "Frame A".."Frame D" (no saved layout = exactly the old single Frame); each piece binds only its frame_<bar>
+bodies and writes its typed thickness as the stock Z (X/Y stay the bars + margin); all pieces use the Frame's template
+('cadre Frame 3-pass', created 2026-10-24 from Fred's tuned setup), overrides kept per role. Palette Frame card: Pieces
+[1][2][3][4] + a thickness field per piece (cam-frame-layout.js). Fred: hand-built frame setups in existing files are NOT
+adopted (no extra aliases). Not built: free (custom) bar assignment in the palette UI (the data supports it).
+Original entry:
 ## Queued (Fred 2026-10-24) — FRAME-SPLIT: the Frame cut as ONE piece or TWO pieces, declared in the CAM builder
 Fred cuts the frame in two setups when he has no board long enough ("sometimes I don't have large enough pieces").
 His hand-built file (6x9 12oct) today: setups "Frame" (bodies frame_bottom + frame_right, stock 24.5 x 3.625 in x

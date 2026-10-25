@@ -226,7 +226,8 @@ def test_every_spec_mm_rule_is_built(eng):
 
 def test_cleanup_names_are_derived_from_the_declarations(eng):
     co, sb, mm = eng.co, eng.sb, eng.mm
-    assert co._ADDIN_SETUP_NAMES == frozenset(s['name'] for s in sb.SETUP_SPECS)
+    # + every name a FRAME-SPLIT layout can give the Frame's pieces (cam_engine/frame_layout.py ALL_NAMES), still derived
+    assert co._ADDIN_SETUP_NAMES == frozenset(s['name'] for s in sb.SETUP_SPECS) | eng.co.frame_layout.ALL_NAMES
     assert co._ADDIN_MM_NAMES == frozenset(mm._mm_display_name(r) for r in mm.MM_RULES)
 
 

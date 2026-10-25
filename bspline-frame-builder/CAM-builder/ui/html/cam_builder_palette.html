@@ -382,6 +382,14 @@
     .tp-runline { font-size:10px; opacity:.8; }
     /* ── Stock card (cam-stock.js): exactly three number fields + Clear, nothing else ───────────────────────── */
     .stk-fields { display:flex; gap:8px; align-items:flex-end; }
+    /* ── Frame split (cam-frame-layout.js, FRAME-SPLIT): Pieces [1-4] + one row per piece ─────────────────── */
+    .frm-count { display:flex; gap:4px; }
+    .frm-count button { min-width:28px; height:24px; }
+    .frm-count button.active { background:var(--cad-accent, #0696d7); color:#fff; border-color:transparent; }
+    .frm-piece { display:flex; gap:8px; align-items:center; font-size:11px; margin-top:4px; }
+    .frm-piece .frm-name { font-weight:700; min-width:56px; }
+    .frm-piece .frm-bars { flex:1; color:var(--cad-text-muted); }
+    .frm-piece input { width:64px; height:24px; font-size:12px; border:1px solid var(--cad-border-standard); border-radius:4px; padding:0 6px; }
     .stk-field { display:flex; flex-direction:column; gap:2px; font-size:9px; font-weight:700; color:var(--cad-text-muted); letter-spacing:.04em; }
     .stk-field input { width:64px; height:28px; font-size:12px; border:1px solid var(--cad-border-standard); border-radius:4px; padding:0 6px; }
     .stk-field input.warn { border-color:#d98a00; }
@@ -535,6 +543,14 @@
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
         </div>
+        <!-- FRAME-SPLIT (cam-frame-layout.js): the frame as 1-4 setups, one thickness per piece -->
+        <div class="cam-row"><span class="k">Pieces</span>
+          <span class="frm-count" id="frame-count">
+            <button type="button" class="cad-btn" data-count="1">1</button><button type="button" class="cad-btn" data-count="2">2</button><button type="button" class="cad-btn" data-count="3">3</button><button type="button" class="cad-btn" data-count="4">4</button>
+          </span>
+        </div>
+        <div id="frame-pieces"></div>
+        <div class="stk-note" id="frame-note"></div>
         <div class="cam-tpl-section open" data-tpl-setup="Frame">
           <div class="cam-tpl-head" onclick="toggleTpl(this)">
             <span><span class="cam-tpl-toggle"></span>Templates</span>
@@ -766,6 +782,7 @@
 <script type="module" src="./cam-setup-state.js"></script>
 <script type="module" src="./cam-op-list.js"></script>
 <script type="module" src="./cam-stock.js"></script>
+<script type="module" src="./cam-frame-layout.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -799,6 +816,7 @@
       send('get_setup_states'); // the cards show the doc as it is (a palette opened on a built doc)
       send('get_op_states');    // the Toolpaths list the same way
       send('get_stock');        // the Stock card: the saved box, the default and what the part needs
+      send('get_frame_layout'); // the Frame card: how the frame is split into setups (FRAME-SPLIT)
     } else if (currentMode === 'generic' && !bootedGeneric) {
       bootedGeneric = true;
       send('init');
@@ -813,6 +831,7 @@
   // stripped one underscore from the key and never matched a B-spline setup.)
   function setupKeyFor(name) {
     const flat = String(name || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (/^frame[abcd]?$/.test(flat)) return 'frame';   // FRAME-SPLIT: 'Frame A'..'Frame D' are all the Frame card
     return SETUP_KEYS.find(k => k.replace(/[^a-z]/g, '') === flat) || null;
   }
 
@@ -897,6 +916,37 @@
       send('preview_stock_bspline', { dims: st.kind === 'box' ? st.dims : null });
     }, 250);
   }
+  // ── The Frame card split (cam-frame-layout.js, FRAME-SPLIT): Pieces [1-4], a thickness per piece ─────────────────────
+  let framePieces = [];
+  function frameLayout(info) {
+    const fl = window.camFrameLayout;
+    if (!fl || !info) return;
+    framePieces = info.pieces || [];
+    document.querySelectorAll('#frame-count button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.count) === framePieces.length));
+    const box = document.getElementById('frame-pieces');
+    box.innerHTML = '';
+    fl.rows(info).forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'frm-piece';
+      row.innerHTML = '<span class="frm-name"></span><span class="frm-bars"></span><input type="number" step="0.01" min="0" placeholder="thick in">';
+      row.querySelector('.frm-name').textContent = r.name;
+      row.querySelector('.frm-bars').textContent = r.bars;
+      const inp = row.querySelector('input');
+      inp.value = r.thickness;
+      inp.addEventListener('change', () => {
+        const req = fl.requestForThickness(framePieces, i, inp.value);
+        if (req) send(req.action, req.data);
+      });
+      box.appendChild(row);
+    });
+    document.getElementById('frame-note').textContent = fl.FRAME_NOTE;
+  }
+  document.querySelectorAll('#frame-count button').forEach(b => b.addEventListener('click', () => {
+    const req = window.camFrameLayout && window.camFrameLayout.requestForCount(Number(b.dataset.count));
+    if (req) send(req.action, req.data);
+  }));
+
   function stockInfo(info) {
     stockNeeds = info.needs || null;
     const f = stockEls();
@@ -1688,6 +1738,7 @@
         if (action === 'setup_states') { showSetupList(payload.setups); return; }
         if (action === 'op_states') { paintOpList(payload); return; }
         if (action === 'stock_info') { stockInfo(payload); return; }
+        if (action === 'frame_layout') { frameLayout(payload); return; }
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event

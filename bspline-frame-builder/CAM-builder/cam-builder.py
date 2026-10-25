@@ -297,6 +297,10 @@ def _dispatch_palette_action(action, data):
             _do_get_stock()
         elif action == 'set_stock':
             _do_set_stock(data)
+        elif action == 'get_frame_layout':
+            _do_get_frame_layout()
+        elif action == 'set_frame_layout':
+            _do_set_frame_layout(data)
         elif action == 'preview_stock_bspline':
             _do_preview_stock_bspline(data)
         elif action == 'set_template_assignments':
@@ -1568,6 +1572,48 @@ def _do_set_stock(data):
         _send_to_html('stock_info', _stock_info_payload())
     except Exception:
         _log_error("_do_set_stock" + chr(10) + traceback.format_exc())
+
+
+def _frame_layout_payload():
+    """{'pieces': the saved layout (default = one piece, all bars), 'names': the setup names it builds, 'bars', 'max'}."""
+    fl = _engine_module('frame_layout')
+    doc = adsk.core.Application.get().activeDocument
+    design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+    pieces = fl.load(design)
+    return {'pieces': pieces, 'names': [fl.piece_name(i, len(pieces)) for i in range(len(pieces))],
+            'bars': list(fl.BARS), 'max': fl.MAX_PIECES}
+
+
+def _do_get_frame_layout():
+    """The Frame card opens: how the frame is split into setups (FRAME-SPLIT)."""
+    try:
+        _send_to_html('frame_layout', _frame_layout_payload())
+    except Exception:
+        _log_error("_do_get_frame_layout" + chr(10) + traceback.format_exc())
+
+
+def _do_set_frame_layout(data):
+    """The Frame card was edited: {'pieces': [{'bars', 'thickness_in'}]} or {'count': n} (a preset, thickness kept per piece
+    index when the count is unchanged). Saved on the Design; an invalid layout is refused and the card re-reports the saved
+    one. The next BUILD makes one setup per piece."""
+    try:
+        fl = _engine_module('frame_layout')
+        doc = adsk.core.Application.get().activeDocument
+        design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
+        pieces = data.get('pieces')
+        if pieces is None and data.get('count') is not None:
+            pieces = fl.preset(int(data.get('count')))
+        if fl.save(design, pieces):
+            got = fl.load(design)
+            _log(f"FRAME LAYOUT: {len(got)} piece(s) -- "
+                 + "; ".join(f"{fl.piece_name(i, len(got))}: {'+'.join(p['bars'])}"
+                             + (f" {p['thickness_in']} in" if p['thickness_in'] else "") for i, p in enumerate(got))
+                 + " (next BUILD)")
+        else:
+            _log(f"FRAME LAYOUT: refused {pieces!r} (every bar in exactly one piece, 1-{fl.MAX_PIECES} pieces)", "WARNING")
+        _send_to_html('frame_layout', _frame_layout_payload())
+    except Exception:
+        _log_error("_do_set_frame_layout" + chr(10) + traceback.format_exc())
 
 
 def _do_preview_stock_bspline(data):

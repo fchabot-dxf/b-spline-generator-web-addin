@@ -123,6 +123,40 @@ def _assign_default_machine(setup, setup_name, logger):
     return g_success or h_success
 
 
+def _design_of(cam):
+    """The Design of ``cam``'s document, or None."""
+    try:
+        return adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+    except Exception:
+        return None
+
+
+def setup_specs(design=None):
+    """SETUP_SPECS with the Frame role expanded into its pieces (frame_layout, FRAME-SPLIT). With no saved layout the
+    result IS SETUP_SPECS' own entries (one 'Frame'). Every place that walks the declared setups walks this."""
+    from . import frame_layout
+    out = []
+    for spec in SETUP_SPECS:
+        if spec.get('role') == 'frame':
+            out.extend(frame_layout.expand(spec, frame_layout.load(design)))
+        else:
+            out.append(spec)
+    return out
+
+
+def _spec_bodies(mm, spec, logger=None):
+    """The MM bodies a spec's setup binds: all of them, or -- a Frame piece ('bars') -- only its frame_<bar> bodies."""
+    bodies = _collect_bodies(mm)
+    bars = spec.get('bars')
+    if not bars:
+        return bodies
+    from . import frame_layout
+    picked = [b for b in bodies if frame_layout.body_matches(getattr(b, 'name', ''), bars)]
+    if not picked:
+        _log(logger, f"SETUP BUILD ({spec['name']}): no body named frame_<{'/'.join(bars)}> in the MM -- bound nothing", "WARNING")
+    return picked
+
+
 def _declared_template_bases():
     """The names the add-in renames its stamped operations to: every declared template leaf, sans extension."""
     return {leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
@@ -132,8 +166,9 @@ def _declared_template_bases():
 def apply_state(cam, design, setup_name):
     """What the Toolpaths list shows for a setup's own APPLY button: None when the setup carries no declared role (nothing
     to apply), else {'enabled': bool, 'why': str}. A hand-built setup is disabled with the reason (op_ledger.hand_built)."""
-    for spec in SETUP_SPECS:
-        found = bind_roles(cam).get(spec['name'], [])
+    roles = bind_roles(cam)
+    for spec in setup_specs(design):
+        found = roles.get(spec['name'], [])
         if len(found) == 1 and found[0].name == setup_name:
             if op_ledger.hand_built(design, found[0], spec['name'], _declared_template_bases()):
                 return {'enabled': False, 'why': 'built by hand -- APPLY adds nothing to it'}
@@ -165,7 +200,7 @@ def apply_templates_to_existing_setups(cam, logger=None, only=None):
         live_by_name = {n: s for n, s in live_by_name.items() if s.name == only}
 
     n_processed = 0
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         name = spec['name']
         setup = live_by_name.get(name)
         if setup is None:
@@ -177,7 +212,7 @@ def apply_templates_to_existing_setups(cam, logger=None, only=None):
             design = adsk.fusion.Design.cast(
                 cam.parentDocument.products.itemByProductType('DesignProductType'))
             cloud_templates = _tpl_overrides.resolve_templates(
-                design, name, spec.get('cloud_templates') or [])
+                design, spec.get('tpl_key', name), spec.get('cloud_templates') or [])
         except Exception as e:
             _log(logger, f"APPLY TEMPLATES ({name}): override lookup failed ({e}); using spec defaults", "WARNING")
             cloud_templates = spec.get('cloud_templates') or []
@@ -990,7 +1025,7 @@ def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=F
     # which is why we don't attempt fence resolution here.
     setups = []
     adopted = adopted or {}
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         if spec['name'] in adopted:                    # a hand-built setup already holds this role: never a second one
             setups.append(adopted[spec['name']])
             continue
@@ -1051,7 +1086,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # list is empty -- the API still accepts that and the Setup just
     # carries no model bodies, only stock.
     try:
-        bodies = _collect_bodies(mm)
+        bodies = _spec_bodies(mm, spec, logger)
         if bodies:
             setup_input.models = bodies
         _log(logger, f"SETUP BUILD ({spec['name']}): bound {len(bodies)} bodies", "DEBUG")
@@ -1108,7 +1143,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
             from . import template_assignments as _tpl_overrides
             design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
             cloud_templates = _tpl_overrides.resolve_templates(
-                design, spec['name'], spec.get('cloud_templates') or [])
+                design, spec.get('tpl_key', spec['name']), spec.get('cloud_templates') or [])
         except Exception as e:
             _log(logger,
                  f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
@@ -1217,7 +1252,8 @@ def _configure_setup(setup, mm, spec, logger, stock_in=None):
     # 5. The shared fixed stock box, written AFTER the WCS (its dims live in the WCS frame): the declared box, or the box
     # Fred typed in the Stock card (stock_dims, model-axes inches).
     if spec.get('stock_box'):
-        _apply_stock_box(setup, spec['name'], logger, spec['stock_box'], dims_in=stock_in)
+        _apply_stock_box(setup, spec['name'], logger, spec['stock_box'], dims_in=stock_in,
+                         z_in=spec.get('thickness_in'))
 
     # NOTE: the fence is bound separately via ``job_positionAttach`` in
     # :func:`_propagate_part_position_pass` after the build pass.
@@ -1570,7 +1606,7 @@ def bind_roles(cam, logger=None):
     for i in range(cam.setups.count):
         live.append(cam.setups.item(i))
     out = {}
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         exact = [s for s in live if s.name == spec['name']]
         out[spec['name']] = exact or [s for s in live if s.name in (spec.get('aliases') or [])]
     return out
@@ -1586,7 +1622,7 @@ def warn_unadopted_roles(cam, adopted, logger=None):
     that matched no role (so a mis-named setup shows up instead of silently duplicating)."""
     matched = {s.name for v in bind_roles(cam).values() for s in v}
     stray = [cam.setups.item(i).name for i in range(cam.setups.count) if cam.setups.item(i).name not in matched]
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         if spec['name'] not in adopted:
             _log(logger, f"ROLES: {spec['role'].capitalize()}: no setup named {spec['name']!r} or an alias "
                          f"({spec.get('aliases') or []}); created {spec['name']!r}; "
@@ -1611,7 +1647,7 @@ def find_reusable_build(cam, mm_names_by_rule, logger=None):
         mms[rule] = m
     roles = bind_roles(cam, logger)
     setups = {}
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         found = roles.get(spec['name'], [])
         if len(found) != 1 or not found[0].isValid:
             _log(logger, f"REUSE: setup {spec['name']!r} missing, duplicated or invalid -> full recreate", "INFO")
@@ -1655,7 +1691,7 @@ def mm_in_use(mm, setups):
     return False
 
 
-def _rebind_models(setup, mm, setup_name, logger):
+def _rebind_models(setup, mm, setup_name, logger, spec=None):
     """Point the setup at its MM's CURRENT bodies (a Send replaces them; the MM snapshot follows the design)."""
     try:
         held = [setup.models.item(i) for i in range(setup.models.count)]
@@ -1664,7 +1700,7 @@ def _rebind_models(setup, mm, setup_name, logger):
     if any(str(getattr(m, 'objectType', '')).endswith('Occurrence') for m in held):
         _log(logger, f"REUSE ({setup_name}): bound to the whole Manufacturing Model (an occurrence) -- models left as they are", "INFO")
         return 0                                       # the add-in only ever binds bodies: this one is the user's
-    bodies = _collect_bodies(mm)
+    bodies = _spec_bodies(mm, spec or {'name': setup_name}, logger)
     if not bodies:
         return 0
     coll = adsk.core.ObjectCollection.create()
@@ -1684,15 +1720,18 @@ def update_setups_in_place(cam, reuse, logger=None):
     ones out of date). Returns the setups."""
     out = []
     typed = _saved_stock_dims(cam)
-    for spec in SETUP_SPECS:
+    for spec in setup_specs(_design_of(cam)):
         setup = reuse['setups'][spec['name']]
         mm = reuse['mms'][spec['mm_rule']]
-        _rebind_models(setup, mm, spec['name'], logger)
+        _rebind_models(setup, mm, spec['name'], logger, spec=spec)
         card = typed is not None and spec.get('stock_box') == 'stock'      # the B-spline setups' shared box only, never the Frame's
         if card:
             _apply_stock_box(setup, spec['name'], logger, spec['stock_box'], dims_in=typed)
+        elif spec.get('thickness_in'):     # a Frame piece's typed thickness (FRAME-SPLIT): explicit intent, like the card
+            _apply_stock_box(setup, spec['name'], logger, spec['stock_box'], z_in=spec['thickness_in'])
         _log(logger, f"REUSE ({spec['name']}): models re-bound; stock / origin left as they are"
-             + (" (Stock card box written)" if card else ""))
+             + (" (Stock card box written)" if card else "")
+             + (f" (piece thickness {spec['thickness_in']} in written)" if not card and spec.get('thickness_in') else ""))
         out.append(setup)
     _propagate_part_position_pass(out, logger, cam=cam)   # same pass 2 as build_all_setups
     return out
@@ -1704,7 +1743,7 @@ def _model_axis_of(v):
     return comps.index(max(comps))
 
 
-def _apply_stock_box(setup, setup_name, logger, box_key='stock', dims_in=None):
+def _apply_stock_box(setup, setup_name, logger, box_key='stock', dims_in=None, z_in=None):
     """Write a fixed stock box on a live setup: the declared one (CAM_POSITION[box_key]), or -- ``dims_in`` (x, y, z) inches in
     the MODEL's axes, the Stock card's box -- exactly that size.
 
@@ -1714,10 +1753,13 @@ def _apply_stock_box(setup, setup_name, logger, box_key='stock', dims_in=None):
     -Z side, and B-spline Back's frame Z points DOWN (measured: 'bottom' there put the box on the panel's world top).
     Typed: each setup-frame axis takes the typed size of the MODEL axis it points along (the Back frame's X is the model's
     Y), centred in X/Y, Z mode as above. Call after the WCS is written.
+    ``z_in``: a typed thickness (a Frame piece's, FRAME-SPLIT) replacing the declared Z; X/Y stay declared.
     """
     st = CAM_POSITION[box_key]
     m = st['margin_xy_in']
     z_expr = f"{st['z_in']} in" if 'z_in' in st else st['z_expr']
+    if z_in:
+        z_expr = f"{z_in} in"
     _origin, x_ax, y_ax, z_ax = setup.workCoordinateSystem.getAsCoordinateSystem()
     z_mode = 'bottom' if z_ax.z > 0 else 'top'
     if dims_in is not None and box_key == 'stock':

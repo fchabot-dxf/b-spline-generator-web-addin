@@ -18,7 +18,7 @@ flows back through the report dict.
 import adsk.core
 import adsk.fusion
 
-from . import cam_workspace, mm_builder, op_ledger, setup_builder
+from . import cam_workspace, frame_layout, mm_builder, op_ledger, setup_builder
 
 
 # Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
@@ -26,7 +26,7 @@ from . import cam_workspace, mm_builder, op_ledger, setup_builder
 # Derived from the declarations (MM_RULES / SETUP_SPECS), so a new setup is cleaned
 # up without a second list to edit.
 _ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES)
-_ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
+_ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS) | frame_layout.ALL_NAMES  # every Frame piece name (FRAME-SPLIT)
 
 
 def _declared_template_bases():
@@ -368,7 +368,8 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
                                                     skip_machine=skip_machine,
                                                     adopted=adopted)
         built_names = {s.name for s in setups}
-        for spec in setup_builder.SETUP_SPECS:
+        specs = setup_builder.setup_specs(design)        # the Frame expanded into its pieces (FRAME-SPLIT)
+        for spec in specs:
             report['setups'].append({
                 'name': spec['name'],
                 'ok':   spec['name'] in built_names,
@@ -376,7 +377,7 @@ def run_steps(classifier, app=None, logger=None, mode='bspline', component_names
 
         report['ok'] = (
             len(mms) == len(mm_builder.MM_RULES)
-            and len(setups) == len(setup_builder.SETUP_SPECS)
+            and len(setups) == len(specs)
         )
 
     return report
