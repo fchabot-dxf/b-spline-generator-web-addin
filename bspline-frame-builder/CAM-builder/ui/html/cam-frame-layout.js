@@ -26,15 +26,21 @@ export function requestForThickness(pieces, index, text) {
   return { action: 'set_frame_layout', data: { pieces: next } };
 }
 
-/** The rows the card shows for a 'frame_layout' payload: [{ name, bars: 'bottom + right', thickness: '' | '1.75' }]. */
+/** The rows the card shows for a 'frame_layout' payload: [{ index, name, bars: 'bottom + right', thickness: '' | '1.75' }].
+ *  A saved piece with no bar on its sides in this frame (names[i] null, e.g. 'top' on a peaked roof) is not shown; when
+ *  the frame is split and has an inset window, a last row { index: null, name: 'Frame Window', bars: 'window bars' } (no
+ *  thickness field). ``index`` = the piece's place in the saved layout (what a thickness edit changes). */
 export function rows(payload) {
   const pieces = (payload && payload.pieces) || [];
   const names = (payload && payload.names) || [];
-  return pieces.map((p, i) => ({
-    name: names[i] || 'Frame',
-    bars: p.bars.join(' + '),
-    thickness: p.thickness_in == null ? '' : String(p.thickness_in),
-  }));
+  const out = [];
+  pieces.forEach((p, i) => {
+    const name = names[i] === undefined ? 'Frame' : names[i];
+    if (name === null) return;
+    out.push({ index: i, name, bars: p.bars.join(' + '), thickness: p.thickness_in == null ? '' : String(p.thickness_in) });
+  });
+  if (payload && payload.window) out.push({ index: null, name: 'Frame Window', bars: 'window bars', thickness: null });
+  return out;
 }
 
 export const FRAME_NOTE = 'One setup per piece on the next BUILD, all with the same passes. Thickness empty = the bars\' own.';

@@ -1580,7 +1580,14 @@ def _frame_layout_payload():
     doc = adsk.core.Application.get().activeDocument
     design = adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType')) if doc else None
     pieces = fl.load(design)
-    return {'pieces': pieces, 'names': [fl.piece_name(i, len(pieces)) for i in range(len(pieces))],
+    body_names = fl.design_body_names(design) if design else None
+    present = fl.present_sides(body_names) if body_names is not None else None
+    built = fl.built_pieces(pieces, present)
+    names = [None] * len(pieces)                  # per SAVED piece: its setup name, None = not built (no bar on its sides)
+    for b in built:
+        if b['index'] is not None:
+            names[b['index']] = b['name']
+    return {'pieces': pieces, 'names': names, 'window': any(b['index'] is None for b in built),
             'bars': list(fl.BARS), 'max': fl.MAX_PIECES}
 
 

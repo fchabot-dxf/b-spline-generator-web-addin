@@ -976,6 +976,10 @@ bodies and writes its typed thickness as the stock Z (X/Y stay the bars + margin
 ('cadre Frame 3-pass', created 2026-10-24 from Fred's tuned setup), overrides kept per role. Palette Frame card: Pieces
 [1][2][3][4] + a thickness field per piece (cam-frame-layout.js). Fred: hand-built frame setups in existing files are NOT
 adopted (no extra aliases). Not built: free (custom) bar assignment in the palette UI (the data supports it).
+UPDATE (same day, after BAR-NAMES): a piece is a group of SIDES and takes every bar on them (frame_right, frame_right_1,
+frame_right_2 ...), so the split works for all 19 templates (4-12 bars); a piece whose sides have no bar in this frame
+(T7 / T11 have no top) is not built and the letters close up; a split frame's inset-window bars get their own setup
+"Frame Window" (Fred: "own setup").
 Original entry:
 ## Queued (Fred 2026-10-24) — FRAME-SPLIT: the Frame cut as ONE piece or TWO pieces, declared in the CAM builder
 Fred cuts the frame in two setups when he has no board long enough ("sometimes I don't have large enough pieces").

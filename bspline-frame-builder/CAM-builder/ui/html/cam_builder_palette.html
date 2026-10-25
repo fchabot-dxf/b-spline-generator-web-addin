@@ -831,7 +831,7 @@
   // stripped one underscore from the key and never matched a B-spline setup.)
   function setupKeyFor(name) {
     const flat = String(name || '').toLowerCase().replace(/[^a-z]/g, '');
-    if (/^frame[abcd]?$/.test(flat)) return 'frame';   // FRAME-SPLIT: 'Frame A'..'Frame D' are all the Frame card
+    if (/^frame([abcd]|window)?$/.test(flat)) return 'frame';   // FRAME-SPLIT: 'Frame A'..'Frame D' + 'Frame Window' are all the Frame card
     return SETUP_KEYS.find(k => k.replace(/[^a-z]/g, '') === flat) || null;
   }
 
@@ -926,18 +926,21 @@
       b.classList.toggle('active', Number(b.dataset.count) === framePieces.length));
     const box = document.getElementById('frame-pieces');
     box.innerHTML = '';
-    fl.rows(info).forEach((r, i) => {
+    fl.rows(info).forEach((r) => {
       const row = document.createElement('div');
       row.className = 'frm-piece';
-      row.innerHTML = '<span class="frm-name"></span><span class="frm-bars"></span><input type="number" step="0.01" min="0" placeholder="thick in">';
+      row.innerHTML = '<span class="frm-name"></span><span class="frm-bars"></span>'
+        + (r.index === null ? '' : '<input type="number" step="0.01" min="0" placeholder="thick in">');
       row.querySelector('.frm-name').textContent = r.name;
       row.querySelector('.frm-bars').textContent = r.bars;
       const inp = row.querySelector('input');
-      inp.value = r.thickness;
-      inp.addEventListener('change', () => {
-        const req = fl.requestForThickness(framePieces, i, inp.value);
-        if (req) send(req.action, req.data);
-      });
+      if (inp) {
+        inp.value = r.thickness;
+        inp.addEventListener('change', () => {
+          const req = fl.requestForThickness(framePieces, r.index, inp.value);
+          if (req) send(req.action, req.data);
+        });
+      }
       box.appendChild(row);
     });
     document.getElementById('frame-note').textContent = fl.FRAME_NOTE;

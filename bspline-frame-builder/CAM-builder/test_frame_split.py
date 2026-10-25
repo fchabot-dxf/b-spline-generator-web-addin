@@ -146,6 +146,38 @@ def test_a_piece_binds_only_its_own_bars(eng, monkeypatch):
     assert sb._spec_bodies(None, {'name': 'Frame A', 'bars': ('nothing',)}) == []
 
 
+def test_a_piece_takes_every_bar_on_its_sides_numbered_ones_too(eng, monkeypatch):
+    """BAR NAMING: a side = frame_<side> or frame_<side>_N; the window bars are their own group."""
+    sb = eng.sb
+    names = ['frame_top', 'frame_right_1', 'frame_right_2', 'frame_bottom', 'frame_left_2', 'frame_left_1',
+             'frame_window_top', 'frame_window_left', 'frame_thickness_marker']
+    monkeypatch.setattr(sb, '_collect_bodies', lambda mm: [types.SimpleNamespace(name=n) for n in names])
+    got = lambda bars: [b.name for b in sb._spec_bodies(None, {'name': 'P', 'bars': bars})]
+    assert got(('bottom', 'right')) == ['frame_right_1', 'frame_right_2', 'frame_bottom']
+    assert got(('top', 'left')) == ['frame_top', 'frame_left_2', 'frame_left_1']
+    assert got(('window',)) == ['frame_window_top', 'frame_window_left']
+
+
+def test_a_piece_with_no_bar_is_not_built_and_the_letters_close_up(eng):
+    """Template 7 / 11 (peaked roof): no top. Preset 3 = bottom + right / top / left -> 'top' has no bar."""
+    fl = eng.co.frame_layout
+    present = fl.present_sides(['frame_right_1', 'frame_right_2', 'frame_bottom', 'frame_left_2', 'frame_left_1'])
+    built = fl.built_pieces(fl.preset(3), present)
+    assert [(b['name'], b['bars'], b['index']) for b in built] == [
+        ('Frame A', ('bottom', 'right'), 0), ('Frame B', ('left',), 2)]
+
+
+def test_a_split_frame_puts_the_window_bars_in_their_own_setup(eng):
+    fl = eng.co.frame_layout
+    frame = next(s for s in eng.sb.SETUP_SPECS if s['role'] == 'frame')
+    present = fl.present_sides(['frame_top', 'frame_right', 'frame_bottom', 'frame_left', 'frame_window_top'])
+    specs = fl.expand(frame, fl.preset(2), present)
+    assert [(s['name'], s['bars']) for s in specs] == [
+        ('Frame A', ('bottom', 'right')), ('Frame B', ('top', 'left')), ('Frame Window', ('window',))]
+    assert fl.expand(frame, fl.default_layout(), present) == [frame]      # one piece: everything, window included
+    assert 'Frame Window' in eng.co._ADDIN_SETUP_NAMES
+
+
 def test_a_piece_thickness_is_the_stock_z_and_xy_stay_declared(eng):
     s = _Setup(z_up=True)
     eng.sb._apply_stock_box(s, 'Frame B', None, 'frame_stock', z_in=1.97)

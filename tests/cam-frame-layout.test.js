@@ -23,8 +23,15 @@ describe('the Frame split requests', () => {
   });
   it('rows show each piece\'s setup name, bars and thickness', () => {
     expect(rows({ pieces: TWO, names: ['Frame A', 'Frame B'] })).toEqual([
-      { name: 'Frame A', bars: 'bottom + right', thickness: '' },
-      { name: 'Frame B', bars: 'top + left', thickness: '1.97' }]);
+      { index: 0, name: 'Frame A', bars: 'bottom + right', thickness: '' },
+      { index: 1, name: 'Frame B', bars: 'top + left', thickness: '1.97' }]);
+  });
+  it('a piece with no bar in this frame is hidden (its index kept for the others); the window gets its own row', () => {
+    const three = [{ bars: ['bottom', 'right'], thickness_in: null }, { bars: ['top'], thickness_in: null },
+      { bars: ['left'], thickness_in: 2 }];
+    const r = rows({ pieces: three, names: ['Frame A', null, 'Frame B'], window: true });
+    expect(r.map((x) => [x.index, x.name])).toEqual([[0, 'Frame A'], [2, 'Frame B'], [null, 'Frame Window']]);
+    expect(requestForThickness(three, r[1].index, '1.5').data.pieces[2].thickness_in).toBe(1.5);
     expect(FRAME_NOTE).toMatch(/next BUILD/);
   });
 });
@@ -41,7 +48,7 @@ describe('the Frame card in the palette', () => {
     const keys = PALETTE.match(/const SETUP_KEYS = (\[[^\]]*\]);/);
     const fn = PALETTE.match(/function setupKeyFor\(name\) \{[\s\S]*?\n  \}/);
     const setupKeyFor = new Function(`const SETUP_KEYS = ${keys[1]}; ${fn[0]}; return setupKeyFor;`)();
-    for (const n of ['Frame', 'Frame A', 'Frame B', 'Frame C', 'Frame D']) expect(setupKeyFor(n)).toBe('frame');
+    for (const n of ['Frame', 'Frame A', 'Frame B', 'Frame C', 'Frame D', 'Frame Window']) expect(setupKeyFor(n)).toBe('frame');
     expect(setupKeyFor('B-spline Back')).toBe('bspline_back');
   });
 });

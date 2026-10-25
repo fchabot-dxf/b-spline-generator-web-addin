@@ -138,7 +138,9 @@ def setup_specs(design=None):
     out = []
     for spec in SETUP_SPECS:
         if spec.get('role') == 'frame':
-            out.extend(frame_layout.expand(spec, frame_layout.load(design)))
+            names = frame_layout.design_body_names(design) if design else None
+            present = frame_layout.present_sides(names) if names is not None else None
+            out.extend(frame_layout.expand(spec, frame_layout.load(design), present))
         else:
             out.append(spec)
     return out
@@ -153,7 +155,7 @@ def _spec_bodies(mm, spec, logger=None):
     from . import frame_layout
     picked = [b for b in bodies if frame_layout.body_matches(getattr(b, 'name', ''), bars)]
     if not picked:
-        _log(logger, f"SETUP BUILD ({spec['name']}): no body named frame_<{'/'.join(bars)}> in the MM -- bound nothing", "WARNING")
+        _log(logger, f"SETUP BUILD ({spec['name']}): no frame bar on side(s) {'/'.join(bars)} in the MM -- bound nothing", "WARNING")
     return picked
 
 
