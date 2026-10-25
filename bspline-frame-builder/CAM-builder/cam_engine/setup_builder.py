@@ -947,11 +947,14 @@ SETUP_SPECS = [
         'wcs_orient':   'select_x_y',         # axesXY -- same axes swap as Stock/Back/Top
         'box_point':    'top 1',
         'flip_y':       True,                 # Z up to match Stock and B-spline Top
-        # Frame templates: the user's two 'cadre' presets (French for frame).
-        # They're cloud-stored and tuned for the frame's flat profile cut.
+        # Frame template ('cadre' = French for frame): ONE cloud template holding
+        # Fred's three tuned passes - rough pocket, morphed spiral finish, final
+        # rough (rest machining from previous ops). Stored 2026-10-24 from the
+        # hand-tuned Frame setup of '6x9 12oct'; retuning = re-store the
+        # template in Fusion, no code change. Replaces the two untuned presets
+        # 'cadre Pocket 4' / 'cadre Morphed Spiral 3'.
         'cloud_templates': [
-            'cadre Pocket 4.f3dhsm-template',
-            'cadre Morphed Spiral 3.f3dhsm-template',
+            'cadre Frame 3-pass.f3dhsm-template',
         ],
     },
 ]
