@@ -965,15 +965,19 @@ His hand-built file (6x9 12oct) today: setups "Frame" (bodies frame_bottom + fra
 44 mm, stock placed from the LEFT end + 2 in, WCS box point bottom 1, flipY) and "Frame (2)" (the other bars via an MM
 copy, same X/Y, 50 mm thick, from the RIGHT end, box point bottom 3, no flipY), each with the same 3 passes.
 Today `SETUP_SPECS` (CAM-builder/cam_engine/setup_builder.py) declares ONE Frame setup with 2 templates. Change, as data:
-1. ONE frame pass list shared by every frame setup: rough (`cadre Pocket 4`), morph finish (`cadre Morphed Spiral 3`),
-   FINAL ROUGH = rest machining from previous ops, bottom 0.125 in from lowest, 0.02 in stock to leave (in Fred's file it
-   is a modified copy of cadre Pocket 4 — it needs saving as its own cloud template; name TBD with Fred).
-2. A declared FRAME LAYOUT: 'one' -> setup "Frame" (all 4 bars); 'two' -> "Frame A" = bottom + right, "Frame B" =
-   top + left (Fred: always that split). Per piece: its bars, stock end (left/right), WCS box point.
+1. ONE frame pass list shared by every frame setup: rough, morph finish, final rough (rest machining from previous ops,
+   bottom 0.125 in from lowest, 0.02 in stock to leave). Fred's tuned passes are edited copies, NOT the cloud templates
+   the spec names today -> Fred stores the 3 tuned ops as ONE multi-operation cloud template (name TBD) and the spec
+   points at it; retuning = re-store the template, no code change.
+2. A declared FRAME LAYOUT = a LIST OF PIECES (Fred: "an option to split the frame in several setups"), each piece =
+   which of the 4 bars it cuts + its stock end + its WCS box point -> one setup per piece ("Frame A", "Frame B", ...).
+   Presets: 1 piece (all 4 bars, setup "Frame"), 2 pieces (bottom + right / top + left — Fred's usual split),
+   4 pieces (one bar each); free assignment (any bar to any piece, 1..4 pieces) in the palette. Every bar must be in
+   exactly one piece (validated).
 3. Stock: length + width shared; THICKNESS PER PIECE (Fred: "two thickness" — the halves can be different boards).
-4. Palette Frame card: "Cut as: [One piece | Two pieces]" + the thickness field(s).
+4. Palette Frame card: "Pieces: [1 | 2 | 4 | custom]", per piece its bars + thickness.
 5. Hand-built files: aliases bind "Frame" / "Frame (2)" to the pieces (no duplicate setups).
-Tests: one vs two expands to 1 / 2 setups from the same pass list; per-piece thickness lands in each stock box;
+Tests: 1 / 2 / 4 / custom expand to that many setups from the same pass list; a bar in no piece or two pieces is refused; per-piece thickness lands in each stock box;
 aliases adopt the hand-built pair.
 
 ## Queued (Fred's queue) — SNAP-SPLIT: separate GRID snap and GEOMETRY snap for manual moves (Fred 2026-09-26)
