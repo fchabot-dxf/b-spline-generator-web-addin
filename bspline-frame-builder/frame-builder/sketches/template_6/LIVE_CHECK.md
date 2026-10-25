@@ -31,8 +31,8 @@ designs are touched.
      SketchLines meeting at the exact same point (0.8746, 1.3738); same on the left)
    - [x] There are 8 miter lines, one at every corner, all at 45 degrees. (confirmed: 8 miter-* curves, one
      per bar)
-   - [x] You get 8 bars: `frame_tab_top`, `frame_tab_right`, `frame_shoulder_right`, `frame_side_right`,
-     `frame_base`, `frame_side_left`, `frame_shoulder_left`, `frame_tab_left`, and the trim cut works.
+   - [x] You get 8 bars: `frame_top`, `frame_right_1`, `frame_right_2`, `frame_right_3`,
+     `frame_bottom`, `frame_left_3`, `frame_left_2`, `frame_left_1`, and the trim cut works.
      (all 8 confirmed by name)
 3. If the build fails, send the log (see step 6). Look first for these lines:
    - `tab_top_side_equal` / `tab_top_shoulder_equal`: the two Equal constraints that keep the tab centred
@@ -100,7 +100,7 @@ Fusion must end up with the same shape.
      the usual clearance between them. Ran `cam_engine.cam_coordinator.run()` directly (not via the palette
      UI) -- confirmed by reading the Frame setup's own `.models` (all 8, by name) and each one's bounding
      box: 8 distinct, non-overlapping ~0.75in-wide X bands from x=3.5 to x=13.35, each with its Y-extent far
-     larger than its X-extent (e.g. `frame_base` 0.75 in wide x 6.5 in tall) -- a single row along X, long
+     larger than its X-extent (e.g. `frame_bottom` 0.75 in wide x 6.5 in tall) -- a single row along X, long
      side along Y, exactly as specified. (No CamLogger instance was passed, so the "laid out N pieces" log
      line itself wasn't captured this run; the direct bbox read is stronger evidence than the log line would
      have been anyway.)

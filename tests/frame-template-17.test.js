@@ -54,7 +54,7 @@ describe('Template 17: listing and declaration', () => {
     expect(T17.regions.miters).toHaveLength(6);
     expect(T17.regions.bars.map((b) => b.name)).toEqual(T17.features[0].bodyNames);
     expect(T17.regions.bars.map((b) => b.name)).toEqual(
-      ['frame_upper_right', 'frame_lower_right', 'frame_base', 'frame_lower_left', 'frame_upper_left', 'frame_arch']);
+      ['frame_right_1', 'frame_right_2', 'frame_bottom', 'frame_left_2', 'frame_left_1', 'frame_top']);
     expect(T17.handles.map((h) => h.key)).toEqual(KEYS);
     for (const h of T17.handles) expect(h.binding).toBe('seeded');
   });

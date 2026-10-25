@@ -78,11 +78,11 @@ _OUTLINE = ['proj_neck_R', 'proj_dome_R', 'proj_base', 'proj_dome_L', 'proj_neck
 # onto one position). FRAME_BARS is therefore declared explicitly (Template 6/14/16's own precedent
 # for this exact escape hatch) -- one curve, one bar, read directly by bar_index instead of walked.
 FRAME_BARS = [
-    {"name": "frame_neck_right", "curves": ["proj_neck_R"]},
-    {"name": "frame_dome_right", "curves": ["proj_dome_R"]},
-    {"name": "frame_base",       "curves": ["proj_base"]},
-    {"name": "frame_dome_left",  "curves": ["proj_dome_L"]},
-    {"name": "frame_neck_left",  "curves": ["proj_neck_L"]},
+    {"name": "frame_right_1", "curves": ["proj_neck_R"]},
+    {"name": "frame_right_2", "curves": ["proj_dome_R"]},
+    {"name": "frame_bottom",       "curves": ["proj_base"]},
+    {"name": "frame_left_2",  "curves": ["proj_dome_L"]},
+    {"name": "frame_left_1",  "curves": ["proj_neck_L"]},
     {"name": "frame_top",        "curves": ["proj_top"]},
 ]
 # No "corners": like Template 10/14/16, nothing in fb_engine or the app's own JS currently reads
@@ -113,9 +113,9 @@ FRAME_REGIONS = {
     # miter's own IsConstruction when the user toggles it JOINED (the default is SPLIT, i.e. this
     # list is declared but inert until a frame record actually asks for it).
     "joinable": [
-        {"id": "neckBottomR", "bars": ["frame_neck_right", "frame_dome_right"],
+        {"id": "neckBottomR", "bars": ["frame_right_1", "frame_right_2"],
          "miterSource": "proj_dome_R:E", "mirror": "neckBottomL"},
-        {"id": "neckBottomL", "bars": ["frame_neck_left", "frame_dome_left"],
+        {"id": "neckBottomL", "bars": ["frame_left_1", "frame_left_2"],
          "miterSource": "proj_dome_L:S", "mirror": "neckBottomR"},
     ],
 }

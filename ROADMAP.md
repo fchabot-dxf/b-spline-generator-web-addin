@@ -959,6 +959,16 @@ a saved pattern's old `spacing` is read as its grid step and keeps its exact geo
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
 
+## Shipped (Asus, 2026-10-24) — BAR-NAMES: one position vocabulary for every template's frame bars (Fred: "if names differ
+that's a problem upstream"; "I don't mind numbered names"; "a new template can have frame top 1 and top 2")
+Rule (`fb_engine/frame_definition.py` BAR_NAME_RULE, checked for all templates by `frame-builder/test_bar_names.py`):
+frame_top / _bottom / _right / _left for a one-bar side; frame_<side>_1..n for a side of several bars (right / left top to
+bottom, left mirrors right; top / bottom left to right); frame_window_* unchanged. Renamed: T6, T7, T9, T11, T14, T15, T16,
+T17 (template data, join markers, parity goldens' keys, JS tests); the 11 four-bar templates unchanged. Fixed the bug it
+exposed: T9 / T14 / T15 reused SOME classic names, so the CAM lay-flat took the 4-bar path and skipped them ("expected 4
+frame bodies"); now a numbered side (or no classic name) takes the N-bar path (`mm_builder._populate_frame_geometry`).
+Existing .f3d files keep their old body names until the frame is rebuilt.
+
 ## Shipped (Asus, 2026-10-24) — FRAME-SPLIT (as built): `cam_engine/frame_layout.py` (pieces, presets 1-4, validation,
 saved on the Design as `CAMBuilder` / `frame::layout`); `setup_builder.setup_specs(design)` expands the ONE Frame spec into
 "Frame" or "Frame A".."Frame D" (no saved layout = exactly the old single Frame); each piece binds only its frame_<bar>

@@ -75,12 +75,12 @@ _OUTLINE = ['proj_upper_R', 'proj_lower_R', 'proj_base', 'proj_lower_L', 'proj_u
 # arc here is miter-joined at BOTH its own ends, which breaks declared_profiles.bar_index's own
 # generic miter-walk default.
 FRAME_BARS = [
-    {"name": "frame_upper_right", "curves": ["proj_upper_R"]},
-    {"name": "frame_lower_right", "curves": ["proj_lower_R"]},
-    {"name": "frame_base",        "curves": ["proj_base"]},
-    {"name": "frame_lower_left",  "curves": ["proj_lower_L"]},
-    {"name": "frame_upper_left",  "curves": ["proj_upper_L"]},
-    {"name": "frame_arch",        "curves": ["proj_arch"]},
+    {"name": "frame_right_1", "curves": ["proj_upper_R"]},
+    {"name": "frame_right_2", "curves": ["proj_lower_R"]},
+    {"name": "frame_bottom",        "curves": ["proj_base"]},
+    {"name": "frame_left_2",  "curves": ["proj_lower_L"]},
+    {"name": "frame_left_1",  "curves": ["proj_upper_L"]},
+    {"name": "frame_top",        "curves": ["proj_arch"]},
 ]
 # No "corners": like Template 10/16, nothing in fb_engine or the app's own JS currently reads
 # `regions["corners"]`.
@@ -108,9 +108,9 @@ FRAME_REGIONS = {
     # list is declared but inert until a frame record actually asks for it). Identical to Template
     # 16's own declaration (same outline/bar/miter structure, only the curvature differs).
     "joinable": [
-        {"id": "waistR", "bars": ["frame_upper_right", "frame_lower_right"],
+        {"id": "waistR", "bars": ["frame_right_1", "frame_right_2"],
          "miterSource": "proj_lower_R:E", "mirror": "waistL"},
-        {"id": "waistL", "bars": ["frame_lower_left", "frame_upper_left"],
+        {"id": "waistL", "bars": ["frame_left_2", "frame_left_1"],
          "miterSource": "proj_lower_L:S", "mirror": "waistR"},
     ],
 }

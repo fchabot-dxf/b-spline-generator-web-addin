@@ -15,7 +15,7 @@
       },
       "volume": 8.0625
     },
-    "frame_flange_BL": {
+    "frame_left_5": {
       "bbox": {
         "max": [
           -5.0,
@@ -30,7 +30,7 @@
       },
       "volume": 0.9247
     },
-    "frame_flange_BR": {
+    "frame_right_5": {
       "bbox": {
         "max": [
           5.75,
@@ -45,7 +45,7 @@
       },
       "volume": 0.9247
     },
-    "frame_flange_TL": {
+    "frame_left_1": {
       "bbox": {
         "max": [
           -5.0,
@@ -60,7 +60,7 @@
       },
       "volume": 0.9247
     },
-    "frame_flange_TR": {
+    "frame_right_1": {
       "bbox": {
         "max": [
           5.75,
@@ -75,7 +75,7 @@
       },
       "volume": 0.9247
     },
-    "frame_shoulder_BL": {
+    "frame_left_4": {
       "bbox": {
         "max": [
           -1.57857,
@@ -90,7 +90,7 @@
       },
       "volume": 2.56607
     },
-    "frame_shoulder_BR": {
+    "frame_right_4": {
       "bbox": {
         "max": [
           5.75,
@@ -105,7 +105,7 @@
       },
       "volume": 2.56607
     },
-    "frame_shoulder_TL": {
+    "frame_left_2": {
       "bbox": {
         "max": [
           -1.57857,
@@ -120,7 +120,7 @@
       },
       "volume": 2.56607
     },
-    "frame_shoulder_TR": {
+    "frame_right_2": {
       "bbox": {
         "max": [
           5.75,
@@ -135,7 +135,7 @@
       },
       "volume": 2.56607
     },
-    "frame_stem_left": {
+    "frame_left_3": {
       "bbox": {
         "max": [
           -1.57857,
@@ -150,7 +150,7 @@
       },
       "volume": 1.7131
     },
-    "frame_stem_right": {
+    "frame_right_3": {
       "bbox": {
         "max": [
           2.32857,

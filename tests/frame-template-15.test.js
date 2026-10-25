@@ -50,7 +50,7 @@ describe('Template 15: listing and declaration', () => {
     expect(T15.regions.miters).toHaveLength(6);
     expect(T15.regions.bars.map((b) => b.name)).toEqual(T15.features[0].bodyNames);
     expect(T15.regions.bars.map((b) => b.name)).toEqual(
-      ['frame_neck_right', 'frame_dome_right', 'frame_base', 'frame_dome_left', 'frame_neck_left', 'frame_top']);
+      ['frame_right_1', 'frame_right_2', 'frame_bottom', 'frame_left_2', 'frame_left_1', 'frame_top']);
     expect(T15.handles.map((h) => h.key)).toEqual(KEYS);
     for (const h of T15.handles) expect(h.binding).toBe('seeded'); // never a Fusion user parameter
   });

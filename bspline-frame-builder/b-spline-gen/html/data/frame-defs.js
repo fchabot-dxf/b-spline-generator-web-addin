@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "0350c6ae96b86a3e3c33016560619ec37ea7c22d7fe2ef2a0ed4158b1ac3af97",
+  "sourceHash": "fef5cfafa662fb8c745f91aef4eec7cec0ecbd66640c6bc534d1885dfb0b833f",
   "templates": [
     {
       "features": [
@@ -3377,11 +3377,11 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_roof_right",
-            "frame_side_right",
-            "frame_base",
-            "frame_side_left",
-            "frame_roof_left"
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1"
           ],
           "extent": {
             "offset": "0 in",
@@ -3491,7 +3491,7 @@ export default {
             "curves": [
               "proj_roof_R"
             ],
-            "name": "frame_roof_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
@@ -3501,13 +3501,13 @@ export default {
               "proj_arc_hip_R",
               "proj_side_straight_R"
             ],
-            "name": "frame_side_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_bottom_edge"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
@@ -3517,13 +3517,13 @@ export default {
               "proj_arc_shoulder_L",
               "proj_eave_straight_L"
             ],
-            "name": "frame_side_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_roof_L"
             ],
-            "name": "frame_roof_left"
+            "name": "frame_left_1"
           }
         ],
         "corners": [
@@ -7398,11 +7398,11 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_upper_right",
-            "frame_lower_right",
-            "frame_base",
-            "frame_lower_left",
-            "frame_upper_left",
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1",
             "frame_top"
           ],
           "extent": {
@@ -7851,31 +7851,31 @@ export default {
             "curves": [
               "proj_upper_R"
             ],
-            "name": "frame_upper_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_lower_R"
             ],
-            "name": "frame_lower_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_base"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
               "proj_lower_L"
             ],
-            "name": "frame_lower_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_upper_L"
             ],
-            "name": "frame_upper_left"
+            "name": "frame_left_1"
           },
           {
             "curves": [
@@ -7895,8 +7895,8 @@ export default {
         "joinable": [
           {
             "bars": [
-              "frame_upper_right",
-              "frame_lower_right"
+              "frame_right_1",
+              "frame_right_2"
             ],
             "id": "pinchR",
             "mirror": "pinchL",
@@ -7904,8 +7904,8 @@ export default {
           },
           {
             "bars": [
-              "frame_lower_left",
-              "frame_upper_left"
+              "frame_left_2",
+              "frame_left_1"
             ],
             "id": "pinchL",
             "mirror": "pinchR",
@@ -8885,11 +8885,11 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_neck_right",
-            "frame_dome_right",
-            "frame_base",
-            "frame_dome_left",
-            "frame_neck_left",
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1",
             "frame_top"
           ],
           "extent": {
@@ -9184,31 +9184,31 @@ export default {
             "curves": [
               "proj_neck_R"
             ],
-            "name": "frame_neck_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_dome_R"
             ],
-            "name": "frame_dome_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_base"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
               "proj_dome_L"
             ],
-            "name": "frame_dome_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_neck_L"
             ],
-            "name": "frame_neck_left"
+            "name": "frame_left_1"
           },
           {
             "curves": [
@@ -9228,8 +9228,8 @@ export default {
         "joinable": [
           {
             "bars": [
-              "frame_neck_right",
-              "frame_dome_right"
+              "frame_right_1",
+              "frame_right_2"
             ],
             "id": "neckBottomR",
             "mirror": "neckBottomL",
@@ -9237,8 +9237,8 @@ export default {
           },
           {
             "bars": [
-              "frame_neck_left",
-              "frame_dome_left"
+              "frame_left_1",
+              "frame_left_2"
             ],
             "id": "neckBottomL",
             "mirror": "neckBottomR",
@@ -10072,12 +10072,12 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_upper_right",
-            "frame_lower_right",
-            "frame_base",
-            "frame_lower_left",
-            "frame_upper_left",
-            "frame_arch"
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1",
+            "frame_top"
           ],
           "extent": {
             "offset": "0 in",
@@ -10391,37 +10391,37 @@ export default {
             "curves": [
               "proj_upper_R"
             ],
-            "name": "frame_upper_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_lower_R"
             ],
-            "name": "frame_lower_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_base"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
               "proj_lower_L"
             ],
-            "name": "frame_lower_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_upper_L"
             ],
-            "name": "frame_upper_left"
+            "name": "frame_left_1"
           },
           {
             "curves": [
               "proj_arch"
             ],
-            "name": "frame_arch"
+            "name": "frame_top"
           }
         ],
         "inner": [
@@ -10435,8 +10435,8 @@ export default {
         "joinable": [
           {
             "bars": [
-              "frame_upper_right",
-              "frame_lower_right"
+              "frame_right_1",
+              "frame_right_2"
             ],
             "id": "waistR",
             "mirror": "waistL",
@@ -10444,8 +10444,8 @@ export default {
           },
           {
             "bars": [
-              "frame_lower_left",
-              "frame_upper_left"
+              "frame_left_2",
+              "frame_left_1"
             ],
             "id": "waistL",
             "mirror": "waistR",
@@ -11283,12 +11283,12 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_upper_right",
-            "frame_lower_right",
-            "frame_base",
-            "frame_lower_left",
-            "frame_upper_left",
-            "frame_arch"
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1",
+            "frame_top"
           ],
           "extent": {
             "offset": "0 in",
@@ -11764,37 +11764,37 @@ export default {
             "curves": [
               "proj_upper_R"
             ],
-            "name": "frame_upper_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_lower_R"
             ],
-            "name": "frame_lower_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_base"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
               "proj_lower_L"
             ],
-            "name": "frame_lower_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_upper_L"
             ],
-            "name": "frame_upper_left"
+            "name": "frame_left_1"
           },
           {
             "curves": [
               "proj_arch"
             ],
-            "name": "frame_arch"
+            "name": "frame_top"
           }
         ],
         "inner": [
@@ -11808,8 +11808,8 @@ export default {
         "joinable": [
           {
             "bars": [
-              "frame_upper_right",
-              "frame_lower_right"
+              "frame_right_1",
+              "frame_right_2"
             ],
             "id": "waistR",
             "mirror": "waistL",
@@ -11817,8 +11817,8 @@ export default {
           },
           {
             "bars": [
-              "frame_lower_left",
-              "frame_upper_left"
+              "frame_left_2",
+              "frame_left_1"
             ],
             "id": "waistL",
             "mirror": "waistR",
@@ -22579,14 +22579,14 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_tab_top",
-            "frame_tab_right",
-            "frame_shoulder_right",
-            "frame_side_right",
-            "frame_base",
-            "frame_side_left",
-            "frame_shoulder_left",
-            "frame_tab_left"
+            "frame_top",
+            "frame_right_1",
+            "frame_right_2",
+            "frame_right_3",
+            "frame_bottom",
+            "frame_left_3",
+            "frame_left_2",
+            "frame_left_1"
           ],
           "extent": {
             "offset": "0 in",
@@ -22678,49 +22678,49 @@ export default {
             "curves": [
               "proj_tab_top"
             ],
-            "name": "frame_tab_top"
+            "name": "frame_top"
           },
           {
             "curves": [
               "proj_tab_side_R"
             ],
-            "name": "frame_tab_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_shoulder_R"
             ],
-            "name": "frame_shoulder_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_side_R"
             ],
-            "name": "frame_side_right"
+            "name": "frame_right_3"
           },
           {
             "curves": [
               "proj_bottom_edge"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
               "proj_side_L"
             ],
-            "name": "frame_side_left"
+            "name": "frame_left_3"
           },
           {
             "curves": [
               "proj_shoulder_L"
             ],
-            "name": "frame_shoulder_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_tab_side_L"
             ],
-            "name": "frame_tab_left"
+            "name": "frame_left_1"
           }
         ],
         "corners": [
@@ -23630,11 +23630,11 @@ export default {
       "features": [
         {
           "bodyNames": [
-            "frame_roof_right",
-            "frame_side_right",
-            "frame_base",
-            "frame_side_left",
-            "frame_roof_left"
+            "frame_right_1",
+            "frame_right_2",
+            "frame_bottom",
+            "frame_left_2",
+            "frame_left_1"
           ],
           "extent": {
             "offset": "0 in",
@@ -23965,7 +23965,7 @@ export default {
             "curves": [
               "proj_roof_R"
             ],
-            "name": "frame_roof_right"
+            "name": "frame_right_1"
           },
           {
             "curves": [
@@ -23973,13 +23973,13 @@ export default {
               "proj_arc_body_R",
               "proj_side_R"
             ],
-            "name": "frame_side_right"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_bottom_edge"
             ],
-            "name": "frame_base"
+            "name": "frame_bottom"
           },
           {
             "curves": [
@@ -23987,13 +23987,13 @@ export default {
               "proj_arc_body_L",
               "proj_arc_neck_L"
             ],
-            "name": "frame_side_left"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_roof_L"
             ],
-            "name": "frame_roof_left"
+            "name": "frame_left_1"
           }
         ],
         "corners": [
@@ -26502,17 +26502,17 @@ export default {
         {
           "bodyNames": [
             "frame_top",
-            "frame_flange_TR",
-            "frame_shoulder_TR",
-            "frame_stem_right",
-            "frame_shoulder_BR",
-            "frame_flange_BR",
+            "frame_right_1",
+            "frame_right_2",
+            "frame_right_3",
+            "frame_right_4",
+            "frame_right_5",
             "frame_bottom",
-            "frame_flange_BL",
-            "frame_shoulder_BL",
-            "frame_stem_left",
-            "frame_shoulder_TL",
-            "frame_flange_TL"
+            "frame_left_5",
+            "frame_left_4",
+            "frame_left_3",
+            "frame_left_2",
+            "frame_left_1"
           ],
           "extent": {
             "offset": "0 in",
@@ -26610,31 +26610,31 @@ export default {
             "curves": [
               "proj_flange_side_R"
             ],
-            "name": "frame_flange_TR"
+            "name": "frame_right_1"
           },
           {
             "curves": [
               "proj_shoulder_TR"
             ],
-            "name": "frame_shoulder_TR"
+            "name": "frame_right_2"
           },
           {
             "curves": [
               "proj_stem_side_R"
             ],
-            "name": "frame_stem_right"
+            "name": "frame_right_3"
           },
           {
             "curves": [
               "proj_shoulder_BR"
             ],
-            "name": "frame_shoulder_BR"
+            "name": "frame_right_4"
           },
           {
             "curves": [
               "proj_flange_side_BR"
             ],
-            "name": "frame_flange_BR"
+            "name": "frame_right_5"
           },
           {
             "curves": [
@@ -26646,31 +26646,31 @@ export default {
             "curves": [
               "proj_flange_side_BL"
             ],
-            "name": "frame_flange_BL"
+            "name": "frame_left_5"
           },
           {
             "curves": [
               "proj_shoulder_BL"
             ],
-            "name": "frame_shoulder_BL"
+            "name": "frame_left_4"
           },
           {
             "curves": [
               "proj_stem_side_L"
             ],
-            "name": "frame_stem_left"
+            "name": "frame_left_3"
           },
           {
             "curves": [
               "proj_shoulder_TL"
             ],
-            "name": "frame_shoulder_TL"
+            "name": "frame_left_2"
           },
           {
             "curves": [
               "proj_flange_side_TL"
             ],
-            "name": "frame_flange_TL"
+            "name": "frame_left_1"
           }
         ],
         "corners": [

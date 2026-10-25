@@ -153,14 +153,14 @@ FRAME_CORNERS = [
     {"id": "eave_L", "curve": "proj_roof_L",     "direction": [-_eave_dir[0], _eave_dir[1]],  "reflex": False},
 ]
 # One bar per side (the neck+body+line triple is ONE bar - they are TANGENT joins, not miters, see
-# fb_engine/t7_geometry.py's own module docstring). Body names start with "frame_" (the CAM
-# builder's frame-body rule) and none is a Template 1 name, so CAM takes its N-bar layout path.
+# fb_engine/t7_geometry.py's own module docstring). 
+# Body names follow the BAR NAMING rule (fb_engine/frame_definition.py BAR_NAME_RULE).
 FRAME_BARS = [
-    {"name": "frame_roof_right", "curves": ["proj_roof_R"]},
-    {"name": "frame_side_right", "curves": ["proj_arc_neck_R", "proj_arc_body_R", "proj_side_R"]},
-    {"name": "frame_base",       "curves": ["proj_bottom_edge"]},
-    {"name": "frame_side_left",  "curves": ["proj_side_L", "proj_arc_body_L", "proj_arc_neck_L"]},
-    {"name": "frame_roof_left",  "curves": ["proj_roof_L"]},
+    {"name": "frame_right_1", "curves": ["proj_roof_R"]},
+    {"name": "frame_right_2", "curves": ["proj_arc_neck_R", "proj_arc_body_R", "proj_side_R"]},
+    {"name": "frame_bottom",       "curves": ["proj_bottom_edge"]},
+    {"name": "frame_left_2",  "curves": ["proj_side_L", "proj_arc_body_L", "proj_arc_neck_L"]},
+    {"name": "frame_left_1",  "curves": ["proj_roof_L"]},
 ]
 FRAME_REGIONS = {
     "outline": _OUTLINE,                                   # p03_02 SourceID

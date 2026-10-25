@@ -95,17 +95,16 @@ FRAME_CORNERS = [
     {"id": "shoulder_L", "curve": "proj_shoulder_L",  "direction": [1, -1],  "reflex": False},
     {"id": "inside_L",   "curve": "proj_tab_side_L",  "direction": [1, -1],  "reflex": True},
 ]
-# One bar per outline piece, in miter order (each miter starts a bar). Body names start with "frame_" (the CAM
-# builder's frame-body rule, cam-builder.py) and none is a Template 1 name, so the CAM layout takes its N-bar path.
+# One bar per outline piece, in miter order (each miter starts a bar). Body names follow the BAR NAMING rule (fb_engine/frame_definition.py BAR_NAME_RULE).
 FRAME_BARS = [
-    {"name": "frame_tab_top",        "curves": ["proj_tab_top"]},
-    {"name": "frame_tab_right",      "curves": ["proj_tab_side_R"]},
-    {"name": "frame_shoulder_right", "curves": ["proj_shoulder_R"]},
-    {"name": "frame_side_right",     "curves": ["proj_side_R"]},
-    {"name": "frame_base",           "curves": ["proj_bottom_edge"]},
-    {"name": "frame_side_left",      "curves": ["proj_side_L"]},
-    {"name": "frame_shoulder_left",  "curves": ["proj_shoulder_L"]},
-    {"name": "frame_tab_left",       "curves": ["proj_tab_side_L"]},
+    {"name": "frame_top",        "curves": ["proj_tab_top"]},
+    {"name": "frame_right_1",      "curves": ["proj_tab_side_R"]},
+    {"name": "frame_right_2", "curves": ["proj_shoulder_R"]},
+    {"name": "frame_right_3",     "curves": ["proj_side_R"]},
+    {"name": "frame_bottom",           "curves": ["proj_bottom_edge"]},
+    {"name": "frame_left_3",      "curves": ["proj_side_L"]},
+    {"name": "frame_left_2",  "curves": ["proj_shoulder_L"]},
+    {"name": "frame_left_1",       "curves": ["proj_tab_side_L"]},
 ]
 FRAME_REGIONS = {
     "outline": _OUTLINE,                                   # p03_02 SourceID

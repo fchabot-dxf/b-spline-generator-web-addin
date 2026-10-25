@@ -1,6 +1,6 @@
 {
   "bars": {
-    "frame_base": {
+    "frame_bottom": {
       "bbox": {
         "max": [
           3.25,
@@ -15,7 +15,7 @@
       },
       "volume": 4.27867
     },
-    "frame_dome_left": {
+    "frame_left_2": {
       "bbox": {
         "max": [
           -0.7125,
@@ -30,7 +30,7 @@
       },
       "volume": 3.46217
     },
-    "frame_dome_right": {
+    "frame_right_2": {
       "bbox": {
         "max": [
           3.25,
@@ -45,7 +45,7 @@
       },
       "volume": 3.46217
     },
-    "frame_neck_left": {
+    "frame_left_1": {
       "bbox": {
         "max": [
           -0.7125,
@@ -60,7 +60,7 @@
       },
       "volume": 2.69855
     },
-    "frame_neck_right": {
+    "frame_right_1": {
       "bbox": {
         "max": [
           1.4625,

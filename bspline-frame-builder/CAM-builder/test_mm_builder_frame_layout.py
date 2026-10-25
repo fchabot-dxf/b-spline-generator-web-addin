@@ -150,14 +150,14 @@ T1_BARS = {
 # Template 6 7x9 bars (cm): the tab (4.13 in wide, 2.125 in tall), the shoulders, the sides, the base.
 _i = 2.54
 T6_BARS = {
-    "frame_tab_top": ((-2.0625 * _i, 3.5 * _i, -2.54), (2.0625 * _i, 4.25 * _i, 0.0)),
-    "frame_tab_right": ((1.3125 * _i, 1.375 * _i, -2.54), (2.0625 * _i, 4.25 * _i, 0.0)),
-    "frame_shoulder_right": ((1.3125 * _i, 1.375 * _i, -2.54), (3.25 * _i, 2.125 * _i, 0.0)),
-    "frame_side_right": ((2.5 * _i, -4.25 * _i, -2.54), (3.25 * _i, 2.125 * _i, 0.0)),
-    "frame_base": ((-3.25 * _i, -4.25 * _i, -2.54), (3.25 * _i, -3.5 * _i, 0.0)),
-    "frame_side_left": ((-3.25 * _i, -4.25 * _i, -2.54), (-2.5 * _i, 2.125 * _i, 0.0)),
-    "frame_shoulder_left": ((-3.25 * _i, 1.375 * _i, -2.54), (-1.3125 * _i, 2.125 * _i, 0.0)),
-    "frame_tab_left": ((-2.0625 * _i, 1.375 * _i, -2.54), (-1.3125 * _i, 4.25 * _i, 0.0)),
+    "frame_top": ((-2.0625 * _i, 3.5 * _i, -2.54), (2.0625 * _i, 4.25 * _i, 0.0)),
+    "frame_right_1": ((1.3125 * _i, 1.375 * _i, -2.54), (2.0625 * _i, 4.25 * _i, 0.0)),
+    "frame_right_2": ((1.3125 * _i, 1.375 * _i, -2.54), (3.25 * _i, 2.125 * _i, 0.0)),
+    "frame_right_3": ((2.5 * _i, -4.25 * _i, -2.54), (3.25 * _i, 2.125 * _i, 0.0)),
+    "frame_bottom": ((-3.25 * _i, -4.25 * _i, -2.54), (3.25 * _i, -3.5 * _i, 0.0)),
+    "frame_left_3": ((-3.25 * _i, -4.25 * _i, -2.54), (-2.5 * _i, 2.125 * _i, 0.0)),
+    "frame_left_2": ((-3.25 * _i, 1.375 * _i, -2.54), (-1.3125 * _i, 2.125 * _i, 0.0)),
+    "frame_left_1": ((-2.0625 * _i, 1.375 * _i, -2.54), (-1.3125 * _i, 4.25 * _i, 0.0)),
 }
 
 
@@ -181,7 +181,7 @@ def test_n_bar_frame_is_laid_out_not_skipped():
     assert mm_builder._populate_frame_geometry(mm, None, None) is True
     log = frame.features.moveFeatures.log
     rotated = sorted(names[0] for names, op in log if op[0] == "rotate")
-    assert rotated == ["frame_base", "frame_shoulder_left", "frame_shoulder_right", "frame_tab_top"]
+    assert rotated == ["frame_bottom", "frame_left_2", "frame_right_2", "frame_top"]
     b = {x.name: x for x in frame.bRepBodies}
     order = sorted(b)
     for n in order:  # every bar now stands long axis along Y
@@ -194,6 +194,32 @@ def test_n_bar_frame_is_laid_out_not_skipped():
     n_moves = len(log)
     assert mm_builder._populate_frame_geometry(mm, None, None) is False
     assert len(frame.features.moveFeatures.log) == n_moves
+
+
+# Template 14 (Sand Timer) shape, BAR NAMING: a top and a bottom edge + two numbered bars per side (cm, simplified boxes).
+T14_BARS = {
+    "frame_right_1": ((5.0, 0.0, -2.54), (7.0, 10.0, 0.0)),
+    "frame_right_2": ((5.0, -10.0, -2.54), (7.0, 0.0, 0.0)),
+    "frame_bottom": ((-7.0, -11.0, -2.54), (7.0, -10.0, 0.0)),
+    "frame_left_2": ((-7.0, -10.0, -2.54), (-5.0, 0.0, 0.0)),
+    "frame_left_1": ((-7.0, 0.0, -2.54), (-5.0, 10.0, 0.0)),
+    "frame_top": ((-7.0, 10.0, -2.54), (7.0, 11.0, 0.0)),
+}
+
+
+def test_a_frame_with_classic_edges_and_numbered_sides_is_laid_out_not_skipped():
+    """BAR NAMING regression: T9 / T14 / T15 carry frame_top (and T9 frame_bottom) next to numbered sides. Before, any
+    classic name sent them down the 4-bar path, which skipped them ("expected 4 frame bodies"); now all six are laid in
+    one row by the generic path."""
+    mm, frame = _mm(T14_BARS)
+    assert mm_builder._populate_frame_geometry(mm, None, None) is True
+    b = {x.name: x for x in frame.bRepBodies}
+    order = sorted(b)
+    assert order == sorted(T14_BARS)
+    for a, c in zip(order, order[1:]):
+        assert b[c].mn[0] - b[a].mx[0] == pytest.approx(1.397)
+    rotated = sorted(names[0] for names, op in frame.features.moveFeatures.log if op[0] == "rotate")
+    assert rotated == ["frame_bottom", "frame_top"]
 
 
 def test_a_partial_four_bar_frame_is_still_skipped():

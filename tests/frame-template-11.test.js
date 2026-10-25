@@ -52,7 +52,7 @@ describe('Template 11: listing and declaration', () => {
     expect(T11.regions.miters).toHaveLength(5);
     expect(T11.regions.bars.map((b) => b.name)).toEqual(T11.features[0].bodyNames);
     expect(T11.regions.bars.map((b) => b.name)).toEqual(
-      ['frame_roof_right', 'frame_side_right', 'frame_base', 'frame_side_left', 'frame_roof_left']);
+      ['frame_right_1', 'frame_right_2', 'frame_bottom', 'frame_left_2', 'frame_left_1']);
     expect(T11.handles.map((h) => h.key)).toEqual(KEYS);
     for (const h of T11.handles) expect(h.binding).toBe('seeded'); // never a Fusion user parameter
   });

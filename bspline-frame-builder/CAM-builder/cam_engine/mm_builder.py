@@ -44,6 +44,7 @@ and "Body removal inside an MM".
 """
 
 import math
+import re
 
 import adsk.core
 import adsk.cam
@@ -819,10 +820,15 @@ def _populate_frame_geometry(mm, source_design, logger):
         _log(logger, f"FRAME LAYOUT ({mm.name}): body walk failed: {e}", "WARNING")
         return False
 
-    # N-BAR: a frame with none of the four Template 1-5 bar names (Template 6's 8 bars) takes the generic row
-    # layout. Any of the four names present = the 4-bar layout below, exactly as before.
-    if not frame_bodies and other_bars:
-        return _populate_n_bar_frame_geometry(mm, mm_design, other_bars, logger)
+    # N-BAR (BAR NAMING, frame_definition.BAR_NAME_RULE): the 4-bar layout below is for the classic four (top / right /
+    # bottom / left, plus any window bars, laid after the row as before). A frame with a NUMBERED side (frame_right_1 ...,
+    # frame_top_1 ...) -- Template 9's top + bottom + numbered sides, 14 / 15's top -- or with none of the four names takes
+    # the generic row layout with ALL its frame_* bodies. (Before, any classic name present sent T9 / T14 / T15 down the
+    # 4-bar path, which then skipped them: "expected 4 frame bodies".) A classic frame merely MISSING a bar (no numbered
+    # side) is still skipped below, as before.
+    numbered = any(re.match(r'^frame_(top|bottom|right|left)_\d+$', n) for n in other_bars)
+    if numbered or (not frame_bodies and other_bars):
+        return _populate_n_bar_frame_geometry(mm, mm_design, {**frame_bodies, **other_bars}, logger)
 
     if len(frame_bodies) < 4:
         missing = expected_names - set(frame_bodies.keys())

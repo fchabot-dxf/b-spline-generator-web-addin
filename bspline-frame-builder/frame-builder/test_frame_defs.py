@@ -458,7 +458,9 @@ def test_template_6_is_an_8_bar_tab_top(defs):
     assert len(reg["miters"]) == len(reg["bars"]) == 8
     bars = [f for f in t6["features"] if f["id"] == "bars"][0]
     assert bars["bodyNames"] == [b["name"] for b in reg["bars"]] and all(n.startswith("frame_") for n in bars["bodyNames"])
-    assert not set(bars["bodyNames"]) & {"frame_top", "frame_right", "frame_bottom", "frame_left"}  # the CAM N-bar path
+    # BAR NAMING: top + bottom + three numbered bars per side (top to bottom); the numbered sides take the CAM N-bar path
+    assert bars["bodyNames"] == ["frame_top", "frame_right_1", "frame_right_2", "frame_right_3", "frame_bottom",
+                                 "frame_left_3", "frame_left_2", "frame_left_1"]
     # the features are the common ones, only the bar names differ
     strip = lambda fs: [{k: v for k, v in f.items() if k != "bodyNames"} for f in fs]
     assert strip(t6["features"]) == strip(t1["features"])

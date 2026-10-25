@@ -1,6 +1,6 @@
 {
   "bars": {
-    "frame_base": {
+    "frame_bottom": {
       "bbox": {
         "max": [
           3.25,
@@ -15,7 +15,7 @@
       },
       "volume": 4.3125
     },
-    "frame_shoulder_left": {
+    "frame_left_2": {
       "bbox": {
         "max": [
           -0.87461,
@@ -30,7 +30,7 @@
       },
       "volume": 1.21904
     },
-    "frame_shoulder_right": {
+    "frame_right_2": {
       "bbox": {
         "max": [
           3.25,
@@ -45,7 +45,7 @@
       },
       "volume": 1.21904
     },
-    "frame_side_left": {
+    "frame_left_3": {
       "bbox": {
         "max": [
           -2.5,
@@ -60,7 +60,7 @@
       },
       "volume": 4.21786
     },
-    "frame_side_right": {
+    "frame_right_3": {
       "bbox": {
         "max": [
           3.25,
@@ -75,7 +75,7 @@
       },
       "volume": 4.21786
     },
-    "frame_tab_left": {
+    "frame_left_1": {
       "bbox": {
         "max": [
           -0.87461,
@@ -90,7 +90,7 @@
       },
       "volume": 1.59464
     },
-    "frame_tab_right": {
+    "frame_right_1": {
       "bbox": {
         "max": [
           1.62461,
@@ -105,7 +105,7 @@
       },
       "volume": 1.59464
     },
-    "frame_tab_top": {
+    "frame_top": {
       "bbox": {
         "max": [
           1.62461,

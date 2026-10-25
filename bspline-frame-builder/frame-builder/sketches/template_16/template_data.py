@@ -82,12 +82,12 @@ _OUTLINE = ['proj_upper_R', 'proj_lower_R', 'proj_base', 'proj_lower_L', 'proj_u
 # 6). FRAME_BARS is therefore declared explicitly (Template 6's own precedent for this exact
 # escape hatch) -- one curve, one bar, read directly by bar_index instead of walked.
 FRAME_BARS = [
-    {"name": "frame_upper_right", "curves": ["proj_upper_R"]},
-    {"name": "frame_lower_right", "curves": ["proj_lower_R"]},
-    {"name": "frame_base",        "curves": ["proj_base"]},
-    {"name": "frame_lower_left",  "curves": ["proj_lower_L"]},
-    {"name": "frame_upper_left",  "curves": ["proj_upper_L"]},
-    {"name": "frame_arch",        "curves": ["proj_arch"]},
+    {"name": "frame_right_1", "curves": ["proj_upper_R"]},
+    {"name": "frame_right_2", "curves": ["proj_lower_R"]},
+    {"name": "frame_bottom",        "curves": ["proj_base"]},
+    {"name": "frame_left_2",  "curves": ["proj_lower_L"]},
+    {"name": "frame_left_1",  "curves": ["proj_upper_L"]},
+    {"name": "frame_top",        "curves": ["proj_arch"]},
 ]
 # No "corners": like Template 10, nothing in fb_engine or the app's own JS currently reads
 # `regions["corners"]` (declared_profiles.py derives everything it needs from "outline" + "miters"
@@ -115,9 +115,9 @@ FRAME_REGIONS = {
     # miter's own IsConstruction when the user toggles it JOINED (the default is SPLIT, i.e. this
     # list is declared but inert until a frame record actually asks for it).
     "joinable": [
-        {"id": "waistR", "bars": ["frame_upper_right", "frame_lower_right"],
+        {"id": "waistR", "bars": ["frame_right_1", "frame_right_2"],
          "miterSource": "proj_lower_R:E", "mirror": "waistL"},
-        {"id": "waistL", "bars": ["frame_lower_left", "frame_upper_left"],
+        {"id": "waistL", "bars": ["frame_left_2", "frame_left_1"],
          "miterSource": "proj_lower_L:S", "mirror": "waistR"},
     ],
 }

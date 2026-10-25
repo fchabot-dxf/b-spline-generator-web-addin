@@ -78,8 +78,8 @@ def test_template_6_declares_8_bars_one_per_outline_piece():
     its one outline piece, its inner offset and the two miters at its ends (the inside corners included)."""
     frame = _frame("template_6")
     reg = frame["regions"]
-    names = ["frame_tab_top", "frame_tab_right", "frame_shoulder_right", "frame_side_right",
-             "frame_base", "frame_side_left", "frame_shoulder_left", "frame_tab_left"]
+    names = ["frame_top", "frame_right_1", "frame_right_2", "frame_right_3",
+             "frame_bottom", "frame_left_3", "frame_left_2", "frame_left_1"]
     assert [b["name"] for b in dp.frame_bars(frame)] == names == frame["features"][0]["bodyNames"]
     assert [b["curves"] for b in reg["bars"]] == [[c] for c in reg["outline"]]
     n = len(reg["miters"])

@@ -96,21 +96,20 @@ FRAME_CORNERS = [
     {"id": "notch_TL_inner", "curve": "proj_shoulder_TL",    "direction": [1, 1],   "reflex": True},
     {"id": "notch_TL_outer", "curve": "proj_flange_side_TL", "direction": [1, 1],   "reflex": False},
 ]
-# One bar per outline piece, in miter order (each miter starts a bar). Body names start with "frame_" (the CAM
-# builder's frame-body rule, cam-builder.py) and none is a Template 1 name, so the CAM layout takes its N-bar path.
+# One bar per outline piece, in miter order (each miter starts a bar). Body names follow the BAR NAMING rule (fb_engine/frame_definition.py BAR_NAME_RULE).
 FRAME_BARS = [
     {"name": "frame_top",           "curves": ["proj_top_edge"]},
-    {"name": "frame_flange_TR",     "curves": ["proj_flange_side_R"]},
-    {"name": "frame_shoulder_TR",   "curves": ["proj_shoulder_TR"]},
-    {"name": "frame_stem_right",    "curves": ["proj_stem_side_R"]},
-    {"name": "frame_shoulder_BR",   "curves": ["proj_shoulder_BR"]},
-    {"name": "frame_flange_BR",     "curves": ["proj_flange_side_BR"]},
+    {"name": "frame_right_1",     "curves": ["proj_flange_side_R"]},
+    {"name": "frame_right_2",   "curves": ["proj_shoulder_TR"]},
+    {"name": "frame_right_3",    "curves": ["proj_stem_side_R"]},
+    {"name": "frame_right_4",   "curves": ["proj_shoulder_BR"]},
+    {"name": "frame_right_5",     "curves": ["proj_flange_side_BR"]},
     {"name": "frame_bottom",        "curves": ["proj_bottom_edge"]},
-    {"name": "frame_flange_BL",     "curves": ["proj_flange_side_BL"]},
-    {"name": "frame_shoulder_BL",   "curves": ["proj_shoulder_BL"]},
-    {"name": "frame_stem_left",     "curves": ["proj_stem_side_L"]},
-    {"name": "frame_shoulder_TL",   "curves": ["proj_shoulder_TL"]},
-    {"name": "frame_flange_TL",     "curves": ["proj_flange_side_TL"]},
+    {"name": "frame_left_5",     "curves": ["proj_flange_side_BL"]},
+    {"name": "frame_left_4",   "curves": ["proj_shoulder_BL"]},
+    {"name": "frame_left_3",     "curves": ["proj_stem_side_L"]},
+    {"name": "frame_left_2",   "curves": ["proj_shoulder_TL"]},
+    {"name": "frame_left_1",     "curves": ["proj_flange_side_TL"]},
 ]
 FRAME_REGIONS = {
     "outline": _OUTLINE,                                   # p03_02 SourceID

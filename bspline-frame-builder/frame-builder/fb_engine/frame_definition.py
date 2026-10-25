@@ -17,6 +17,7 @@ What lives where:
   * ``build_frame_defs()`` assembles both into the dict
     ``frame-defs.json`` is serialized from.
 """
+import re
 from fb_engine.parameter_schema import PANEL_LIP_PARAM  # F22: the panel lip setting names its (frame-owned) parameter
 
 FRAME_DEFS_VERSION = 1
@@ -93,6 +94,19 @@ EXTRUSION_SETTINGS = (
      "meaning": "the Clean panel's dominant downward-facing face (area-weighted "
                 "mean normal n.z ~ -1, H23 item 37; MEASURED F2; every face of a Send panel is NURBS)"},
 )
+
+# BAR NAMING (Fred 2026-10-24: "if names differ that's a problem upstream"; numbered names are fine). Every frame bar
+# body is named by its POSITION, the same vocabulary in every template:
+#   frame_top / frame_bottom / frame_right / frame_left       a side that is ONE bar
+#   frame_<side>_1, frame_<side>_2, ...                         a side made of several bars: right / left numbered TOP
+#                                                               to BOTTOM (left mirrors right's numbers), top / bottom
+#                                                               numbered LEFT to RIGHT
+#   frame_window_top / _right / _bottom / _left                 the inset window's bars (fb_engine/inset_window.py)
+# A side with no bar (a peaked roof has no top) simply has no name. Consumers (the CAM lay-flat, FRAME-SPLIT) rely on it:
+# the classic 4-bar layout is exactly {top, right, bottom, left}; anything else is N-bar. Checked for every template by
+# test_bar_names.py.
+BAR_NAME_RULE = re.compile(r"^frame_(?:window_(?:top|right|bottom|left)|(?:top|bottom|right|left)(?:_[1-9][0-9]*)?)$")
+
 
 # The features every current template builds from sketch 3. The extruder
 # reads these (F14 S6: fb_engine/declared_profiles.py); the regions named here
