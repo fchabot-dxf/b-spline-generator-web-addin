@@ -787,7 +787,7 @@ describe("audit (88's matrix): controls grey out while their declared requiremen
   it('Clumping (both inputs) is disabled at Suppression 0, with the reason; Suppression > 0 enables it', () => {
     expect($('brickClumpingSlider').disabled).toBe(true);
     expect($('brickClumping').disabled).toBe(true);
-    expect($('brickClumping').title).toMatch(/Suppression/);
+    expect($('brickClumping').title).toMatch(/Remove bricks 0/); // the reason names the control by its label (Suppression was renamed 'Remove bricks', Fred 2026-11-22)
     fire('brickSuppressionSlider', 0.3, 'input');
     fire('brickSuppressionSlider', 0.3, 'change');
     expect($('brickClumpingSlider').disabled).toBe(false);
