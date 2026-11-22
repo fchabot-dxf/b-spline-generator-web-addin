@@ -89,3 +89,14 @@ byte-identical (the stl-layers-absent golden covers the passes).
 2. **The whole collection, paged**, straight away (24 per page, "More results"); typing narrows it.
 3. **A museum picker** beside the search: "All museums" (default) + the units that have models (FSG, 0 models, left out),
    with readable names in one declared table.
+4. **Preview: a large picture at once, 'Turn in 3D' for a rotatable view; Insert adds it.** Tapping a tile SELECTS it (no
+   insert) and fills a preview pane (desktop: beside the grid; <= 600 px: above it): `<glb folder>/scene-image-medium.jpg`
+   (~123 KB; on error the thumbnail, then the title alone), the title, 'Turn in 3D' and 'Insert'. 'Turn in 3D' looks up the
+   model's 20k-triangle Thumb GLB (`model_url=<id>&file_type=glb&file_quality=Thumb`, the first GLB row; none -> the Low GLB,
+   "loading the full model (~0.8 MB)"), reads it as the board's Z-up soup and shows it in a small THREE r128 view (its own
+   renderer, a plain material + a light, drag to turn: no OrbitControls, no new CDN script). Selecting another tile or
+   closing the sheet disposes the view (renderer + context, geometry, material, canvas, listeners).
+5. **Stored detail is a slider; a Smithsonian model re-downloads to go back up after a reload.** "Stored in the project"
+   is a slider (min 500, step 500, applied on release) + the number box. Its top: the in-memory original's triangle count;
+   after a reload a record with `source.uri` keeps its `origTris` (moving up downloads the model again behind the 'stl'
+   loading card and keeps it as the original); any other STL the stored count (down only, as before).
