@@ -42,11 +42,20 @@ STL panel  "Browse Smithsonian"  -> search box + thumbnail grid (one tile per mo
 
 - **Search:** `q` + `owning_unit` (optional) + `file_type=glb&file_quality=Low&rows=24&start=k`. Tiles show the thumbnail
   (`scene-image-thumb.jpg` beside the GLB; on a load error the tile shows the title alone), the title as name.
-- **Pick:** the row's own GLB uri: the download (with a progress line in the loading card).
+- **Pick:** every Low GLB of the model: one lookup `model_url=<id>&file_type=glb&file_quality=Low&rows=50` (a bust and its base
+  are two rows of ONE model; the grid keeps one tile per model), each part downloaded and read, the soups joined into ONE layer.
+  A failed lookup falls back to the row's own GLB uri. The 'Turn in 3D' fallback and the Stored-detail re-download do the same.
 - **GLB to soup** (new, `core/stl/gltf.js`): walk every mesh in the scene, apply its world matrix, append its triangles
-  (indexed or not). glTF is **Y-up**, the board is **Z-up**: rotate +90 degrees about X (a declared constant; the API's
-  `gltf_orientation_compliant` flag says the files follow glTF's axes). Units: metres, but `fitUnitIn` fits every new STL
-  to half the board anyway, so the unit does not matter.
+  (indexed or not). **Face up, the identity** (advisor decision 2026-11-22, measured: the earlier Y-up -> Z-up turn stood a
+  bust UP, so the top-down stamp was a 2.6 in column = the top of the head): for a relief the model LIES FACE UP, glTF's front
+  (+Z) out of the board, its up (+Y) toward the top of the board, as its picture shows it. `GLTF_TO_BOARD` stays a declared
+  constant (now (x, y, z) -> (x, y, z)); the Rotate sliders turn it any way. The API's `gltf_orientation_compliant` flag says
+  the files follow glTF's axes. Units: metres, but `fitUnitIn` fits every new STL to half the board anyway, so the unit does
+  not matter.
+- **Turn in 3D** opens as the picture: a front view, the camera on +Z looking down -Z, up = +Y, framed on the soup's bounds.
+- **Status line:** counts the models SHOWN ('N models shown', plus ' · more available' while more pages exist): the API's
+  rowCount counts files, not models ('1–14 of 14' with 12 tiles misled).
+- **Phone (<= 600 px):** the picture and the 3D canvas are at most 40vh tall (object-fit: contain), the grid stays in sight.
 - **Loaders:** `GLTFLoader.js` and `DRACOLoader.js` from three@0.128.0's `examples/js` (the same r128 as `three.min.js`,
   pinned), loaded ON FIRST USE only (no cost for a board that never browses). The Draco decoder (WASM) from the same pinned
   package's `examples/js/libs/draco/gltf/`.
@@ -62,8 +71,8 @@ STL panel  "Browse Smithsonian"  -> search box + thumbnail grid (one tile per mo
 - Opened from `panel-stl` (a "Browse Smithsonian" button; no new sidebar panel) as a **full-screen sheet** built on the
   app's own dialog classes (`cad-modal-overlay` / `-window` / `-header` / `-body`, as the editor's full-screen modal and
   pull-changelist.js use them). Tile size from `PICKER_TILE`. The museum picker is a native `<select>` (no popover).
-- One declared table `SMITHSONIAN_SOURCE` (endpoint, the thumb / model filters, page size, the loader URLs, the Y-up -> Z-up
-  turn): a later library (Kenney, Quaternius) is another entry, not another mechanism.
+- One declared table `SMITHSONIAN_SOURCE` (endpoint, the thumb / model filters, page size, the parts-lookup rows; the
+  loader URLs and the glTF -> board turn are declared beside it in core/stl/gltf.js): a later library (Kenney, Quaternius) is another entry, not another mechanism.
 - Loading stage: the existing `stl` stage (label "reading the STL" -> "fetching the model" for this source).
 
 ## 5. Saved boards must not change (rule 3)
@@ -76,8 +85,8 @@ byte-identical (the stl-layers-absent golden covers the passes).
 1. The search parser on a RECORDED live response (`tests/fixtures/si-search-*.json`, saved from the API): tiles = one per
    model, title, thumbnail, model id; paging maths.
 2. The tile's thumbnail URL is derived from the GLB uri; a thumbnail that fails to load leaves a title tile (no broken image).
-3. GLB -> soup on a small real GLB fixture (non-Draco, made from a known mesh): triangle count, the Y-up -> Z-up turn
-   (a known apex lands up), world matrices applied.
+3. GLB -> soup on a small real GLB fixture (non-Draco, made from a known mesh): triangle count, the face-up identity
+   (a standing model's depth becomes the relief height), world matrices applied.
 4. The import parity: the soup goes through the same createStlLayer path (a spy), `source` stored, the layer active.
 5. Panel: the browser renders, a search fills tiles, a tile tap adds an STL layer (fetch stubbed with the recorded
    responses), errors show in the status line, DEFAULT untouched (copy-on-write).
