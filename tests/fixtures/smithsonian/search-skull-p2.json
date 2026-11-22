@@ -1,0 +1,318 @@
+{
+ "rows": [
+  {
+   "title": "Pongo pygmaeus: mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:ffa94ff4-85c2-4a79-b53f-49c2a285b31c/USNM296650_Mandible_-600_new-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:ffa94ff4-85c2-4a79-b53f-49c2a285b31c",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Hylobates albibarbis: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:3d7451ee-a19d-48c7-bb7f-aadb731bf4a3/USNM145329_mandible_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:3d7451ee-a19d-48c7-bb7f-aadb731bf4a3",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Hylobates klossii: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:199398b1-651b-4935-8f9c-fc5bd23fe6f4/USNM252309_mandible_-200-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:199398b1-651b-4935-8f9c-fc5bd23fe6f4",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Hylobates klossii: Cranium",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:490b6301-3869-455a-ba71-a89f5b6c482c/USNM252309_cranium_-500-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:490b6301-3869-455a-ba71-a89f5b6c482c",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:03786d37-6c69-4ef3-91fb-01da20cd7ea5/USNM174710_Mandible_-600-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:03786d37-6c69-4ef3-91fb-01da20cd7ea5",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: Cranium",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:6b16fc86-f7bb-4796-b77d-7bbef0ea27a3/USNM174710_Cranium_-800-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:6b16fc86-f7bb-4796-b77d-7bbef0ea27a3",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Odobenocetops peruvianus De Muizon",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:3b896f42-b8f5-4798-af90-ad46e5d9fcb3/p0-Part_01-100k-1024.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:3b896f42-b8f5-4798-af90-ad46e5d9fcb3",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla gorilla gorilla: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:6dd7ff7f-2ce0-4802-bab1-f04ec1388f94/USNM174722_Mandible_-500-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:6dd7ff7f-2ce0-4802-bab1-f04ec1388f94",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla gorilla gorilla: Cuneiform1 Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:7ebb2601-0128-416b-b367-814868a686d2/USNM174722_cuneiform1_left_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:7ebb2601-0128-416b-b367-814868a686d2",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla gorilla gorilla: Cranium",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:9a105add-558a-499c-bb4f-aecbb4e037e5/USNM174722_Cranium_-600_dec-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:9a105add-558a-499c-bb4f-aecbb4e037e5",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla gorilla gorilla: Cuneiform1 Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:b23162a7-f0dd-4cee-847f-8475d2e78932/USNM174722_cuneiform1_right_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:b23162a7-f0dd-4cee-847f-8475d2e78932",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Dilophodelphis fordycei Boersma et al., 2017",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:96819943-c693-4a41-ad49-322ed676886d/usnm-214911-dolphin-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:96819943-c693-4a41-ad49-322ed676886d",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Trachypithecus cristatus cristatus: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:1ec309ff-42b9-445b-994d-4c83f0d324a6/USNM83949_mandible_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:1ec309ff-42b9-445b-994d-4c83f0d324a6",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Dinictis cyclops (Cope): presentation",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:71fede81-9be4-4fc8-9422-402aeaa82c4d/Dinictis_cyclops_-Cope-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:71fede81-9be4-4fc8-9422-402aeaa82c4d",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Varecia variegata: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:26e48f83-9987-4e66-bd3f-521c7dfef9a1/USNM503392_mandible_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:26e48f83-9987-4e66-bd3f-521c7dfef9a1",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Lemur catta: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:3060fa43-48af-427e-a87f-f5f989f0258d/USNM589576_Mandible_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:3060fa43-48af-427e-a87f-f5f989f0258d",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Daubentonia madagascariensis: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:ec0e7ffb-e106-4364-afd9-7018958926bc/USNM199694_Mandible_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:ec0e7ffb-e106-4364-afd9-7018958926bc",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Trachypithecus cristatus cristatus: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:297b248d-3be4-4705-8664-cec1625bae1f/USNM198294_mandible_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:297b248d-3be4-4705-8664-cec1625bae1f",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo pygmaeus: mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:743329a8-10f9-464d-a9f3-0c084147a9b9/USNM153833_Mandible_-600-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:743329a8-10f9-464d-a9f3-0c084147a9b9",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Sapajus apella: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0286143c-edcb-4140-bb28-ef46072674e6/USNM241394_Mandible_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0286143c-edcb-4140-bb28-ef46072674e6",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Lemur catta: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:1b441a20-da58-42ac-9f78-bd73d962fbac/USNM83963_Mandible_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:1b441a20-da58-42ac-9f78-bd73d962fbac",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Sapajus apella: Cranium",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:2a85529b-da67-4dbe-bd3e-1c5754f331b8/USNM268935_Cranium_-500_dec-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:2a85529b-da67-4dbe-bd3e-1c5754f331b8",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Cebus olivaceus: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:c1a5485d-458f-45d1-b3e9-68d0f9df0755/USNM449466_mandible_-200-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:c1a5485d-458f-45d1-b3e9-68d0f9df0755",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Alouatta palliata: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:c8ad89e9-8c27-493b-a51d-cef0ff35f60a/USNM290581_mandible_-400-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:c8ad89e9-8c27-493b-a51d-cef0ff35f60a",
+    "gltf_orientation_compliant": true
+   }
+  }
+ ],
+ "rowCount": 2219,
+ "message": "content found"
+}

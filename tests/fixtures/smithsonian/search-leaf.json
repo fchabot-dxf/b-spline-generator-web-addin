@@ -1,0 +1,32 @@
+{
+ "rows": [
+  {
+   "title": "Genus indet. sp indet.: Sycamore-like leaf",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:2f8ceec0-17e7-4cd9-b81e-acd2a7fc0f14/Genus_indet-_sp_indet-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:2f8ceec0-17e7-4cd9-b81e-acd2a7fc0f14",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Costume worn by Nona Hendryx of Labelle",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:efaf47f2-2815-41b7-ad26-2b6d3faef7f1/2014-246-3-1-4ab_NonaHendryxCostume_RENDER-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:efaf47f2-2815-41b7-ad26-2b6d3faef7f1",
+    "gltf_orientation_compliant": true
+   }
+  }
+ ],
+ "rowCount": 2,
+ "message": "content found"
+}

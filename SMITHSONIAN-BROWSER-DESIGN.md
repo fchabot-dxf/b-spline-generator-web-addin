@@ -15,10 +15,16 @@ Kenney / Quaternius / Three D Scans later (they have no search API: a mirrored c
   `file_quality` (Thumb / Low / Medium / High / ...), `model_type`, `owning_unit`, `start`, `rows` (0..1000).
 - **No API key.** `Access-Control-Allow-Origin: *` on the search AND on the files (3d-api.si.edu/content/document/...), and
   byte ranges work. So the browser calls it DIRECTLY: no worker, no key to hide.
-- **One row per FILE**, about 17 per model (thumbnails, Low / Medium / High GLBs, USDZ, zips). Searching with
-  `file_type=jpg&file_quality=Thumb` gives **one row per model**: its title, its `model_url` and a ~10 KB thumbnail.
-  2,142 models have such a thumbnail (`q` empty); `q=skull` 2,062, `q=bust` 3, `q=mask` 6, `q=leaf` 0. The collection is
-  mostly natural-history specimens (bones, skulls, shells, fossils), with some portraits, masks, tools and aircraft.
+- **One row per FILE**, about 17 per model (thumbnails, Low / Medium / High GLBs, USDZ, zips). The ONE-ROW-PER-MODEL query is
+  **`file_type=glb&file_quality=Low`**: 3,523 models, each row = title, `model_url` and the Low GLB's own uri (so a pick needs
+  no second call). (Searching the JPG thumbnails instead was measured and rejected: only 2,142 models, 2,069 of them
+  Natural History mammals -- the museum filter would have been empty for every other museum.)
+- **Per museum (owning_unit), Low GLBs:** NMNHMAMMALS 2,139 · NMNHINV 944 · NMNHPALEO 221 · NMAH 39 · NMAAHC 37 · NASM 15 ·
+  NPG 14 · CHNDM 12 · SAAM 10 · SAO 10 · DPO 8 · NMAfA 8 · NMNHEDUCATION 4 · NMNHFISHES 4 · NMNHHERPS 3 · OFEO-SG 2 · FSG 0.
+- **Thumbnails:** `<the GLB's folder>/scene-image-thumb.jpg` (~10 KB) -- 14 of 16 sampled across museums; the 2 others
+  (Wright Flyer, Davenport motor) have no JPG at all (`model_url=<id>&file_type=jpg` -> 0 rows, recorded) -> a title tile.
+- Recorded live responses: `tests/fixtures/smithsonian/*.json` (whole collection page 1, "skull" page 2, NPG, "leaf", a
+  model with no JPG).
 - **The model file:** `model_url=<id>&file_type=glb&file_quality=Low` gives one GLB: ~150k triangles, Draco-compressed,
   1024 px texture, **~0.8 MB** (Hayes bust: 815,012 bytes). Thumb GLB: 20k triangles, ~150 KB. Every Web3D GLB measured is
   Draco-compressed (18,887 of 21,457 GLBs), so a Draco decoder is needed.
@@ -34,8 +40,9 @@ STL panel  "Browse Smithsonian"  -> search box + thumbnail grid (one tile per mo
    -> the existing import path (createStlLayer: weld, store at Stored detail, health, fit) -> a new STL layer, active
 ```
 
-- **Search:** `q` + `file_type=jpg&file_quality=Thumb&rows=N&start=k`. Tiles show the thumbnail, the title as name.
-- **Pick:** a second call for the model's Low GLB, then the download (with a progress line in the loading card).
+- **Search:** `q` + `owning_unit` (optional) + `file_type=glb&file_quality=Low&rows=24&start=k`. Tiles show the thumbnail
+  (`scene-image-thumb.jpg` beside the GLB; on a load error the tile shows the title alone), the title as name.
+- **Pick:** the row's own GLB uri: the download (with a progress line in the loading card).
 - **GLB to soup** (new, `core/stl/gltf.js`): walk every mesh in the scene, apply its world matrix, append its triangles
   (indexed or not). glTF is **Y-up**, the board is **Z-up**: rotate +90 degrees about X (a declared constant; the API's
   `gltf_orientation_compliant` flag says the files follow glTF's axes). Units: metres, but `fitUnitIn` fits every new STL
@@ -52,8 +59,9 @@ STL panel  "Browse Smithsonian"  -> search box + thumbnail grid (one tile per mo
 
 ## 4. Declared, not hand-built
 
-- The browser is part of `panel-stl` (no new sidebar panel). Its tiles reuse the photo Patterns row's look; any pop-over
-  goes through `mountIconGrid` / `PICKER_TILE` (never a hand-built popover).
+- Opened from `panel-stl` (a "Browse Smithsonian" button; no new sidebar panel) as a **full-screen sheet** built on the
+  app's own dialog classes (`cad-modal-overlay` / `-window` / `-header` / `-body`, as the editor's full-screen modal and
+  pull-changelist.js use them). Tile size from `PICKER_TILE`. The museum picker is a native `<select>` (no popover).
 - One declared table `SMITHSONIAN_SOURCE` (endpoint, the thumb / model filters, page size, the loader URLs, the Y-up -> Z-up
   turn): a later library (Kenney, Quaternius) is another entry, not another mechanism.
 - Loading stage: the existing `stl` stage (label "reading the STL" -> "fetching the model" for this source).
@@ -67,7 +75,7 @@ byte-identical (the stl-layers-absent golden covers the passes).
 
 1. The search parser on a RECORDED live response (`tests/fixtures/si-search-*.json`, saved from the API): tiles = one per
    model, title, thumbnail, model id; paging maths.
-2. The model-file pick on a recorded `model_url` response: picks the Low GLB (and says so when there is none).
+2. The tile's thumbnail URL is derived from the GLB uri; a thumbnail that fails to load leaves a title tile (no broken image).
 3. GLB -> soup on a small real GLB fixture (non-Draco, made from a known mesh): triangle count, the Y-up -> Z-up turn
    (a known apex lands up), world matrices applied.
 4. The import parity: the soup goes through the same createStlLayer path (a spy), `source` stored, the layer active.
@@ -75,8 +83,9 @@ byte-identical (the stl-layers-absent golden covers the passes).
    responses), errors show in the status line, DEFAULT untouched (copy-on-write).
 6. Browser check (headless Chrome, real network): search "skull", tap the first tile, the stamp lands; Draco decodes.
 
-## 7. Open questions for Fred (asked one at a time)
+## 7. Fred's answers (2026-11-22, one at a time)
 
-1. Where the browser opens (inside the STL panel, or a full-screen sheet on the phone).
-2. What shows before typing (nothing, a few suggested searches, or the whole collection paged).
-3. Filter by museum (owning_unit: Natural History, Air and Space, Portrait Gallery, ...): wanted or not.
+1. **A full-screen sheet** (not inside the panel).
+2. **The whole collection, paged**, straight away (24 per page, "More results"); typing narrows it.
+3. **A museum picker** beside the search: "All museums" (default) + the units that have models (FSG, 0 models, left out),
+   with readable names in one declared table.

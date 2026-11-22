@@ -1,0 +1,188 @@
+{
+ "rows": [
+  {
+   "title": "Theodore Roosevelt",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:1788235b-d2bc-4287-8fb5-f2965a069fd9/theodore-roosevelt-bronze-relief-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:1788235b-d2bc-4287-8fb5-f2965a069fd9",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Andrew Jackson",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:95e603a6-a77f-4a45-b840-58e40ea5ddf0/andrew-jackson-silver-medal-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:95e603a6-a77f-4a45-b840-58e40ea5ddf0",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Anne Sullivan Macy",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c63804-4ebc-11ea-b77f-2e728ce88125/npg_75_15_as_render_model_no_color-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c63804-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "George Washington",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c63fde-4ebc-11ea-b77f-2e728ce88125/npg_70_4_base-hires_unwrapped-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c63fde-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "George Washington",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c63fde-4ebc-11ea-b77f-2e728ce88125/npg_70_4_bust-hires_unwrapped-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c63fde-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Abraham Lincoln",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c642d6-4ebc-11ea-b77f-2e728ce88125/npg_71_6_right-hires_unwrapped-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c642d6-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Abraham Lincoln",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c642d6-4ebc-11ea-b77f-2e728ce88125/npg_71_6_left-hires_unwrapped-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c642d6-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Helen Adams Keller",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d8c64ccc-4ebc-11ea-b77f-2e728ce88125/HK_NPG_75_16_Final_Render_Model_No_Color-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d8c64ccc-4ebc-11ea-b77f-2e728ce88125",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Andrew Jackson",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:80a9e13c-8e58-4b74-8482-63fd5ee197d8/andrew-jackson-zinc-sculpture-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:80a9e13c-8e58-4b74-8482-63fd5ee197d8",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "George Washington",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:ff28cb3a-ad00-43b3-a928-fa61ab0a288f/npg-npg_78_1-HiRes_Unwrapped-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:ff28cb3a-ad00-43b3-a928-fa61ab0a288f",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "James Garfield",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:d2887438-0f09-4e72-887d-0966ff177149/james-garfield-bronze-sculpture-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:d2887438-0f09-4e72-887d-0966ff177149",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Abraham Lincoln",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:2b4a081a-9ea1-4b0c-b1c3-6f5389da3244/p0-Part-100k-1024.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:2b4a081a-9ea1-4b0c-b1c3-6f5389da3244",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Rutherford B. Hayes",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:1f3700e8-6d01-4488-8ab9-ea14031ef641/rutherford-b-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:1f3700e8-6d01-4488-8ab9-ea14031ef641",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Abraham Lincoln",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:c02c239d-5ebf-4a7a-a368-e2288bbf4b31/abraham-lincoln-mills-life-mask-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:c02c239d-5ebf-4a7a-a368-e2288bbf4b31",
+    "gltf_orientation_compliant": true
+   }
+  }
+ ],
+ "rowCount": 14,
+ "message": "content found"
+}

@@ -1,0 +1,318 @@
+{
+ "rows": [
+  {
+   "title": "Pan troglodytes verus: Talus Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:3f24212e-6753-4e25-b8c6-ed267375607a/USNM481803_talus_left_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:3f24212e-6753-4e25-b8c6-ed267375607a",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Blue Crab",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:b0bf6d44-af22-40dc-bd85-7d66255be4a7/blue-crab-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:b0bf6d44-af22-40dc-bd85-7d66255be4a7",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "George Washington",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:789cf90a-4387-4ac1-9e96-c7d6a7b9d26f/george-washington-greenough-statue-(1840)-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:789cf90a-4387-4ac1-9e96-c7d6a7b9d26f",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo abelii: MT2 Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0047afa8-1ec0-4e3c-a9f5-03330d96cc47/USNM143590_mt2_left_-200-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0047afa8-1ec0-4e3c-a9f5-03330d96cc47",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo abelii: Calcaneus Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:00ba5922-0380-4567-ae9e-5ad10e16545a/USNMA22937_calcaneus_left_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:00ba5922-0380-4567-ae9e-5ad10e16545a",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: Humerus Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0110e987-60a7-4f77-b9e8-4830f741f570/USNM220063_humerus_right_-600_dec-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0110e987-60a7-4f77-b9e8-4830f741f570",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo abelii: MT5 Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:013bd9f0-db19-47c3-89f6-7803d9793bfc/USNM143590_mt5_right_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:013bd9f0-db19-47c3-89f6-7803d9793bfc",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Chiropotes chiropotes: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:014e73fe-864a-4084-a98b-2d0231bcf914/USNM406588_mandible_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:014e73fe-864a-4084-a98b-2d0231bcf914",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo abelii: MT1 Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0162506e-2187-42a1-834b-8330f2d84798/USNM143594_mt1_left_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0162506e-2187-42a1-834b-8330f2d84798",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: Cuboid Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0186a249-1289-465f-b1d2-21a5a9044535/USNM220062_cuboid_right_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0186a249-1289-465f-b1d2-21a5a9044535",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla beringei beringei: Calcaneus Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:018c86aa-d137-4ad0-89c2-09fed1fc4cc6/USNM397351_calcaneus_left_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:018c86aa-d137-4ad0-89c2-09fed1fc4cc6",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes verus: Talus Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:01c22122-e210-4111-959d-86d17a5f8185/USNM481804_talus_left_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:01c22122-e210-4111-959d-86d17a5f8185",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Cebus versicolor: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:01cc5241-0056-4122-aff8-969036c15057/USNM281589_mandible_-200-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:01cc5241-0056-4122-aff8-969036c15057",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla beringei beringei: MC5 Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:01d93477-74fd-4722-8915-330bbf34a5d9/USNM396934_mc5_left_-200-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:01d93477-74fd-4722-8915-330bbf34a5d9",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Sapajus apella: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:0286143c-edcb-4140-bb28-ef46072674e6/USNM241394_Mandible_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:0286143c-edcb-4140-bb28-ef46072674e6",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pongo abelii: Femur Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:02ba3760-0a0d-4ccc-9e96-08ee6bb6a687/USNM143586_femur_right_-500-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:02ba3760-0a0d-4ccc-9e96-08ee6bb6a687",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Propithecus diadema: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:02d8abd5-fd62-44f5-821a-da045111ee6c/USNM63350_Mandible_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:02d8abd5-fd62-44f5-821a-da045111ee6c",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla beringei beringei: Scaphoid Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:03c956d8-78ce-41e6-b846-cf689f5367ef/USNM395636_scaphoid_right_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:03c956d8-78ce-41e6-b846-cf689f5367ef",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Gorilla beringei beringei: Femur Left",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:04424d85-b691-492f-9f04-989115532f31/USNM396934_femur_left_-400_dec-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:04424d85-b691-492f-9f04-989115532f31",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Cebus versicolor: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:04633eb3-e73b-4dce-95dd-604b31783456/USNM281577_mandible_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:04633eb3-e73b-4dce-95dd-604b31783456",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pygathrix nigripes: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:047611f0-3aa4-49dc-8d59-c1e9cd1265ca/USNM269798_mandible_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:047611f0-3aa4-49dc-8d59-c1e9cd1265ca",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Macaca siberu: Mandible",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:048764f8-5a63-4aaf-967e-638e7c55f08f/USNM546835_Mandible_-100-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:048764f8-5a63-4aaf-967e-638e7c55f08f",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: MT2 Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:048d23a4-80f7-404c-a16e-1c5318a67d52/USNM220062_mt2_right_-300-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:048d23a4-80f7-404c-a16e-1c5318a67d52",
+    "gltf_orientation_compliant": true
+   }
+  },
+  {
+   "title": "Pan troglodytes troglodytes: MT1 Right",
+   "content": {
+    "usage": "Web3D",
+    "quality": "Low",
+    "uri": "https://3d-api.si.edu/content/document/3d_package:04b70a2e-1fba-4bdb-870f-25c1987968df/USNM176226_mt1_right_0-150k-1024-low.glb",
+    "file_type": "glb",
+    "model_type": "glb",
+    "draco_compressed": true,
+    "model_url": "3d_package:04b70a2e-1fba-4bdb-870f-25c1987968df",
+    "gltf_orientation_compliant": true
+   }
+  }
+ ],
+ "rowCount": 3523,
+ "message": "content found"
+}
