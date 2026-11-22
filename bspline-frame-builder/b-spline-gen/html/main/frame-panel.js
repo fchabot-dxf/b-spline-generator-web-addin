@@ -198,7 +198,10 @@ function _buildShapeControl(tpl, h) {
     input.setAttribute('aria-label', h.label);
     input.addEventListener('input', () => { shown.textContent = `${input.value}${c.unit || ''}`; }); // live readout only
     input.addEventListener('change', () => _writeShapeSeed(tpl, h.key, Number(input.value) / (c.scale || 1), h.label));
-    row.append(label, input);
+    const track = document.createElement('div'); // base.css: every .cad-slider sits in a .cad-slider-row (flex: 1 grows it)
+    track.className = 'cad-slider-row';
+    track.appendChild(input);
+    row.append(label, track);
   } else if (c.kind === 'check') {
     const label = head('');
     label.style.cssText = `display:flex; align-items:center; gap:8px; min-height:${CONTROL_TOUCH_PX}px;`;
