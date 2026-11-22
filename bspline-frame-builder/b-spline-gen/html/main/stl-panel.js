@@ -29,13 +29,30 @@ import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/sto
 import { layFlatFrame, quickTurnRotation, wrapDeg } from '../core/stl/orient.js';
 import { resolveGrid } from '../core/terrain.js';
 
-/** The controls' groups, in order. */
+/** The controls' groups, in order: each one FOLDS inside the open STL's card (the app's .panel-sub collapse); `open` = its
+ *  default (the user's last fold is remembered per viewer, never in P). 'detail' holds no STL_CONTROLS entry: the Stored detail
+ *  slider / box, the stored-size, source and mesh-health notes and Re-import (renderDetailGroup). */
 export const STL_GROUPS = Object.freeze([
-  Object.freeze({ id: 'place', label: 'Place', note: 'inches from the board centre; +Y is up the screen' }),
-  Object.freeze({ id: 'size', label: 'Size' }),
-  Object.freeze({ id: 'rotate', label: 'Rotate', note: 'degrees' }),
-  Object.freeze({ id: 'stamp', label: 'Stamp' }),
+  Object.freeze({ id: 'place', label: 'Place', note: 'inches from the board centre; +Y is up the screen', open: true }),
+  Object.freeze({ id: 'size', label: 'Size', open: false }),
+  Object.freeze({ id: 'rotate', label: 'Rotate', note: 'degrees', open: false }),
+  Object.freeze({ id: 'stamp', label: 'Stamp', open: false }),
+  Object.freeze({ id: 'detail', label: 'Detail', note: 'stored in the project', open: false }),
 ]);
+/** Where the folds are remembered (a per-viewer convenience, like the sidebar's open sections; UI state, never P). */
+export const STL_GROUP_OPEN_KEY = 'bspline.stl.groupOpen';
+let _groupOpen = null; // group id -> open
+const groupIsOpen = (g) => {
+  if (!_groupOpen) {
+    try { _groupOpen = JSON.parse(localStorage.getItem(STL_GROUP_OPEN_KEY) || '{}') || {}; } catch (_) { _groupOpen = {}; }
+  }
+  return typeof _groupOpen[g.id] === 'boolean' ? _groupOpen[g.id] : g.open === true;
+};
+function setGroupOpen(g, open) {
+  groupIsOpen(g);
+  _groupOpen[g.id] = open;
+  try { localStorage.setItem(STL_GROUP_OPEN_KEY, JSON.stringify(_groupOpen)); } catch (_) { /* storage unavailable: kept this session only */ }
+}
 
 /**
  * Every setting of the ACTIVE STL, once. kind: 'slider' (a range + number pair) or 'choice' (a segmented pair of buttons).
@@ -83,6 +100,7 @@ export const STL_ACTIONS = Object.freeze([
 
 // ── state (UI only; the data is P.stlLayers) ────────────────────────────────────────────────────────────────────────
 let _active = null;                 // the active record's id
+let _open = null;                   // the id of the OPEN card (one at a time; the open card holds the settings); null = all closed
 const _originals = new Map();       // record id -> the full welded mesh, this session only (Stored detail can go back up)
 let _hooks = { onChange: () => {}, refreshGhosts: () => {} };
 
@@ -151,7 +169,10 @@ export function applyStlTransform(id, t = {}) {
 export function pickStlLayer(id) {
   if (!find(id)) return false;
   _active = id;
+  _open = id;
   syncStlPanel();
+  const c = typeof document !== 'undefined' ? [...document.querySelectorAll('[data-stl-card]')].find((x) => x.getAttribute('data-stl-card') === String(id)) : null;
+  if (c && typeof c.scrollIntoView === 'function') c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   return true;
 }
 
@@ -193,6 +214,7 @@ export function addStlFromSoup(soup, name, extra = {}) {
   P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
   _active = record.id;
+  _open = record.id; // a new STL opens its card
   commit('add');
   syncStlPanel();
   announceStlLayersChanged();
@@ -246,6 +268,7 @@ export function removeStlLayer(id) {
   P.stlLayers = list().filter((l) => !(l && l.id === id));
   _originals.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
+  if (_open === id) _open = null; // removing the open STL opens nothing
   commit('remove');
   syncStlPanel();
   announceStlLayersChanged();
@@ -392,10 +415,16 @@ export function turnStl(axis, deg) {
 
 /** The active STL against the stock, from the last build's report (core/stl/stock.js): one line, hidden when it fits. */
 function showStlStock() {
+  const report = getStlStockReport();
+  for (const w of document.querySelectorAll('[data-stl-warn]')) { // every card header: the same message, as the icon's title
+    const text = stlStockMessage(report[String(w.getAttribute('data-stl-warn'))]);
+    w.title = text;
+    w.hidden = !text;
+  }
   const line = byId('stlStock');
   if (!line) return;
   const rec = activeStlLayer();
-  const text = rec && rec.id != null ? stlStockMessage(getStlStockReport()[String(rec.id)]) : '';
+  const text = rec && rec.id != null ? stlStockMessage(report[String(rec.id)]) : '';
   line.textContent = text;
   line.hidden = !text;
 }
@@ -481,6 +510,18 @@ function renderControl(c) {
 const actionRow = (actions) => el('div', { class: 'photo-layer-buttons' },
   actions.map((a) => el('button', { type: 'button', id: a.id, class: 'cad-btn cad-btn-secondary', text: a.text, title: a.title })));
 
+/** The Detail group's content: the Stored detail slider + box, the stored-size / source / mesh-health notes, Re-import. */
+function renderDetailGroup(gbody) {
+  gbody.appendChild(el('div', { class: 'cad-slider-row', style: 'margin-bottom:6px;' }, [
+    el('input', { type: 'range', id: 'stlDetailSlider', class: 'cad-slider', min: String(DETAIL_SLIDER.min), max: String(DETAIL_SLIDER.min), step: String(DETAIL_SLIDER.step) }),
+    el('div', { class: 'cad-stepper cad-stepper-wide' }, [el('input', { type: 'number', id: 'stlDetail', min: '100', max: '400000', step: '1000' })]),
+    el('span', { class: 'stl-unit', text: 'triangles' })]));
+  gbody.appendChild(el('div', { id: 'stlStored', class: 'photo-layer-note' }));
+  gbody.appendChild(el('div', { id: 'stlSource', class: 'photo-layer-note', hidden: '' }));
+  gbody.appendChild(el('div', { id: 'stlHealth', class: 'photo-layer-note' }));
+  gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' })]));
+}
+
 /** Build the panel from STL_CONTROLS into `body` (main.js, before bindStlPanel). */
 export function renderStlPanel(body) {
   if (!body) return;
@@ -496,44 +537,41 @@ export function renderStlPanel(body) {
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlList', class: 'stl-list' }));
-  const active = el('div', { id: 'stlActive' });
+  const active = el('div', { id: 'stlActive', hidden: '' }); // moved into the open card by syncStlPanel (never copied)
   for (const g of STL_GROUPS) {
     const mine = STL_CONTROLS.filter((c) => c.group === g.id);
-    active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
+    const grp = el('div', { class: `panel-sub stl-group${groupIsOpen(g) ? '' : ' collapsed'}`, 'data-stl-group': g.id });
+    const head = el('div', { class: 'panel-header stl-group-head', role: 'button', tabindex: '0', 'aria-expanded': String(groupIsOpen(g)) },
+      [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: g.note }) : null]);
+    const gbody = el('div', { class: 'panel-body' });
+    grp.append(head, gbody);
+    const flip = () => { const open = grp.classList.contains('collapsed'); grp.classList.toggle('collapsed', !open); head.setAttribute('aria-expanded', String(open)); setGroupOpen(g, open); };
+    head.addEventListener('click', flip);
+    head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
     for (const c of mine) {
-      active.appendChild(renderControl(c));
+      gbody.appendChild(renderControl(c));
       const next = STL_ACTIONS.filter((a) => a.after === c.id); // e.g. the quick turns beside their Rotate slider
-      if (next.length) active.appendChild(actionRow(next));
+      if (next.length) gbody.appendChild(actionRow(next));
     }
     const own = STL_ACTIONS.filter((a) => a.group === g.id && !a.after);
-    if (own.length) active.appendChild(actionRow(own));
-    if (g.id === 'size') active.appendChild(el('div', { id: 'stlStock', class: 'photo-layer-note stl-error', role: 'status', hidden: '' })); // over the stock: detection only
+    if (own.length) gbody.appendChild(actionRow(own));
+    if (g.id === 'size') gbody.appendChild(el('div', { id: 'stlStock', class: 'photo-layer-note stl-error', role: 'status', hidden: '' })); // over the stock: detection only
     if (g.id === 'place') {
-      active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
+      gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [
         el('button', { type: 'button', id: 'stlSnap', class: 'cad-btn cad-btn-secondary', text: '⤓ Base on surface', title: 'Z = 0: the lowest point rests on the surface' }),
         el('button', { type: 'button', id: 'stlCentre', class: 'cad-btn cad-btn-secondary', text: '⌖ Centre' }),
       ]));
     }
     if (g.id === 'rotate') {
-      active.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRotReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset rotation' })]));
+      gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRotReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset rotation' })]));
     }
+    if (g.id === 'detail') renderDetailGroup(gbody);
+    active.appendChild(grp);
   }
-  // stored detail + health + the ghost
-  active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: 'Stored in the project' })]));
-  active.appendChild(el('div', { class: 'cad-slider-row', style: 'margin-bottom:6px;' }, [
-    el('input', { type: 'range', id: 'stlDetailSlider', class: 'cad-slider', min: String(DETAIL_SLIDER.min), max: String(DETAIL_SLIDER.min), step: String(DETAIL_SLIDER.step) }),
-    el('div', { class: 'cad-stepper cad-stepper-wide' }, [el('input', { type: 'number', id: 'stlDetail', min: '100', max: '400000', step: '1000' })]),
-    el('span', { class: 'stl-unit', text: 'triangles' })]));
-  active.appendChild(el('div', { id: 'stlStored', class: 'photo-layer-note' }));
-  active.appendChild(el('div', { id: 'stlSource', class: 'photo-layer-note', hidden: '' }));
-  active.appendChild(el('div', { id: 'stlHealth', class: 'photo-layer-note' }));
-  active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
-    el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' }),
-    el('button', { type: 'button', id: 'stlRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Remove' }),
-  ]));
+  active.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Remove' })]));
   active.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlGhost' }), el('span', { text: 'Show the placement ghost' })]));
   active.appendChild(el('div', { id: 'stlLegend', class: 'stl-legend' }));
-  body.appendChild(active);
+  body.appendChild(active); // parked here while no card is open
   body.appendChild(el('div', { id: 'stlTotal', class: 'photo-layer-note' }));
 }
 
@@ -583,20 +621,27 @@ export function syncStlPanel() {
   if (!listEl) return;
   const recs = list();
   if (!find(_active)) _active = recs[0]?.id ?? null;
+  if (!find(_open)) _open = null;
+  const activeEl = byId('stlActive');
+  if (activeEl) { activeEl.hidden = true; listEl.after(activeEl); } // park the settings before the cards are rebuilt
   listEl.innerHTML = '';
   if (!recs.length) listEl.appendChild(el('div', { class: 'photo-layer-note', text: 'No STL yet. Add one: it is placed at the board centre and stamped into the surface.' }));
   for (const r of recs) {
     const on = r.enabled !== false;
+    const isOpen = r.id === _open;
     const row = el('div', { class: `stl-row${r.id === _active ? ' stl-row-active' : ''}` }, [
       el('input', { type: 'checkbox', 'data-stl-enable': r.id, title: 'Stamp this STL', ...(on ? { checked: '' } : {}) }),
-      el('button', { type: 'button', class: 'stl-row-name', 'data-stl-pick': r.id, text: r.name || 'STL' }),
+      el('button', { type: 'button', class: 'stl-row-name', 'data-stl-pick': r.id, 'aria-expanded': String(isOpen), title: isOpen ? 'Close its settings' : 'Open its settings', text: r.name || 'STL' }),
+      el('span', { class: 'stl-row-warn', 'data-stl-warn': r.id, role: 'img', 'aria-label': 'Over the stock', text: '⚠', hidden: '' }),
+      el('button', { type: 'button', class: 'stl-row-del', 'data-stl-del': r.id, title: 'Remove this STL', 'aria-label': `Remove ${r.name || 'STL'}`, text: '🗑' }),
     ]);
     row.querySelector('input').checked = on;
-    listEl.appendChild(row);
+    const cardBody = el('div', { class: 'stl-card-body' });
+    const cardEl = el('div', { class: `stl-card${isOpen ? ' stl-card-open' : ''}`, 'data-stl-card': r.id }, [row, cardBody]);
+    if (isOpen && activeEl) { cardBody.appendChild(activeEl); activeEl.hidden = false; } // the ONE settings block moves into the open card
+    listEl.appendChild(cardEl);
   }
   const rec = activeStlLayer();
-  const activeEl = byId('stlActive');
-  if (activeEl) activeEl.hidden = !rec;
   if (rec) {
     const n = normaliseStlLayer(rec);
     for (const c of STL_CONTROLS) {
@@ -665,7 +710,16 @@ export function bindStlPanel(hooks = {}) {
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');
-    if (pick) { _active = pick.getAttribute('data-stl-pick'); syncStlPanel(); _hooks.refreshGhosts(); }
+    if (pick) {
+      const id = pick.getAttribute('data-stl-pick');
+      _open = _open === id ? null : id; // tap = open / close the card (accordion: opening one closes the other)
+      _active = id;
+      syncStlPanel();
+      _hooks.refreshGhosts();
+      return;
+    }
+    const del = e.target.closest('[data-stl-del]');
+    if (del) removeStlLayer(del.getAttribute('data-stl-del')); // one write, one undo step; it opens nothing
   });
   byId('stlList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-stl-enable]');
@@ -688,4 +742,4 @@ export function bindStlPanel(hooks = {}) {
 }
 
 /** Test / host hook. */
-export function _resetStlPanelForTests() { _active = null; _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
+export function _resetStlPanelForTests() { _active = null; _open = null; _groupOpen = null; try { localStorage.removeItem(STL_GROUP_OPEN_KEY); } catch (_) { /* none */ } _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }

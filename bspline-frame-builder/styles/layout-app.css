@@ -1098,6 +1098,19 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; border-radius: 4px; }
 .stl-row input { width: auto; margin: 0; flex: 0 0 auto; min-width: 20px; min-height: 20px; }
 .stl-row-active { background: rgba(0, 0, 0, 0.07); }
+/* STL cards (STL-PANEL worker P): a header row + the open card's settings; the settings fold in .panel-sub groups (above) */
+.stl-card { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
+.stl-card-open { border-color: rgba(0, 0, 0, 0.3); }
+.stl-card-body:empty { display: none; }
+.stl-card-body { padding: 6px 8px 8px; }
+.stl-row-name::before { content: '\25B8'; display: inline-block; width: 16px; opacity: 0.6; }
+.stl-card-open .stl-row-name::before { content: '\25BE'; }
+.stl-row-warn { flex: 0 0 auto; color: #b3261e; font-size: 16px; min-width: 20px; text-align: center; cursor: help; }
+.stl-row-warn[hidden] { display: none; }
+.stl-row-del { flex: 0 0 auto; min-width: 28px; min-height: 28px; padding: 0 4px; background: none; border: 0; font: inherit; cursor: pointer; }
+.stl-group { margin-bottom: 6px; }
+.stl-group-head { min-height: 28px; flex-wrap: wrap; }
+.stl-group > .panel-body { padding: 6px 8px !important; gap: 4px; }
 .stl-row-name { flex: 1; min-height: 32px; text-align: left; background: none; border: 0; font: inherit; cursor: pointer; }
 .stl-unit { font-size: 11px; opacity: 0.7; margin-left: 6px; }
 .stl-error { color: #b3261e; opacity: 1; }
@@ -1183,6 +1196,8 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 @media (pointer: coarse) {
   .stl-row input { min-width: 28px; min-height: 28px; }
   .stl-row-name, .stl-add-row .cad-btn, #stlRemove { min-height: 32px; }
+  .stl-row-del { min-width: 32px; min-height: 32px; }
+  .stl-group-head { min-height: 32px; }
   .stl-lib-tile { min-height: 32px; }
   .stl-lib-pill button { min-height: 36px; }
   .stl-lib-close, .stl-lib-query, .stl-lib-library, .stl-lib-museum, .stl-lib-type, .stl-lib-shape, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
