@@ -25,6 +25,7 @@ import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny } from '../core/height/selection.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
+import { FILL_DEFAULTS, applyFill } from '../core/height/fill.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -102,16 +103,19 @@ export const HEIGHT_TOOLS = Object.freeze([
   Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
   Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)' }),
+  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height' }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
   select: Object.freeze({ featherIn: 0.05 }),
   gradient: GRADIENT_DEFAULTS,
+  fill: FILL_DEFAULTS,
 });
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
+  Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
 ]);
 const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
 export const HEIGHT_TOOL_CONTROLS = Object.freeze([
@@ -132,6 +136,9 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'gradOpacity', group: 'gradient', target: 'gradient', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
   { id: 'gradMode', group: 'gradient', target: 'gradient', kind: 'choice', path: ['mode'], label: 'Mode',
     options: [['normal', 'Normal', 'The gradient covers what is there by the opacity'], ['add', 'Add', 'Adds the gradient'], ['max', 'Max', 'Only where the gradient is higher']] },
+  { id: 'fillHeightIn', group: 'fill', target: 'fill', kind: 'slider', path: ['heightIn'], label: 'Fill height (in)', step: 0.001, range: () => [-1, 1.5],
+    note: '0 = transparent (no effect on the board); type any value' },
+  { id: 'fillOpacity', group: 'fill', target: 'fill', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
 ]);
@@ -318,6 +325,7 @@ const GESTURES = {
   selectEllipse: selectGesture('ellipse'),
   selectLasso: selectGesture('lasso'),
   gradient: { start: (pt) => beginGradient(pt), move: (pt) => moveGradient(pt), end: () => endGradient(), cancel: () => cancelGradient() },
+  fill: { start: (pt) => beginFill(pt), move: () => {}, end: () => endFill(), cancel: () => { _fillTap = false; } },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
 /** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. */
@@ -564,6 +572,21 @@ function drawGradientLine(node, rec, p) {
   line.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})`);
   if (line !== node.lastChild) node.appendChild(line);
 }
+
+// ── the fill tool (slice 2; core/height/fill.js): one step ──────────────────────────────────────────────────────────
+let _fillTap = false;
+/** Fill the active layer (inside the selection, else everywhere) to the fill height; `over` = settings for this one.
+ *  ONE step. Resolves when it is stored. */
+export function fillHeight(over = {}) {
+  const rec = activeHeightLayer();
+  const work = paintableCopy(rec);
+  if (!work) return _chain;
+  const f = { ..._tools.fill, ...over };
+  if (!applyFill(work.data, f.heightIn, f.opacity, maskOf(rec))) return _chain;
+  return commitWorking(rec.id, 'fill');
+}
+function beginFill(pt) { const rec = activeHeightLayer(); _fillTap = !!rec && !!patchGrid(rec) && pixelOf(rec, pt).inside; return _fillTap; }
+function endFill() { const go = _fillTap; _fillTap = false; return go ? fillHeight() : _chain; }
 
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
@@ -1003,6 +1026,9 @@ function controlSource(c, rec) {
 }
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
+  fill: () => el('div', { class: 'photo-layer-buttons' }, [
+    el('button', { type: 'button', id: 'heightFillApply', class: 'cad-btn cad-btn-secondary', text: '▣ Fill', title: 'The selection (or the whole layer) to the fill height' }),
+  ]),
   select: () => el('div', {}, [
     el('div', { class: 'photo-layer-buttons' }, [
       el('button', { type: 'button', id: 'heightSelFeather', class: 'cad-btn cad-btn-secondary', text: 'Feather', title: 'Soften the selection edge by the Feather amount' }),
@@ -1174,6 +1200,7 @@ export function initHeightPanel(hooks = {}) {
     const box = e.target.closest('[data-height-enable]');
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
   });
+  byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
   byId('heightSelFeather')?.addEventListener('click', () => featherHeightSelection(_tools.select.featherIn));
   byId('heightSelInvert')?.addEventListener('click', () => invertHeightSelection());
   byId('heightSelClear')?.addEventListener('click', () => clearHeightSelection());
