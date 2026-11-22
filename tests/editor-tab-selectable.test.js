@@ -40,7 +40,9 @@ describe('EDITOR_TAB_SELECTABLE: declared per tab', () => {
   it('Artwork = art, Brick = bricks, Frame / Photo = nothing on the canvas; "Select all" named per tab', () => {
     expect(Object.fromEntries(Object.entries(EDITOR_TAB_SELECTABLE).map(([t, d]) => [t, d.kinds]))).toEqual({
       artwork: ['art'], lattice: ['art'], brick: ['brick'], frame: [], photo: [], // redesign phase 2: the Lattice tab = art
+      height: [], // HEIGHT-PAINTER: the brush paints; nothing on the canvas is picked in the Height tab
     });
+    expect(isSelectableInTab({ _focusTab: 'height' }, document.createElementNS('http://www.w3.org/2000/svg', 'path'))).toBe(false);
     expect(selectAllLabelFor({ _focusTab: 'artwork' })).toBe('Select all artwork');
     expect(selectAllLabelFor({ _focusTab: 'brick' })).toBe('Select all bricks');
   });

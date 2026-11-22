@@ -42,6 +42,8 @@ describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', 
       // inEditorDrag (Fred 2026-10-09): a Photo slider's drag tick repaints nothing; its release repaints once
       photo: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
       frame: { inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' },
+      // HEIGHT-PAINTER: a stroke in the editor builds no 3D (Apply / the 3D toggle do); closed, it rebuilds
+      height: { inEditor: 'none', closed: 'rebuild' },
     });
     const at = (kind, opts) => inEditor3dAction(kind, opts);
     modal.style.display = 'flex';
@@ -50,6 +52,10 @@ describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', 
     modal.style.display = 'none';
     expect(['photo', 'frame'].map((k) => at(k))).toEqual(['rebuild', 'refresh3D']);
     expect(['photo', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['rebuild', 'refresh3D']); // closed: as before
+    // HEIGHT-PAINTER: the height row through the same declared lookup main.js reads
+    expect(at('height')).toBe('rebuild');
+    modal.style.display = 'flex';
+    expect(at('height')).toBe('none');
   });
 });
 

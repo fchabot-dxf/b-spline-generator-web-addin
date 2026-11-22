@@ -23,13 +23,25 @@ function makeEditor() {
 describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
   it('declared: Frame as before; Artwork full; Brick and Photo fade the art to 35%, bricks full, the frame profile faded', () => {
     expect(ART_FADE_OPACITY).toBe(0.35);
+    // HEIGHT-PAINTER (Fred 2026-11-22, "tabs content carry over visually"): + heightPatches on every row (the painted patches
+    // in full in their own tab, faded like other off-focus content elsewhere) and the Height tab's own row (art faded as
+    // in Photo / Brick). The five existing rows' drawing / art / frameProfile are unchanged.
+    const H = INACTIVE_LAYER_OPACITY;
     expect(EDITOR_TAB_FOCUS).toEqual({
-      frame: { drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1 },
-      artwork: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY },
-      lattice: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }, // redesign phase 2: Draw's focus
-      photo: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY },
-      brick: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY },
+      frame: { drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1, heightPatches: H },
+      artwork: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
+      lattice: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H }, // redesign phase 2: Draw's focus
+      photo: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
+      brick: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
+      height: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 },
     });
+  });
+
+  it('the Height tab fades the art like Photo / Brick (context while painting)', () => {
+    const ed = makeEditor(), s = ed._sketchLayer.node;
+    setEditorFocus(ed, 'height');
+    expect({ drawing: s.getAttribute('opacity'), fade: s.hasAttribute('data-focus-art-fade'), art: s.style.getPropertyValue('--focus-art-opacity'), profile: ed.profile.node.getAttribute('opacity') })
+      .toEqual({ drawing: null, fade: true, art: '0.35', profile: '0.4' });
   });
 
   it('setEditorFocus writes each tab on the layer / group itself -- and switching back clears it', () => {

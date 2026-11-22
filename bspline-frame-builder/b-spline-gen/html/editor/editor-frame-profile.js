@@ -48,11 +48,15 @@ export const ART_FADE_OPACITY = 0.35;
  *  #sketch-layer[data-focus-art-fade]), never on the drawing's own nodes -- the saved drawing, the export, Send and
  *  the carve read the layer's children, never its own attributes. */
 export const EDITOR_TAB_FOCUS = Object.freeze({
-  frame: Object.freeze({ drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1 }),
-  artwork: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }),
-  lattice: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }), // redesign phase 2: the art, in focus
-  photo: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
-  brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
+  // heightPatches (HEIGHT-PAINTER, Fred 2026-11-22 "tabs content carry over visually"): the painted height patches'
+  // opacity (main/height-panel.js syncHeightOverlay): in full in the Height tab, faded like other off-focus content elsewhere
+  frame: Object.freeze({ drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1, heightPatches: INACTIVE_LAYER_OPACITY }),
+  artwork: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
+  lattice: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }), // redesign phase 2: the art, in focus
+  photo: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
+  brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
+  // the Height tab: the art faded as in Photo / Brick (context, not edited), bricks full, the patches in full
+  height: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 }),
 });
 /** The focus of `editor`'s current tab (before any setEditorFocus: its frame / artwork mode; a tab not declared reads
  *  as Artwork). */

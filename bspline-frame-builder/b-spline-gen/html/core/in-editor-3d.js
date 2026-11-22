@@ -33,6 +33,9 @@ export const IN_EDITOR_3D = Object.freeze({
   // (no 'relief' row since 2026-10-10: Fred moved the photo's Max Height out -- the board Z is edited in Board only, and
   // a pattern pick no longer writes it; nothing in the photo panel writes P.carveZ any more)
   frame: Object.freeze({ inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' }), // a frame-record write (main/frame-panel.js)
+  // HEIGHT-PAINTER: a committed stroke / patch edit (main/height-panel.js): nothing in the editor (the 2D canvas is live;
+  // the 3D comes on Apply or the 3D toggle), the rebuild when the editor is closed
+  height: Object.freeze({ inEditor: 'none', closed: 'rebuild' }),
 });
 
 /** What a change of `kind` does now: its row's action during a restore (when it declares one), else for whether the

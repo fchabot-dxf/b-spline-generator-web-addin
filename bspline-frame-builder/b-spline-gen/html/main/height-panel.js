@@ -21,7 +21,7 @@ import { newHeightLayer, normaliseHeightLayer, boardToPatchPixel, sampleRaster, 
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
-import { INACTIVE_LAYER_OPACITY } from '../editor/editor-frame-profile.js';
+import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
@@ -350,7 +350,9 @@ export function syncHeightOverlay() {
   const inTab = getEditorTab() === 'height';
   const anchor = inTab ? sketch.nextSibling : sketch;
   if (_g.parentNode !== host || (inTab ? _g.previousSibling !== sketch : _g.nextSibling !== sketch)) host.insertBefore(_g, anchor);
-  if (inTab) _g.removeAttribute('opacity'); else _g.setAttribute('opacity', String(INACTIVE_LAYER_OPACITY));
+  // the fade is the focus table's (editor/editor-frame-profile.js EDITOR_TAB_FOCUS heightPatches), never a rule of its own
+  const fade = (EDITOR_TAB_FOCUS[getEditorTab()] || EDITOR_TAB_FOCUS.artwork).heightPatches;
+  if (fade >= 1) _g.removeAttribute('opacity'); else _g.setAttribute('opacity', String(fade));
   const recs = list().filter((r) => r && r.enabled !== false && r.raster);
   const keep = new Set(recs.map((r) => String(r.id)));
   for (const n of [..._g.querySelectorAll('[data-height-patch]')]) if (!keep.has(n.getAttribute('data-height-patch'))) n.remove();
