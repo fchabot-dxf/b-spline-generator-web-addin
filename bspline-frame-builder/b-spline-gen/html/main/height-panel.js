@@ -786,7 +786,8 @@ function ensureMoveBar() {
   const container = byId('editorCanvasContainer');
   if (!container || byId('heightMoveBar')) return;
   const btn = (id, text, title) => el('button', { type: 'button', id, class: 'cad-btn cad-btn-secondary', text, title, style: 'min-height:32px; min-width:84px; padding:4px 12px;' });
-  const bar = el('div', { id: 'heightMoveBar', hidden: '', style: 'position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:11; display:none; gap:8px;' }, [
+  // above the phone drawer and the job strip (the same offsets as #editorStatusHint), and above that hint itself
+  const bar = el('div', { id: 'heightMoveBar', hidden: '', style: 'position:absolute; left:50%; bottom:calc(44px + var(--drawer-height, 0px) + var(--job-strip-height, 0px)); transform:translateX(-50%); z-index:11; display:none; gap:8px;' }, [
     btn('heightMoveDrop', '✓ Drop', 'Put the moved piece down here (Enter)'),
     btn('heightMoveCancel', '✕ Cancel', 'Put everything back as it was (Esc)'),
   ]);

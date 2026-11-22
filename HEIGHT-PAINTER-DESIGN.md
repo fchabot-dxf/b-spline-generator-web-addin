@@ -165,3 +165,61 @@ Not done / open (for the advisor):
   the Height tab yet; the patches' own fade elsewhere uses `INACTIVE_LAYER_OPACITY` directly.
 - Cancel keeps painted strokes (the Photo tab's precedent); undo stores the whole encoded raster per stroke (not tiles).
 - Live stroke redraw re-encodes a <= 512 px PNG per animation frame: not measured on a phone yet.
+
+## 12. Slice 3: the Move tool and brush tip shapes (branch `height-painter-3`, worker W)
+
+Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool, and a marquee tool, rect and lasso
+tool" (the marquees are slice 2) and "a brush shape tool too, square, circle, bevel brush, angle adjustment". Tests:
+`tests/height-move.test.js`, `tests/height-brush-tip.test.js`, `tests/height-brush-tip-pin.test.js`; probe
+`tools/repro/height_painter3_shots.mjs` (desktop 1400 x 900 mouse + keys, phone 390 x 844 touch).
+
+**Move** (`core/height/move.js` + the HEIGHT_TOOLS entry `move`, its GESTURES row, the HEIGHT_TOOL_GROUPS `move` note).
+Photoshop semantics:
+- With a selection, a drag LIFTS the selected pixels of the active layer into a floating piece (`liftPiece`: the piece keeps
+  the values, its alpha is the mask -- a feathered edge included; the hole left is the layer x (1 - mask), so a fully
+  selected pixel leaves 0 = transparent). The piece is previewed per animation frame (`placePiece` into the working copy);
+  the release keeps it floating; the marching ants ride with it.
+- Enter, the on-canvas **Drop** button, a tool switch or any other action (a fill, a selection change, a layer / patch
+  action or field, import / export, leaving the tab) DROPS it: `placePiece` = the hole, then each piece pixel over what is
+  there by its alpha (normal blend: under (1 - a) + value a; a 0 piece pixel is transparent and never covers), ONE commit =
+  ONE undo step (the raster through the history blob store, as every slice-2 commit). The selection is moved with it
+  (`shiftMask`). A piece dropped where it was lifted stores nothing (no step).
+- Esc or **Cancel** puts the layer and the selection back exactly; nothing is stored. Esc is read in the capture phase, so it
+  cancels the piece without also sending the editor back to Select (main/global-events.js's Esc still does when nothing
+  floats). An editor undo / a load while floating cancels it.
+- No selection: the drag moves the whole active layer; pixels pushed off the patch are lost on the drop (while floating
+  they come back if dragged back).
+- Alt+drag on a selection moves the marquee only (no pixel changes, no step).
+- Arrows nudge 1 px, Shift+arrows 10 px (`MOVE_NUDGE_PX`), along the patch's own pixel axis nearest to the screen direction
+  (a turned patch moves along its pixels).
+- Offsets are WHOLE patch pixels: a move never resamples, every value moved is the exact value lifted.
+- Touch: a one-finger drag; while a piece floats a Drop / Cancel pair (32 px tall) sits at the bottom of the canvas (shown on
+  every device: it is also the mouse way to drop / cancel).
+- An image layer is refused, as for the other painting tools (its grey values are not heights; add a paint layer above).
+
+**Brush tips** (`core/height/brush.js` `BRUSH_TIPS`, the brush keys `tip`, `roundness`, `angle`, `followStroke`; the
+controls are rows of HEIGHT_TOOL_CONTROLS with target 'brush', in a 'Brush tip' group declared `follows: 'brush'`, because
+the slice-1 HEIGHT_CONTROLS id list is pinned by tests/height-tab):
+- `round` (the slice-1 dab), `square` (Chebyshev in the tip frame), `chisel` (a flat blade: the falloff across its thickness
+  only, full strength along it, square ends). `roundness` 0.05..1 squashes the tip across (half-size R x roundness);
+  `angle` 0..180 degrees counter-clockwise on the BOARD (createStroke's `rotationDeg` takes the patch's own turn out);
+  `followStroke` = the angle is taken from the drag direction (the first dab waits for that direction; a tap lays its one
+  dab at the set angle via `finish()`).
+- Falloff / hardness run on the tip's own distance: square + Linear = a crisp chamfer, square + Plateau = a flat-topped
+  square. The touched box covers the turned footprint (a square's corners reach R x sqrt 2).
+- **Bevel** quick preset (`BRUSH_QUICK_PRESETS.bevel`, a button above the tip controls): square tip, Linear falloff,
+  hardness 0.3. (Fred's "bevel brush" may mean something else: open question.)
+- Picking the chisel while the roundness is still 1 starts it at 0.25 (the tip's declared `seedRoundness`, the custom
+  curve's alsoSet precedent; a UI seed, never a rule).
+- The on-canvas cursor (`#heightBrushRing`, now a path) is the tip's real footprint: an ellipse or a rectangle, turned by
+  the angle (+ the pointer's travel direction with followStroke). Hidden while the Move tool is armed.
+- Saved boards / brushes unchanged (rule 3): the brush is session UI state (no brush presets are stored yet); a brush
+  without the tip keys reads as round / 1 / 0 / off, and a round tip of roundness 1 runs the slice-1 code path. Pinned by
+  `tests/height-brush-tip-pin.test.js`: eight createStroke cases' sha256 + dab counts + boxes and the panel path's stored
+  raster h, measured on main @ ea366455 before the tip code.
+
+- The editor's own Apply drops a floating piece and its Cancel throws it away (`MOVE_SETTLE_BUTTONS`, on pointerdown so it
+  runs before their click handlers).
+
+Open (for the advisor / Fred): what "bevel brush" means; Move has no scale / rotate (section 4's Transform, slice 4); the
+Move tool has no keyboard shortcut letter.
