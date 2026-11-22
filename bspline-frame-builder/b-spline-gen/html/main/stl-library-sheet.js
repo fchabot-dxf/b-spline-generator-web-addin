@@ -95,17 +95,37 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   // ── the preview pane ──
   const pane = el('div', { id: 'stlLibPane', class: 'stl-lib-pane' });
   pane.hidden = true;
-  const media = el('div', { class: 'stl-lib-pane-media' });
+  const picHost = el('div', { class: 'stl-lib-pane-pic' });      // the 2D picture
+  const viewHost = el('div', { class: 'stl-lib-pane-3d' });      // the 3D view (kept, hidden, while 2D shows)
+  viewHost.hidden = true;
+  const media = el('div', { class: 'stl-lib-pane-media' }, [picHost, viewHost]);
   const paneTitle = el('div', { class: 'stl-lib-pane-title' });
   const paneInfo = el('div', { id: 'stlLibPaneInfo', class: 'photo-layer-note stl-lib-pane-info' });
   paneInfo.hidden = true;
-  const turnBtn = el('button', { type: 'button', id: 'stlLibTurn', class: 'cad-btn cad-btn-secondary', text: 'Turn in 3D' });
+  // the 2D | 3D pill: the main view's own switch (main/view-mode-toggle.js renderPill: class view-mode-toggle, same look)
+  const pill = el('div', { class: 'view-mode-toggle stl-lib-pill', role: 'group', 'aria-label': '2D / 3D view',
+    style: 'display:flex; border-radius:14px; overflow:hidden; border:1px solid rgba(0,0,0,0.2); box-shadow:0 1px 4px rgba(0,0,0,0.18); background:#fff; font:600 11px sans-serif;' });
+  const pillBtn = (id, text, title) => el('button', { type: 'button', id, text, title, 'aria-pressed': 'false' });
+  const view2dBtn = pillBtn('stlLibView2d', '2D', 'The picture');
+  const turnBtn = pillBtn('stlLibTurn', '3D', 'Turn the model in 3D');
+  pill.append(view2dBtn, turnBtn);
+  let mode = '2d';         // which half of the pill shows
+  const stylePill = () => {
+    for (const [b, on] of [[view2dBtn, mode === '2d'], [turnBtn, mode === '3d']]) {
+      b.setAttribute('aria-pressed', String(on));
+      b.style.cssText = `border:none; padding:5px 14px; cursor:${on ? 'default' : 'pointer'};`
+        + (on ? ' background:var(--cad-accent-blue, #0078d4); color:#fff;' : ' background:#fff; color:#444;');
+    }
+  };
+  stylePill();
   const insertBtn = el('button', { type: 'button', id: 'stlLibInsert', class: 'cad-btn cad-btn-primary', text: 'Insert' });
   const paneNote = el('div', { id: 'stlLibPaneNote', class: 'photo-layer-note stl-lib-pane-note', role: 'status' });
   paneNote.hidden = true;
-  pane.append(media, paneTitle, paneInfo, el('div', { class: 'stl-lib-pane-buttons' }, [turnBtn, insertBtn]), paneNote);
+  pane.append(media, paneTitle, paneInfo, el('div', { class: 'stl-lib-pane-buttons' }, [pill, insertBtn]), paneNote);
 
-  const results = el('div', { class: 'stl-lib-results' }, [statusEl, notesEl, grid, more]);
+  const totalsEl = el('div', { id: 'stlLibTotals', class: 'photo-layer-note stl-lib-totals' }); // each library's total, beside the status
+  const sentinel = el('div', { id: 'stlLibSentinel', class: 'stl-lib-sentinel', 'aria-hidden': 'true' }); // endless scroll watches this
+  const results = el('div', { class: 'stl-lib-results' }, [el('div', { class: 'stl-lib-statusrow' }, [statusEl, totalsEl]), notesEl, grid, sentinel, more]);
   const body = el('div', { class: 'cad-modal-body stl-lib-body' }, [
     el('div', { class: 'stl-lib-search' }, [librarySel, query, museum, typeSel, shapeSel, searchBtn]),
     ratioRow,
@@ -172,7 +192,15 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   const setStatus = (text, isError = false) => { statusEl.textContent = text; statusEl.classList.toggle('stl-error', !!isError); };
   const setNotes = (lines) => { notesEl.textContent = ''; for (const l of lines) notesEl.appendChild(el('div', { text: l })); notesEl.hidden = !lines.length; };
   // what is SHOWN: the API's rowCount counts FILES (a bust and its base are two rows of one model), not models
+  /** Each library's total, from its answers ("Smithsonian 3,523 · SMK 373"); a library with no known total shows nothing. */
+  const showTotals = () => {
+    if (!multi) { totalsEl.textContent = ''; return; }
+    const sums = new Map();
+    for (const f of st.feeds) if (f.known) sums.set(f.lib, (sums.get(f.lib) || 0) + f.total);
+    totalsEl.textContent = [...sums].map(([lib, n]) => `${lib.short || lib.label} ${fmt(n)}`).join(' · ');
+  };
   const showCount = () => {
+    showTotals();
     const n = st.shown.size;
     const total = st.feeds.reduce((s, f) => s + (f.known ? f.total : 0), 0);
     setStatus(total > 0 ? `${fmt(n)} model${n === 1 ? '' : 's'} shown${more.hidden ? '' : ' · more available'}` : 'No models found');
@@ -211,8 +239,10 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     return b;
   }
 
+  let pending = 0; // the seq of the page load in flight (0 = none): endless scroll never starts a second one
   async function load(reset) {
     const my = ++st.seq;
+    pending = my;
     if (reset) {
       grid.textContent = '';
       st.shown.clear();
@@ -224,6 +254,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     setNotes(st.notes);
     const res = await Promise.allSettled(want.map((f) => fetchFeed(f, f.page + 1)));
     if (closed || my !== st.seq) return; // a newer search (or the close) won
+    pending = 0;
     const lists = [], failed = [];
     res.forEach((r, i) => {
       const f = want[i];
@@ -241,6 +272,8 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     else if (failed.length && failed.length === want.length && !st.feeds.some((f) => f.known)) setStatus(msgOf(failed[0][1]), true);
     else showCount();
     if (multi) setNotes([...st.notes, ...failNotes]);
+    showTotals();
+    watchSentinel(); // still in view after this page (a short page): look again
   }
   const search = () => { st.q = query.value.trim(); st.unit = museum ? museum.value : ''; st.type = typeSel ? typeSel.value : 'all'; return load(true); };
 
@@ -265,19 +298,31 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   /** What Turn in 3D will download for an STL library (the model itself), before it is pressed. */
   const stlTurnNote = (size) => (size != null ? `Turn in 3D downloads the model (~${mbText(size)}).` : 'Turn in 3D downloads the whole model.');
 
+  let pic = null;          // the 2D picture element (detached while the 3D half shows)
+  let stay2d = false;      // 2D was pressed while the 3D view was still loading: it loads, but 2D stays
+  let lightbox = null;     // the open lightbox: { box, close }
+  /** Show the 2D or the 3D half. The picture is DETACHED while 3D shows (and put back on 2D); the 3D view is only hidden. */
+  function setMode(m) {
+    mode = m;
+    if (m === '3d' && view) { picHost.textContent = ''; viewHost.hidden = false; } else { mode = '2d'; viewHost.hidden = true; if (pic) picHost.appendChild(pic); }
+    stylePill();
+  }
   function showPicture(t) {
-    media.textContent = '';
+    picHost.textContent = '';
+    pic = null;
     if (!t.previewUrl && !t.thumbUrl) return; // no picture at all: the title alone
     // Fred 2026-11-22 (the SMK pane looked empty: its large picture takes 1-2 s to arrive): the THUMBNAIL (already loaded by
     // the grid) sits BEHIND the picture as a placeholder, so the pane shows the model at once; the large picture covers it
     // when it has loaded. The picture itself is unchanged (src, fallbacks).
-    const img = el('img', { class: 'stl-lib-preview', src: t.previewUrl || t.thumbUrl, alt: '' });
+    const img = el('img', { class: 'stl-lib-preview', src: t.previewUrl || t.thumbUrl, alt: '', title: 'Tap to enlarge' });
     if (t.thumbUrl && t.previewUrl) img.style.backgroundImage = `url("${t.thumbUrl}")`; // the placeholder (CSS: .stl-lib-preview)
     let fellBack = !t.previewUrl;
     img.addEventListener('error', () => {
-      if (!fellBack) { fellBack = true; img.setAttribute('src', t.thumbUrl); } else img.remove(); // the thumbnail, then the title alone
+      if (!fellBack) { fellBack = true; img.setAttribute('src', t.thumbUrl); } else { img.remove(); if (pic === img) pic = null; } // the thumbnail, then the title alone
     });
-    media.appendChild(img);
+    img.addEventListener('click', () => openLightbox());
+    pic = img;
+    picHost.appendChild(img);
   }
 
   /** The pane's library lines: its name + licence, the download size (asked for when not listed), the object's size, the credit. */
@@ -316,9 +361,14 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     viewSeq++;
     const my = ++selSeq;
     disposeView();
+    closeLightbox();
+    mode = '2d';
+    viewHost.hidden = true;
+    stylePill();
     if (selected) selected.button.classList.remove('active');
     selected = { tile: t, button, lib, meta };
     button.classList.add('active');
+    try { button.scrollIntoView?.({ block: 'nearest' }); } catch (_) { /* not scrollable here */ }
     pane.hidden = false;
     paneTitle.textContent = t.title;
     setPaneNote(lib.format === 'stl' ? stlTurnNote(meta.size) : '');
@@ -328,7 +378,10 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   }
 
   async function turnIn3d() {
-    if (!selected || view) return;
+    if (!selected) return;
+    if (view) { setMode('3d'); setPaneNote('Drag to turn it.'); return; } // already loaded: instant
+    if (turnBtn.disabled) return;
+    stay2d = false;
     const { tile: t, lib } = selected;
     const my = ++viewSeq;
     turnBtn.disabled = true;
@@ -340,15 +393,121 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
       const onProgress = (got, total) => { if (my === viewSeq) setPaneNote(`Loading the 3D preview… ${mbNumber(got)}${total ? ` of ${mbNumber(total)}` : ''} MB`); };
       const soup = await downloadLibrarySoup(lib, { id: t.id, uri: opsOf(lib).fileUrl(t) }, doFetch, { preview: true, onFullModel, onProgress });
       if (my !== viewSeq) return;
-      media.textContent = '';
-      view = createSoupView(media, soup);
-      setPaneNote('Drag to turn it.');
+      viewHost.hidden = false; // visible while it measures its width
+      picHost.textContent = '';
+      view = createSoupView(viewHost, soup);
+      turnBtn.disabled = false;
+      setMode(stay2d ? '2d' : '3d');
+      setPaneNote(stay2d ? '' : 'Drag to turn it.');
     } catch (e) {
       if (my !== viewSeq) return;
       setPaneNote(`Could not show it in 3D: ${msgOf(e)}`, true); // the picture stays
       turnBtn.disabled = false;
+      setMode('2d');
     }
   }
+
+  // ── the lightbox: the large picture over the sheet; wheel / pinch / double-tap zoom, drag pan, a close button, Esc ──
+  const LIGHTBOX = Object.freeze({ maxScale: 8, wheelStep: 0.0015, doubleTapScale: 2.5, doubleTapMs: 300, tapSlopPx: 12 });
+  function closeLightbox() { if (lightbox) { lightbox.box.remove(); lightbox = null; } }
+  function openLightbox() {
+    if (lightbox || !pic) return;
+    const box = el('div', { class: 'cad-modal-overlay stl-lib-lightbox', role: 'dialog', 'aria-label': 'Enlarged picture', style: 'display:flex;' });
+    const img = el('img', { class: 'stl-lib-lightbox-img', src: pic.getAttribute('src'), alt: '', draggable: 'false' });
+    const x = el('button', { type: 'button', class: 'cad-btn cad-btn-secondary stl-lib-lightbox-close', 'aria-label': 'Close the picture', title: 'Close', text: '✕' });
+    box.append(img, x);
+    document.body.appendChild(box);
+    const z = { s: 1, x: 0, y: 0 };
+    const apply = () => { img.style.transform = `translate(${z.x}px, ${z.y}px) scale(${z.s})`; };
+    /** Scale to `s2` keeping the screen point (px, py) still. */
+    const zoomAt = (s2, px, py) => {
+      s2 = Math.min(LIGHTBOX.maxScale, Math.max(1, s2));
+      const r = box.getBoundingClientRect();
+      const dx = px - (r.left + r.width / 2), dy = py - (r.top + r.height / 2);
+      z.x = dx - (s2 / z.s) * (dx - z.x); z.y = dy - (s2 / z.s) * (dy - z.y);
+      z.s = s2;
+      if (z.s === 1) { z.x = 0; z.y = 0; }
+      apply();
+    };
+    apply();
+    box.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(z.s * Math.exp(-e.deltaY * LIGHTBOX.wheelStep), e.clientX, e.clientY); }, { passive: false });
+    const ptrs = new Map(); // pointerId -> { x, y }
+    let pinch = 0, lastTap = 0, moved = 0;
+    const dist = () => { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    img.addEventListener('pointerdown', (e) => {
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { img.setPointerCapture?.(e.pointerId); } catch (_) { /* not capturable */ }
+      if (ptrs.size === 2) pinch = dist();
+      moved = 0;
+    });
+    img.addEventListener('pointermove', (e) => {
+      const p = ptrs.get(e.pointerId);
+      if (!p) return;
+      if (ptrs.size === 2) {
+        p.x = e.clientX; p.y = e.clientY;
+        const d = dist(), [a, b] = [...ptrs.values()];
+        if (pinch > 0) zoomAt(z.s * (d / pinch), (a.x + b.x) / 2, (a.y + b.y) / 2);
+        pinch = d; moved = LIGHTBOX.tapSlopPx + 1;
+        return;
+      }
+      const dx = e.clientX - p.x, dy = e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (z.s > 1) { z.x += dx; z.y += dy; apply(); }
+    });
+    const end = (e) => {
+      const had = ptrs.delete(e.pointerId);
+      pinch = 0;
+      if (!had || e.type === 'pointercancel' || moved > LIGHTBOX.tapSlopPx) return;
+      const now = Date.now(); // a quick second tap: zoom in, or back out
+      if (now - lastTap < LIGHTBOX.doubleTapMs) { zoomAt(z.s > 1 ? 1 : LIGHTBOX.doubleTapScale, e.clientX, e.clientY); lastTap = 0; } else lastTap = now;
+    };
+    img.addEventListener('pointerup', end);
+    img.addEventListener('pointercancel', end);
+    box.addEventListener('click', (e) => { if (e.target === box) closeLightbox(); });
+    x.addEventListener('click', closeLightbox);
+    lightbox = { box };
+  }
+
+  // ── the keyboard (nothing is taken while a field has focus) ──
+  const gridTiles = () => [...grid.querySelectorAll('.stl-lib-tile')];
+  /** The tile one step from the selected one: left / right = the previous / next, up / down = the one a row above / below. */
+  function neighbour(dir) {
+    const all = gridTiles();
+    if (!all.length) return null;
+    const cur = selected ? all.indexOf(selected.button) : -1;
+    if (cur < 0) return all[0];
+    if (dir === 'ArrowLeft') return all[Math.max(0, cur - 1)];
+    if (dir === 'ArrowRight') return all[Math.min(all.length - 1, cur + 1)];
+    const r = all[cur].getBoundingClientRect(), down = dir === 'ArrowDown';
+    const rows = all.map((t) => [t, t.getBoundingClientRect()]).filter(([, b]) => (down ? b.top > r.top + 1 : b.top < r.top - 1));
+    if (!rows.length) return all[cur];
+    const rowTop = down ? Math.min(...rows.map(([, b]) => b.top)) : Math.max(...rows.map(([, b]) => b.top));
+    return rows.filter(([, b]) => b.top === rowTop).sort((a, b) => Math.abs(a[1].left - r.left) - Math.abs(b[1].left - r.left))[0][0];
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { if (lightbox) closeLightbox(); else close(); return; }
+    const t = e.target, tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || lightbox) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const n = neighbour(e.key);
+      if (n) { e.preventDefault(); n.click(); }
+    } else if (e.key === 'Enter' && selected && (tag !== 'BUTTON' || t.classList.contains('stl-lib-tile'))) {
+      e.preventDefault();
+      insert();
+    }
+  }
+
+  // ── endless scroll: the sentinel after the last tile loads the next page like "More results" (where IntersectionObserver exists) ──
+  const io = typeof globalThis.IntersectionObserver === 'function'
+    ? new globalThis.IntersectionObserver((entries) => {
+      if (closed || pending || more.hidden || !entries.some((en) => en.isIntersecting)) return;
+      load(false);
+    }, { rootMargin: '300px' })
+    : null;
+  if (io) io.observe(sentinel);
+  function watchSentinel() { if (io && !closed) { io.unobserve(sentinel); io.observe(sentinel); } } // asks again whether it is still in view
 
   function insert() {
     if (!selected) return;
@@ -357,7 +516,6 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   }
 
   // ── wiring ──
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
   function close() {
     if (closed) return;
     closed = true;
@@ -366,19 +524,22 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     viewSeq++;
     selSeq++;
     disposeView();
+    closeLightbox();
+    if (io) io.disconnect();
     document.removeEventListener('keydown', onKey);
     overlay.remove();
   }
   closeBtn.addEventListener('click', close);
   searchBtn.addEventListener('click', search);
   query.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
-  more.addEventListener('click', () => load(false));
+  more.addEventListener('click', () => { if (!pending) load(false); });
   librarySel.addEventListener('change', onLibrary);
   typeSel?.addEventListener('change', search);
   shapeSel.addEventListener('change', onShape);
   ratioSlider.addEventListener('input', () => onRatio(ratioSlider, ratioNum));
   ratioNum.addEventListener('input', () => onRatio(ratioNum, ratioSlider));
   turnBtn.addEventListener('click', turnIn3d);
+  view2dBtn.addEventListener('click', () => { if (turnBtn.disabled) stay2d = true; setMode('2d'); if (view) setPaneNote(''); });
   insertBtn.addEventListener('click', insert);
   document.addEventListener('keydown', onKey);
 

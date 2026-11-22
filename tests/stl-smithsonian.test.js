@@ -450,7 +450,7 @@ describe('f. the full-screen sheet', () => {
     // Fred 2026-11-22 (the pane looked empty while the large picture loads): the grid's thumbnail is the placeholder behind it
     expect(pane.querySelector('img').style.backgroundImage).toContain(t3.thumbUrl);
     expect(pane.querySelector('.stl-lib-pane-title').textContent).toBe(t3.title);
-    expect(document.querySelector('#stlLibTurn').textContent).toBe('Turn in 3D');
+    expect(document.querySelector('#stlLibTurn').textContent).toBe('3D'); // 2D | 3D pill (Fred 2026-11-22: 'And the 2D image view? ... Can it be better'; advisor-approved)
     expect(document.querySelector('#stlLibInsert').textContent).toBe('Insert');
     // another tile moves the selection
     tiles()[5].click();
