@@ -15,7 +15,8 @@
  * A 'Level' STL (record.surface, Fred 2026-11-22) IS rigid at that height: its colours (and meet line) read each vertex against
  * the LOCAL terrain under it, rel = (baseZ + Z offset + its height) - surfaceAt(x, y), so a part over a rise reads buried.
  */
-import { decodeMesh } from './mesh.js';
+import { decodeMesh, meshBounds } from './mesh.js';
+import { cropBoxIn, isFullCropBox } from './crop.js';
 import { placeMesh } from './raster.js';
 import { normaliseStlLayer, recordStlError, stlErrorId } from './layer.js';
 
@@ -108,9 +109,13 @@ export function meetLine(positions, rel, indices) {
  *   meetLine: Float32Array, place: { x, y, z, rotZ, baseZ } }}  id = the record's id (the placement gizmo picks a ghost by it);
  *   place = the record's position / rotation.z and the surface height under its centre (the gizmo's pivot and start values)
  */
-export function ghostGeometry(rawRec, heights, grid) {
+export function ghostGeometry(rawRec, heights, grid, { cropBox = null } = {}) {
   const rec = normaliseStlLayer(rawRec);
-  const mesh = decodeMesh(rec.mesh);
+  const full = decodeMesh(rec.mesh);
+  // STL-CROP preview (the Crop group's sliders, before Apply): the triangles whose centre is outside the box (fractions of the
+  // stored mesh's own box, core/stl/crop.js) move to `cutIndices` (drawn faint); the rest stay solid. No box: as before.
+  const split = cropBox && !isFullCropBox(cropBox) ? splitByCropBox(full, cropBox) : null;
+  const mesh = split ? { positions: full.positions, indices: split.kept } : full;
   const { xyz } = placeMesh(mesh, rec);
   const nv = xyz.length / 3;
   const baseZ = heights ? surfaceAt(heights, grid, rec.position.x, rec.position.y) : 0;
@@ -118,7 +123,7 @@ export function ghostGeometry(rawRec, heights, grid) {
   const level = rec.surface === 'level' && !!heights; // without heights there is no local terrain to read: as follow
   // per-vertex normals (area-weighted face normals, outward by the STL's own winding), in the PLACED frame
   const nrm = new Float64Array(nv * 3);
-  const idx = mesh.indices;
+  const idx = full.indices; // normals and open edges read the WHOLE stored mesh (a crop preview's edge is not a hole)
   for (let t = 0; t < idx.length; t += 3) {
     const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
     const ux = xyz[b] - xyz[a], uy = xyz[b + 1] - xyz[a + 1], uz = xyz[b + 2] - xyz[a + 2];
@@ -126,7 +131,7 @@ export function ghostGeometry(rawRec, heights, grid) {
     const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
     for (const v of [idx[t], idx[t + 1], idx[t + 2]]) { nrm[v * 3] += fx; nrm[v * 3 + 1] += fy; nrm[v * 3 + 2] += fz; }
   }
-  const open = openEdgeVertices(mesh);
+  const open = openEdgeVertices(full);
   const positions = new Float32Array(nv * 3);
   const colours = new Float32Array(nv * 3);
   const counts = { shows: 0, buried: 0, meets: 0, overhang: 0, open: 0 };
@@ -154,11 +159,29 @@ export function ghostGeometry(rawRec, heights, grid) {
     id: rec.id, positions, indices: mesh.indices, colours, counts,
     meetLine: meetLine(positions, rels, mesh.indices),
     place: { x: rec.position.x, y: rec.position.y, z: zOff, rotZ: rec.rotation.z, baseZ },
+    ...(split ? { cutIndices: split.cut } : {}),
   };
 }
 
-/** Ghost state (UI-only, never saved): the ghosts show while this is true. */
-export const ghostState = { visible: true };
+/** The triangles of `mesh` whose centroid lies inside fractional `box` (kept) and the others (cut), as two index arrays. */
+function splitByCropBox(mesh, box) {
+  const { positions: p, indices: ix } = mesh;
+  const { min, max } = cropBoxIn(meshBounds(p), box);
+  const kept = [], cut = [];
+  for (let t = 0; t < ix.length; t += 3) {
+    let inside = true;
+    for (let a = 0; a < 3 && inside; a++) {
+      const c = (p[ix[t] * 3 + a] + p[ix[t + 1] * 3 + a] + p[ix[t + 2] * 3 + a]) / 3;
+      if (c < min[a] || c > max[a]) inside = false;
+    }
+    (inside ? kept : cut).push(ix[t], ix[t + 1], ix[t + 2]);
+  }
+  return { kept: Uint32Array.from(kept), cut: Uint32Array.from(cut) };
+}
+
+/** Ghost state (UI-only, never saved): the ghosts show while `visible` is true. `cropPreview` = { id, box } while the STL
+ *  panel's Crop sliders of layer `id` are set and not applied (main/stl-panel.js previewStlCrop), else null. */
+export const ghostState = { visible: true, cropPreview: null };
 
 /**
  * The surface a ghost sits on, from a build result (core/state.js lastResult or rebuild's own): the heights BEFORE the stamps
@@ -177,7 +200,8 @@ export function updateStlGhosts(preview, layers, heights, grid) {
   layers.forEach((l, i) => {
     if (!l || l.enabled === false || !l.mesh) return;
     // a bad stored mesh shows no ghost; its message is recorded in the STL error map (core/stl/layer.js getStlErrors)
-    try { list.push(ghostGeometry(l, heights, grid)); } catch (e) { recordStlError(stlErrorId(l, i), e); }
+    const cp = ghostState.cropPreview;
+    try { list.push(cp && cp.id === l.id ? ghostGeometry(l, heights, grid, { cropBox: cp.box }) : ghostGeometry(l, heights, grid)); } catch (e) { recordStlError(stlErrorId(l, i), e); }
   });
   preview.setStlGhosts(list);
 }

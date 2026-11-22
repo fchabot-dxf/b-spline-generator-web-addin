@@ -28,6 +28,12 @@ import { stlPass } from '../core/stl/layer.js';
 import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/stock.js';
 import { layFlatFrame, quickTurnRotation, wrapDeg } from '../core/stl/orient.js';
 import { resolveGrid } from '../core/terrain.js';
+import { meshBounds, meshHealth } from '../core/stl/mesh.js';
+import { rotationMatrix } from '../core/stl/raster.js';
+import { cropMesh, isFullCropBox, normaliseCropBox, cropBoxIn, cropBoxOf, STL_CROP_EDGES, STL_CROP_FALLOFF_DEFAULTS } from '../core/stl/crop.js';
+import { pushRecent, recentEntryOf, noteLocalModel, forgetLocalModel, LOCAL_LIBRARY, _resetLocalModelsForTests } from '../core/stl/recent.js';
+import { BRUSH_FALLOFFS } from '../core/height/brush.js';
+import { renderCropSliders, openLoopsNote } from './stl-crop-controls.js';
 
 /** The controls' groups, in order: each one FOLDS inside the open STL's card (the app's .panel-sub collapse); `open` = its
  *  default (the user's last fold is remembered per viewer, never in P). 'detail' holds no STL_CONTROLS entry: the Stored detail
@@ -38,6 +44,8 @@ export const STL_GROUPS = Object.freeze([
   Object.freeze({ id: 'rotate', label: 'Rotate', note: 'degrees', open: false }),
   Object.freeze({ id: 'stamp', label: 'Stamp', open: false }),
   Object.freeze({ id: 'detail', label: 'Detail', note: 'stored in the project', open: false }),
+  // STL-CROP (Fred 2026-11-22): the six crop sliders + Apply crop / Reset (renderCropGroup), then the Falloff controls below
+  Object.freeze({ id: 'crop', label: 'Crop', note: 'cut the stored mesh to a box; fade its edges', open: false }),
 ]);
 /** Where the folds are remembered (a per-viewer convenience, like the sidebar's open sections; UI state, never P). */
 export const STL_GROUP_OPEN_KEY = 'bspline.stl.groupOpen';
@@ -80,7 +88,22 @@ export const STL_CONTROLS = Object.freeze([
   { id: 'compress', group: 'stamp', kind: 'slider', path: ['compress'], label: 'Compress (bas-relief)', step: 0.05, range: () => [0, 1],
     note: '0 = true heights; more lifts the low parts and flattens the tall ones' },
   { id: 'softness', group: 'stamp', kind: 'slider', path: ['softness'], label: 'Edge softness (in)', step: 0.05, range: () => [0, 2] },
+  // the crop-edge FALLOFF (Fred 2026-11-22): a live stamp setting, record.cropFalloff (core/stl/crop.js; absent = off). `dflt` =
+  // what an absent field shows (STL_CROP_FALLOFF_DEFAULTS). The profiles are the height brush's own (core/height/brush.js);
+  // 'custom' waits for the shared curve widget (the height panel's is not exported yet).
+  { id: 'cropFalloffWidth', group: 'crop', kind: 'slider', path: ['cropFalloff', 'widthIn'], label: 'Falloff width (in)', step: 0.05, range: () => [0, 3],
+    dflt: STL_CROP_FALLOFF_DEFAULTS.widthIn, note: '0 = off. The stamp fades in over this distance from the edges ticked below.' },
+  { id: 'cropFalloffProfile', group: 'crop', kind: 'choice', path: ['cropFalloff', 'profile'], label: 'Falloff profile', dflt: STL_CROP_FALLOFF_DEFAULTS.profile,
+    options: Object.entries(BRUSH_FALLOFFS).filter(([, f]) => !f.custom).map(([k, f]) => [k, f.label, f.title]) },
 ]);
+/** The falloff's five edge boxes, one per core/stl/crop.js STL_CROP_EDGES entry (rendered under the Falloff controls; each
+ *  writes record.cropFalloff.edges[key] through setStlCropEdge, absent = on). */
+export const STL_CROP_EDGE_BOXES = Object.freeze(STL_CROP_EDGES.map(([key, label]) => Object.freeze({
+  key, label, id: `stl_cropEdge${key[0].toUpperCase()}${key.slice(1)}`, path: ['cropFalloff', 'edges', key], dflt: STL_CROP_FALLOFF_DEFAULTS.edges[key],
+})));
+/** What a control shows for record `n`: its value, or the declared `dflt` when the record has none (a nested field such as
+ *  cropFalloff absent). Never written back. */
+const controlValue = (n, c) => { const v = getPath(n, c.path); return v === undefined ? c.dflt : v; };
 
 /**
  * The panel's ACTION buttons on the active STL (Fred 2026-11-22), declared once: rendered in their `group` (in a row right after
@@ -102,6 +125,8 @@ export const STL_ACTIONS = Object.freeze([
 let _active = null;                 // the active record's id
 let _open = null;                   // the id of the OPEN card (one at a time; the open card holds the settings); null = all closed
 const _originals = new Map();       // record id -> the full welded mesh, this session only (Stored detail can go back up)
+const _cropPending = new Map();     // record id -> the crop box its sliders are set to (UI state until Apply crop; never P)
+let _cropCtl = null;                // the Crop group's six sliders (main/stl-crop-controls.js renderCropSliders)
 let _hooks = { onChange: () => {}, refreshGhosts: () => {} };
 
 const list = () => (Array.isArray(P.stlLayers) ? P.stlLayers : []);
@@ -138,6 +163,16 @@ export function setStlField(controlId, value) {
   if (v === undefined) return false;
   updateRecord(rec.id, (r) => withPath(r, c.path, v));
   commit(c.id);
+  return true;
+}
+
+/** One falloff edge box (STL_CROP_EDGE_BOXES) of the ACTIVE record: on / off, one copy-on-write write + one undo step. */
+export function setStlCropEdge(key, on) {
+  const box = STL_CROP_EDGE_BOXES.find((b) => b.key === key);
+  const rec = activeStlLayer();
+  if (!box || !rec) return false;
+  updateRecord(rec.id, (r) => withPath(r, box.path, !!on));
+  commit(`cropEdge:${key}`);
   return true;
 }
 
@@ -202,9 +237,19 @@ export function noteStlProjectReplaced() { _projectEpoch++; }
  * 'layFlat' (SMK: its STLs stand Z-up) sets the Lay flat rotation in this same write / undo step; anything else, nothing.
  */
 export function addStlFromSoup(soup, name, extra = {}) {
-  const { record: made, original } = createStlLayer({ soup, name: name || 'STL', board: board() });
+  // STL-CROP: `extra.crop` = a box (fractions of the model's own box, core/stl/crop.js): the model is CUT to it before it is
+  // stored, so the Stored detail is spent on the kept part; the record remembers the box (crop: informational, and the
+  // Stored-detail re-download cuts the downloaded model the same way). No crop / the full box: exactly as before.
+  let full = null, cut = null;
+  if (extra && extra.crop && !isFullCropBox(extra.crop)) {
+    full = indexMesh(soup);
+    cut = cropMesh(full, extra.crop);
+  }
+  const { record: made, original } = createStlLayer({ soup, mesh: cut ? cut.mesh : null, name: name || 'STL', board: board() });
   let record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
-  if (extra && extra.orient === 'layFlat') record = { ...record, rotation: layFlatRotationOf(record) };
+  if (cut) record = { ...record, crop: { box: normaliseCropBox(extra.crop), bounds: meshBounds(full.positions), capped: cut.capped, openLoops: cut.openLoops } };
+  // a cropped model is laid flat by the WHOLE model's shape (the pose it has uncropped), not by the kept part's
+  if (extra && extra.orient === 'layFlat') record = { ...record, rotation: layFlatRotationOf(record, full || undefined) };
   // Fred 2026-11-22: fitting at insert is an OPTION (P.stlFitOnInsert, default off) -- fitted once, in this same write / undo
   // step, on the surface already built (the clean terrain an STL is stamped on does not depend on the STL); none built yet:
   // after the next build (onStlStockChanged)
@@ -213,6 +258,7 @@ export function addStlFromSoup(soup, name, extra = {}) {
   else if (fit && fit.reason === 'notBuilt') _fitAfterBuild.add(record.id);
   P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
+  if (!record.source) noteLocalModel(record.id, record.name, original); // an own file: in the sheet's Recent while in memory
   _active = record.id;
   _open = record.id; // a new STL opens its card
   commit('add');
@@ -258,6 +304,7 @@ function reimportStlSoup(soup, name, id) {
   const { mesh, origTris, storedTris, health } = fresh.record;
   updateRecord(rec.id, (r) => ({ ...r, mesh, origTris, storedTris, health }));
   _originals.set(rec.id, fresh.original);
+  if (!rec.source) noteLocalModel(rec.id, rec.name, fresh.original);
   commit('reimport');
   syncStlPanel();
   return find(rec.id);
@@ -267,6 +314,8 @@ export function removeStlLayer(id) {
   if (!find(id)) return;
   P.stlLayers = list().filter((l) => !(l && l.id === id));
   _originals.delete(id);
+  forgetLocalModel(id);
+  _cropPending.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
   if (_open === id) _open = null; // removing the open STL opens nothing
   commit('remove');
@@ -308,15 +357,20 @@ function restoreDetail(id, source, want) {
 
 /** Download layer `id`'s model again from its library (Smithsonian: all its parts, its source.uri if the lookup fails; SMK: its
  *  STL), keep it as the in-memory original, then re-store at `want`. */
+/** Layer `rec`'s model downloaded again from its library, welded, and CUT again by the record's crop (rec.crop.box: fractions
+ *  of the downloaded model's own box) when it has one: the same mesh the record was stored from. */
+async function downloadOriginal(rec) {
+  const lib = libraryOfRecordSource(rec.source);
+  const m = indexMesh(await downloadModelSoup(lib, opsOf(lib).refOf(rec.source), { onProgress: downloadProgress(rec.name) }));
+  return rec.crop && rec.crop.box && !isFullCropBox(rec.crop.box) ? cropMesh(m, rec.crop.box).mesh : m;
+}
+
 async function redownloadAndRestore(id, want) {
   const rec = find(id);
   const epoch = _projectEpoch;
   let original = null;
   try {
-    const lib = libraryOfRecordSource(rec.source);
-    await withLoadingStage('stl', async () => {
-      original = indexMesh(await downloadModelSoup(lib, opsOf(lib).refOf(rec.source), { onProgress: downloadProgress(rec.name) }));
-    });
+    await withLoadingStage('stl', async () => { original = await downloadOriginal(rec); });
   } catch (e) {
     status(`Could not download ${rec.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
     syncStlPanel();
@@ -383,9 +437,9 @@ const _fitAfterBuild = new Set();
 /** The Lay flat rotation of record `rec` (core/stl/orient.js layFlatFrame on its decoded stored mesh, from its rotation now),
  *  written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0.
  *  The ONE rule: the Lay flat button and a library's 'layFlat' insert both use it. Throws when the stored mesh cannot be read. */
-function layFlatRotationOf(rec) {
+function layFlatRotationOf(rec, mesh = decodeMesh(rec.mesh)) { // `mesh`: a cropped insert passes the whole model
   const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
-  const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation;
+  const r = layFlatFrame(mesh, normaliseStlLayer(rec).rotation).rotation;
   return { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) };
 }
 
@@ -411,6 +465,81 @@ export function turnStl(axis, deg) {
   commit(`turn${axis.toUpperCase()}`);
   syncStlPanel();
   return true;
+}
+
+// ── crop (STL-CROP, Fred 2026-11-22: a real cut; the ghost previews it, nothing is cut until Apply) ─────────────────────
+/** The sliders moved: remember the box for layer `id` (UI state) and let the ghost preview it (kept solid, cut faint). */
+export function previewStlCrop(box, id = activeStlLayer()?.id) {
+  if (!find(id)) return false;
+  const b = normaliseCropBox(box);
+  if (isFullCropBox(b)) _cropPending.delete(id); else _cropPending.set(id, b);
+  ghostState.cropPreview = isFullCropBox(b) ? null : { id, box: b };
+  syncCropGroup();
+  _hooks.refreshGhosts();
+  return true;
+}
+/** 'Reset' (before Apply only: an applied crop is undone with Undo): the sliders back to the whole model. Nothing is written. */
+export function resetStlCrop(id = activeStlLayer()?.id) {
+  _cropPending.delete(id);
+  if (ghostState.cropPreview && ghostState.cropPreview.id === id) ghostState.cropPreview = null;
+  syncCropGroup();
+  _hooks.refreshGhosts();
+}
+
+/** The layer keeps its place on the board: its mesh is centred on its own box (raster.js placeMesh), so the kept part's centre
+ *  shift (stored-mesh frame) is put back into position.x / y, turned and scaled as the layer is. Z: its base rests again. */
+function keptInPlace(rec, oldMesh, newMesh) {
+  const n = normaliseStlLayer(rec);
+  const s = n.unitIn * n.scale;
+  const d = [0, 1, 2].map((a) => ((newMesh.min[a] + newMesh.size[a] / 2) - (oldMesh.min[a] + oldMesh.size[a] / 2)) * s);
+  const R = rotationMatrix(n.rotation.x, n.rotation.y, n.rotation.z);
+  return { ...n.position, x: n.position.x + R[0] * d[0] + R[1] * d[1] + R[2] * d[2], y: n.position.y + R[3] * d[0] + R[4] * d[1] + R[5] * d[2] };
+}
+
+/**
+ * 'Apply crop' (destructive, ONE write + ONE undo step): cut layer `id`'s mesh to `box` (its pending sliders by default) from the
+ * in-memory original when there is one, else from its library's re-download (the record's earlier crop applied first), else from
+ * the stored mesh. Only the kept part is stored (at the layer's Stored detail) and kept as the original; the record's `crop`
+ * remembers the box as fractions of the UNCROPPED model's box (`bounds`) so a later re-download cuts the same part. The place
+ * on the board is kept (keptInPlace). A box that keeps nothing changes nothing (the status line says so).
+ */
+export async function applyStlCrop(id = activeStlLayer()?.id, box = _cropPending.get(id)) {
+  if (!find(id) || !box || isFullCropBox(box)) return null;
+  const epoch = _projectEpoch;
+  let src = _originals.get(id) || null;
+  const start = find(id);
+  if (!src && start.source && start.source.uri) {
+    try {
+      await withLoadingStage('stl', async () => { src = await downloadOriginal(start); });
+    } catch (e) {
+      status(`Could not download ${start.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
+      return null;
+    }
+    if (epoch !== _projectEpoch || !find(id)) { status('The project changed while the model was downloading: nothing changed.', true); return null; }
+    status('');
+  }
+  const fromStored = !src;
+  if (fromStored) {
+    try { src = decodeMesh(start.mesh); } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return null; }
+  }
+  const cur = meshBounds(src.positions);
+  const cut = cropMesh(src, box);
+  if (!(cut.mesh.indices.length > 0)) { status('Nothing was cut: that box keeps no part of the model.', true); return null; }
+  const rec = find(id);
+  const bounds = rec.crop && rec.crop.bounds ? rec.crop.bounds : cur; // the uncropped model's box
+  const next = restoreAtDetail(rec, cut.mesh, normaliseStlLayer(rec).storedDetail);
+  const position = keptInPlace(rec, rec.mesh, next.mesh);
+  updateRecord(id, (r) => ({
+    ...r, mesh: next.mesh, storedTris: next.storedTris, origTris: cut.mesh.indices.length / 3, health: meshHealth(cut.mesh), position,
+    crop: { box: cropBoxOf(bounds, cropBoxIn(cur, box)), bounds, capped: cut.capped, openLoops: cut.openLoops },
+  }));
+  if (!fromStored) { _originals.set(id, cut.mesh); if (!rec.source) noteLocalModel(id, rec.name, cut.mesh); }
+  _cropPending.delete(id);
+  if (ghostState.cropPreview && ghostState.cropPreview.id === id) ghostState.cropPreview = null;
+  commit('crop');
+  syncStlPanel();
+  status(openLoopsNote(cut.openLoops));
+  return find(id);
 }
 
 /** The active STL against the stock, from the last build's report (core/stl/stock.js): one line, hidden when it fits. */
@@ -461,19 +590,24 @@ const STALE_IMPORT = 'The project changed while the STL was being read: add it a
  * The library sheet's Insert: download the model from its library (`lib`, core/stl/libraries.js; the Smithsonian when not given)
  * and add it through the one import path, with where it came from and the library's orientation rule (SMK: laid flat).
  */
-export async function addStlFromLibrary(tile, lib = SMITHSONIAN_SOURCE) {
+export async function addStlFromLibrary(tile, lib = SMITHSONIAN_SOURCE, opts = {}) {
   const epoch = _projectEpoch; // a project load during the download drops it (as importFile)
   const ops = opsOf(lib);
+  const crop = opts && opts.crop && !isFullCropBox(opts.crop) ? normaliseCropBox(opts.crop) : null; // STL-CROP: the sheet's box
   try {
     let done = null;
     let stale = false;
     await withLoadingStage('stl', async () => {
       const soup = await downloadModelSoup(lib, { id: tile.id, uri: ops.fileUrl(tile) }, { onProgress: downloadProgress(tile.title) });
       if (epoch !== _projectEpoch) { stale = true; return; }
-      done = addStlFromSoup(soup, tile.title, { source: ops.sourceRecord(tile), orient: lib.orient });
+      done = addStlFromSoup(soup, tile.title, { source: ops.sourceRecord(tile), orient: lib.orient, ...(crop ? { crop } : {}) });
     });
     if (stale) status(STALE_IMPORT, true);
-    else if (done) status('');
+    else if (done) status(openLoopsNote(done.crop ? done.crop.openLoops : 0)); // '' hides it
+    // Recent (core/stl/recent.js): a library model on this device, with its crop; an own file re-added from Recent replaces its
+    // earlier entry (the new layer is noted by addStlFromSoup)
+    if (done && lib.id === LOCAL_LIBRARY.id) forgetLocalModel(tile.id);
+    else if (done) pushRecent(recentEntryOf(tile, lib, crop));
     return done;
   } catch (e) {
     status(`Could not load ${tile.title || 'that model'}: ${e && e.message ? e.message : e}`, true);
@@ -522,6 +656,40 @@ function renderDetailGroup(gbody) {
   gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' })]));
 }
 
+/** The Crop group's cut part (above its Falloff controls): the six shared sliders, Apply crop + Reset, the notes. */
+function renderCropGroup(gbody) {
+  const sliders = el('div', { class: 'stl-crop-sliders' });
+  gbody.appendChild(el('div', { class: 'photo-layer-note', text: '% of the model\'s own box. The ghost shows the kept part solid, the cut-away part faint; nothing is cut until Apply.' }));
+  gbody.appendChild(sliders);
+  _cropCtl = renderCropSliders(sliders, { idPrefix: 'stlCrop', onInput: (box) => previewStlCrop(box) });
+  gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [
+    el('button', { type: 'button', id: 'stlCropApply', class: 'cad-btn cad-btn-secondary', text: '✂ Apply crop', title: 'Cut the stored mesh to the box: only the kept part stays (one undo step)' }),
+    el('button', { type: 'button', id: 'stlCropReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset', title: 'The sliders back to the whole model (before Apply; Undo takes an applied crop back)' }),
+  ]));
+  gbody.appendChild(el('div', { id: 'stlCropNote', class: 'photo-layer-note', role: 'status', hidden: '' }));
+  gbody.appendChild(el('div', { class: 'cad-label stl-crop-sub', text: 'Falloff (a live stamp setting: nothing is cut)' }));
+}
+
+/** The Crop group for the active STL: its pending box on the sliders, Apply / Reset enabled only with a box that cuts, the note. */
+function syncCropGroup() {
+  const rec = activeStlLayer();
+  const pending = rec ? _cropPending.get(rec.id) || null : null;
+  if (_cropCtl) _cropCtl.set(pending);
+  const cuts = !!pending && !isFullCropBox(pending);
+  const reset = byId('stlCropReset'); if (reset) reset.hidden = !cuts; // Reset is for a box not applied yet (Undo takes an Apply back)
+  if (rec) {
+    const n = normaliseStlLayer(rec);
+    for (const b of STL_CROP_EDGE_BOXES) { const x = byId(b.id); if (x) { const v = getPath(n, b.path); x.checked = v === undefined ? b.dflt : !!v; } }
+  }
+  const note = byId('stlCropNote');
+  if (!note) return;
+  const c = rec && rec.crop;
+  const pctOf = (r) => `${Math.round(r[0] * 100)}–${Math.round(r[1] * 100)} %`;
+  const text = c && c.box ? `Cropped: X ${pctOf(c.box.x)}, Y ${pctOf(c.box.y)}, Z ${pctOf(c.box.z)} of the original. ${openLoopsNote(c.openLoops)}`.trim() : '';
+  note.textContent = text;
+  note.hidden = !text;
+}
+
 /** Build the panel from STL_CONTROLS into `body` (main.js, before bindStlPanel). */
 export function renderStlPanel(body) {
   if (!body) return;
@@ -548,10 +716,15 @@ export function renderStlPanel(body) {
     const flip = () => { const open = grp.classList.contains('collapsed'); grp.classList.toggle('collapsed', !open); head.setAttribute('aria-expanded', String(open)); setGroupOpen(g, open); };
     head.addEventListener('click', flip);
     head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    if (g.id === 'crop') renderCropGroup(gbody); // the cut first; its Falloff controls (STL_CONTROLS) follow
     for (const c of mine) {
       gbody.appendChild(renderControl(c));
       const next = STL_ACTIONS.filter((a) => a.after === c.id); // e.g. the quick turns beside their Rotate slider
       if (next.length) gbody.appendChild(actionRow(next));
+    }
+    if (g.id === 'crop') { // the falloff's edge boxes, after its width and profile
+      gbody.appendChild(el('div', { class: 'cad-label', text: 'Fade from these edges' }));
+      for (const b of STL_CROP_EDGE_BOXES) gbody.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: b.id }), el('span', { text: b.label })]));
     }
     const own = STL_ACTIONS.filter((a) => a.group === g.id && !a.after);
     if (own.length) gbody.appendChild(actionRow(own));
@@ -647,10 +820,10 @@ export function syncStlPanel() {
     for (const c of STL_CONTROLS) {
       if (c.kind === 'slider') {
         const [min, max] = c.range(P);
-        const v = getPath(n, c.path);
+        const v = controlValue(n, c);
         for (const id of [`stl_${c.id}Slider`, `stl_${c.id}`]) { const x = byId(id); if (x) { x.min = String(min); x.max = String(max); x.value = String(v); } }
       } else {
-        const v = getPath(n, c.path);
+        const v = controlValue(n, c);
         for (const b of document.querySelectorAll(`#stl_${c.id} [data-stl-choice]`)) b.classList.toggle('active', b.getAttribute('data-stl-choice') === `${c.id}:${v}`);
       }
     }
@@ -671,6 +844,10 @@ export function syncStlPanel() {
     const h = byId('stlHealth'); if (h) h.textContent = healthText(rec);
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
+  syncCropGroup();
+  // the ghost previews the ACTIVE STL's pending crop only (switching cards shows that card's)
+  const pend = rec ? _cropPending.get(rec.id) : null;
+  ghostState.cropPreview = pend ? { id: rec.id, box: pend } : null;
   showStlErrors(recs);
   showStlStock();
   const fitBox = byId('stlFitOnInsert'); if (fitBox) fitBox.checked = P.stlFitOnInsert === true;
@@ -706,7 +883,14 @@ export function bindStlPanel(hooks = {}) {
   // the slider: the box follows live while dragging; the re-store (a decimate, ~100 ms+) runs on release only
   byId('stlDetailSlider')?.addEventListener('input', (e) => { const b = byId('stlDetail'); if (b) b.value = e.target.value; });
   byId('stlDetailSlider')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
-  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib) => addStlFromLibrary(tile, lib) }));
+  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib, opts) => addStlFromLibrary(tile, lib, opts) }));
+  byId('stlCropApply')?.addEventListener('click', () => {
+    const rec = activeStlLayer();
+    if (rec && !_cropPending.has(rec.id)) { status('Set the box first: move a crop slider (the ghost shows what is kept).'); return; }
+    applyStlCrop();
+  });
+  byId('stlCropReset')?.addEventListener('click', () => resetStlCrop());
+  for (const b of STL_CROP_EDGE_BOXES) byId(b.id)?.addEventListener('change', (e) => { setStlCropEdge(b.key, e.target.checked); syncStlPanel(); });
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');
@@ -742,4 +926,4 @@ export function bindStlPanel(hooks = {}) {
 }
 
 /** Test / host hook. */
-export function _resetStlPanelForTests() { _active = null; _open = null; _groupOpen = null; try { localStorage.removeItem(STL_GROUP_OPEN_KEY); } catch (_) { /* none */ } _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
+export function _resetStlPanelForTests() { _active = null; _open = null; _groupOpen = null; try { localStorage.removeItem(STL_GROUP_OPEN_KEY); } catch (_) { /* none */ } _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; _cropPending.clear(); _cropCtl = null; ghostState.cropPreview = null; _resetLocalModelsForTests(); }

@@ -44,6 +44,7 @@ import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { StlGizmoController, StlGizmoThreeView } from './stl-gizmo.js';
 import { STL_GHOST_COLOURS } from '../stl/ghost.js';
+import { CROP_PREVIEW_LOOK } from '../stl/crop.js';
 import {
   buildHeightField,
   buildLiveBrushColours,
@@ -550,7 +551,10 @@ export class TerrainPreview {
    *  the previous ones; [] removes them. Overlay meshes of their own, never part of the terrain, never saved or exported. */
   setStlGhosts(list) {
     const THREE = this._THREE;
-    for (const m of [...(this._stlGhosts || []), ...(this._stlMeetLines || [])]) { this._scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    for (const m of [...(this._stlGhosts || []), ...(this._stlMeetLines || [])]) {
+      this._scene.remove(m); m.geometry.dispose(); m.material.dispose();
+      for (const ch of m.children || []) { ch.geometry?.dispose(); ch.material?.dispose(); } // a crop preview's faint part
+    }
     this._stlGhosts = [];
     this._stlMeetLines = [];
     for (const g of list || []) {
@@ -563,6 +567,17 @@ export class TerrainPreview {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.renderOrder = 5;
       mesh.userData.stlId = g.id; // the placement gizmo picks a ghost by its layer id
+      // STL-CROP: the part the pending crop cuts away (ghost.js cutIndices), faint, as a child (it moves with the ghost in a drag)
+      if (g.cutIndices && g.cutIndices.length) {
+        const cg = new THREE.BufferGeometry();
+        cg.setAttribute('position', geo.getAttribute('position'));
+        cg.setIndex(new THREE.BufferAttribute(g.cutIndices, 1));
+        const L = CROP_PREVIEW_LOOK;
+        const faint = new THREE.Mesh(cg, new THREE.MeshBasicMaterial({ color: L.faintColour, transparent: true, opacity: L.faintOpacity, depthWrite: false, side: THREE.DoubleSide }));
+        faint.renderOrder = 5;
+        faint.userData.stlId = g.id;
+        mesh.add(faint);
+      }
       this._scene.add(mesh);
       this._stlGhosts.push(mesh);
       // the intersection LINE (ghost.js meetLine): where the STL meets the surface, drawn over it (no depth test: it lies ON it)
