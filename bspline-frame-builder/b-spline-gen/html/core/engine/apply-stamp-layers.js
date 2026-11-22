@@ -54,7 +54,7 @@ export function flatBrickPlaneHeights(heights, brickOf, count, nx) {
 
 /** F35 item 44: what a stamp pass IS (rebuild.js _collectStampPasses tags each): a layer's ART, or a layer's BRICKS.
  *  A pass without a kind is art (every pre-item-22 caller). */
-export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks' });
+export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks', stl: 'stl' }); // 'stl': core/stl/layer.js (STL-RELIEF)
 
 export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const { stampDepth = 0, stampEdgeFilletRadius = 0 } = defaults;
@@ -142,7 +142,19 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
         stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
                           + (smoothedTerrain[k] * suppressStrength);
       }
-      stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
+      if (layer.blend === 'max') {
+        // STL-RELIEF: the object only shows where it stands ABOVE the surface (zOffset < 0 sinks it in). Only covered points
+        // (isStamped) count; a carve (negative depth) is the same shape as a hollow. A pass with no `blend` takes the add below.
+        if (stamped) {
+          const lift = Math.max(0, (layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
+          stampedHeights[k] += layerDepth < 0 ? -lift : lift;
+        }
+      } else if (layer.kind === STAMP_PASS_KIND.stl) {
+        // STL, Add: the object's height plus its Z offset over the points it covers (a sunk object digs a pit)
+        if (stamped) stampedHeights[k] += (layer.zOffset || 0) + bodyVal * layerDepth;
+      } else {
+        stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
+      }
       if (isArt) { artDelta[k] += stampedHeights[k] - before; anyArt = true; }
     }
     // item 74n (core/bricks/mask-edge.js): past the panel outline a brick pass carries its edge points' final height, so

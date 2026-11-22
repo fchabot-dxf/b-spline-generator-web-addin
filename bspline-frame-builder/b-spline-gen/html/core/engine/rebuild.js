@@ -26,6 +26,7 @@ import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
+import { stlPasses } from '../stl/layer.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
@@ -302,7 +303,7 @@ function buildHeights(nx, nz) {
     }
 
     // Step 3 unification: build the pass list from editor layers.
-    const passes = _collectStampPasses();
+    const passes = _collectStampPasses(nx, nz);
     const heights = applyStampLayers(cleanHeights, passes, nx, nz, {
         stampDepth:            P.stampDepth,
         stampEdgeFilletRadius: P.stampEdgeFilletRadius,
@@ -328,7 +329,7 @@ function buildHeights(nx, nz) {
  * hidden/non-carved.
  */
 // exported for tests (item 22 slice 3: the per-layer art + brick passes)
-export function _collectStampPasses() {
+export function _collectStampPasses(nx, nz) {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
     const passes = [];
@@ -380,6 +381,12 @@ export function _collectStampPasses() {
             });
             if (brickPass) passes.push(brickPass);
         });
+    }
+
+    // STL-RELIEF: the STL stamps (P.stlLayers), AFTER every editor layer's art and bricks -- always on top. Only when the caller
+    // gives the grid (buildHeights does); no STL layer = no pass = the passes above, untouched (tests/stl-layers-absent.test.js).
+    if (nx > 1 && nz > 1 && Array.isArray(P.stlLayers) && P.stlLayers.length) {
+        passes.push(...stlPasses(P.stlLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
     }
 
     return passes;
