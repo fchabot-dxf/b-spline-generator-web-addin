@@ -262,6 +262,10 @@ def template_shape_model(template_id, frame, goldens_dir):
             # T9 I SHAPE: also a shape of its own: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h}
             from fb_engine.frame_shape_fit import provisional_i_shape_model
             return provisional_i_shape_model(prov["stemHalfWidthOfHw"], prov["flangeHeightOfHh"])
+        if "leftInsetOfHw" in prov:
+            # T20 TRAPEZOID: also a shape of its own: {"leftInsetOfHw": l, "rightInsetOfHw": r}
+            from fb_engine.frame_shape_fit import provisional_trapezoid_model
+            return provisional_trapezoid_model(prov["leftInsetOfHw"], prov["rightInsetOfHw"])
         if "neckWidthOfHw" in prov:
             # T7 DIAMOND-TOP HOURGLASS: also a shape of its own: {"neckWidthOfHw": w,
             # "neckHeightOfHh": h, "bodyFlareOfHh": f}.

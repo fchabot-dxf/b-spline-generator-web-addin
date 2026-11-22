@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "fef5cfafa662fb8c745f91aef4eec7cec0ecbd66640c6bc534d1885dfb0b833f",
+  "sourceHash": "4c002ea206d7b5fcfdcb291c1c2340eca688c09052e3ba509c4d2b3db12c765c",
   "templates": [
     {
       "features": [
@@ -17369,6 +17369,764 @@
                 {
                   "Source": "proj_horn_BL:S",
                   "Target": "inner_proj_horn_BL:S"
+                }
+              ],
+              "Name": "Enclosure Miters",
+              "PhaseFile": "p03_04_encl_miters.py",
+              "PhaseID": "p03_04_encl_miters"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Center": [
+                    "0.001",
+                    "0.001"
+                  ],
+                  "ID": "surround_rect",
+                  "LineIDs": [
+                    "surround_top",
+                    "surround_right",
+                    "surround_bottom",
+                    "surround_left"
+                  ],
+                  "Size": [
+                    "widthIn * 1.25",
+                    "heightIn * 1.25"
+                  ],
+                  "Type": "RectangleCenter"
+                },
+                {
+                  "AllowNudge": true,
+                  "Targets": [
+                    "surround_rect:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Enclosure Surround Rectangle",
+              "PhaseFile": "p03_05_encl_surround_rect.py",
+              "PhaseID": "p03_05_encl_surround_rect"
+            }
+          ],
+          "Label": "Frame Enclosure",
+          "Name": "3_frame_enclosure",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "Frame thickness",
+              "Max": 1.5,
+              "Min": 0.25,
+              "Name": "frame_thickness",
+              "Unit": "in",
+              "Val": 0.75
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "features": [
+        {
+          "bodyNames": [
+            "frame_top",
+            "frame_right",
+            "frame_bottom",
+            "frame_left"
+          ],
+          "extent": {
+            "offset": "0 in",
+            "toFace": "core.underside"
+          },
+          "id": "bars",
+          "op": "newBody",
+          "region": "outline-minus-inner",
+          "splitBy": "miters",
+          "start": "frame_height_offset",
+          "taper": "0 deg"
+        },
+        {
+          "extent": "throughAllBothSides",
+          "id": "trim",
+          "op": "cut",
+          "region": "surround-minus-outline",
+          "start": "0 in",
+          "taper": "0 deg"
+        }
+      ],
+      "handleMigrations": {},
+      "handles": [
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "control": {
+            "kind": "slider",
+            "max": 45,
+            "min": 0,
+            "scale": 50,
+            "step": 1,
+            "unit": "%"
+          },
+          "generateRange": {
+            "max": 0.6,
+            "min": 0.0
+          },
+          "key": "leftInset",
+          "label": "Left inset"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "control": {
+            "kind": "slider",
+            "max": 45,
+            "min": 0,
+            "scale": 50,
+            "step": 1,
+            "unit": "%"
+          },
+          "generateRange": {
+            "max": 0.6,
+            "min": 0.0
+          },
+          "key": "rightInset",
+          "label": "Right inset"
+        },
+        {
+          "basis": "hw",
+          "binding": "seeded",
+          "control": {
+            "default": 1,
+            "kind": "check",
+            "links": [
+              "leftInset",
+              "rightInset"
+            ]
+          },
+          "key": "insetLink",
+          "label": "Symmetric"
+        },
+        {
+          "basis": "hh",
+          "binding": "seeded",
+          "control": {
+            "default": 1,
+            "kind": "switch",
+            "options": [
+              {
+                "label": "Up",
+                "value": 1
+              },
+              {
+                "label": "Down",
+                "value": -1
+              }
+            ]
+          },
+          "key": "narrowSide",
+          "label": "Narrow side"
+        }
+      ],
+      "hidden": false,
+      "id": "template_20",
+      "name": "Template 20 - Trapezoid",
+      "params": [
+        {
+          "category": "Frame Spec",
+          "default": 7.0,
+          "label": "Width (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "widthIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 9.0,
+          "label": "Height (Model)",
+          "max": 48.0,
+          "min": 1.0,
+          "name": "heightIn",
+          "owner": "board",
+          "readOnly": true,
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.25,
+          "expose": true,
+          "label": "BBox Border",
+          "min": 0.0,
+          "name": "boundingboxoffset",
+          "owner": "frame",
+          "unit": "in"
+        },
+        {
+          "category": "Frame Spec",
+          "default": 0.75,
+          "expose": true,
+          "label": "Frame thickness",
+          "max": 1.5,
+          "min": 0.25,
+          "name": "frame_thickness",
+          "owner": "frame",
+          "unit": "in"
+        }
+      ],
+      "prefix": "T20",
+      "regions": {
+        "bars": [
+          {
+            "curves": [
+              "proj_top_edge"
+            ],
+            "name": "frame_top"
+          },
+          {
+            "curves": [
+              "proj_side_R"
+            ],
+            "name": "frame_right"
+          },
+          {
+            "curves": [
+              "proj_bottom_edge"
+            ],
+            "name": "frame_bottom"
+          },
+          {
+            "curves": [
+              "proj_side_L"
+            ],
+            "name": "frame_left"
+          }
+        ],
+        "corners": [
+          {
+            "curve": "proj_top_edge",
+            "direction": [
+              1,
+              -1
+            ],
+            "id": "TL",
+            "inner": "inner_proj_top_edge:S",
+            "outer": "proj_top_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_side_R",
+            "direction": [
+              -1,
+              -1
+            ],
+            "id": "TR",
+            "inner": "inner_proj_side_R:S",
+            "outer": "proj_side_R:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_bottom_edge",
+            "direction": [
+              -1,
+              1
+            ],
+            "id": "BR",
+            "inner": "inner_proj_bottom_edge:S",
+            "outer": "proj_bottom_edge:S",
+            "reflex": false
+          },
+          {
+            "curve": "proj_side_L",
+            "direction": [
+              1,
+              1
+            ],
+            "id": "BL",
+            "inner": "inner_proj_side_L:S",
+            "outer": "proj_side_L:S",
+            "reflex": false
+          }
+        ],
+        "inner": [
+          "inner_proj_top_edge",
+          "inner_proj_side_R",
+          "inner_proj_bottom_edge",
+          "inner_proj_side_L"
+        ],
+        "miters": [
+          [
+            "proj_top_edge:S",
+            "inner_proj_top_edge:S"
+          ],
+          [
+            "proj_side_R:S",
+            "inner_proj_side_R:S"
+          ],
+          [
+            "proj_bottom_edge:S",
+            "inner_proj_bottom_edge:S"
+          ],
+          [
+            "proj_side_L:S",
+            "inner_proj_side_L:S"
+          ]
+        ],
+        "outline": [
+          "proj_top_edge",
+          "proj_side_R",
+          "proj_bottom_edge",
+          "proj_side_L"
+        ],
+        "surround": "surround_rect"
+      },
+      "seedMap": [
+        {
+          "id": "top_edge",
+          "kind": "line",
+          "prim": 0,
+          "reverse": false
+        },
+        {
+          "id": "side_R",
+          "kind": "line",
+          "prim": 1,
+          "reverse": false
+        },
+        {
+          "id": "bottom_edge",
+          "kind": "line",
+          "prim": 2,
+          "reverse": false
+        },
+        {
+          "id": "side_L",
+          "kind": "line",
+          "prim": 3,
+          "reverse": false
+        }
+      ],
+      "shapeModel": {
+        "features": {
+          "leftInset": {
+            "hh": 0.0,
+            "hw": 0.3
+          },
+          "rightInset": {
+            "hh": 0.0,
+            "hw": 0.3
+          }
+        },
+        "fit": {
+          "exactAtFittedSizes": false,
+          "excluded": [],
+          "fittedFrom": [],
+          "maxResidualIn": null,
+          "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+          "residualsIn": {}
+        },
+        "provisional": {
+          "baseModel": null,
+          "leftInsetOfHw": 0.3,
+          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+          "rightInsetOfHw": 0.3
+        }
+      },
+      "silhouettePreset": "trapezoid",
+      "sketches": [
+        {
+          "Blocks": [
+            {
+              "Constraints": [
+                {
+                  "Targets": [
+                    "BB_RECT:C",
+                    "ORIGIN"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Dimensions": [
+                {
+                  "Expression": "widthIn",
+                  "Name": "dim_width",
+                  "Target": "BB_top"
+                },
+                {
+                  "Expression": "heightIn",
+                  "Name": "dim_height",
+                  "Target": "BB_right"
+                }
+              ],
+              "Geometry": [
+                {
+                  "Center": [
+                    0.0,
+                    0.0
+                  ],
+                  "ID": "BB_RECT",
+                  "LineIDs": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "Size": [
+                    "widthIn",
+                    "heightIn"
+                  ],
+                  "Type": "Rectangle"
+                }
+              ],
+              "Name": "BB Layout",
+              "PhaseFile": "p01_01_bb_layout.py",
+              "PhaseID": "p01_01_bb_layout"
+            },
+            {
+              "Name": "Safe Zone Offset",
+              "PhaseFile": "p01_02_bb_offset.py",
+              "PhaseID": "p01_02_bb_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "boundingboxoffset",
+                  "SourceID": [
+                    "BB_top",
+                    "BB_right",
+                    "BB_bottom",
+                    "BB_left"
+                  ],
+                  "TargetIDs": [
+                    "offset_BB_top",
+                    "offset_BB_right",
+                    "offset_BB_bottom",
+                    "offset_BB_left"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            }
+          ],
+          "Label": "Bounding Box",
+          "Name": "1_bounding_box",
+          "Parameters": [
+            {
+              "Category": "Frame Spec",
+              "Label": "Width (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "widthIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 7.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Label": "Height (Model)",
+              "Max": 48.0,
+              "Min": 1.0,
+              "Name": "heightIn",
+              "ReadOnly": true,
+              "Unit": "in",
+              "Val": 9.0
+            },
+            {
+              "Category": "Frame Spec",
+              "Expose": true,
+              "Label": "BBox Border",
+              "Min": 0.0,
+              "Name": "boundingboxoffset",
+              "Unit": "in",
+              "Val": 0.25
+            }
+          ]
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Projections",
+              "PhaseFile": "p02_01_projs.py",
+              "PhaseID": "p02_01_projs",
+              "Projections": [
+                {
+                  "SourceID": "offset_BB_top",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_BB_top"
+                },
+                {
+                  "SourceID": "offset_BB_bottom",
+                  "SourceSketch": "1_bounding_box",
+                  "TargetID": "proj_off_BB_bottom"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "EndID": "top_edge:E",
+                  "ID": "top_edge",
+                  "Points": [
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) * 0.7",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) - 0.001"
+                    ],
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) * 0.7 - 0.001",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) - 0.001"
+                    ]
+                  ],
+                  "StartID": "top_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "side_R:E",
+                  "ID": "side_R",
+                  "Points": [
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) * 0.7",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) - 0.001"
+                    ],
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in)",
+                      "-((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) + 0.002"
+                    ]
+                  ],
+                  "StartID": "side_R:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "bottom_edge:E",
+                  "ID": "bottom_edge",
+                  "Points": [
+                    [
+                      "((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) - 0.001",
+                      "-((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) + 0.001"
+                    ],
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) + 0.001",
+                      "-((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) + 0.001"
+                    ]
+                  ],
+                  "StartID": "bottom_edge:S",
+                  "Type": "Line"
+                },
+                {
+                  "EndID": "side_L:E",
+                  "ID": "side_L",
+                  "Points": [
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in)",
+                      "-((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) + 0.002"
+                    ],
+                    [
+                      "-((widthIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) * 0.7",
+                      "((heightIn - 2 * (boundingboxoffset - 0.25 in)) / 2 - 0.25 in) - 0.002"
+                    ]
+                  ],
+                  "StartID": "side_L:S",
+                  "Type": "Line"
+                }
+              ],
+              "Name": "Silhouette Loop",
+              "PhaseFile": "p02_02_loop.py",
+              "PhaseID": "p02_02_loop"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "top_edge:E",
+                    "side_R:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "side_R:E",
+                    "bottom_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:E",
+                    "side_L:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "side_L:E",
+                    "top_edge:S"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "top_edge:S",
+                    "proj_off_BB_top"
+                  ],
+                  "Type": "Coincident"
+                },
+                {
+                  "Targets": [
+                    "bottom_edge:S",
+                    "proj_off_BB_bottom"
+                  ],
+                  "Type": "Coincident"
+                }
+              ],
+              "Name": "Loop Welds",
+              "PhaseFile": "p02_03_welds.py",
+              "PhaseID": "p02_03_welds"
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Targets": [
+                    "top_edge",
+                    "bottom_edge"
+                  ],
+                  "Type": "Horizontal"
+                }
+              ],
+              "Name": "Orientation",
+              "PhaseFile": "p02_04_orientation.py",
+              "PhaseID": "p02_04_orientation"
+            }
+          ],
+          "Label": "Shape Outline",
+          "Name": "2_shape_outline",
+          "Parameters": []
+        },
+        {
+          "Blocks": [
+            {
+              "Name": "Enclosure Projections",
+              "PhaseFile": "p03_01_encl_projs.py",
+              "PhaseID": "p03_01_encl_projs",
+              "Projections": [
+                {
+                  "SourceID": "top_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_top_edge"
+                },
+                {
+                  "SourceID": "side_R",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_side_R"
+                },
+                {
+                  "SourceID": "bottom_edge",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_bottom_edge"
+                },
+                {
+                  "SourceID": "side_L",
+                  "SourceSketch": "2_shape_outline",
+                  "TargetID": "proj_side_L"
+                }
+              ]
+            },
+            {
+              "Name": "Enclosure Offset",
+              "PhaseFile": "p03_02_encl_offset.py",
+              "PhaseID": "p03_02_encl_offset",
+              "Steps": [
+                {
+                  "DistanceExpr": "frame_thickness",
+                  "SourceID": [
+                    "proj_top_edge",
+                    "proj_side_R",
+                    "proj_bottom_edge",
+                    "proj_side_L"
+                  ],
+                  "TargetIDs": [
+                    "inner_proj_top_edge",
+                    "inner_proj_side_R",
+                    "inner_proj_bottom_edge",
+                    "inner_proj_side_L"
+                  ],
+                  "Type": "Offset"
+                }
+              ]
+            },
+            {
+              "BuildSequence": [
+                {
+                  "Corners": {
+                    "BL": {
+                      "Direction": [
+                        1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_side_L:S",
+                      "Line1FarID": "proj_side_L:E",
+                      "Line2FarID": "proj_bottom_edge:S",
+                      "OuterID": "proj_side_L:S"
+                    },
+                    "BR": {
+                      "Direction": [
+                        -1,
+                        1
+                      ],
+                      "InnerID": "inner_proj_bottom_edge:S",
+                      "Line1FarID": "proj_bottom_edge:E",
+                      "Line2FarID": "proj_side_R:S",
+                      "OuterID": "proj_bottom_edge:S"
+                    },
+                    "TL": {
+                      "Direction": [
+                        1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_top_edge:S",
+                      "Line1FarID": "proj_top_edge:E",
+                      "Line2FarID": "proj_side_L:S",
+                      "OuterID": "proj_top_edge:S"
+                    },
+                    "TR": {
+                      "Direction": [
+                        -1,
+                        -1
+                      ],
+                      "InnerID": "inner_proj_side_R:S",
+                      "Line1FarID": "proj_side_R:E",
+                      "Line2FarID": "proj_top_edge:S",
+                      "OuterID": "proj_side_R:S"
+                    }
+                  },
+                  "Distance": "frame_thickness",
+                  "Tolerance": 0.05,
+                  "Type": "ResolveInnerCorners"
+                }
+              ],
+              "Name": "Inner Corner Resolve",
+              "PhaseFile": "p03_03_inner_corner_resolve.py",
+              "PhaseID": "p03_03_inner_corner_resolve"
+            },
+            {
+              "Miters": [
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_top_edge:S",
+                  "Target": "inner_proj_top_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_side_R:S",
+                  "Target": "inner_proj_side_R:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_bottom_edge:S",
+                  "Target": "inner_proj_bottom_edge:S"
+                },
+                {
+                  "IsConstruction": false,
+                  "Source": "proj_side_L:S",
+                  "Target": "inner_proj_side_L:S"
                 }
               ],
               "Name": "Enclosure Miters",

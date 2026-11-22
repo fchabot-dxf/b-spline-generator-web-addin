@@ -513,6 +513,25 @@ def _flask(curves, hw, hh, tol=2e-3):
     }
 
 
+def _trapezoid(curves, hw, hh, tol=2e-3):
+    """T20 TRAPEZOID: 4 straight pieces (top_edge, side_R, bottom_edge, side_L, clockwise from the top-left), the top
+    and bottom on the safe zone's top / bottom lines, the WIDE side the full safe-zone width, the narrow one up or
+    down. Features: each narrow end's inset from its own wide-side corner (inches; the app's leftInset / rightInset
+    are these / hw). Up / Down is read off the shape but is not a feature (a switch, not a size; a recording is of
+    the declared default, Up). Valid when the loop closes, both horizontal sides sit on their lines and the wide
+    side spans -hw..hw (Fusion y up)."""
+    top, rr, bot, ll = curves["top_edge"], curves["side_R"], curves["bottom_edge"], curves["side_L"]
+    TL, TR, BR, BL = top["start"], top["end"], bot["start"], bot["end"]
+    up = (TR[0] - TL[0]) <= (BR[0] - BL[0])
+    wide = (BL, BR) if up else (TL, TR)
+    near = lambda p, q: abs(p[0] - q[0]) < tol and abs(p[1] - q[1]) < tol  # noqa: E731
+    ok = (abs(TL[1] - hh) < tol and abs(TR[1] - hh) < tol and abs(BR[1] + hh) < tol and abs(BL[1] + hh) < tol
+          and near(rr["start"], TR) and near(rr["end"], BR) and near(ll["start"], BL) and near(ll["end"], TL)
+          and abs(wide[0][0] + hw) < tol and abs(wide[1][0] - hw) < tol)
+    nl, nr = (TL, TR) if up else (BL, BR)
+    return ok, {"leftInset": nl[0] + hw, "rightInset": hw - nr[0]}
+
+
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
@@ -522,7 +541,7 @@ FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_nar
                       "diamond_top_hourglass": _diamond_top_hourglass,
                       "diamond_top_hourglass_pinch": _diamond_top_hourglass_pinch,
                       "arched_funnel": _arched_funnel, "tulip": _tulip,
-                      "sand_timer": _sand_timer, "flask": _flask}
+                      "sand_timer": _sand_timer, "flask": _flask, "trapezoid": _trapezoid}
 
 
 def provisional_tab_top_model(half_width_of_hw, height_of_hh):
@@ -613,6 +632,33 @@ def provisional_i_shape_model(stem_half_width_of_hw, flange_height_of_hh):
             "baseModel": None,
             "stemHalfWidthOfHw": stem_half_width_of_hw,
             "flangeHeightOfHh": flange_height_of_hh,
+        },
+    }
+
+
+def provisional_trapezoid_model(left_inset_of_hw, right_inset_of_hw):
+    """T20 TRAPEZOID, until its goldens are recorded live: a PROVISIONAL model (never none), like T6's tab top: no
+    base template to derive it from. `leftInset` / `rightInset` = each narrow end's inset from its wide-side corner,
+    `*_of_hw` x hw (0.3 = 15% of the wide side). The narrow side's Up / Down is no feature (a switch: the app's own
+    declared default, Up). Marked `provisional` so nothing mistakes it for a fit."""
+    return {
+        "features": {
+            "leftInset": {"hw": left_inset_of_hw, "hh": 0.0},
+            "rightInset": {"hw": right_inset_of_hw, "hh": 0.0},
+        },
+        "fit": {
+            "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
+            "fittedFrom": [],
+            "excluded": [],
+            "exactAtFittedSizes": False,
+            "residualsIn": {},
+            "maxResidualIn": None,
+        },
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": None,
+            "leftInsetOfHw": left_inset_of_hw,
+            "rightInsetOfHw": right_inset_of_hw,
         },
     }
 
