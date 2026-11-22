@@ -320,3 +320,78 @@ closed; Detail = Stored detail, the stored-size / source / mesh-health notes, Re
 fold; the fold state is a per-viewer convenience (localStorage `bspline.stl.groupOpen`), never P. Adding an STL or a gizmo pick
 (pickStlLayer, which also scrolls the card into view) opens that card; removing the open STL opens nothing; a loaded project shows
 every card closed. Add / Browse, the status and error lines, the fit-on-insert box and the total line stay at the panel level.
+
+
+## 14. Crop + falloff + Recent (STL-CROP worker R, Fred 2026-11-22, branch stl-crop, nothing pushed)
+
+**Fred's decisions:** A. Crop is a REAL cut ("I don't need to keep the original"): only the kept part is stored (the Stored detail is
+spent on it), the cut faces are capped flat; a library model can be downloaded again to re-crop. B. The box is FRACTIONS of the
+model's own bounding box, per axis [min, max], in the frame of the mesh that is stored (before the record's rotation), so a box set
+on the browser's light preview applies to the full model Insert downloads. C. Two places, ONE mechanism. D. A crop-edge falloff,
+a live stamp setting. E. Recent models.
+
+**The mechanism: core/stl/crop.js `cropMesh(mesh, box) -> { mesh, capped, openLoops }`.** `box = { x: [min, max], y, z }` (absent
+axis / end = 0 / 1; a plane at 0 or 1 cuts nothing; the full box returns the SAME mesh object). The planes cut one after another:
+Sutherland-Hodgman per triangle, the crossing point shared per edge (the result stays welded), a vertex within 1e-7 x the longest
+side of a plane is snapped onto it; that plane's cut segments (ends merged within 1e-6 x the side) are chained into loops; each
+closed loop is capped: nested loops make a polygon with holes (inside an odd number of loops = a hole of the smallest loop around
+it), each hole bridged to its outer loop from its rightmost point to the nearest outer point it can see, then ear-clipped by the
+app's ONE ear-clipper and wound to face out of the kept part. A closed mesh stays closed and consistently wound (tests: a cube to
+[0.25, 0.75]^3 = a closed half-size cube, volume 1/8; a sphere cut on 3 axes; a hollow sphere = a ring cap). An open mesh leaves
+chains that do not close: counted in `openLoops`, never capped, never an error; the panel shows "2 cut edges could not be capped
+(the model is open there)". Measured: 358,800 triangles cut on 6 planes in 182 ms (node); the real SMK St. Peter (399,996
+triangles) cut to its top 40 % on Insert in about 0.5 s in Chrome.
+- The ear-clipper and pointInPolygon moved VERBATIM from core/preview/frame-mesh.js to **core/polygon.js** (no imports);
+  frame-mesh.js imports and re-exports them, so the frame trim is unchanged and the crop does not pull the frame preview's modules
+  into the heights stage.
+
+**The library sheet (main/stl-library-sheet.js):** a '✂ Crop' button beside the 2D | 3D pill. Pressed: the 3D view loads (as 3D
+does) and shows the box: the kept part solid (the model clipped to the box by 6 THREE clipping planes), the cut-away part faint
+(the same geometry clipped to outside the box), the box's edges in blue (main/stl-preview-3d.js `setCropBox`, built on first use
+only); under the buttons the SIX sliders (X / Y / Z min / max, %) and Reset. The view's soup may be turned for its camera
+(SMK's `previewTurn`): the stored frame's box is the view box turned back (exact for quarter turns), and the crop box is drawn
+turned the same way, so "Z min 60 %" on a standing SMK relief keeps its top 40 %. Insert with Crop on and a box that cuts calls
+`onPick(tile, lib, { crop })` (no crop: `onPick(tile, lib)` exactly as before) and the panel cuts the DOWNLOADED model to it
+BEFORE createStlLayer (which now also takes a ready `mesh`). The record gets `crop: { box, bounds (the uncropped model's box),
+capped, openLoops }`. A cropped SMK model is laid flat by the WHOLE model's shape (its uncropped pose), not by the kept part's.
+
+**The STL panel (main/stl-panel.js): a 'Crop' group (STL_GROUPS, after Detail)** in each card: the same six sliders
+(main/stl-crop-controls.js `renderCropSliders`, one renderer for both places), '✂ Apply crop', 'Reset' (shown only while a box is set
+and not applied: Undo takes an Apply back) and a note ("Cropped: X 0-100 %, Y 0-100 %, Z 60-100 % of the original."). Moving a
+slider writes nothing: the box is UI state (`_cropPending`), the ghost previews it (`ghostState.cropPreview`: the triangles whose
+centre is outside the box are drawn faint as a child of the ghost; core/stl/ghost.js `cutIndices`). Apply = ONE write, ONE undo
+step: cut from the in-memory original when present, else from the record's library re-download (its earlier crop applied first),
+else from the stored mesh; store the kept part at the layer's Stored detail; keep it as the original; the record's `crop.box` is
+re-expressed against the UNCROPPED model's box (a second crop of the kept top half of a top half = z [0.75, 1]); the layer keeps
+its place on the board (the kept part's centre shift, scaled and turned like the layer, is added to position x / y; its base rests
+again). The Stored-detail re-download cuts the downloaded model by `crop.box` too.
+
+**The falloff (a live stamp setting, record field `cropFalloff`, core/stl/crop.js STL_CROP_FALLOFF_DEFAULTS):** `{ widthIn: 0 (off),
+profile: 'smooth', customCurve: null, edges: { left, right, front, back, bottom } (all true) }`. Applied in core/stl/layer.js passBody
+after compress, before the softness blur; the body cache key carries it ONLY when it is on, so an absent / width 0 / no-edge
+falloff is byte-identical to before (pinned in tests/stl-crop-falloff.test.js). For each enabled side edge of the stamped footprint
+(the PLACED mesh's board-XY box: left = -X, right = +X, front = -Y, back = +Y) the weight is the height brush's own curve,
+`brushFalloff(t, 1, 0, profile, curveFromPoints(customCurve))` (core/height/brush.js, read-only), t = 1 - distance inside / widthIn
+kept in 0..1; 'bottom' uses the point's height above the model's lowest point as the distance (a figure rises out of the board);
+the weights multiply. Panel: Falloff width (in), the profile choice (the brush's six built-in labels; 'Custom' waits for the
+shared curve widget: main/height-panel.js does not export one and belongs to another worker), five edge boxes
+(STL_CROP_EDGE_BOXES, from STL_CROP_EDGES). The record's `customCurve` already works in the pass (tested).
+
+**Recent (core/stl/recent.js):** the FIRST choice of the Library picker, listed only when something is in it (All libraries stays
+the default). Library models: per device (localStorage `bspline.stl.recent`, every read / write in try / catch; never P), newest
+first, the latest 30 kept (a display list), each `{ libraryId, modelId, title, thumbUrl, previewUrl, tile (the library's tile: its
+file url(s)), crop, insertedAt }`; re-inserting moves the entry to the top. Selecting one shows the usual pane with Crop on and the
+remembered box; Insert re-downloads through the library's own path and re-applies the crop (tested: the same stored mesh hash).
+Own STL files: listed while their original is in memory this session (not persisted), as the declared LOCAL_LIBRARY whose
+LIBRARY_OPS.local 'download' is the in-memory mesh (no network); re-adding one replaces its entry.
+
+**Not built / known:** handles on the crop box (sliders first, Fred's precedent); the pane cannot say how many cut edges stay open
+before Insert (the preview is not cut; the panel status line says it after Insert); the ghost's faint part is drawn by whole
+triangles (centroid inside the box), the real cut is exact; a Smithsonian model whose small preview has fewer parts than the full
+download would be cropped against the full model's box.
+
+**Browser check (2026-11-22, headless Chrome, desktop 1400 x 900 and 390 px):** SMK, Type Relief, KAS2906/8 (Plaster Cast of St.
+Peter): Crop, Z min 60 %, Insert: origTris 172,688 of the full 399,996 (stored 49,958 at the default 50k detail; uncropped 49,915),
+1 cap, 0 open loops, the stored mesh closed (0 open edges); Recent listed first, its tile back with Crop on and Z min 60; the
+falloff (0.5 in, Dome, left + right) written as `{ widthIn: 0.5, profile: 'dome', edges: { front: false, back: false, bottom: false } }`;
+no console errors.
