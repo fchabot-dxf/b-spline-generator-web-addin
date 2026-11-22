@@ -155,6 +155,20 @@ describe("the panel's 'customCurve' control", () => {
     syncHeightPanel();
     return svg();
   }
+  // Fred 2026-11-22 (asked: "Stop at the box (0 to 1)"): a drag far above the box stops at full strength, far below at 0
+  it('a drag past the top of the box stops at 1, past the bottom at 0', () => {
+    const s = openCustom([[0, 1], [0.5, 0.5], [1, 0]]);
+    let [x, y] = at(handles()[1]);
+    handles()[1].dispatchEvent(ptr('pointerdown', x, y));
+    s.dispatchEvent(ptr('pointermove', x, y - 500));
+    s.dispatchEvent(ptr('pointerup', x, y - 500));
+    expect(heightBrush().customCurve[1][1]).toBe(1);
+    [x, y] = at(handles()[1]);
+    handles()[1].dispatchEvent(ptr('pointerdown', x, y));
+    s.dispatchEvent(ptr('pointermove', x, y + 500));
+    s.dispatchEvent(ptr('pointerup', x, y + 500));
+    expect(heightBrush().customCurve[1][1]).toBe(0);
+  });
   it('dragging the middle handle writes the curve once, on pointerup', () => {
     const s = openCustom([[0, 1], [0.5, 0.5], [1, 0]]);
     const mid = handles()[1];

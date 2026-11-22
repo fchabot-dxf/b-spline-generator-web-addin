@@ -439,13 +439,15 @@ const el = (tag, attrs = {}, kids = []) => {
 const cad = (text) => el('label', { class: 'cad-label', text });
 
 // ── the 'curve' control: the custom falloff widget (an inline SVG, Pointer Events) ─────────────────────────────────────
-// viewBox 160 x 100 (scales uniformly to the panel width). t 0..1 maps to x CURVE_BOX.x0..x1; the visible value range is
-// 0..CURVE_BOX.vMax (a view only: a point may be put anywhere the box shows, nothing is clamped).
-const CURVE_BOX = Object.freeze({ w: 160, h: 100, x0: 14, x1: 150, yZero: 84, yTop: 8, vMax: 1.2, hitR: 14, dotR: 5, tGap: 0.005, minGap: 0.01, longPressMs: 600, moveSlop: 4 });
+// viewBox 160 x 100 (scales uniformly to the panel width). t 0..1 maps to x CURVE_BOX.x0..x1; values 0..CURVE_BOX.vMax = 0..1.
+// Fred 2026-11-22 (asked, "Stop at the box (0 to 1)"): a drag or a tap stops at the box's top and bottom, like a slider at
+// its ends, so a falloff never passes full strength (opacity stays the most one stroke can do). A stored curve is never
+// rewritten on load.
+const CURVE_BOX = Object.freeze({ w: 160, h: 100, x0: 14, x1: 150, yZero: 84, yTop: 8, vMax: 1, hitR: 14, dotR: 5, tGap: 0.005, minGap: 0.01, longPressMs: 600, moveSlop: 4 });
 const curveX = (t) => CURVE_BOX.x0 + t * (CURVE_BOX.x1 - CURVE_BOX.x0);
 const curveY = (v) => CURVE_BOX.yZero - (v / CURVE_BOX.vMax) * (CURVE_BOX.yZero - CURVE_BOX.yTop);
 const curveT = (x) => (x - CURVE_BOX.x0) / (CURVE_BOX.x1 - CURVE_BOX.x0);
-const curveV = (y) => ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * CURVE_BOX.vMax;
+const curveV = (y) => Math.min(CURVE_BOX.vMax, Math.max(0, ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * CURVE_BOX.vMax)); // Fred: the box's 0..1
 let _curveLive = null; // the points being dragged (drawn live; written once on release)
 
 function paintCurve(svg, pts) {
