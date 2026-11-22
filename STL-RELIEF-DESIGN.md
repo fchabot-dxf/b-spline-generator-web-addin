@@ -220,15 +220,27 @@ on the pre-stamp surface; a stored mesh in the digests by its content hash.
 - Triangle de-duplication kept in decimate (numeric keys), skipped above 131072 clusters.
 - The Stored-detail box ignores a value that is not a number >= 1 (no floor, no clamp).
 
-**Not built (declared in this doc, deferred):** the in-viewport move/rotate/scale gizmo (sliders are the placement control); a
-distinct intersection LINE (the colour band where the STL meets the surface is shown); placement `afterBack` (field declared,
-`withSurface` only); the job-timeline step kind for STL layers; opacity/blend on the other layers; the Layers-panel row.
+**Built since (2026-11-22, commits 1fa50c84 .. fab039b6):** the in-viewport gizmo (drag the ghost = X/Y, a vertical arrow = Z,
+a ring = turn about Z; only the ghost moves during a drag, ONE commit on release = one undo step + one rebuild; Escape / blur /
+second finger cancel; inactive while the STL step is locked, the ghost hidden or sculpt on; a link in the existing pointer chain
+after sculpt, before orbit; sizes and pick tolerances in one declared table, STL_GIZMO); the intersection LINE (marching
+triangles at rel = 0, drawn in the 'meets' colour); one 'STL stamps' job-timeline step (after Bricks, Back depends on it, the
+section lock survives a panel re-render); bug fixes: a truncated stored mesh is refused and named (owner-approved check), an
+import finishing during a project load is dropped with a message, compress NaN, the timeline strip refreshes on STL add/remove.
+Gate: full vitest 545 files / 7521 tests green; real Chrome: body drag moves X/Y only, arrow drag Z only, Escape and a no-move
+click write nothing, a drag off the ghost still orbits, the stamp-only peak sits under the ghost apex, no console errors.
 
-**Needs Fred's yes:** a length check in decodeMesh. A truncated stored mesh can decode to a shorter array and silently drop
-triangles (only some truncations throw and are reported). Rejecting it is a new validation rule.
+**Still not built:** placement `afterBack` (field declared, `withSurface` only); opacity/blend on the other layers; a
+Layers-panel row for STLs.
 
-**Known limits:** an import that finishes while a whole project load lands goes into the loaded board; undo history holds a copy
+**Gizmo decisions for Fred (left as they are, nothing added):** no tap slop (a 1 px jitter on a tap commits a tiny move; a
+threshold would be a new guard); a drag that starts ON the ghost moves it instead of orbiting (orbit by starting off the ghost,
+or hide / lock it); rotation is not wrapped to +-180 (the box shows the true value); the ghost moves rigidly during a drag and
+re-seats on the surface after the rebuild (a small hop on a curved board).
+
+**Known limits:** undo history holds a copy
 of each mesh (about 0.6 MB per STL at the default detail, 40 steps); records saved before the hash fix keep the old (collision
 prone) hash; core/preview/terrain-mesh.js buildLiveBrushColours uses y = H/2 - j*dy, the opposite of buildHeightField in the same
-file (not touched; worth a look as a possibly mirrored sculpt-brush highlight).
+file. Checked 2026-11-22: NOT a bug -- it flips both the cell and the brush centre, and only their distance is used, so the
+highlight lands on the cells the sculpt tool picks (cj = (y + H/2)/dy).
 
