@@ -89,7 +89,9 @@ try {
   await evalJS(`document.getElementById('editorApply').click()`); await sleep(9000);
   console.log('3d', await evalJS(`(async()=>{ const { lastResult } = await import('./core/state.js'); const { getHeightErrors } = await import('./core/height/layer.js');
     let mx=-1e9; for (const v of lastResult.heights) if (v>mx) mx=v; let bm=-1e9; for (const v of lastResult.cleanHeights) if (v>bm) bm=v;
-    return JSON.stringify({ peak: mx, cleanPeak: bm, errors: getHeightErrors() }); })()`));
+    // the stamp itself (the board's highest point need not be under the stroke): the largest height the patches ADDED
+    let sm=0; for (let k = 0; k < lastResult.heights.length; k++) sm = Math.max(sm, lastResult.heights[k] - lastResult.cleanHeights[k]);
+    return JSON.stringify({ peak: mx, cleanPeak: bm, stampMax: +sm.toFixed(4), errors: getHeightErrors() }); })()`));
   await shot('3d');
   console.log('exceptions', JSON.stringify(errors));
 } finally { killChrome(); }
