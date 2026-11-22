@@ -61,7 +61,7 @@ try {
   for (const [label, pts, setup] of [
     ['raise', arc, `(()=>{ const s=document.getElementById('height_sizeInSlider'); s.value='0.6'; s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change'));
       const a=document.getElementById('height_amountIn'); a.value='0.2'; a.dispatchEvent(new Event('change')); return 'ok'; })()`],
-    ['set', [[W * 0.5, H * 0.2], [W * 0.5, H * 0.8]], `(()=>{ document.querySelector('#editorToolbarHeight [data-height-choice="mode:set"]').click();
+    ['set', [[W * 0.5, H * 0.2], [W * 0.5, H * 0.8]], `(()=>{ document.querySelector('#heightPanelBody [data-height-choice="mode:set"]').click();
       const t=document.getElementById('height_targetIn'); t.value='0.1'; t.dispatchEvent(new Event('change'));
       const o=document.getElementById('height_opacity'); o.value='1'; o.dispatchEvent(new Event('change')); return 'ok'; })()`],
   ]) {

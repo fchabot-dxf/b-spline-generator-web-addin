@@ -63,7 +63,11 @@ describe('the tab is declared', () => {
     expect(document.querySelector('[data-height-choice^="surface:"]')).toBeNull();
     for (const c of HEIGHT_CONTROLS) expect(document.getElementById(`height_${c.id}`), c.id).toBeTruthy();
     const rail = [...document.querySelectorAll('#editorToolbarHeight [data-height-choice]')].map((b) => b.getAttribute('data-height-choice'));
-    expect(rail).toEqual(['mode:raise', 'mode:lower', 'mode:set', 'mode:smooth', 'mode:erase']);
+    // Fred 2026-11-22 (slice 3b): "a simple brush tool with the different brushes inside of it in the right panel" -- ONE
+    // Brush tool on the rail, its modes a row in the panel; erase is its own Eraser tool ("we need an eraser too")
+    expect(rail).toEqual([]);
+    expect([...document.querySelectorAll('#heightPanelBody [data-height-choice^="mode:"]')].map((b) => b.getAttribute('data-height-choice')))
+      .toEqual(['mode:raise', 'mode:lower', 'mode:set', 'mode:smooth']);
   });
   it('entering the tab arms the brush mode; leaving it drops the mode (global-events.js, from the declared modes)', () => {
     const ed = window.svgEditor;

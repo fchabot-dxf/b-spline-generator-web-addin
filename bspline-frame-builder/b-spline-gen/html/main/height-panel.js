@@ -16,7 +16,9 @@ import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
-import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
+import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, BRUSH_TIPS, BRUSH_PRESETS, BRUSH_ALT_MODE, brushPresetOf, brushFalloff, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
+import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
+import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
   PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
@@ -33,6 +35,7 @@ import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
+import { mountIconGrid } from './icon-select.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -41,7 +44,8 @@ export const HEIGHT_VIEW = Object.freeze({
 });
 
 export const HEIGHT_GROUPS = Object.freeze([
-  Object.freeze({ id: 'brush', label: 'Brush', showWhen: (ctx) => !ctx || ctx.tool === 'brush' }),
+  // the Brush AND the Eraser (HEIGHT_TOOLS rows with rush) share this section: the picker + the brush settings (slice 3b)
+  Object.freeze({ id: 'brush', label: 'Brush', note: 'pick a brush, then paint; Alt while painting: Raise <-> Lower', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
   Object.freeze({ id: 'patch', label: 'Patch', note: 'inches from the board centre; +Y is up the screen' }),
   Object.freeze({ id: 'stamp', label: 'Stamp' }),
 ]);
@@ -56,8 +60,9 @@ const MODE_LABELS = Object.freeze({ raise: ['▲', 'Raise', 'Add height'], lower
 const sameCurve = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
 
 export const HEIGHT_CONTROLS = Object.freeze([
-  { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', rail: true,
-    options: BRUSH_MODES.map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
+  // Fred 2026-11-22 (slice 3b): ONE Brush tool on the rail; its modes are this row in the panel, and erase is the Eraser tool
+  { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
+    options: BRUSH_MODES.filter((m) => m !== 'erase').map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   // Fred 2026-11-22: the shape of the roll-off outside the hard core (core/height/brush.js BRUSH_FALLOFFS)
@@ -71,8 +76,8 @@ export const HEIGHT_CONTROLS = Object.freeze([
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
   { id: 'flow', group: 'brush', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },
-  { id: 'amountIn', group: 'brush', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1] },
-  { id: 'targetIn', group: 'brush', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5],
+  { id: 'amountIn', group: 'brush', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser' },
+  { id: 'targetIn', group: 'brush', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     note: '0 = transparent (no effect on the board)' },
   { id: 'pressureSize', group: 'brush', target: 'brush', kind: 'check', path: ['pressureSize'], label: 'Pen pressure → size' },
   { id: 'pressureOpacity', group: 'brush', target: 'brush', kind: 'check', path: ['pressureOpacity'], label: 'Pen pressure → opacity' },
@@ -98,14 +103,20 @@ export const HEIGHT_CONTROLS = Object.freeze([
  * by the same renderer / setter (one mechanism; a second table only so the slice-1 table stays as it was). target 'layer' =
  * the ACTIVE layer of the active patch (`path` in that layer). Each group shows by its own showWhen(ctx).
  */
-/** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below. */
+/** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below.
+ *  `leads`: the panel groups shown FIRST while the tool is active (advisor 2026-11-22: the active tool's own section
+ *  on top, no scrolling past the patch and the layers to reach it); the others keep their declared order after them. */
 export const HEIGHT_TOOLS = Object.freeze([
-  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights (the modes below)' }),
-  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it' }),
-  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
-  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
-  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)' }),
-  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height' }),
+  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'tip'] }),
+  // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
+  Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
+  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
+  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
+  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
+  // slice 3 (Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool")
+  Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'select'] }),
+  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
+  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height', leads: ['fill'] }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
@@ -114,8 +125,13 @@ export const TOOL_DEFAULTS = Object.freeze({
   fill: FILL_DEFAULTS,
   file: Object.freeze({ asNewPatch: false }),
 });
+/** A group's place in the panel: first (default), `after: true` (at the end) or `follows: <group id>` (right after it). */
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
+  Object.freeze({ id: 'move', label: 'Move', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the marquee only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
+  // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
+  // the tip settings show only for a non-round tip (a round brush is set by its falloff); a preset picks the tip (slice 3b)
+  Object.freeze({ id: 'tip', label: 'Tip shape', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
@@ -154,6 +170,18 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'importAsNew', group: 'file', target: 'file', kind: 'check', path: ['asNewPatch'], label: 'Import as a new patch (sized to the image)' },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
+  // slice 3b: build-up on (slice 1: each dab adds to the stroke) / off (the stroke keeps the tip's profile); a preset sets it
+  { id: 'buildUp', group: 'brush', target: 'brush', kind: 'check', path: ['buildUp'], label: 'Build up (off: a stroke keeps the brush profile)' },
+  // slice 3: the brush TIP (core/height/brush.js BRUSH_TIPS; brush UI state like the slice-1 brush controls)
+  { id: 'tip', group: 'tip', target: 'brush', kind: 'choice', path: ['tip'], label: 'Tip',
+    options: Object.entries(BRUSH_TIPS).map(([k, t]) => [k, t.label, t.title]),
+    // a tip with a declared seedRoundness (the chisel's flat blade) starts there while the roundness is still 1
+    alsoSet: (prev, next, brush) => (next !== prev && BRUSH_TIPS[next] && BRUSH_TIPS[next].seedRoundness && brush.roundness === 1 ? { roundness: BRUSH_TIPS[next].seedRoundness } : null) },
+  { id: 'roundness', group: 'tip', target: 'brush', kind: 'slider', path: ['roundness'], label: 'Roundness', step: 0.01, range: () => [0.05, 1],
+    note: '1 = a full circle / square; lower = squashed across the tip' },
+  { id: 'angle', group: 'tip', target: 'brush', kind: 'slider', path: ['angle'], label: 'Angle (degrees)', step: 1, range: () => [0, 180],
+    note: 'counter-clockwise; with Turn with the stroke, from the drag direction' },
+  { id: 'followStroke', group: 'tip', target: 'brush', kind: 'check', path: ['followStroke'], label: 'Turn with the stroke' },
 ]);
 /** Both tables, the one list the renderer and the setter read. */
 const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
@@ -175,6 +203,10 @@ let _tools = freshTools();
 let _tool = 'brush';         // the HEIGHT_TOOLS entry the canvas gesture runs
 const _selections = new Map(); // patch id -> { cols, rows, mask, path } (session UI state: never saved, never in undo)
 let _drag = null;            // a selection being dragged: { kind, id, pts: [[c, r], ...] }
+let _float = null;           // the Move tool's floating piece: { id, layerId, lift, sel, dc, dr, drag, frame } (session state)
+let _marq = null;            // an Alt+drag of the marquee: { id, c0, r0, dc, dr }
+let _cursorDir = 0;          // degrees on the board: the pointer's travel direction (the followStroke cursor)
+let _dirFrom = null;         // the point that direction is measured from
 
 const list = () => (Array.isArray(P.heightLayers) ? P.heightLayers : []);
 const find = (id) => list().find((l) => l && l.id === id) || null;
@@ -265,13 +297,24 @@ function cancelStroke() {
   _stroke = null;
   syncHeightOverlay();
 }
-function beginStroke(pt, pressure) {
+/** True for a HEIGHT_TOOLS row that paints with the brush (the Brush, the Eraser): they share its picker and settings. */
+function usesBrush(toolId) { const t = HEIGHT_TOOLS.find((x) => x.id === toolId); return !!(t && t.brush); }
+/** The brush a stroke of tool `toolId` paints with: the shared brush, the tool's own mode (the Eraser's 'erase'), and with
+ *  Alt held the Brush's BRUSH_ALT_MODE flip (raise <-> lower; set / smooth unchanged). */
+function strokeBrush(toolId, e) {
+  const t = HEIGHT_TOOLS.find((x) => x.id === toolId);
+  const mode = (t && t.brush && t.brush.mode) || _brush.mode;
+  const flipped = e && e.altKey && !(t && t.brush && t.brush.mode) ? BRUSH_ALT_MODE[mode] : null;
+  return mode === _brush.mode && !flipped ? _brush : { ..._brush, mode: flipped || mode };
+}
+function beginStroke(pt, pressure, brush = _brush) {
   cancelStroke(); // a stroke the editor abandoned (a pinch, a tool switch) is put back, never half-committed
   const rec = activeHeightLayer();
   const work = paintableCopy(rec);
   if (!work) return false;
-  const size = placed(rec).sizeIn;
-  const s = createStroke(work, _brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h, mask: maskOf(rec) });
+  const pr = placed(rec), size = pr.sizeIn;
+  // rotationDeg: the tip's angle is on the BOARD, the raster turns with the patch
+  const s = createStroke(work, brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h, mask: maskOf(rec), rotationDeg: pr.rotation });
   _stroke = { s, id: rec.id };
   const q = pixelOf(rec, pt);
   s.addPoint(q.c, q.r, pressure);
@@ -279,6 +322,7 @@ function beginStroke(pt, pressure) {
   return true;
 }
 function moveStroke(pt, pressure) {
+  trackDir(pt);
   _hover = pt;
   if (!_stroke) return;
   const rec = find(_stroke.id);
@@ -291,8 +335,18 @@ function moveStroke(pt, pressure) {
 function endStroke() {
   const st = _stroke;
   _stroke = null;
+  if (st) st.s.finish(); // a followStroke tap's one dab
   if (!st || !st.s.bbox) return _chain;
   return commitWorking(st.id, 'stroke');
+}
+/** The pointer's travel direction on the board (degrees, +Y up), once it has gone a little way: the followStroke cursor. */
+function trackDir(pt) {
+  if (!pt) return;
+  if (!_dirFrom) { _dirFrom = pt; return; }
+  const dx = pt.x - _dirFrom.x, dy = _dirFrom.y - pt.y; // editor y is down
+  if (Math.hypot(dx, dy) < 0.02) return;
+  _cursorDir = (Math.atan2(dy, dx) * 180) / Math.PI;
+  _dirFrom = pt;
 }
 
 /** Store the working heights of patch `id` as its working layer's new raster, then the step. Commits run one after the
@@ -310,7 +364,7 @@ function commitWorking(id, what) {
     updateRecord(id, (r) => withLayer(r, work.layerId, (l) => ({ ...l, raster })));
     if (_work === work) {
       _work.h = raster.h;
-      if (seq === _strokeSeq && !_stroke) _work.data.set(decodedRaster(raster)); // the painter shows what is stored
+      if (seq === _strokeSeq && !_stroke && !_float) _work.data.set(decodedRaster(raster)); // the painter shows what is stored (a piece lifted meanwhile keeps its preview)
     }
     commitStep(what);
   })).catch((e) => status(`Could not store the stroke: ${e && e.message ? e.message : e}`, true))
@@ -325,7 +379,7 @@ const TOOL = Object.freeze({
   start: (pt, e) => (getEditorTab() === 'height' ? gesture().start(pt, e) : false),
   move: (pt, e) => gesture().move(pt, e),
   end: () => gesture().end(),
-  hover: (pt) => { _hover = pt; drawCursor(); },
+  hover: (pt) => { trackDir(pt); _hover = pt; drawCursor(); },
   cancel: () => { for (const g of Object.values(GESTURES)) g.cancel(); },
 });
 function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) ed._heightTool = TOOL; }
@@ -333,18 +387,21 @@ function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) 
 /** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
 const selectGesture = (kind) => ({ start: (pt) => beginSelect(kind, pt), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
 const GESTURES = {
-  brush: { start: (pt, e) => beginStroke(pt, pressureOf(e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+  brush: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('brush', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+  eraser: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('eraser', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
   selectRect: selectGesture('rect'),
   selectEllipse: selectGesture('ellipse'),
   selectLasso: selectGesture('lasso'),
   gradient: { start: (pt) => beginGradient(pt), move: (pt) => moveGradient(pt), end: () => endGradient(), cancel: () => cancelGradient() },
   fill: { start: (pt) => beginFill(pt), move: () => {}, end: () => endFill(), cancel: () => { _fillTap = false; } },
+  // slice 3: a drag moves the floating piece (lifting it first); its cancel puts back the drag in flight, the piece floats on
+  move: { start: (pt, e) => beginMove(pt, e), move: (pt) => moveMove(pt), end: () => endMove(), cancel: () => cancelMoveDrag() },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
-/** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. */
+/** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. A floating piece is dropped first. */
 export function setHeightTool(id) {
   if (!HEIGHT_TOOLS.some((t) => t.id === id)) return false;
-  if (id !== _tool) TOOL.cancel();
+  if (id !== _tool) { dropHeightMove(); TOOL.cancel(); }
   _tool = id;
   const ed = editor();
   if (ed && typeof ed.setMode === 'function' && getEditorTab() === 'height' && ed._currentMode !== 'heightBrush') ed.setMode('heightBrush');
@@ -383,6 +440,7 @@ function maskOf(rec) {
 }
 /** Set the active patch's selection mask (null / nothing selected = clear), redraw its outline. */
 function setSelection(mask) {
+  dropHeightMove(); // another action drops a floating piece first
   const rec = activeHeightLayer();
   if (!rec) return false;
   const g = patchGrid(rec);
@@ -505,7 +563,10 @@ function drawSelection(node, rec, p, show) {
     const ants = svgEl('path', { 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.outline, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, path);
     svgEl('animate', { attributeName: 'stroke-dashoffset', from: '0', to: '9', dur: '0.6s', repeatCount: 'indefinite' }, ants);
   }
-  path.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})`);
+  // the Move tool: the outline rides with a floating piece / a marquee drag (image y is down, raster r is up)
+  const off = _float && _float.id === rec.id && _float.sel ? _float : _marq && _marq.id === rec.id ? _marq : null;
+  const shift = off && (off.dc || off.dr) ? ` translate(${off.dc} ${-off.dr})` : '';
+  path.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})${shift}`);
   for (const q of path.querySelectorAll('path')) q.setAttribute('d', d);
   if (path !== node.lastChild) node.appendChild(path);
 }
@@ -592,6 +653,7 @@ let _fillTap = false;
 /** Fill the active layer (inside the selection, else everywhere) to the fill height; `over` = settings for this one.
  *  ONE step. Resolves when it is stored. */
 export function fillHeight(over = {}) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   const work = paintableCopy(rec);
   if (!work) return _chain;
@@ -602,6 +664,165 @@ export function fillHeight(over = {}) {
 function beginFill(pt) { const rec = activeHeightLayer(); _fillTap = !!rec && !!patchGrid(rec) && pixelOf(rec, pt).inside; return _fillTap; }
 function endFill() { const go = _fillTap; _fillTap = false; return go ? fillHeight() : _chain; }
 
+// ── the move tool (slice 3; core/height/move.js): lift, float, drop -- Photoshop semantics ─────────────────────────────
+// A drag LIFTS the selection (no selection: the whole layer) into a floating piece; the release keeps it floating; Enter, the
+// Drop button, a tool switch or another action DROPS it (ONE commit = one undo step); Esc / Cancel puts everything back.
+// Offsets are whole patch pixels (no resampling). The selection moves with the piece; Alt+drag moves the marquee only.
+/** Arrow keys -> a direction on the screen ([right, up]); the nudge in patch pixels (Shift: the big one). */
+const NUDGE_KEYS = Object.freeze({ ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] });
+export const MOVE_NUDGE_PX = Object.freeze({ step: 1, shift: 10 });
+/** The editor's own buttons that settle a floating piece: Apply keeps the move (drop), Cancel throws it away. */
+const MOVE_SETTLE_BUTTONS = Object.freeze({ editorApply: 'drop', editorCancel: 'cancel' });
+/** Lift the active layer's selected pixels (or the whole layer) of patch `rec` into the floating piece. */
+function liftHeightMove(rec) {
+  const work = paintableCopy(rec);
+  if (!work) return false;
+  const sel = maskOf(rec);
+  const lift = liftPiece(work.data, work.cols, work.rows, sel);
+  if (!lift.box) return false;
+  _float = { id: rec.id, layerId: work.layerId, lift, sel, dc: 0, dr: 0, drag: null, frame: 0 };
+  syncMoveBar();
+  return true;
+}
+/** The working layer = the lifted layer with the piece placed at its offset. */
+function floatOnto(f) { if (_work && _work.id === f.id && _work.layerId === f.layerId) placePiece(f.lift, f.dc, f.dr, _work.data); }
+function setFloatOffset(dc, dr) {
+  const f = _float;
+  if (!f || (dc === f.dc && dr === f.dr)) return;
+  f.dc = dc; f.dr = dr;
+  if (f.frame) return; // one preview per animation frame
+  const run = () => { f.frame = 0; if (_float !== f) return; floatOnto(f); liveRedraw(); syncHeightOverlay(); };
+  if (typeof requestAnimationFrame === 'function') f.frame = requestAnimationFrame(run); else run();
+}
+function beginMove(pt, e) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchGrid(rec)) return false;
+  const q = pixelOf(rec, pt);
+  if (e && e.altKey && maskOf(rec)) { // Alt: the marquee only (a floating piece is dropped first)
+    dropHeightMove();
+    _marq = { id: rec.id, c0: q.c, r0: q.r, dc: 0, dr: 0 };
+    return true;
+  }
+  if (_float && _float.id !== rec.id) dropHeightMove();
+  if (!_float && !liftHeightMove(rec)) return false;
+  _float.drag = { c0: q.c, r0: q.r, dc0: _float.dc, dr0: _float.dr };
+  return true;
+}
+function moveMove(pt) {
+  _hover = pt;
+  const m = _marq;
+  if (m) {
+    const rec = find(m.id);
+    if (!rec) return;
+    const q = pixelOf(rec, pt);
+    m.dc = Math.round(q.c - m.c0); m.dr = Math.round(q.r - m.r0);
+    syncHeightOverlay();
+    return;
+  }
+  const f = _float;
+  const rec = f && f.drag && find(f.id);
+  if (!rec) return;
+  const q = pixelOf(rec, pt);
+  setFloatOffset(f.drag.dc0 + Math.round(q.c - f.drag.c0), f.drag.dr0 + Math.round(q.r - f.drag.r0));
+}
+/** The release: a marquee drag moves the selection; a piece drag leaves it floating (nothing is stored yet). */
+function endMove() {
+  const m = _marq;
+  if (m) {
+    _marq = null;
+    const sel = _selections.get(m.id);
+    if (sel && (m.dc || m.dr)) _selections.set(m.id, { ...sel, mask: shiftMask(sel.mask, sel.cols, sel.rows, m.dc, m.dr), path: null });
+    syncHeightPanel();
+    syncHeightOverlay();
+    return Promise.resolve();
+  }
+  if (_float) _float.drag = null;
+  return _chain;
+}
+/** A drag the editor abandoned (a pinch): the piece goes back to where that drag started and keeps floating. */
+function cancelMoveDrag() {
+  if (_marq) { _marq = null; syncHeightOverlay(); }
+  const f = _float;
+  if (f && f.drag) { const d = f.drag; f.drag = null; setFloatOffset(d.dc0, d.dr0); }
+}
+/** DROP the floating piece where it is: normal blend over what is there, the hole it left = 0; the selection follows.
+ *  ONE commit (one undo step); a piece dropped where it was lifted changes nothing and stores nothing. */
+export function dropHeightMove() {
+  const f = _float;
+  if (!f) return _chain;
+  _float = null;
+  if (f.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(f.frame);
+  syncMoveBar();
+  const ours = !!_work && _work.id === f.id && _work.layerId === f.layerId && !!find(f.id);
+  if (!ours) { syncHeightOverlay(); return _chain; }
+  if (!f.dc && !f.dr) { _work.data.set(f.lift.piece); syncHeightOverlay(); return _chain; }
+  placePiece(f.lift, f.dc, f.dr, _work.data);
+  const sel = f.sel && _selections.get(f.id);
+  if (sel) _selections.set(f.id, { ...sel, mask: shiftMask(f.sel, sel.cols, sel.rows, f.dc, f.dr), path: null });
+  const done = commitWorking(f.id, 'move');
+  syncHeightPanel();
+  syncHeightOverlay();
+  return done;
+}
+/** CANCEL the floating piece: the layer and the selection exactly as before the lift; nothing stored. */
+export function cancelHeightMove() {
+  const f = _float;
+  if (!f) return false;
+  _float = null;
+  if (f.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(f.frame);
+  if (_work && _work.id === f.id && _work.layerId === f.layerId) _work.data.set(f.lift.piece);
+  syncMoveBar();
+  syncHeightOverlay();
+  return true;
+}
+/** Nudge the floating piece (lifting it first) by `n` patch pixels toward screen direction (sx right, sy up): along the
+ *  patch's own axis nearest to it (a turned patch moves along its pixels). */
+export function nudgeHeightMove(sx, sy, n = MOVE_NUDGE_PX.step) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchGrid(rec)) return false;
+  if (_float && _float.id !== rec.id) dropHeightMove();
+  if (!_float && !liftHeightMove(rec)) return false;
+  const a = (placed(rec).rotation * Math.PI) / 180;
+  const du = sx * Math.cos(a) + sy * Math.sin(a), dv = sy * Math.cos(a) - sx * Math.sin(a);
+  const [dc, dr] = Math.abs(du) >= Math.abs(dv) ? [Math.sign(du) * n, 0] : [0, Math.sign(dv) * n];
+  setFloatOffset(_float.dc + dc, _float.dr + dr);
+  return true;
+}
+/** The move tool's state (the panel, tests, probes). */
+export const heightMoveState = () => ({ tool: _tool, floating: !!_float, dc: _float ? _float.dc : 0, dr: _float ? _float.dr : 0, marquee: !!_marq, pending: _pending });
+const editorShown = () => { const m = byId('svgEditorModal'); return !m || m.style.display !== 'none'; };
+/** The keys of the Move tool (window, capture phase: Esc cancels the piece without also leaving the tool). */
+function onMoveKey(e) {
+  if (_tool !== 'move' || getEditorTab() !== 'height' || !editorShown()) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || _isTypingTarget(e.target) || _isTypingTarget(document.activeElement)) return;
+  const dir = NUDGE_KEYS[e.key];
+  let used = false;
+  if (dir) used = nudgeHeightMove(dir[0], dir[1], e.shiftKey ? MOVE_NUDGE_PX.shift : MOVE_NUDGE_PX.step);
+  else if (e.key === 'Enter' && _float) { dropHeightMove(); used = true; }
+  else if (e.key === 'Escape' && (_float || _marq)) { cancelMoveDrag(); cancelHeightMove(); used = true; }
+  if (used) { e.preventDefault(); e.stopPropagation(); }
+}
+/** The Drop / Cancel pair on the canvas while a piece floats (the touch way to Enter / Esc). */
+function ensureMoveBar() {
+  const container = byId('editorCanvasContainer');
+  if (!container || byId('heightMoveBar')) return;
+  const btn = (id, text, title) => el('button', { type: 'button', id, class: 'cad-btn cad-btn-secondary', text, title, style: 'min-height:32px; min-width:84px; padding:4px 12px;' });
+  // above the phone drawer and the job strip (the same offsets as #editorStatusHint), and above that hint itself
+  const bar = el('div', { id: 'heightMoveBar', hidden: '', style: 'position:absolute; left:50%; bottom:calc(44px + var(--drawer-height, 0px) + var(--job-strip-height, 0px)); transform:translateX(-50%); z-index:11; display:none; gap:8px;' }, [
+    btn('heightMoveDrop', '✓ Drop', 'Put the moved piece down here (Enter)'),
+    btn('heightMoveCancel', '✕ Cancel', 'Put everything back as it was (Esc)'),
+  ]);
+  container.appendChild(bar);
+  byId('heightMoveDrop').addEventListener('click', () => { dropHeightMove(); });
+  byId('heightMoveCancel').addEventListener('click', () => { cancelHeightMove(); });
+}
+function syncMoveBar() {
+  const bar = byId('heightMoveBar');
+  if (!bar) return;
+  bar.hidden = !_float;
+  bar.style.display = _float ? 'flex' : 'none'; // the inline display would beat [hidden]
+}
+
 // ── heightmap import (slice 2; core/height/import.js): an IMAGE layer, its grey kept, its mapping live ────────────────
 /**
  * Import a heightmap file (`file`: a File, or { name, bytes }) as an image layer: into the active patch (resampled to its
@@ -611,6 +832,7 @@ function endFill() { const go = _fillTap; _fillTap = false; return go ? fillHeig
  */
 export async function importHeightmap(file, { asNewPatch = _tools.file.asNewPatch, loaders = HEIGHTMAP_LOADERS } = {}) {
   const name = (file && file.name) || 'heightmap';
+  dropHeightMove();
   let made = null, info = null;
   try {
     await withLoadingStage('heightImport', async () => {
@@ -669,6 +891,7 @@ function saveBytes(bytes, fileName, type) {
  * { bytes, fileName, range } or null (the reason in the panel status).
  */
 export async function exportHeightmap({ png16 = null, download = true } = {}) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   if (!rec || !patchGrid(rec)) return null;
   let out = null;
@@ -690,6 +913,7 @@ export async function exportHeightmap({ png16 = null, download = true } = {}) {
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
 export async function newHeightPatch() {
+  dropHeightMove();
   let rec = null;
   await withLoadingStage('heightPatch', async () => { rec = await newHeightLayer(board(), `Height ${list().length + 1}`); });
   P.heightLayers = [...list(), rec];
@@ -701,6 +925,7 @@ export async function newHeightPatch() {
 }
 export function removeHeightPatch(id) {
   if (!find(id)) return;
+  dropHeightMove();
   if (_stroke && _stroke.id === id) cancelStroke();
   P.heightLayers = list().filter((l) => !(l && l.id === id));
   if (_work && _work.id === id) _work = null;
@@ -713,6 +938,7 @@ export function removeHeightPatch(id) {
 }
 export function setHeightEnabled(id, on) {
   if (!find(id)) return;
+  dropHeightMove();
   updateRecord(id, (r) => ({ ...r, enabled: !!on }));
   commitStep('enabled');
   syncHeightPanel();
@@ -722,6 +948,7 @@ export function setHeightEnabled(id, on) {
 // ── the layers of the active patch (slice 2): each change ONE step ─────────────────────────────────────────────────
 /** Insert `layer` (a full layer object) into the active patch just above its active layer, make it active. One step. */
 function insertLayer(layer, what) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   if (!rec) return null;
   const at = layerOf(rec);
@@ -751,6 +978,7 @@ export async function addPaintLayer() {
 }
 /** Delete a layer of the active patch (never its last one: the patch's own Delete removes that). */
 export function removePatchLayer(layerId) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   const ls = patchLayers(rec);
   if (!rec || ls.length < 2 || !ls.some((l) => l.id === layerId)) return false;
@@ -766,6 +994,7 @@ export function removePatchLayer(layerId) {
 }
 /** Move a layer one place up (+1, toward the top) or down (-1). */
 export function movePatchLayer(layerId, dir) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   const ls = patchLayers(rec);
   const i = ls.findIndex((l) => l.id === layerId), j = i + (dir > 0 ? 1 : -1);
@@ -778,6 +1007,7 @@ export function movePatchLayer(layerId, dir) {
 }
 /** The layer the tools edit. */
 export function selectPatchLayer(layerId) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   if (!rec || !patchLayers(rec).some((l) => l.id === layerId)) return false;
   if (_stroke) cancelStroke();
@@ -789,6 +1019,7 @@ export function selectPatchLayer(layerId) {
 /** One field of a layer of the active patch (`path`: a key or a key path, e.g. ['mapping', 'whiteIn']). `commit` false =
  *  a slider's drag tick (written and drawn; the step comes with its release). */
 export function setPatchLayerField(layerId, path, value, { commit = true } = {}) {
+  dropHeightMove();
   const rec = activeHeightLayer();
   if (!rec || !patchLayers(rec).some((l) => l.id === layerId)) return false;
   const p = Array.isArray(path) ? path : [path];
@@ -813,7 +1044,7 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
     v = ok ? value.map((p) => [p[0], p[1]]).sort((a, b) => a[0] - b[0]) : undefined;
   }
   if (v === undefined) return false;
-  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; drawCursor(); return true; }
+  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncBrushPicker(); drawCursor(); return true; }
   if (_tools[c.target]) { // a tool's UI state
     const st = _tools[c.target];
     _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
@@ -822,6 +1053,7 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   }
   const rec = activeHeightLayer();
   if (!rec) return false;
+  dropHeightMove(); // a patch / layer field is another action
   if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
   if (c.path[0] === 'sizeIn' && !rec.sizeIn) updateRecord(rec.id, (r) => ({ ...r, sizeIn: placed(r).sizeIn }));
   updateRecord(rec.id, (r) => withPath(r, c.path, v));
@@ -830,6 +1062,41 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   return true;
 }
 export const heightBrush = () => ({ ..._brush });
+/** The panel's sections in view order: the active tool's declared `leads` first (in their order; the status line, when
+ *  shown, just above them), then every other part of the panel in its built order. CSS `order` on the flex column body
+ *  (renderHeightPanel): no element is moved, so the listeners, the ids and the picker's mount stay as built. */
+function orderPanelGroups() {
+  const body = byId('heightPanelBody');
+  if (!body) return;
+  const leads = (HEIGHT_TOOLS.find((x) => x.id === _tool) || {}).leads || [];
+  [...body.children].forEach((ch, i) => {
+    const k = ch.id && ch.id.startsWith('heightGroup_') ? leads.indexOf(ch.id.slice('heightGroup_'.length)) : -1;
+    ch.style.order = String(ch.id === 'heightStatus' ? 0 : k >= 0 ? k + 1 : 100 + i);
+  });
+}
+let _lastPreset = 'softRound'; // the preset last picked (the "Modified (from ...)" note)
+/** A BRUSH_PRESETS entry over the current brush: its tip and profile; the size, opacity, flow and amount stay. */
+export function applyHeightBrushPreset(id) {
+  const p = BRUSH_PRESETS[id];
+  if (!p) return false;
+  _brush = { ..._brush, ...p.brush };
+  _lastPreset = id;
+  syncHeightPanel();
+  drawCursor();
+  return true;
+}
+/** The picker follows the brush: the preset it matches is the active tile; none (an edit after a pick) = no tile and the
+ *  note "Modified (from <last pick>)". The tip group follows the tip (its declared showWhen). */
+function syncBrushPicker() {
+  if (typeof document === 'undefined') return;
+  const cur = brushPresetOf(_brush);
+  if (cur) _lastPreset = cur;
+  for (const b of document.querySelectorAll('[data-height-brush-preset]')) b.classList.toggle('active', b.getAttribute('data-height-brush-preset') === cur);
+  const note = byId('heightBrushPresetNote');
+  if (note) { note.textContent = cur ? '' : `Modified (from ${BRUSH_PRESETS[_lastPreset] ? BRUSH_PRESETS[_lastPreset].label : 'a preset'})`; note.hidden = !!cur; }
+  const tipBox = byId('heightGroup_tip'), g = HEIGHT_TOOL_GROUPS.find((x) => x.id === 'tip');
+  if (tipBox && g) tipBox.hidden = !g.showWhen(panelCtx());
+}
 
 // ── the canvas overlay (the shared editor canvas) ───────────────────────────────────────────────────────────────────
 const NS = 'http://www.w3.org/2000/svg';
@@ -880,7 +1147,7 @@ function liveComposite(rec) {
   if (!_work || _work.id !== rec.id) return patchComposite(rec) || null;
   if (_work.kind === 'image') return patchComposite(rec) || null; // an image layer's working values are grey, not heights
   const wl = patchLayers(rec).find((l) => l.id === _work.layerId);
-  const stored = !_stroke && !_grad && _pending === 0 && wl && wl.raster && wl.raster.h === _work.h;
+  const stored = !_stroke && !_grad && !_float && _pending === 0 && wl && wl.raster && wl.raster.h === _work.h;
   if (stored) { const c = patchComposite(rec); if (c) return c; } // nothing in flight: the cached composite
   return patchComposite(rec, { layerId: _work.layerId, data: _work.data }) || _work.data;
 }
@@ -941,7 +1208,7 @@ export function syncHeightOverlay() {
     const img = node.querySelector('image');
     for (const [k, v] of [['x', -p.sizeIn.w / 2], ['y', -p.sizeIn.h / 2], ['width', p.sizeIn.w], ['height', p.sizeIn.h]]) img.setAttribute(k, fmt(v));
     const wl = _work && _work.id === rec.id ? patchLayers(rec).find((l) => l.id === _work.layerId) : null;
-    const live = !!wl && (_stroke || _grad || _pending > 0 || _work.h !== (wl.raster && wl.raster.h));
+    const live = !!wl && (_stroke || _grad || _float || _pending > 0 || _work.h !== (wl.raster && wl.raster.h));
     const url = live ? null : stillImageOf(rec);
     if (url) img.setAttribute('href', url);
     else if (live) liveRedraw();
@@ -968,14 +1235,21 @@ function drawCursor() {
     if (readout) readout.hidden = true;
     return;
   }
-  if (!ring) ring = svgEl('circle', { id: 'heightBrushRing', fill: 'none' }, _g);
+  if (!ring) ring = svgEl('path', { id: 'heightBrushRing', fill: 'none' }, _g);
   if (ring !== _g.lastChild) _g.appendChild(ring);
   const px = cssPx();
-  ring.setAttribute('cx', fmt(_hover.x)); ring.setAttribute('cy', fmt(_hover.y));
-  ring.setAttribute('r', fmt(_brush.sizeIn / 2));
+  // the TIP's real footprint (slice 3, BRUSH_TIPS box): R along the tip, roundness x R across, turned by its board angle
+  // (+ the travel direction with followStroke); editor y is down, so a counter-clockwise angle is a negative SVG rotate
+  const tip = BRUSH_TIPS[_brush.tip] || BRUSH_TIPS.round;
+  const R = _brush.sizeIn / 2, k = Number.isFinite(_brush.roundness) ? _brush.roundness : 1, ry = R * Math.abs(k);
+  const deg = (Number.isFinite(_brush.angle) ? _brush.angle : 0) + (_brush.followStroke ? _cursorDir : 0);
+  ring.setAttribute('d', tip.box === 'rect'
+    ? `M${fmt(-R)} ${fmt(-ry)}H${fmt(R)}V${fmt(ry)}H${fmt(-R)}Z`
+    : `M${fmt(-R)} 0A${fmt(R)} ${fmt(ry)} 0 1 0 ${fmt(R)} 0A${fmt(R)} ${fmt(ry)} 0 1 0 ${fmt(-R)} 0Z`);
+  ring.setAttribute('transform', `translate(${fmt(_hover.x)} ${fmt(_hover.y)}) rotate(${fmt(-deg)})`);
   ring.setAttribute('stroke', HEIGHT_VIEW.ring);
   ring.setAttribute('stroke-width', fmt(1.5 * px));
-  ring.style.display = '';
+  ring.style.display = _tool === 'move' ? 'none' : ''; // the Move tool has no brush
   if (readout) {
     const rec = activeHeightLayer();
     const work = rec ? workingCopy(rec) : null;
@@ -1115,7 +1389,11 @@ function renderControl(c) {
 
 /** The groups in panel order: the slice-2 tool groups first (the layers on top), the slice-1 groups, then the ones
  *  declared `after` (the file buttons). */
-const panelGroups = () => [...HEIGHT_TOOL_GROUPS.filter((g) => !g.after), ...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS.filter((g) => g.after)];
+const panelGroups = () => {
+  const out = [...HEIGHT_TOOL_GROUPS.filter((g) => !g.after && !g.follows), ...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS.filter((g) => g.after && !g.follows)];
+  for (const g of HEIGHT_TOOL_GROUPS.filter((x) => x.follows)) { const i = out.findIndex((x) => x.id === g.follows); out.splice(i < 0 ? out.length : i + 1, 0, g); }
+  return out;
+};
 /** What a showWhen reads. */
 const panelCtx = () => { const rec = activeHeightLayer(); return { tool: _tool, brush: _brush, patch: rec ? placed(rec) : null, layer: rec ? layerOf(rec) : null, tools: _tools }; };
 /** A control's source object (its target's state) for the active patch. */
@@ -1125,8 +1403,32 @@ function controlSource(c, rec) {
   if (!rec) return null;
   return c.target === 'layer' ? layerOf(rec) : placed(rec);
 }
+/** A brush preset's tile icon (64 x 64): its FOOTPRINT on top (the tip's BRUSH_TIPS box, squashed by its roundness; a
+ *  stroke arrow when it turns with the stroke) and its PROFILE below (the falloff across the tip, hardness included). */
+function brushPresetIcon(b) {
+  const tip = BRUSH_TIPS[b.tip] || BRUSH_TIPS.round, k = Number.isFinite(b.roundness) ? b.roundness : 1;
+  const ink = HEIGHT_VIEW.outline, R = 13, ry = Math.max(1.5, R * k);
+  const foot = tip.box === 'rect'
+    ? `<rect x="${32 - R}" y="${(19 - ry).toFixed(1)}" width="${2 * R}" height="${(2 * ry).toFixed(1)}" fill="${ink}" fill-opacity="0.25" stroke="${ink}" stroke-width="1.5"/>`
+    : `<ellipse cx="32" cy="19" rx="${R}" ry="${ry.toFixed(1)}" fill="${ink}" fill-opacity="0.25" stroke="${ink}" stroke-width="1.5"/>`;
+  const arrow = b.followStroke ? `<path d="M8 19H56M50 14L56 19L50 24" fill="none" stroke="${ink}" stroke-width="1.2" stroke-opacity="0.6"/>` : '';
+  const pts = [];
+  for (let i = 0; i <= 40; i++) { const t = i / 20 - 1; pts.push(`${(32 + 26 * t).toFixed(1)} ${(60 - 22 * brushFalloff(Math.abs(t), 1, b.hardness, b.falloff)).toFixed(1)}`); }
+  const prof = `<path d="M6 60L${pts.join('L')}L58 60Z" fill="${ink}" fill-opacity="0.55" stroke="${ink}" stroke-width="1"/>`;
+  return `<svg xmlns="${NS}" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">${arrow}${foot}<line x1="4" y1="60" x2="60" y2="60" stroke="currentColor" stroke-opacity="0.35"/>${prof}</svg>`;
+}
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
+  // slice 3b: the BRUSH PICKER (core/height/brush.js BRUSH_PRESETS) -- its tiles, turned into the app's one picker by
+  // main/icon-select.js mountIconGrid once the panel is on the page (renderHeightPanel)
+  brush: () => el('div', { id: 'heightBrushPicker', style: 'margin-bottom:10px;' }, [
+    el('div', { id: 'heightBrushPresets' }, Object.entries(BRUSH_PRESETS).map(([id, p]) => {
+      const b = el('button', { type: 'button', id: `heightBrushPreset_${id}`, class: 'cad-btn icon-select-option', 'data-height-brush-preset': id, title: `${p.label}: ${p.title}`, 'aria-label': p.label });
+      b.innerHTML = brushPresetIcon(p.brush);
+      return b;
+    })),
+    el('div', { id: 'heightBrushPresetNote', class: 'photo-layer-note', hidden: '', style: 'margin-top:6px;' }), // measured at 390 px: it touched the chip
+  ]),
   file: () => el('div', { class: 'photo-layer-buttons' }, [
     el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
     el('button', { type: 'button', id: 'heightImportBtn', class: 'cad-btn cad-btn-secondary', text: 'Import heightmap…', title: 'A grey picture as an image layer (its grey values kept; the mapping stays live)' }),
@@ -1169,6 +1471,8 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   }
   if (!body) return;
   body.innerHTML = '';
+  // a flex column: the sections take their view order from orderPanelGroups (the active tool's own section first)
+  body.style.display = 'flex'; body.style.flexDirection = 'column';
   body.appendChild(el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightNew', class: 'cad-btn cad-btn-secondary', text: '＋ New height patch', title: 'An unpainted patch over the whole board (100 pixels per inch)' }),
     el('button', { type: 'button', id: 'heightRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Delete' }),
@@ -1189,6 +1493,9 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
     body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
+  // the brush picker: its tiles become the app's one picker (AGENTS.md rule 2: never a hand-built popover)
+  mountIconGrid(byId('heightBrushPresets'), { label: 'Brush', optionSelector: '[data-height-brush-preset]', ids: { wrap: 'heightBrushPickerWrap', chip: 'heightBrushChip', name: 'heightBrushName' } });
+  syncBrushPicker();
 }
 
 /** The active patch's layers, TOP first: visible, name (select), up / down, delete. */
@@ -1272,6 +1579,8 @@ export function syncHeightPanel() {
   const hasSel = !!heightSelection();
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
+  syncBrushPicker();
+  orderPanelGroups();
   const stored = byId('heightStored');
   if (stored) {
     const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);
@@ -1284,7 +1593,7 @@ export function syncHeightPanel() {
 function onTabChanged(e) {
   const tab = e && e.detail ? e.detail.tab : getEditorTab();
   ensureTool();
-  if (tab !== 'height') cancelStroke();
+  if (tab !== 'height') { cancelStroke(); dropHeightMove(); }
   const ed = editor();
   // the Height tab's own tool: its brush is armed on entry (global-events.js drops it again on a switch away)
   if (tab === 'height' && ed && typeof ed.setMode === 'function' && ed._currentMode !== 'heightBrush') ed.setMode('heightBrush');
@@ -1299,20 +1608,25 @@ export function initHeightPanel(hooks = {}) {
   renderHeightPanel(byId('heightPanelBody'));
   registerUndoPart('heightLayers', {
     take: () => P.heightLayers, // the copy-on-write list itself: an entry costs a reference
-    restore: (v) => { if (v === P.heightLayers) return; cancelStroke(); P.heightLayers = v; syncHeightPanel(); syncHeightOverlay(); },
+    restore: (v) => { if (v === P.heightLayers) return; cancelStroke(); cancelHeightMove(); P.heightLayers = v; syncHeightPanel(); syncHeightOverlay(); },
   });
   byId('editorTabHeight')?.addEventListener('click', () => setEditorTab('height'));
   byId('heightNew')?.addEventListener('click', () => { newHeightPatch().catch((e) => status(`Could not make the patch: ${e && e.message ? e.message : e}`, true)); });
   byId('heightRemove')?.addEventListener('click', () => { const r = activeHeightLayer(); if (r) removeHeightPatch(r.id); });
   byId('heightList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-height-pick]');
-    if (pick) { _active = pick.getAttribute('data-height-pick'); syncHeightPanel(); syncHeightOverlay(); }
+    if (pick) { dropHeightMove(); _active = pick.getAttribute('data-height-pick'); syncHeightPanel(); syncHeightOverlay(); }
   });
   byId('heightList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-height-enable]');
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
   });
   byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
+  // the editor's own Apply / Cancel settle a floating piece first (pointerdown: before their click handlers run)
+  for (const [btnId, how] of Object.entries(MOVE_SETTLE_BUTTONS)) byId(btnId)?.addEventListener('pointerdown', () => (how === 'drop' ? dropHeightMove() : cancelHeightMove()));
+  if (typeof document !== 'undefined') {
+    for (const b of document.querySelectorAll('[data-height-brush-preset]')) b.addEventListener('click', () => applyHeightBrushPreset(b.getAttribute('data-height-brush-preset')));
+  }
   byId('heightImportBtn')?.addEventListener('click', () => byId('heightImportFile')?.click());
   byId('heightExportBtn')?.addEventListener('click', () => { exportHeightmap(); });
   byId('heightImportFile')?.addEventListener('change', (e) => {
@@ -1367,6 +1681,9 @@ export function initHeightPanel(hooks = {}) {
     if (container && !byId('heightReadout')) {
       container.appendChild(el('div', { id: 'heightReadout', class: 'heights-hud', hidden: '', style: 'position:absolute; top:12px; right:12px; z-index:10; pointer-events:none;' }));
     }
+    ensureMoveBar();
+    // capture: the Move tool's Esc cancels its piece before main/global-events.js's Esc (back to Select) sees it
+    window.addEventListener('keydown', onMoveKey, true);
     document.addEventListener('editorTabChanged', onTabChanged); // the same function: one listener however often init runs
     for (const ev of ['editorBoardResized', 'editorViewChanged', 'editorTopViewUpdated']) document.addEventListener(ev, onViewChanged);
   }
@@ -1379,13 +1696,14 @@ export function initHeightPanel(hooks = {}) {
  *  the pictures follow the restored records (the working copy reloads from the restored raster on the next use). */
 export function syncHeightTab() {
   cancelStroke();
+  cancelHeightMove();
   syncHeightPanel();
   syncHeightOverlay();
 }
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _float = null; _marq = null; _lastPreset = 'softRound'; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;
