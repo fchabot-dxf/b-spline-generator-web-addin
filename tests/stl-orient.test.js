@@ -195,15 +195,18 @@ describe('the panel: declared buttons, one copy-on-write write + one undo step e
     expect(globalHistoryLog.length).toBe(n + 1);
   });
   it('Lay flat replaces the rotation (absolute) from the stored mesh, nothing else', () => {
-    addStlFromSoup(Float32Array.from(boxSoup(0, 1, 0, 10, 0, 6)), 'slab');
+    addStlFromSoup(Float32Array.from(boxSoup(0, 1, 0, 10, 0, 6).concat(boxSoup(0.2, 0.6, 1, 3, 4, 5.5))), 'lopsided slab');
     setStlField('rotX', 33);
     vi.advanceTimersByTime(500);
     const before = activeStlLayer(), n = globalHistoryLog.length;
     $('stlLayFlat').click();
     vi.advanceTimersByTime(500);
     const after = activeStlLayer();
-    expect(after.rotation).toEqual(layFlatFrame(decodeMesh(before.mesh)).rotation);
-    const { rotation, ...rest } = after, { rotation: r0, ...restBefore } = before;
+    // written rounded to 0.1 degree (advisor 2026-11-22: the boxes showed 7.4001 / -2.97684...), wrapped to [-180, 180)
+    const exact = layFlatFrame(decodeMesh(before.mesh), before.rotation).rotation;
+    const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
+    expect(Object.values(exact).some((v) => Math.abs(v * 10 - Math.round(v * 10)) > 1e-6)).toBe(true); // the case has untidy angles
+    expect(after.rotation).toEqual({ x: tenth(exact.x), y: tenth(exact.y), z: tenth(exact.z) });    const { rotation, ...rest } = after, { rotation: r0, ...restBefore } = before;
     expect(rest).toEqual(restBefore);
     const [ex, , ez] = extents(decodeMesh(after.mesh), after.rotation);
     expect(ez).toBeLessThan(ex);

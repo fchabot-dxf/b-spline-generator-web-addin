@@ -25,7 +25,7 @@ import {
 import { ghostState, STL_GHOST_COLOURS } from '../core/stl/ghost.js';
 import { stlPass } from '../core/stl/layer.js';
 import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/stock.js';
-import { layFlatFrame, quickTurnRotation } from '../core/stl/orient.js';
+import { layFlatFrame, quickTurnRotation, wrapDeg } from '../core/stl/orient.js';
 import { resolveGrid } from '../core/terrain.js';
 
 /** The controls' groups, in order. */
@@ -354,7 +354,9 @@ export function layFlatStl() {
   const rec = activeStlLayer();
   if (!rec) return false;
   let rotation;
-  try { rotation = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
+  // written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0
+  const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
+  try { const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation; rotation = { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) }; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
   updateRecord(rec.id, (r) => ({ ...r, rotation }));
   commit('layFlat');
   syncStlPanel();
