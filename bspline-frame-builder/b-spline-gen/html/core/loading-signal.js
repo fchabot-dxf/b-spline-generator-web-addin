@@ -39,6 +39,9 @@ export const LOADING_STAGES = {
   stl: { group: 'computing', label: 'reading the STL', surface: 'card' }, // STL-RELIEF: parse + weld + store a mesh (main/stl-panel.js)
   // HEIGHT-PAINTER: a height patch encoded (a stroke's commit, a new patch) or decoded (a loaded project's, before the build)
   heightPatch: { group: 'computing', label: 'storing the height patch', surface: 'pill' },
+  // HEIGHT-PAINTER slice 2: a heightmap file read (decode, resample, store) / written (16-bit PNG)
+  heightImport: { group: 'computing', label: 'reading the heightmap', surface: 'card' },
+  heightExport: { group: 'computing', label: 'writing the heightmap', surface: 'card' },
   // seat A's re-time 2026-10-09 (phone, CPU x4): the Art tab's Undo / Redo and a lattice Generate froze 0.56-0.9 s with
   // nothing on screen
   undo: { group: 'refreshing', label: 'undoing', surface: 'pill' },

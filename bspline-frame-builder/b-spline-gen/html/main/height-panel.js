@@ -15,17 +15,18 @@
 import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
-import { encodeRaster, decodedRaster, ensureRasterDecoded } from '../core/height/raster.js';
+import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
 import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
-import { newHeightLayer, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
+import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
-  PATCH_LAYER_BLENDS, BASE_LAYER_ID, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
+  PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
 } from '../core/height/compose.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny } from '../core/height/selection.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
 import { FILL_DEFAULTS, applyFill } from '../core/height/fill.js';
+import { HEIGHTMAP_LOADERS, decodeHeightmap, resampleToGrid, mappingFromName } from '../core/height/import.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -110,18 +111,28 @@ export const TOOL_DEFAULTS = Object.freeze({
   select: Object.freeze({ featherIn: 0.05 }),
   gradient: GRADIENT_DEFAULTS,
   fill: FILL_DEFAULTS,
+  file: Object.freeze({ asNewPatch: false }),
 });
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
+  Object.freeze({ id: 'file', label: 'Heightmap file', note: '8 / 16-bit PNG, JPG, WebP, EXR', after: true }),
 ]);
 const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
 export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'layerOpacity', group: 'layers', target: 'layer', kind: 'slider', path: ['opacity'], label: 'Layer opacity', step: 0.01, range: () => [0, 1] },
   { id: 'layerBlend', group: 'layers', target: 'layer', kind: 'choice', path: ['blend'], label: 'Layer blend',
     options: PATCH_LAYER_BLENDS.map((b) => [b, BLEND_LABELS[b][0], BLEND_LABELS[b][1]]) },
+  // an IMAGE layer's LIVE mapping (core/height/compose.js mapImageValue): a change re-composites, never re-imports
+  { id: 'imageZero', group: 'layers', target: 'layer', kind: 'choice', path: ['mapping', 'zero'], label: 'Grey -> height',
+    options: [['black', 'Black = 0', 'Black is transparent; white is the White height'], ['mid', 'Mid-grey = 0', 'Mid-grey is transparent; white raises, black lowers']],
+    showWhen: (b, p, ctx) => !!ctx && !!ctx.layer && ctx.layer.kind === 'image' },
+  { id: 'imageWhiteIn', group: 'layers', target: 'layer', kind: 'slider', path: ['mapping', 'whiteIn'], label: 'White height (in)', step: 0.005, range: () => [0, 2],
+    showWhen: (b, p, ctx) => !!ctx && !!ctx.layer && ctx.layer.kind === 'image' },
+  { id: 'imageDarkIn', group: 'layers', target: 'layer', kind: 'slider', path: ['mapping', 'darkIn'], label: 'Black depth (in)', step: 0.005, range: () => [0, 2],
+    showWhen: (b, p, ctx) => !!ctx && !!ctx.layer && ctx.layer.kind === 'image' && ctx.layer.mapping && ctx.layer.mapping.zero === 'mid' },
   { id: 'gradType', group: 'gradient', target: 'gradient', kind: 'choice', path: ['type'], label: 'Gradient',
     options: [['linear', 'Linear', 'Along the drag'], ['radial', 'Radial', 'Round the start point; the drag length is the radius']] },
   { id: 'gradStartIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['startIn'], label: 'Start height (in)', step: 0.001, range: () => [-1, 1.5],
@@ -139,6 +150,7 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'fillHeightIn', group: 'fill', target: 'fill', kind: 'slider', path: ['heightIn'], label: 'Fill height (in)', step: 0.001, range: () => [-1, 1.5],
     note: '0 = transparent (no effect on the board); type any value' },
   { id: 'fillOpacity', group: 'fill', target: 'fill', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
+  { id: 'importAsNew', group: 'file', target: 'file', kind: 'check', path: ['asNewPatch'], label: 'Import as a new patch (sized to the image)' },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
 ]);
@@ -588,6 +600,56 @@ export function fillHeight(over = {}) {
 function beginFill(pt) { const rec = activeHeightLayer(); _fillTap = !!rec && !!patchGrid(rec) && pixelOf(rec, pt).inside; return _fillTap; }
 function endFill() { const go = _fillTap; _fillTap = false; return go ? fillHeight() : _chain; }
 
+// ── heightmap import (slice 2; core/height/import.js): an IMAGE layer, its grey kept, its mapping live ────────────────
+/**
+ * Import a heightmap file (`file`: a File, or { name, bytes }) as an image layer: into the active patch (resampled to its
+ * grid, above its active layer) or, with `asNewPatch` (or no patch yet), as a new patch sized to the image's aspect (the
+ * largest that fits the board, 100 px/in). The mapping comes from an exported file's name (name_0-0.5in.png), else the
+ * declared default. ONE step. `loaders`: the file readers (tests). Resolves to the new layer, or null.
+ */
+export async function importHeightmap(file, { asNewPatch = _tools.file.asNewPatch, loaders = HEIGHTMAP_LOADERS } = {}) {
+  const name = (file && file.name) || 'heightmap';
+  let made = null, info = null;
+  try {
+    await withLoadingStage('heightImport', async () => {
+      const bytes = file.bytes || new Uint8Array(await file.arrayBuffer());
+      const img = await decodeHeightmap(name, bytes, loaders);
+      info = img;
+      const mapping = mappingFromName(name) || { ...IMAGE_MAPPING_DEFAULTS };
+      const into = asNewPatch ? null : activeHeightLayer();
+      const g = into ? patchGrid(into) : null;
+      let sizeIn = null, cols, rows;
+      if (g) ({ cols, rows } = g);
+      else {
+        const k = Math.min(P.widthIn / img.width, P.heightIn / img.height);
+        sizeIn = { w: img.width * k, h: img.height * k };
+        cols = Math.max(1, Math.round(sizeIn.w * HEIGHT_PX_PER_IN)); rows = Math.max(1, Math.round(sizeIn.h * HEIGHT_PX_PER_IN));
+      }
+      const raster = await encodeRaster(resampleToGrid(img.values, img.width, img.height, cols, rows), cols, rows, RASTER_ENC_U16);
+      const layer = { id: newLayerId(), name, kind: 'image', visible: true, opacity: 1, blend: 'normal', raster, mapping, source: { name, width: img.width, height: img.height, bits: img.bits } };
+      made = into ? { id: into.id, layer } : { rec: { ...normaliseHeightLayer({}), id: newHeightId(), name: name.replace(/\.[a-z0-9]+$/i, ''), sizeIn, layers: [layer] }, layer };
+    });
+  } catch (e) {
+    status(`Could not read the heightmap: ${e && e.message ? e.message : e}`, true);
+    return null;
+  }
+  if (!made) return null;
+  if (made.rec) {
+    P.heightLayers = [...list(), made.rec];
+    _active = made.rec.id;
+    _activeLayer.set(made.rec.id, made.layer.id);
+    commitStep('import');
+    syncHeightPanel();
+    syncHeightOverlay();
+  } else {
+    if (!find(made.id)) return null;
+    _active = made.id;
+    insertLayer(made.layer, 'import');
+  }
+  status(`${name}: ${info.width} x ${info.height} px, ${info.bits === 32 ? 'float' : `${info.bits}-bit`}. Paint over it on a paint layer above.`);
+  return made.layer;
+}
+
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
 export async function newHeightPatch() {
@@ -1026,6 +1088,10 @@ function controlSource(c, rec) {
 }
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
+  file: () => el('div', { class: 'photo-layer-buttons' }, [
+    el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
+    el('button', { type: 'button', id: 'heightImportBtn', class: 'cad-btn cad-btn-secondary', text: 'Import heightmap…', title: 'A grey picture as an image layer (its grey values kept; the mapping stays live)' }),
+  ]),
   fill: () => el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightFillApply', class: 'cad-btn cad-btn-secondary', text: '▣ Fill', title: 'The selection (or the whole layer) to the fill height' }),
   ]),
@@ -1201,6 +1267,12 @@ export function initHeightPanel(hooks = {}) {
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
   });
   byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
+  byId('heightImportBtn')?.addEventListener('click', () => byId('heightImportFile')?.click());
+  byId('heightImportFile')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (file) importHeightmap(file);
+  });
   byId('heightSelFeather')?.addEventListener('click', () => featherHeightSelection(_tools.select.featherIn));
   byId('heightSelInvert')?.addEventListener('click', () => invertHeightSelection());
   byId('heightSelClear')?.addEventListener('click', () => clearHeightSelection());

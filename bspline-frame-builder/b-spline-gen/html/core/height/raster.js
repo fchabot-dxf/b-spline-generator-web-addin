@@ -9,6 +9,10 @@
  */
 
 export const RASTER_ENC = 'f16-deflate-b64';
+/** HEIGHT-PAINTER slice 2: an IMAGE layer's normalised grey 0..1 (core/height/compose.js) as 16-bit levels q / 65535 ->
+ *  deflate-raw -> base64: a 16-bit heightmap's levels are kept exactly (Float16 would round them to 1/2048 near white). */
+export const RASTER_ENC_U16 = 'u16-deflate-b64';
+const RASTER_ENCS = Object.freeze([RASTER_ENC, RASTER_ENC_U16]);
 
 // ── Float16 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 const _f32 = new Float32Array(1);
@@ -119,26 +123,32 @@ function cacheSet(h, v) {
  * Store `data` (Float32 inches, cols x rows). Resolves to the stored raster; its decoded values (the Float16 roundings of
  * `data`) are put in the decode cache at once, so the build and the painter read exactly what a reload will.
  */
-export async function encodeRaster(data, cols, rows) {
+export async function encodeRaster(data, cols, rows, enc = RASTER_ENC) {
   const n = cols * rows;
   const half = new Uint16Array(n);
   const stored = new Float32Array(n);
-  const t = halfTable();
-  for (let k = 0; k < n; k++) { const b = f32ToF16Bits(data[k]); half[k] = b; stored[k] = t[b]; }
+  if (enc === RASTER_ENC_U16) {
+    // the 16-bit levels of a 0..1 grey (the encoding's own range: a value outside it is the nearest level)
+    for (let k = 0; k < n; k++) { const q = Math.round(Math.min(1, Math.max(0, data[k] || 0)) * 65535); half[k] = q; stored[k] = q / 65535; }
+  } else {
+    const t = halfTable();
+    for (let k = 0; k < n; k++) { const b = f32ToF16Bits(data[k]); half[k] = b; stored[k] = t[b]; }
+  }
   const packed = await throughStream(new CompressionStream('deflate-raw'), new Uint8Array(half.buffer));
   const b64 = toB64(packed);
-  const rec = { cols, rows, enc: RASTER_ENC, data: b64, h: rasterHash(RASTER_ENC, cols, rows, b64) };
+  const rec = { cols, rows, enc, data: b64, h: rasterHash(enc, cols, rows, b64) };
   cacheSet(rec.h, stored);
   return rec;
 }
 
 /** A stored raster's heights (a fresh Float32Array; no cache). */
 export async function decodeRaster(rec) {
-  if (!rec || rec.enc !== RASTER_ENC) throw new Error(`Unknown stored height raster encoding ${rec && rec.enc}.`);
+  if (!rec || !RASTER_ENCS.includes(rec.enc)) throw new Error(`Unknown stored height raster encoding ${rec && rec.enc}.`);
   const bytes = await throughStream(new DecompressionStream('deflate-raw'), fromB64(rec.data));
   const half = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >>> 1);
-  const t = halfTable();
   const out = new Float32Array(half.length);
+  if (rec.enc === RASTER_ENC_U16) { for (let k = 0; k < half.length; k++) out[k] = half[k] / 65535; return out; }
+  const t = halfTable();
   for (let k = 0; k < half.length; k++) out[k] = t[half[k]];
   return out;
 }
