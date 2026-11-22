@@ -257,6 +257,40 @@ ghost on a non-flat surface (tests/stl-engine-fixes.test.js A1 "the ghost's base
 centre on a surface that rises UP the view" and A11 "a real rebuild hands the preview ghosts sitting on its cleanHeights",
 measured by an A/B on 2026-11-22). Waiting on the advisor / Fred: changing those expectations is their call.
 
+**Built since (2026-11-22, Fred's decisions 1, 2 and 6, branch stl-fit-undo, worker J):**
+- **Over-stock warning (detection only).** rebuild.js buildHeights, from the heights and passes it already has (no second
+  build): per enabled STL, its covered points (isStamped) where the FINAL heights leave the stock, with the sculpt check's own
+  bounds (core/sculpt.js checkPreBounds: over = z > P.carveZ, under = z < 0), and the worst overshoot each way
+  (core/stl/stock.js stlStockReport; one pass over the points per STL). The panel shows the active STL's one line under Size,
+  e.g. "⚠ This STL rises 0.60 in above the stock top (Carve Depth 1.50 in) at 49 points." Nothing is changed, blocked or clamped.
+- **Fit to carve depth** (Size): sets the active STL's Depth (zScale) and nothing else, one write + one undo step (the zScale
+  control's copy-on-write path). The one rule is core/stl/stock.js fitStlDepth: per covered point, surface(s) = base + sign (Z +
+  body H s) (base = the clean terrain under the point for Follow, the bilinear level base under the pivot for Level; Max takes the
+  terrain or the surface, whichever is further out), s = the smallest Depth that puts a point AT the bound (Raised: the top,
+  Carved: the bottom). It aims 0.00001 in inside the bound (STL_FIT_MARGIN_IN: Float32 heights aimed exactly at it can round a
+  hair past and trip the exact warning). No room (the terrain under it, or its Z offset, already reaches the bound): nothing
+  changes and the status line says why. The terrain is lastResult.cleanHeights: other stamps under the STL are not counted.
+- **The option** P.stlFitOnInsert (DEFAULT false; absent = off; in REBUILD_INERT_KEYS: no build reads it), the checkbox "Fit new
+  STLs to the carve depth" at the top of the panel (its id is the key: bindControls binds it the generic way). On: a newly added
+  STL (file or library) is fitted once, in the add's own write and undo step, on the surface already built (the clean terrain
+  does not depend on the STL); with no surface for the board's grid yet, after the next build.
+- **Undo stores the instruction, not the model.** core/history.js keeps each STL mesh ONCE in a content-addressed store (mesh.h
+  -> the mesh object); a snapshot holds `{ ref: h }` in its place and undo / redo hand the restore the SAME mesh objects
+  (unifiedUndo / unifiedRedo rehydrate before applySnapshot, the only consumer of a snapshot's P). Measured: 40 position-only
+  steps hold one mesh; a snapshot is under a quarter of the mesh text. A mesh without h (an old record), or an h naming different
+  text (the old collision-prone hash), stays inline. _undoComparable compares meshes by h. Entries no snapshot references are
+  dropped when the history drops snapshots. Saved files / sessions / cloud saves are untouched (persistableP: the full mesh).
+
+**Built since (2026-11-22, Fred: yes, worker J): "Lay flat" + quick turns** (Rotate group, STL_ACTIONS, the panel's declared
+button list). The Smithsonian pose stays the default at insert: these act only when pressed, one write + one undo step each.
+core/stl/orient.js, in rotationMatrix's own convention (R = Rz Ry Rx), every angle wrapped to [-180, 180):
+- Lay flat REPLACES the rotation: the principal axes of the decoded stored mesh's SURFACE (exact per-triangle second moments,
+  area-weighted); smallest variance -> +Z, largest -> +X, Y = Z x X (det +1). Signs: up = the side the surface reaches further out
+  to (area-weighted third moment of the triangle centroids >= 0: a plaque's bump faces up); symmetric: the mesh's own +Z side up;
+  +X towards the mesh's own +X; ties: the largest component positive.
+- -90 / +90 about the BOARD's X, Y, Z (beside each slider): new = R(axis, d) * R(rotation), Euler angles re-extracted; gimbal
+  lock (Y = +-90) is resolved with X = 0 and the whole turn in Z.
+
 **Still not built:** opacity/blend on the other layers and a Layers-panel row for STLs (both outside Fred's "STL stamp only"
 scope, section 11.1 / 11.6).
 
@@ -270,8 +304,8 @@ scope, section 11.1 / 11.6).
 Gate: full vitest 546 files / 7533 tests green; real Chrome: a 2 px wobble writes nothing, a 60 px drag moves it, a ring turn
 from 170 lands at -158.34 (wrapped) and 138.34, no console errors.
 
-**Known limits:** undo history holds a copy
-of each mesh (about 0.6 MB per STL at the default detail, 40 steps); records saved before the hash fix keep the old (collision
+**Known limits:** undo history holds each mesh ONCE (the mesh store above; it held a copy per step, about 0.6 MB per STL at
+the default detail, 40 steps, before 2026-11-22); records saved before the hash fix keep the old (collision
 prone) hash; core/preview/terrain-mesh.js buildLiveBrushColours uses y = H/2 - j*dy, the opposite of buildHeightField in the same
 file. Checked 2026-11-22: NOT a bug -- it flips both the cell and the brush centre, and only their distance is used, so the
 highlight lands on the cells the sculpt tool picks (cj = (y + H/2)/dy).
