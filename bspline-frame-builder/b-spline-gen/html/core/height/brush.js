@@ -21,6 +21,28 @@ export { BRUSH_FALLOFFS, curveFromPoints, curvePointsFromProfile, brushFalloff }
 
 export const BRUSH_MODES = Object.freeze(['raise', 'lower', 'set', 'smooth', 'erase']);
 
+/**
+ * The TIP shapes (slice 3; Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment"). A tip
+ * has its own frame: u along its long axis (the `angle`), v across it; `roundness` k squashes it along v. `dist(u, v, R, k)`
+ * (inches) is the distance the falloff / hardness read (core/falloff.js brushFalloff, against the radius R; Infinity =
+ * outside); `box` is the footprint for the touched box and the on-canvas cursor ('ellipse' or 'rect', half-sizes R and kR).
+ *  - round:  radial (an ellipse when squashed) -- with k = 1 the slice-1 dab, byte for byte (createStroke keeps its code);
+ *  - square: Chebyshev in the tip frame -- square + Linear = a crisp chamfer (a bevel), square + Plateau = a flat top;
+ *  - chisel: a flat blade -- the falloff across its thickness (kR) only, full strength along it, square ends.
+ * `seedRoundness`: picking the tip while the roundness is still 1 starts it there (the panel's alsoSet; never a rule).
+ */
+export const BRUSH_TIPS = Object.freeze({
+  round: Object.freeze({ label: 'Round', title: 'A circle (an ellipse when squashed)', box: 'ellipse', dist: (u, v, R, k) => Math.hypot(u, v / k) }),
+  square: Object.freeze({ label: 'Square', title: 'A square: with a Linear falloff, a chamfer (bevel)', box: 'rect', dist: (u, v, R, k) => Math.max(Math.abs(u), Math.abs(v) / k) }),
+  chisel: Object.freeze({ label: 'Chisel', title: 'A flat blade: the falloff across its thickness only, square ends', box: 'rect', seedRoundness: 0.25,
+    dist: (u, v, R, k) => (Math.abs(u) <= R ? Math.abs(v) / k : Infinity) }),
+});
+
+/** One-tap brush settings (the panel's buttons above the tip controls): each writes `brush` over the current brush. */
+export const BRUSH_QUICK_PRESETS = Object.freeze({
+  bevel: Object.freeze({ label: 'Bevel', title: 'A square tip, a Linear falloff, hardness 0.3: a chamfered (bevelled) edge', brush: Object.freeze({ tip: 'square', falloff: 'linear', hardness: 0.3 }) }),
+});
+
 /** The brush a new session starts with (UI state; main/height-panel.js HEIGHT_CONTROLS edits it). */
 export const BRUSH_DEFAULTS = Object.freeze({
   mode: 'raise',
@@ -35,6 +57,11 @@ export const BRUSH_DEFAULTS = Object.freeze({
   pressureSize: false,
   pressureOpacity: false,
   customCurve: DEFAULT_CUSTOM_CURVE, // the 'custom' falloff's points [t, value]: t 0 = hardness edge, 1 = rim
+  // slice 3, the tip (an absent key reads as these: the slice-1 round dab)
+  tip: 'round',        // BRUSH_TIPS
+  roundness: 1,        // 1 = a full circle / square; lower = squashed across the tip
+  angle: 0,            // degrees, counter-clockwise on the board (with followStroke: from the drag direction)
+  followStroke: false, // the tip turns with the drag direction
 });
 
 /** The smooth mode's box half-width, as a fraction of the dab radius (at least one pixel). */
@@ -57,8 +84,12 @@ function summedArea(src, cols, rows) {
  * the touched pixels back. `dabs` = how many were laid, `bbox` = { c0, r0, c1, r1 } (inclusive) of the touched pixels or null.
  * `mask` (slice 2, core/height/selection.js: Float32 0..1 per pixel, or null = everywhere) multiplies the effect: a pixel
  * the mask leaves at 0 is never written.
+ * The TIP (slice 3, BRUSH_TIPS: b.tip, b.roundness, b.angle, b.followStroke; absent = round, 1, 0, off): `rotationDeg` is
+ * the patch's own turn, so the angle stays on the BOARD. With followStroke the tip's angle is b.angle from the drag
+ * direction, and the first dab waits for that direction (the next point; finish() lays it at b.angle when the stroke never
+ * moved). A round tip of roundness 1 runs the slice-1 code, byte for byte (tests/height-brush-tip-pin.test.js).
  */
-export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null }) {
+export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotationDeg = 0 }) {
   const { cols, rows, data } = raster;
   const base = Float32Array.from(data);
   const cov = new Float64Array(cols * rows);
@@ -66,9 +97,15 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null }) {
   const step = b.spacing * b.sizeIn;
   const mode = b.mode;
   const customFn = b.falloff === 'custom' ? curveFromPoints(b.customCurve || BRUSH_DEFAULTS.customCurve) : null; // once per stroke
+  const tip = BRUSH_TIPS[b.tip] || BRUSH_TIPS.round;
+  const kTip = Number.isFinite(b.roundness) ? b.roundness : BRUSH_DEFAULTS.roundness;
+  const plain = tip === BRUSH_TIPS.round && kTip === 1; // a circle turns into itself: the slice-1 dab
+  const follow = !!b.followStroke;
+  const angle0 = (((Number.isFinite(b.angle) ? b.angle : 0) - (follow ? 0 : rotationDeg)) * Math.PI) / 180; // in the raster frame
   let sat = null, kSmooth = 0;
   let last = null;       // { x, y, p }
   let toNext = 0;        // inches still to go along the path before the next dab
+  let waiting = false;   // followStroke: the first dab waits for the drag direction
   const s = { dabs: 0, bbox: null };
 
   const blurAt = (c, r) => {
@@ -79,18 +116,24 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null }) {
     return sum / ((c1 - c0 + 1) * (r1 - r0 + 1));
   };
 
-  function dab(x, y, p) {
+  function dab(x, y, p, phi = angle0) {
     s.dabs++;
     const R = b.pressureSize ? R0 * p : R0;
     const cap = b.pressureOpacity ? b.opacity * p : b.opacity;
     if (!(R > 0) || !(cap > 0)) return;
-    const c0 = Math.max(0, Math.floor(x - R * pxPerInX)), c1 = Math.min(cols - 1, Math.ceil(x + R * pxPerInX));
-    const r0 = Math.max(0, Math.floor(y - R * pxPerInY)), r1 = Math.min(rows - 1, Math.ceil(y + R * pxPerInY));
+    // the footprint's half-extents in inches (a turned / squashed tip; the plain round dab keeps its R)
+    const cs = Math.cos(phi), sn = Math.sin(phi), ka = Math.abs(kTip);
+    const ex = plain ? R : tip.box === 'rect' ? R * (Math.abs(cs) + ka * Math.abs(sn)) : R * Math.hypot(cs, ka * sn);
+    const ey = plain ? R : tip.box === 'rect' ? R * (Math.abs(sn) + ka * Math.abs(cs)) : R * Math.hypot(sn, ka * cs);
+    const c0 = Math.max(0, Math.floor(x - ex * pxPerInX)), c1 = Math.min(cols - 1, Math.ceil(x + ex * pxPerInX));
+    const r0 = Math.max(0, Math.floor(y - ey * pxPerInY)), r1 = Math.min(rows - 1, Math.ceil(y + ey * pxPerInY));
     if (c0 > c1 || r0 > r1) return;
+    // a pixel's distance in the TIP frame (u along the tip, v across it)
+    const tipDist = (c, r) => { const dx = (c - x) / pxPerInX, dy = (r - y) / pxPerInY; return tip.dist(cs * dx + sn * dy, cs * dy - sn * dx, R, kTip); };
     let touched = false;
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
-        const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness, b.falloff, customFn);
+        const f = brushFalloff(plain ? Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY) : tipDist(c, r), R, b.hardness, b.falloff, customFn);
         if (!(f > 0)) continue;
         const k = r * cols + c;
         const m = mask ? mask[k] : 1;
@@ -117,18 +160,26 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null }) {
   const EPS = 1e-9; // inches: a dab that lands on a segment's end within rounding is laid there, not lost
   s.addPoint = (x, y, pressure = 1) => {
     const p = pressure;
-    if (!last) { dab(x, y, p); last = { x, y, p }; toNext = step; return; }
+    if (!last) { if (follow) waiting = true; else dab(x, y, p); last = { x, y, p }; toNext = step; return; }
     const len = Math.hypot((x - last.x) / pxPerInX, (y - last.y) / pxPerInY);
-    if (!(step > 0)) { dab(x, y, p); last = { x, y, p }; return; } // no spacing: a dab at every pointer sample
+    let phi = angle0;
+    if (follow) {
+      if (!(len > 0)) return; // no direction yet
+      phi = angle0 + Math.atan2((y - last.y) / pxPerInY, (x - last.x) / pxPerInX);
+      if (waiting) { waiting = false; dab(last.x, last.y, last.p, phi); }
+    }
+    if (!(step > 0)) { dab(x, y, p, phi); last = { x, y, p }; return; } // no spacing: a dab at every pointer sample
     let at = toNext;
     while (at <= len + EPS) {
       const t = len > 0 ? Math.min(1, at / len) : 1;
-      dab(last.x + (x - last.x) * t, last.y + (y - last.y) * t, last.p + (p - last.p) * t);
+      dab(last.x + (x - last.x) * t, last.y + (y - last.y) * t, last.p + (p - last.p) * t, phi);
       at += step;
     }
     toNext = Math.max(0, at - len);
     last = { x, y, p };
   };
+  /** The stroke's end: a followStroke tap that never moved still lays its one dab (at the set angle). */
+  s.finish = () => { if (waiting && last) { waiting = false; dab(last.x, last.y, last.p, angle0); } };
   s.cancel = () => {
     const bb = s.bbox;
     if (!bb) return;
