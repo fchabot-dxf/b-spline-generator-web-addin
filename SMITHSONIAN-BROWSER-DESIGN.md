@@ -138,3 +138,26 @@ byte-identical (the stl-layers-absent golden covers the passes).
    is a slider (min 500, step 500, applied on release) + the number box. Its top: the in-memory original's triangle count;
    after a reload a record with `source.uri` keeps its `origTris` (moving up downloads the model again behind the 'stl'
    loading card and keeps it as the original); any other STL the stored count (down only, as before).
+
+## 8. The Shape filter over a mirrored catalog (Fred 2026-11-22)
+
+- **Fred's answer:** the flat catalog is just a FILTER (no sorting), with a RATIO; "a rod would be good too". So the sheet has a
+  **Shape** picker (a native `<select>`): **Any shape** (default) · **Flat** · **Rod** · **Flat or rod**, and, when it is not Any,
+  a **Ratio** slider + number box (0.05..1, step 0.01, default 0.30) that re-filters live (debounced, no network). With the box
+  sides sorted `d = [small, mid, large]`: **Flat = small / mid <= ratio** (a plate: thin against BOTH other sides), **Rod = mid /
+  large <= ratio** (long and thin). It combines with the search words (every word somewhere in the title, any case) and the museum.
+- **Any = the live API exactly as before.** Not Any = the mirrored catalog, fetched ONCE per sheet on first use (status line
+  'Loading the catalog…'; a failed load is tried again next time), filtered in the page and paged 24 at a time with More results,
+  the same 'N models shown · more available' line. Its tiles are built by the same `tileFromGlb` the API search uses, so the
+  preview, Turn in 3D and Insert work unchanged. A model with no box (9 of 3,482) only shows under Any.
+- **The catalog format is SOURCE-NEUTRAL** (`core/stl/catalog.js`; a later library writes the same fields and names itself):
+  `{ v: 1, source: '<source id>', built: 'YYYY-MM-DD', base: '<common uri prefix>', models: [{ id, t: title, u: owning unit,
+  g: <the GLB uri without base>, d: [small, mid, large] | null }] }`. Declared: `CATALOG_SHAPES`, `CATALOG_FILTER` (the defaults),
+  `SMITHSONIAN_SOURCE.catalogPath`.
+- **The file:** `b-spline-gen/html/data/stl-catalog-smithsonian.json` (beside `photo-patterns.json`, fetched relative to the app
+  root; the Pages build copies every `.json` under `html/`), 3,482 models, 3,473 with a box (817,858 bytes, 198,055 gzipped).
+  Built by `tools/build_stl_catalog.py` (one Range request per GLB for the header + JSON chunk, the POSITION accessors' min / max;
+  polite pauses, a plain client name; `--limit N` to test, `--from-json OLD` to convert an earlier crawl). The shipped file is the
+  advisor's 2026-11-22 crawl converted with `--from-json` (every uri reproduced from base + g). At 0.30: 154 flat, 356 rods.
+- **Known limit:** d is the GLB's RAW axis-aligned box (before the Voyager pose), so a plate stored tilted reads thicker than it
+  is (the NPG "Theodore Roosevelt" bronze relief: 416 x 492 x 606, not flat).
