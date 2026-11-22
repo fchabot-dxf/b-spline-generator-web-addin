@@ -18,6 +18,9 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded } from '../core/height/raster.js';
 import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
 import { newHeightLayer, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
+import {
+  PATCH_LAYER_BLENDS, BASE_LAYER_ID, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
+} from '../core/height/compose.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -83,6 +86,29 @@ export const HEIGHT_CONTROLS = Object.freeze([
     options: [['withSurface', 'Before thicken', 'The back follows the patch'], ['afterBack', 'After thicken', 'Top only: the back stays as it is without this patch']] },
 ]);
 
+/**
+ * HEIGHT-PAINTER slice 2: the controls of the layers and the precision tools, in the SAME shape as HEIGHT_CONTROLS and read
+ * by the same renderer / setter (one mechanism; a second table only so the slice-1 table stays as it was). target 'layer' =
+ * the ACTIVE layer of the active patch (`path` in that layer). Each group shows by its own showWhen(ctx).
+ */
+/** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below. */
+export const HEIGHT_TOOLS = Object.freeze([
+  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights (the modes below)' }),
+]);
+/** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
+export const TOOL_DEFAULTS = Object.freeze({});
+export const HEIGHT_TOOL_GROUPS = Object.freeze([
+  Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
+]);
+const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
+export const HEIGHT_TOOL_CONTROLS = Object.freeze([
+  { id: 'layerOpacity', group: 'layers', target: 'layer', kind: 'slider', path: ['opacity'], label: 'Layer opacity', step: 0.01, range: () => [0, 1] },
+  { id: 'layerBlend', group: 'layers', target: 'layer', kind: 'choice', path: ['blend'], label: 'Layer blend',
+    options: PATCH_LAYER_BLENDS.map((b) => [b, BLEND_LABELS[b][0], BLEND_LABELS[b][1]]) },
+]);
+/** Both tables, the one list the renderer and the setter read. */
+const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
+
 // ── state (UI only; the data is P.heightLayers) ─────────────────────────────────────────────────────────────────────
 let _active = null;          // the active record's id
 let _brush = { ...BRUSH_DEFAULTS };
@@ -93,6 +119,11 @@ let _strokeSeq = 0;
 let _chain = Promise.resolve();
 let _hooks = { onChange: () => {} };
 let _hover = null;           // the last pointer point (editor coordinates)
+const _activeLayer = new Map(); // patch id -> the id of the layer the tools edit (session UI state)
+/** Each precision tool's settings (UI state), by HEIGHT_TOOL_CONTROLS target, fresh from their declared defaults. */
+const freshTools = () => Object.fromEntries(Object.entries(TOOL_DEFAULTS).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
+let _tools = freshTools();
+let _tool = 'brush';         // the HEIGHT_TOOLS entry the canvas gesture runs
 
 const list = () => (Array.isArray(P.heightLayers) ? P.heightLayers : []);
 const find = (id) => list().find((l) => l && l.id === id) || null;
@@ -131,18 +162,48 @@ function commitStep(what) {
   _hooks.onChange();
 }
 
+// ── the layers of a patch (slice 2; core/height/compose.js) ─────────────────────────────────────────────────────────
+/** The layer of patch `rec` the tools edit: the selected one, else the TOP layer (a slice-1 record: its one 'base'). */
+function layerOf(rec) {
+  const ls = patchLayers(rec);
+  if (!ls.length) return null;
+  const id = rec && _activeLayer.get(rec.id);
+  return ls.find((l) => l.id === id) || ls[ls.length - 1];
+}
+export function activePatchLayer() { return layerOf(activeHeightLayer()); }
+/** A new record for patch `rec` with layer `layerId` changed by `change(layer)`: a slice-1 record's one layer writes its
+ *  `raster` back in place (the record keeps its slice-1 shape); any other change makes the record layered (a user action). */
+function withLayer(rec, layerId, change) {
+  if (!isLayered(rec) && layerId === BASE_LAYER_ID) {
+    const next = change(patchLayers(rec)[0]);
+    const onlyRaster = Object.keys(next).every((k) => k === 'raster' || next[k] === patchLayers(rec)[0][k]);
+    if (onlyRaster) return { ...rec, raster: next.raster };
+  }
+  const L = layeredRecord(rec);
+  return { ...L, layers: L.layers.map((l) => (l && l.id === layerId ? change(l) : l)) };
+}
+let _layerSeq = 0;
+const newLayerId = () => `hl${Date.now().toString(36)}${(_layerSeq++).toString(36)}`;
+
 // ── the working copy + the stroke ───────────────────────────────────────────────────────────────────────────────────
-/** The active patch's working heights (sync), or null while its raster is being decoded (the decode then redraws). */
+/** The active LAYER's working heights (sync), or null while its raster is being decoded (the decode then redraws). */
 function workingCopy(rec) {
-  if (!rec || !rec.raster) return null;
-  if (_work && _work.id === rec.id && (_work.h === rec.raster.h || _pending > 0)) return _work;
-  const d = decodedRaster(rec.raster);
+  const layer = layerOf(rec);
+  if (!layer || !layer.raster) return null;
+  if (_work && _work.id === rec.id && _work.layerId === layer.id && (_work.h === layer.raster.h || _pending > 0)) return _work;
+  const d = decodedRaster(layer.raster);
   if (!d) {
-    ensureRasterDecoded(rec.raster).then(() => syncHeightOverlay(), (e) => status(`Could not read the height patch: ${e && e.message ? e.message : e}`, true));
+    ensureRasterDecoded(layer.raster).then(() => syncHeightOverlay(), (e) => status(`Could not read the height patch: ${e && e.message ? e.message : e}`, true));
     return null;
   }
-  _work = { id: rec.id, h: rec.raster.h, cols: rec.raster.cols, rows: rec.raster.rows, data: Float32Array.from(d) };
+  _work = { id: rec.id, layerId: layer.id, kind: layer.kind, h: layer.raster.h, cols: layer.raster.cols, rows: layer.raster.rows, data: Float32Array.from(d) };
   return _work;
+}
+/** The working copy for a tool that paints heights: never an image layer (its grey values stay as imported). */
+function paintableCopy(rec) {
+  const layer = layerOf(rec);
+  if (layer && layer.kind === 'image') { status('An image layer keeps its grey values: add a paint layer above it to paint.'); return null; }
+  return workingCopy(rec);
 }
 const pressureOf = (e) => (e && e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 1); // a mouse reports 0.5 while pressed
 function pixelOf(rec, pt) { const [X, Y] = toBoard(pt); return boardToPatchPixel(placed(rec), X, Y); }
@@ -156,7 +217,7 @@ function cancelStroke() {
 function beginStroke(pt, pressure) {
   cancelStroke(); // a stroke the editor abandoned (a pinch, a tool switch) is put back, never half-committed
   const rec = activeHeightLayer();
-  const work = workingCopy(rec);
+  const work = paintableCopy(rec);
   if (!work) return false;
   const size = placed(rec).sizeIn;
   const s = createStroke(work, _brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h });
@@ -183,7 +244,8 @@ function endStroke() {
   return commitWorking(st.id, 'stroke');
 }
 
-/** Store the working heights of patch `id` as its new raster, then the step. Commits run one after the other. */
+/** Store the working heights of patch `id` as its working layer's new raster, then the step. Commits run one after the
+ *  other. */
 function commitWorking(id, what) {
   const work = _work;
   if (!work || work.id !== id) return _chain;
@@ -192,8 +254,9 @@ function commitWorking(id, what) {
   _pending++;
   _chain = _chain.then(() => withLoadingStage('heightPatch', async () => {
     const raster = await encodeRaster(snap, work.cols, work.rows);
-    if (!find(id)) return; // the patch was deleted meanwhile
-    updateRecord(id, (r) => ({ ...r, raster }));
+    const rec = find(id);
+    if (!rec || !patchLayers(rec).some((l) => l.id === work.layerId)) return; // the patch / layer was deleted meanwhile
+    updateRecord(id, (r) => withLayer(r, work.layerId, (l) => ({ ...l, raster })));
     if (_work === work) {
       _work.h = raster.h;
       if (seq === _strokeSeq && !_stroke) _work.data.set(decodedRaster(raster)); // the painter shows what is stored
@@ -208,13 +271,31 @@ export const whenHeightIdle = () => _chain;
 
 /** `editor._heightTool` (editor/editor-height-tool.js): paints only in the Height tab. */
 const TOOL = Object.freeze({
-  start: (pt, e) => (getEditorTab() === 'height' ? beginStroke(pt, pressureOf(e)) : false),
-  move: (pt, e) => moveStroke(pt, pressureOf(e)),
-  end: () => endStroke(),
+  start: (pt, e) => (getEditorTab() === 'height' ? gesture().start(pt, e) : false),
+  move: (pt, e) => gesture().move(pt, e),
+  end: () => gesture().end(),
   hover: (pt) => { _hover = pt; drawCursor(); },
-  cancel: () => cancelStroke(),
+  cancel: () => { for (const g of Object.values(GESTURES)) g.cancel(); },
 });
 function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) ed._heightTool = TOOL; }
+
+/** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
+const GESTURES = {
+  brush: { start: (pt, e) => beginStroke(pt, pressureOf(e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+};
+const gesture = () => GESTURES[_tool] || GESTURES.brush;
+/** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. */
+export function setHeightTool(id) {
+  if (!HEIGHT_TOOLS.some((t) => t.id === id)) return false;
+  if (id !== _tool) TOOL.cancel();
+  _tool = id;
+  const ed = editor();
+  if (ed && typeof ed.setMode === 'function' && getEditorTab() === 'height' && ed._currentMode !== 'heightBrush') ed.setMode('heightBrush');
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+export const heightTool = () => _tool;
 
 /** A whole stroke through the same path as the pointer: `points` = [[X, Y, pressure?], ...] in board inches (+Y up),
  *  `brush` over the current one for this stroke only. Resolves when it is stored. (Tests, probes.) */
@@ -246,6 +327,7 @@ export function removeHeightPatch(id) {
   if (_stroke && _stroke.id === id) cancelStroke();
   P.heightLayers = list().filter((l) => !(l && l.id === id));
   if (_work && _work.id === id) _work = null;
+  _activeLayer.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
   commitStep('remove');
   syncHeightPanel();
@@ -259,10 +341,90 @@ export function setHeightEnabled(id, on) {
   syncHeightOverlay();
 }
 
+// ── the layers of the active patch (slice 2): each change ONE step ─────────────────────────────────────────────────
+/** Insert `layer` (a full layer object) into the active patch just above its active layer, make it active. One step. */
+function insertLayer(layer, what) {
+  const rec = activeHeightLayer();
+  if (!rec) return null;
+  const at = layerOf(rec);
+  updateRecord(rec.id, (r) => {
+    const L = layeredRecord(r);
+    const i = at ? L.layers.findIndex((l) => l.id === at.id) : L.layers.length - 1;
+    const layers = [...L.layers];
+    layers.splice(i + 1, 0, layer);
+    return { ...L, layers };
+  });
+  _activeLayer.set(rec.id, layer.id);
+  commitStep(what);
+  syncHeightPanel();
+  syncHeightOverlay();
+  return layer;
+}
+/** '＋ Paint layer': an unpainted paint layer (the patch's grid) above the active layer. */
+export async function addPaintLayer() {
+  const rec = activeHeightLayer();
+  const g = patchGrid(rec);
+  if (!g) return null;
+  let raster = null;
+  await withLoadingStage('heightPatch', async () => { raster = await encodeRaster(new Float32Array(g.cols * g.rows), g.cols, g.rows); });
+  if (!find(rec.id)) return null;
+  const n = patchLayers(find(rec.id)).length + 1;
+  return insertLayer({ id: newLayerId(), name: `Paint ${n}`, kind: 'paint', visible: true, opacity: 1, blend: 'normal', raster }, 'layer-add');
+}
+/** Delete a layer of the active patch (never its last one: the patch's own Delete removes that). */
+export function removePatchLayer(layerId) {
+  const rec = activeHeightLayer();
+  const ls = patchLayers(rec);
+  if (!rec || ls.length < 2 || !ls.some((l) => l.id === layerId)) return false;
+  if (_stroke && _stroke.id === rec.id) cancelStroke();
+  const i = ls.findIndex((l) => l.id === layerId);
+  updateRecord(rec.id, (r) => { const L = layeredRecord(r); return { ...L, layers: L.layers.filter((l) => l.id !== layerId) }; });
+  if (_work && _work.id === rec.id && _work.layerId === layerId) _work = null;
+  if (layerOf(rec).id === layerId) _activeLayer.set(rec.id, (ls[i - 1] || ls[i + 1]).id); // the layer under it becomes active
+  commitStep('layer-remove');
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+/** Move a layer one place up (+1, toward the top) or down (-1). */
+export function movePatchLayer(layerId, dir) {
+  const rec = activeHeightLayer();
+  const ls = patchLayers(rec);
+  const i = ls.findIndex((l) => l.id === layerId), j = i + (dir > 0 ? 1 : -1);
+  if (i < 0 || j < 0 || j >= ls.length) return false;
+  updateRecord(rec.id, (r) => { const L = layeredRecord(r); const layers = [...L.layers]; [layers[i], layers[j]] = [layers[j], layers[i]]; return { ...L, layers }; });
+  commitStep('layer-move');
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+/** The layer the tools edit. */
+export function selectPatchLayer(layerId) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchLayers(rec).some((l) => l.id === layerId)) return false;
+  if (_stroke) cancelStroke();
+  _activeLayer.set(rec.id, layerId);
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+/** One field of a layer of the active patch (`path`: a key or a key path, e.g. ['mapping', 'whiteIn']). `commit` false =
+ *  a slider's drag tick (written and drawn; the step comes with its release). */
+export function setPatchLayerField(layerId, path, value, { commit = true } = {}) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchLayers(rec).some((l) => l.id === layerId)) return false;
+  const p = Array.isArray(path) ? path : [path];
+  updateRecord(rec.id, (r) => withLayer(r, layerId, (l) => withPath(l, p, p[0] === 'visible' ? !!value : value)));
+  if (commit) commitStep(`layer-${p.join('.')}`);
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+
 /** One control's value: a brush setting (UI state), or the ACTIVE patch's field (`commit` false: a slider's drag tick --
  *  written and drawn, the step comes with its release). */
 export function setHeightField(controlId, value, { commit = true } = {}) {
-  const c = HEIGHT_CONTROLS.find((x) => x.id === controlId);
+  const c = allControls().find((x) => x.id === controlId);
   if (!c) return false;
   let v = value;
   if (c.kind === 'slider') { v = parseFloat(value); if (!Number.isFinite(v)) return false; }
@@ -274,8 +436,10 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   }
   if (v === undefined) return false;
   if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; drawCursor(); return true; }
+  if (_tools[c.target]) { _tools[c.target] = withPath(_tools[c.target], c.path, v); syncHeightOverlay(); return true; } // a tool's UI state
   const rec = activeHeightLayer();
   if (!rec) return false;
+  if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
   if (c.path[0] === 'sizeIn' && !rec.sizeIn) updateRecord(rec.id, (r) => ({ ...r, sizeIn: placed(r).sizeIn }));
   updateRecord(rec.id, (r) => withPath(r, c.path, v));
   if (commit) commitStep(c.id);
@@ -305,7 +469,7 @@ function canvas2d(w, h) {
 }
 /** The shaded picture of `data` (a patch's heights) as a data URL, or null where there is no 2D canvas. */
 function pictureOf(rec, data, reuse = null) {
-  const { cols, rows } = rec.raster;
+  const { cols, rows } = patchGrid(rec);
   const size = placed(rec).sizeIn;
   const { w, h } = shadeSize(cols, rows, HEIGHT_VIEW.maxImagePx);
   const cv = reuse && reuse.c.width === w && reuse.c.height === h ? reuse : canvas2d(w, h);
@@ -316,16 +480,26 @@ function pictureOf(rec, data, reuse = null) {
   return { url: cv.c.toDataURL('image/png'), cv };
 }
 function stillImageOf(rec) {
-  const h = rec.raster && rec.raster.h;
+  const h = compositeKey(rec); // a slice-1 patch: its raster's h, as before
   if (!h) return null;
   if (_images.has(h)) { const u = _images.get(h); _images.delete(h); _images.set(h, u); return u; }
-  const d = decodedRaster(rec.raster);
-  if (!d) { ensureRasterDecoded(rec.raster).then(() => syncHeightOverlay(), () => {}); return null; }
+  const d = patchComposite(rec);
+  if (!d) { ensurePatchDecoded(rec).then(() => syncHeightOverlay(), () => {}); return null; }
   const p = pictureOf(rec, d);
   if (!p) return null;
   _images.set(h, p.url);
   while (_images.size > 16) _images.delete(_images.keys().next().value);
   return p.url;
+}
+/** The composite of `rec` with the working layer's heights in place of its stored ones (what a stroke shows now). A
+ *  slice-1 patch: the working heights themselves. Falls back to the working heights while another layer is decoding. */
+function liveComposite(rec) {
+  if (!_work || _work.id !== rec.id) return patchComposite(rec) || null;
+  if (_work.kind === 'image') return patchComposite(rec) || null; // an image layer's working values are grey, not heights
+  const wl = patchLayers(rec).find((l) => l.id === _work.layerId);
+  const stored = !_stroke && _pending === 0 && wl && wl.raster && wl.raster.h === _work.h;
+  if (stored) { const c = patchComposite(rec); if (c) return c; } // nothing in flight: the cached composite
+  return patchComposite(rec, { layerId: _work.layerId, data: _work.data }) || _work.data;
 }
 /** During a stroke: the active patch's picture from the working heights, once per animation frame. */
 function liveRedraw() {
@@ -334,7 +508,7 @@ function liveRedraw() {
     _live.frame = 0;
     const rec = _work && find(_work.id);
     if (!rec || !_g) return;
-    const p = pictureOf(rec, _work.data, _live.id === rec.id ? _live.canvas : null);
+    const p = pictureOf(rec, liveComposite(rec), _live.id === rec.id ? _live.canvas : null);
     _live.id = rec.id;
     _live.canvas = p ? p.cv : null;
     const img = _g.querySelector(`[data-height-patch="${rec.id}"] image`);
@@ -367,7 +541,7 @@ export function syncHeightOverlay() {
   // the fade is the focus table's (editor/editor-frame-profile.js EDITOR_TAB_FOCUS heightPatches), never a rule of its own
   const fade = (EDITOR_TAB_FOCUS[getEditorTab()] || EDITOR_TAB_FOCUS.artwork).heightPatches;
   if (fade >= 1) _g.removeAttribute('opacity'); else _g.setAttribute('opacity', String(fade));
-  const recs = list().filter((r) => r && r.enabled !== false && r.raster);
+  const recs = list().filter((r) => r && r.enabled !== false && patchGrid(r));
   const keep = new Set(recs.map((r) => String(r.id)));
   for (const n of [..._g.querySelectorAll('[data-height-patch]')]) if (!keep.has(n.getAttribute('data-height-patch'))) n.remove();
   const px = cssPx();
@@ -383,7 +557,8 @@ export function syncHeightOverlay() {
     node.setAttribute('transform', `translate(${fmt(P.widthIn / 2 + p.position.x)} ${fmt(P.heightIn / 2 - p.position.y)}) rotate(${fmt(-p.rotation)})`);
     const img = node.querySelector('image');
     for (const [k, v] of [['x', -p.sizeIn.w / 2], ['y', -p.sizeIn.h / 2], ['width', p.sizeIn.w], ['height', p.sizeIn.h]]) img.setAttribute(k, fmt(v));
-    const live = _work && _work.id === rec.id && (_stroke || _pending > 0 || _work.h !== rec.raster.h);
+    const wl = _work && _work.id === rec.id ? patchLayers(rec).find((l) => l.id === _work.layerId) : null;
+    const live = !!wl && (_stroke || _pending > 0 || _work.h !== (wl.raster && wl.raster.h));
     const url = live ? null : stillImageOf(rec);
     if (url) img.setAttribute('href', url);
     else if (live) liveRedraw();
@@ -419,10 +594,11 @@ function drawCursor() {
   if (readout) {
     const rec = activeHeightLayer();
     const work = rec ? workingCopy(rec) : null;
+    const comp = rec && work ? liveComposite(rec) : null; // the patch's height there (all its layers)
     let text = '';
-    if (rec && work) {
+    if (rec && comp) {
       const q = pixelOf(rec, _hover);
-      if (q.inside) text = `height ${sampleRaster(work.data, work.cols, work.rows, q.c, q.r).toFixed(3)} in`;
+      if (q.inside) text = `height ${sampleRaster(comp, work.cols, work.rows, q.c, q.r).toFixed(3)} in`;
     }
     readout.textContent = text;
     readout.hidden = !text;
@@ -545,10 +721,33 @@ function renderControl(c) {
     c.note ? el('div', { class: 'photo-layer-note', text: c.note }) : null]);
 }
 
-/** Build the panel from HEIGHT_CONTROLS into `body`, and the brush modes into the rail. */
+/** The groups in panel order: the slice-2 tool groups first (the layers on top), the slice-1 groups, then the ones
+ *  declared `after` (the file buttons). */
+const panelGroups = () => [...HEIGHT_TOOL_GROUPS.filter((g) => !g.after), ...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS.filter((g) => g.after)];
+/** What a showWhen reads. */
+const panelCtx = () => { const rec = activeHeightLayer(); return { tool: _tool, brush: _brush, patch: rec ? placed(rec) : null, layer: rec ? layerOf(rec) : null, tools: _tools }; };
+/** A control's source object (its target's state) for the active patch. */
+function controlSource(c, rec) {
+  if (c.target === 'brush') return _brush;
+  if (_tools[c.target]) return _tools[c.target];
+  if (!rec) return null;
+  return c.target === 'layer' ? layerOf(rec) : placed(rec);
+}
+/** A group's own head (above its controls), by group id. */
+const GROUP_HEADS = Object.freeze({
+  layers: () => el('div', {}, [
+    el('div', { id: 'heightLayerList', class: 'stl-list' }),
+    el('div', { class: 'photo-layer-buttons' }, [
+      el('button', { type: 'button', id: 'heightLayerAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Paint layer', title: 'An unpainted layer above the selected one' }),
+    ]),
+  ]),
+});
+
+/** Build the panel from the declared tables into `body`, and the tools + brush modes into the rail. */
 export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   if (rail) {
     rail.innerHTML = '';
+    for (const t of HEIGHT_TOOLS) rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}: ${t.title}`, 'aria-label': t.label, text: t.icon }));
     for (const c of HEIGHT_CONTROLS.filter((x) => x.rail)) {
       for (const [key, text, title] of c.options) {
         rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-choice': `${c.id}:${key}`, title: `${text}: ${title}`, 'aria-label': text, text: MODE_LABELS[key] ? MODE_LABELS[key][0] : text }));
@@ -563,17 +762,44 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   ]));
   body.appendChild(el('div', { id: 'heightStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'heightList', class: 'stl-list' }));
-  for (const g of HEIGHT_GROUPS) {
+  const ctx = panelCtx();
+  for (const g of panelGroups()) {
     const box = el('div', { id: `heightGroup_${g.id}` });
     box.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
-    for (const c of HEIGHT_CONTROLS.filter((x) => x.group === g.id)) {
+    if (GROUP_HEADS[g.id]) box.appendChild(GROUP_HEADS[g.id]());
+    for (const c of allControls().filter((x) => x.group === g.id)) {
       const w = el('div', { 'data-height-control': c.id }, [renderControl(c)]);
-      if (c.showWhen) w.hidden = !c.showWhen(_brush, null);
+      if (c.showWhen) w.hidden = !c.showWhen(_brush, null, ctx);
       box.appendChild(w);
     }
+    if (g.showWhen) box.hidden = !g.showWhen(ctx);
     body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
+}
+
+/** The active patch's layers, TOP first: visible, name (select), up / down, delete. */
+function syncLayerList(rec) {
+  const box = byId('heightLayerList');
+  if (!box) return;
+  box.innerHTML = '';
+  const ls = patchLayers(rec);
+  const act = rec ? layerOf(rec) : null;
+  for (const l of [...ls].reverse()) {
+    const i = ls.indexOf(l);
+    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id }, [
+      el('input', { type: 'checkbox', 'data-patch-layer-visible': l.id, title: 'Show this layer (it counts in the patch)' }),
+      el('button', { type: 'button', class: 'stl-row-name', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
+      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
+      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
+      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
+    ]);
+    row.querySelector('input').checked = l.visible !== false;
+    row.querySelector(`[data-patch-layer-move="${l.id}:1"]`).disabled = i === ls.length - 1;
+    row.querySelector(`[data-patch-layer-move="${l.id}:-1"]`).disabled = i === 0;
+    row.querySelector('[data-patch-layer-remove]').disabled = ls.length < 2; // the patch's own Delete removes the last one
+    box.appendChild(row);
+  }
 }
 
 const KIB = 1024;
@@ -597,8 +823,10 @@ export function syncHeightPanel() {
   }
   const rec = activeHeightLayer();
   const n = rec ? placed(rec) : null;
-  for (const c of HEIGHT_CONTROLS) {
-    const src = c.target === 'brush' ? _brush : n;
+  const ctx = panelCtx();
+  syncLayerList(rec);
+  for (const c of allControls()) {
+    const src = controlSource(c, rec);
     const v = src ? getPath(src, c.path) : undefined;
     if (c.kind === 'slider') {
       const [min, max] = c.range(P);
@@ -612,15 +840,23 @@ export function syncHeightPanel() {
     }
   }
   if (typeof document !== 'undefined') {
-    for (const c of HEIGHT_CONTROLS) if (c.showWhen) { const w = document.querySelector(`[data-height-control="${c.id}"]`); if (w) w.hidden = !c.showWhen(_brush, n); }
+    for (const c of allControls()) if (c.showWhen) { const w = document.querySelector(`[data-height-control="${c.id}"]`); if (w) w.hidden = !c.showWhen(_brush, n, ctx); }
+    for (const b of document.querySelectorAll('[data-height-tool]')) b.classList.toggle('active', b.getAttribute('data-height-tool') === _tool);
   }
-  for (const g of ['patch', 'stamp']) { const box = byId(`heightGroup_${g}`); if (box) box.hidden = !rec; }
+  for (const g of panelGroups()) {
+    const box = byId(`heightGroup_${g.id}`);
+    if (!box) continue;
+    const needsPatch = g.id === 'patch' || g.id === 'stamp' || g.id === 'layers' || !!g.needsPatch;
+    box.hidden = (needsPatch && !rec) || (g.showWhen ? !g.showWhen(ctx) : false);
+  }
   const rm = byId('heightRemove'); if (rm) rm.disabled = !rec;
+  const add = byId('heightLayerAdd'); if (add) add.disabled = !rec;
   const stored = byId('heightStored');
   if (stored) {
-    const bytes = recs.reduce((s, r) => s + ((r && r.raster && r.raster.data && r.raster.data.length) || 0), 0);
+    const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);
+    const g = rec ? patchGrid(rec) : null;
     stored.hidden = !recs.length;
-    stored.textContent = rec ? `${rec.raster.cols} x ${rec.raster.rows} pixels (${HEIGHT_PX_PER_IN} per inch when made). Stored in the project: ${(bytes / KIB).toFixed(0)} KB.` : '';
+    stored.textContent = g ? `${g.cols} x ${g.rows} pixels (${HEIGHT_PX_PER_IN} per inch when made). Stored in the project: ${(bytes / KIB).toFixed(0)} KB.` : '';
   }
 }
 
@@ -655,7 +891,22 @@ export function initHeightPanel(hooks = {}) {
     const box = e.target.closest('[data-height-enable]');
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
   });
-  for (const c of HEIGHT_CONTROLS) {
+  byId('heightLayerAdd')?.addEventListener('click', () => { addPaintLayer().catch((e) => status(`Could not add the layer: ${e && e.message ? e.message : e}`, true)); });
+  byId('heightLayerList')?.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-patch-layer-pick],[data-patch-layer-move],[data-patch-layer-remove]');
+    if (!t || t.disabled) return;
+    if (t.hasAttribute('data-patch-layer-pick')) selectPatchLayer(t.getAttribute('data-patch-layer-pick'));
+    else if (t.hasAttribute('data-patch-layer-remove')) removePatchLayer(t.getAttribute('data-patch-layer-remove'));
+    else { const v = t.getAttribute('data-patch-layer-move'); const k = v.lastIndexOf(':'); movePatchLayer(v.slice(0, k), Number(v.slice(k + 1))); }
+  });
+  byId('heightLayerList')?.addEventListener('change', (e) => {
+    const box = e.target.closest('[data-patch-layer-visible]');
+    if (box) setPatchLayerField(box.getAttribute('data-patch-layer-visible'), 'visible', box.checked);
+  });
+  if (typeof document !== 'undefined') {
+    for (const b of document.querySelectorAll('[data-height-tool]')) b.addEventListener('click', () => setHeightTool(b.getAttribute('data-height-tool')));
+  }
+  for (const c of allControls()) {
     if (c.kind === 'slider') {
       const s = byId(`height_${c.id}Slider`), n = byId(`height_${c.id}`);
       s?.addEventListener('input', (e) => { if (n) n.value = e.target.value; setHeightField(c.id, e.target.value, { commit: false }); });
@@ -669,7 +920,7 @@ export function initHeightPanel(hooks = {}) {
       for (const b of document.querySelectorAll(`[data-height-choice^="${c.id}:"]`)) {
         b.addEventListener('click', () => {
           setHeightField(c.id, b.getAttribute('data-height-choice').slice(c.id.length + 1));
-          if (c.rail) { const ed = editor(); if (ed && typeof ed.setMode === 'function' && getEditorTab() === 'height') ed.setMode('heightBrush'); }
+          if (c.rail) { setHeightTool('brush'); const ed = editor(); if (ed && typeof ed.setMode === 'function' && getEditorTab() === 'height') ed.setMode('heightBrush'); }
           syncHeightPanel();
         });
       }
@@ -698,7 +949,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;
