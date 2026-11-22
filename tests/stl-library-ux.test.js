@@ -254,7 +254,7 @@ describe('O4. the keyboard', () => {
 
 describe('O5. bigger tiles on a desktop sheet, the phone unchanged', () => {
   const rule = (css, sel) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, s]) => s.trim().split(',').map((x) => x.trim()).includes(sel)).map(([, , d]) => d).join(';');
-  it('one declared desktop size, used by the > 600 px grid rule; ~5-6 columns of the 1400 px sheet\'s grid area', () => {
+  it('one declared desktop size, used by the > 600 px grid rule; 5-7 columns of the 1400 px sheet\'s grid area', () => {
     const decl = /--stl-lib-tile-desktop:\s*(\d+)px/.exec(CSS);
     expect(decl).toBeTruthy();
     expect(CSS.match(/--stl-lib-tile-desktop:/g)).toHaveLength(1);

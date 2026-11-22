@@ -209,3 +209,23 @@ byte-identical (the stl-layers-absent golden covers the passes).
   CORS header (Chrome: `MissingAllowOriginHeader`) while curl gets `Access-Control-Allow-Origin: *` with or without an Origin:
   the sheet then shows SMK alone with 'Smithsonian: Could not reach 3d-api.si.edu (Failed to fetch).' SMK answered the same
   browser normally.
+
+## 10. The sheet's UX pass (3D-LIBRARIES worker O, Fred 2026-11-22: "And the 2D image view? How do we see the next results? Can it be better")
+
+- **2D | 3D pill** in the pane (the main view's own `view-mode-toggle` look). 2D = the picture (default); `#stlLibTurn` is the 3D
+  half (its label is now '3D'; the main test that asserted 'Turn in 3D' was changed, advisor-approved). The first 3D press loads
+  as before (same download, same notes, e.g. SMK's '~20 MB'); back to 2D re-attaches the picture and KEEPS the 3D view hidden
+  (not disposed), so 3D again is instant with no second download. Selecting another tile or closing disposes it.
+  The picture is detached (not hidden) while 3D shows, so `#stlLibPane img` is null then, as the older test requires.
+- **Lightbox:** tapping the picture opens a full-screen `cad-modal-overlay stl-lib-lightbox` over the sheet: wheel zoom about the
+  cursor, pinch (two pointers), double-tap (zoom in / out), drag pan, a 36 px close button, Esc (closes the lightbox first, then
+  the sheet). Zoom is 1x..8x (`LIGHTBOX`, one declared object). Closing returns to the sheet, same selection.
+- **Endless scroll:** an IntersectionObserver on `#stlLibSentinel` (after the grid, 300 px margin) loads the next page exactly as
+  'More results' (same per-library paging and dedupe); one load at a time (`pending`); after each page the sentinel is observed
+  again (a short page that leaves it in view loads the next). Where IntersectionObserver is missing, 'More results' remains.
+- **Totals** sit beside the status line in `#stlLibTotals` ('Smithsonian 3,523 · SMK 373', All libraries; a library with no
+  known total shows nothing). They are a separate element so the status line's own text (asserted by main tests) is unchanged.
+- **Keyboard** (no field or select focused): arrows move the selection (left/right = previous/next, up/down = the tile one row
+  above/below, from the tiles' positions), scrolled into view; Enter inserts; Esc as above.
+- **Desktop tiles:** > 600 px wide, `--stl-lib-tile-desktop` (136 px, declared once in layout-app.css) sizes the grid:
+  1400 x 900 shows 7 columns x 3 full rows = 21 tiles beside the pane (measured). The phone keeps `PICKER_TILE.tilePx` (80 px).
