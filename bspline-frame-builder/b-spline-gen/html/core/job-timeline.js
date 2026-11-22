@@ -52,10 +52,11 @@ export const JOB_STEP_KINDS = Object.freeze({
   // icon 🎲: the same dice the Generate New Seed button itself shows
   seed: Object.freeze({ label: 'Seed', icon: '🎲', section: 'filter', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['stock'] }),
   // filter <- seed: the fine noise is seeded (core/terrain.js:121, read at :206)
-  filter: Object.freeze({ label: 'Filter', icon: '≈', section: 'filter', opens: { sidebar: 'panel-filter' }, readOnly: 'section', dependsOn: ['seed', 'stock'] }),
+  // labels follow the renamed panels (Fred 2026-11-22: TERRAIN SHAPE / TERRAIN TEXTURE); the kind ids stay
+  filter: Object.freeze({ label: 'Terrain texture', icon: '≈', section: 'filter', opens: { sidebar: 'panel-filter' }, readOnly: 'section', dependsOn: ['seed', 'stock'] }),
   // skeleton <- seed (terrain.js:123, :264-270, :322) and <- filter: noiseType sets its frequency (terrain.js:246-248);
   // <- stock: the edge margin is a share of the board (rebuild.js:285)
-  skeleton: Object.freeze({ label: 'Skeleton', icon: '🦴', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['seed', 'filter', 'stock'] }),
+  skeleton: Object.freeze({ label: 'Terrain shape', icon: '⛰️', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['seed', 'filter', 'stock'] }),
   // sculptTop <- the terrain (seed + skeleton + filter, combined at terrain.js:299): preDelta is added to it (rebuild.js:291)
   sculptTop: Object.freeze({ label: 'Sculpt top', icon: '▲', section: 'sculpt-top', opens: { sidebar: 'panel-sculpt-top' }, readOnly: 'section', cuts: 'top', dependsOn: ['seed', 'skeleton', 'filter'] }),
   // Back = Thicken + Sculpt bottom: reads the STAMPED heights -- every stamp pass, bricks included (rebuild.js:169 on
