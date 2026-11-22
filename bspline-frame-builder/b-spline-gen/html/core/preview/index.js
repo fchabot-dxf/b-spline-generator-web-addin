@@ -536,9 +536,31 @@ export class TerrainPreview {
     this._needsRender = true;
   }
 
+  /** STL-RELIEF: the STL ghosts (core/stl/ghost.js ghostGeometry: scene-space positions, indices, per-vertex colours). Replaces
+   *  the previous ones; [] removes them. Overlay meshes of their own, never part of the terrain, never saved or exported. */
+  setStlGhosts(list) {
+    const THREE = this._THREE;
+    for (const m of this._stlGhosts || []) { this._scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    this._stlGhosts = [];
+    for (const g of list || []) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(g.colours, 3));
+      geo.setIndex(new THREE.BufferAttribute(g.indices, 1));
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 5;
+      this._scene.add(mesh);
+      this._stlGhosts.push(mesh);
+    }
+    this._needsRender = true;
+  }
+
   /** PNG data URL of the current scene at a custom resolution. */
   getSnapshot(width = 400, height = 300) {
     const renderer = this._renderer;
+    for (const m of this._stlGhosts || []) m.visible = false; // a thumbnail / export view never shows the placement ghost
     const oldW = this._canvas.width;
     const oldH = this._canvas.height;
     const oldAspect = this._camera.aspect;
@@ -553,10 +575,12 @@ export class TerrainPreview {
     renderer.setSize(oldW, oldH, false);
     this._camera.aspect = oldAspect;
     this._camera.updateProjectionMatrix();
+    for (const m of this._stlGhosts || []) m.visible = true;
     return dataUrl;
   }
 
   dispose() {
+    this.setStlGhosts([]);
     cancelAnimationFrame(this._animId);
     this._ro.disconnect();
     this._groundGrid.dispose();

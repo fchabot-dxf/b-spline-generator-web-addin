@@ -125,12 +125,22 @@ describe('renderDepth: the placed STL seen from above', () => {
     expect(at(r.height, 10 + 6, 10)).toBe(0);
   });
   it('position moves it; scale and the height factor scale it', () => {
+    // the scene's frame: +x right, +y UP the screen = a SMALLER grid row (row 0 is the top)
     const moved = renderDepth(PYR(), lay({ position: { x: 3, y: -2, z: 0 } }), GRID);
-    expect(at(moved.height, 13, 8)).toBeCloseTo(4, 4);
+    expect(at(moved.height, 13, 12)).toBeCloseTo(4, 3); // 3 right of centre, 2 DOWN the screen = row y 12
     expect(at(moved.covered, 10, 10)).toBe(1); // the footprint still reaches the old centre
     const bigger = renderDepth(PYR(), lay({ scale: 1.5, zScale: 2 }), GRID);
     expect(bigger.hMax).toBeCloseTo(4 * 1.5 * 2, 4);
     expect(at(bigger.covered, 10 + 7, 10)).toBe(1); // 15 wide now
+  });
+  it('orientation: the STL +Y axis is UP the screen (a smaller grid row), +X is right', () => {
+    // a ramp rising along +Y: low at y=-5, high at y=+5 (an open sheet tilted 45 degrees)
+    const ramp = indexMesh(Float32Array.from([...tri([-5, -5, 0], [5, -5, 0], [5, 5, 10]), ...tri([-5, -5, 0], [5, 5, 10], [-5, 5, 10])]));
+    const r = renderDepth(ramp, lay(), GRID);
+    expect(at(r.height, 10, 10 - 4)).toBeGreaterThan(at(r.height, 10, 10 + 4)); // up the screen = row y 6 is HIGHER than row y 14
+    const east = indexMesh(Float32Array.from([...tri([-5, -5, 0], [5, 5, 10], [5, -5, 10]), ...tri([-5, -5, 0], [-5, 5, 0], [5, 5, 10])]));
+    const e = renderDepth(east, lay(), GRID);
+    expect(at(e.height, 10 + 4, 10)).toBeGreaterThan(at(e.height, 10 - 4, 10)); // +X is to the right: column x 14 is higher than x 6
   });
   it('rotation: 180 degrees about X turns it upside down; the lowest point is still height 0', () => {
     // the OPEN pyramid: a closed one would show its flat base from above (the top-most surface wins)

@@ -27,6 +27,7 @@ import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { stlPasses } from '../stl/layer.js';
+import { updateStlGhosts } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
@@ -195,6 +196,8 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                     P.thickenWireframe, thicken.data?.botColours, P.flatShading, P.adaptiveDisplay,
                 );
                 updatePreviewSculptMode(preview, scheduleRebuild);
+                // STL-RELIEF: the placement ghosts follow the surface just built (none = removes them)
+                updateStlGhosts(preview, P.stlLayers, heights, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn });
             }
 
             await yieldToMain();

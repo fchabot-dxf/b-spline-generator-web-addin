@@ -3,11 +3,12 @@
  * A CPU z-buffer: pure array math (no canvas, no GPU), so it is deterministic on every device and unit-tested on real meshes.
  * Both sides of every triangle count (an inside-out or open mesh renders the same); undercuts are lost -- the top-most surface wins.
  *
- * Frame: the mesh is centred on its own bounding box, scaled (uniform unitIn * scale, height * zScale), rotated (X, then Y, then Z,
- * degrees), then placed at the board centre + position.x / position.y. Its LOWEST point is height 0 (the base rests on the surface);
- * position.z (the Z offset) is applied by the stamp pass, not here.
+ * Frame (the SCENE's own, core/preview/terrain-mesh.js: x right, y UP the screen in the top view, origin at the board centre): the
+ * mesh is centred on its own bounding box, scaled (uniform unitIn * scale, height * zScale), rotated (X, then Y, then Z, degrees),
+ * then moved by position.x / position.y. Its LOWEST point is height 0 (the base rests on the surface); position.z (the Z offset)
+ * is applied by the stamp pass, not here. So an STL seen from above lands on the board the way it looks in the 3D view.
  *
- * Grid: heights[j*nx+i], x = i * widthIn/(nx-1), y = j * heightIn/(nz-1) (core/thicken.js's convention).
+ * Grid: heights[j*nx+i], column i at x = -W/2 + i*dx, row j at y = +H/2 - j*dy (row 0 is the TOP of the screen).
  */
 import { meshBounds } from './mesh.js';
 
@@ -26,16 +27,16 @@ export function rotationMatrix(rx = 0, ry = 0, rz = 0) {
   ];
 }
 
-/** The mesh's vertices placed in board inches (Float64Array xyz), the board-relative frame described above, base at minZ. */
-export function placeMesh(mesh, layer, board) {
+/** The mesh's vertices placed in scene inches (Float64Array xyz, origin at the board centre), base at z = 0. */
+export function placeMesh(mesh, layer) {
   const { positions } = mesh;
   const { min, max } = meshBounds(positions);
   const c = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
   const s = (layer.unitIn ?? 1) * (layer.scale ?? 1);
   const sz = s * (layer.zScale ?? 1);
   const R = rotationMatrix(layer.rotation?.x, layer.rotation?.y, layer.rotation?.z);
-  const ox = board.widthIn / 2 + (layer.position?.x || 0);
-  const oy = board.heightIn / 2 + (layer.position?.y || 0);
+  const ox = layer.position?.x || 0;
+  const oy = layer.position?.y || 0;
   const out = new Float64Array(positions.length);
   let minZ = Infinity, maxZ = -Infinity;
   for (let i = 0; i < positions.length; i += 3) {
@@ -57,16 +58,16 @@ export function placeMesh(mesh, layer, board) {
  */
 export function renderDepth(mesh, layer, grid) {
   const { nx, nz, widthIn, heightIn } = grid;
-  const { xyz, hMax } = placeMesh(mesh, layer, { widthIn, heightIn });
+  const { xyz, hMax } = placeMesh(mesh, layer);
   const height = new Float32Array(nx * nz);
   const covered = new Uint8Array(nx * nz);
   const dx = widthIn / (nx - 1), dy = heightIn / (nz - 1);
   const idx = mesh.indices;
   for (let t = 0; t < idx.length; t += 3) {
     const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    const ax = xyz[a] / dx, ay = xyz[a + 1] / dy, az = xyz[a + 2];
-    const bx = xyz[b] / dx, by = xyz[b + 1] / dy, bz = xyz[b + 2];
-    const cx = xyz[c] / dx, cy = xyz[c + 1] / dy, cz = xyz[c + 2];
+    const ax = (xyz[a] + widthIn / 2) / dx, ay = (heightIn / 2 - xyz[a + 1]) / dy, az = xyz[a + 2];
+    const bx = (xyz[b] + widthIn / 2) / dx, by = (heightIn / 2 - xyz[b + 1]) / dy, bz = xyz[b + 2];
+    const cx = (xyz[c] + widthIn / 2) / dx, cy = (heightIn / 2 - xyz[c + 1]) / dy, cz = xyz[c + 2];
     const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
     if (Math.abs(area) < 1e-12) continue; // edge-on from above: it covers no area
     const i0 = Math.max(0, Math.ceil(Math.min(ax, bx, cx) - 1e-9)), i1 = Math.min(nx - 1, Math.floor(Math.max(ax, bx, cx) + 1e-9));
