@@ -124,7 +124,7 @@ export function currentJobSteps() {
     const m = typeof P.editorSvg === 'string' ? P.editorSvg.match(/data-editor-layers="([^"]*)"/) : null;
     try { roster = m ? decodeLayersAttr(m[1]) : []; } catch (_) { roster = []; }
   }
-  return deriveJobSteps(jobProjectOf(roster, P.frame));
+  return deriveJobSteps(jobProjectOf(roster, P.frame, P.stlLayers));
 }
 
 /** The timeline made safe for the project as it is now (a deleted / new layer, a new frame); written back when it

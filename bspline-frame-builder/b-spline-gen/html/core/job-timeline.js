@@ -62,7 +62,8 @@ export const JOB_STEP_KINDS = Object.freeze({
   // snapshotOnLock (Fred 2026-10-14): the Back is cut FIRST in his real flow and its lock will be a carve-time snapshot of
   // the underside -- later stamps no longer feed it, so its reads are never marked (detection skips a snapshot kind)
   back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
-    dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks'] }),
+    // 'stl': thicken reads the stamped heights, the STL passes included (they are stamped last, rebuild.js _collectStampPasses)
+    dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks', 'stl'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES
   // editorLayersPanel) -- no new colour entry needed; two Lattice groups tell apart by their own sub-item mark, not colour.
@@ -85,6 +86,11 @@ export const JOB_STEP_KINDS = Object.freeze({
   // sets the bricks' edge height (stamp-mask-manager.js:117, :214)
   bricks: Object.freeze({ label: 'Bricks', icon: '▤', section: 'brick', opens: { editorTab: 'brick' }, readOnly: 'layer', cuts: 'top',
     dependsOn: ['stock', 'sculptTop', dep('vector', { belowInStack: true }), dep('latticeRails', { belowInStack: true }), dep('latticeNodes', { belowInStack: true }), 'frame'] }),
+  // STL stamps (Surface > STL stamp, main/stl-panel.js; P.stlLayers): ONE step for all of them, like bricks. rebuild.js
+  // _collectStampPasses appends the STL passes AFTER every editor layer's art and the bricks; core/engine/apply-stamp-layers.js
+  // Max blend reads the heights stamped so far
+  stl: Object.freeze({ label: 'STL stamps', icon: '◭', section: 'stl', opens: { sidebar: 'panel-stl' }, readOnly: 'section', cuts: 'top',
+    dependsOn: ['stock', 'sculptTop', 'vector', 'bricks', 'latticeRails', 'latticeNodes'] }),
   // the frame is laid on the board (editor/editor-frame-profile.js:476)
   frame: Object.freeze({ label: 'Wood frame', icon: '▢', section: 'frame', opens: { sidebar: 'panel-frame' }, readOnly: 'section', cuts: 'frame', dependsOn: ['stock'] }),
 });
@@ -97,7 +103,7 @@ export const JOB_DELTA_WEIGHTS = Object.freeze({ back: 1, frame: 1, top: 0.25 })
 
 /** Fred's default order (2026-10-14): the kinds in this order; a project without a saved order starts on it, head at 0. */
 export const JOB_DEFAULT_KIND_ORDER = Object.freeze(['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back', 'latticeRails', 'latticeNodes',
-  'vector', 'bricks', 'frame']);
+  'vector', 'bricks', 'stl', 'frame']);
 /** The section steps every project has (a kind with no layer of its own). */
 const SECTION_KINDS = Object.freeze(['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back']);
 
@@ -111,7 +117,7 @@ export const JOB_LAYER_KINDS = Object.freeze([
 
 /** The project view the steps derive from: `roster` = the editor's layer list (editor._layers live, or the saved
  *  `data-editor-layers` decoded), `frame` = P.frame. */
-export function jobProjectOf(roster = [], frame = null) {
+export function jobProjectOf(roster = [], frame = null, stlLayers = null) {
   const list = Array.isArray(roster) ? roster.filter(Boolean) : [];
   // _ensureKindLayers (editor-lattice-pattern.js) also records the RAILS layer's own id under pattern.layers.rails
   // (its own bookkeeping, unrelated to ownership) -- excluded here so the owner layer never excludes itself from
@@ -129,7 +135,9 @@ export function jobProjectOf(roster = [], frame = null) {
     jobId: l.pattern && l.pattern.jobKey ? String(l.pattern.jobKey) : String(l.id),
   }));
   const hasFrame = !!(frame && frame.templateId);
-  return { layers, hasFrame, insetWindow: hasFrame && !!(frame.insetWindow && frame.insetWindow.enabled) };
+  // any STL record (enabled or not) gives the one 'stl' step; none = no step, the steps a board had before STL existed
+  const hasStl = Array.isArray(stlLayers) && stlLayers.some(Boolean);
+  return { layers, hasFrame, insetWindow: hasFrame && !!(frame.insetWindow && frame.insetWindow.enabled), hasStl };
 }
 
 /** The steps of a project, from what it holds: `layers` = the editor layers [{ id, name, kind: 'vector' | 'lattice' |
@@ -137,7 +145,7 @@ export function jobProjectOf(roster = [], frame = null) {
  *  layerId?, group? } (group = { id, label } for a sub-item). Ids are stable: 'seed', 'vector:<layer>',
  *  'lattice:<layer>:rails' -- keyed off `jobId` (jobProjectOf's own stable key; falls back to `id` for a caller that
  *  never set it, e.g. a test's hand-built layer). */
-export function deriveJobSteps({ layers = [], hasFrame = false, insetWindow = false } = {}) {
+export function deriveJobSteps({ layers = [], hasFrame = false, insetWindow = false, hasStl = false } = {}) {
   const steps = SECTION_KINDS.map((kind) => ({ id: kind, kind, label: JOB_STEP_KINDS[kind].label, flags: [] }));
   for (const l of layers) {
     const at = { layerId: l.id, stackIndex: l.stackIndex ?? 0 };
@@ -155,6 +163,7 @@ export function deriveJobSteps({ layers = [], hasFrame = false, insetWindow = fa
   // the bricks step stands for every brick layer: the highest one bounds what is "under" it
   const brickLayers = layers.filter((l) => l.kind === 'bricks');
   if (brickLayers.length) steps.push({ id: 'bricks', kind: 'bricks', label: JOB_STEP_KINDS.bricks.label, stackIndex: Math.max(...brickLayers.map((l) => l.stackIndex ?? 0)), flags: [] });
+  if (hasStl) steps.push({ id: 'stl', kind: 'stl', label: JOB_STEP_KINDS.stl.label, flags: [] });
   if (hasFrame) steps.push({ id: 'frame', kind: 'frame', label: JOB_STEP_KINDS.frame.label, flags: [] });
   return steps;
 }

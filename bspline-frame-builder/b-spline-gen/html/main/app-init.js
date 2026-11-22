@@ -694,7 +694,7 @@ export const MIGRATIONS = [
       const m = typeof p.editorSvg === 'string' ? p.editorSvg.match(/data-editor-layers="([^"]*)"/) : null;
       let roster = [];
       try { roster = m ? decodeLayersAttr(m[1]) : []; } catch (_) { roster = []; }
-      p.jobTimeline = normalizeJobTimeline(null, deriveJobSteps(jobProjectOf(roster, p.frame)));
+      p.jobTimeline = normalizeJobTimeline(null, deriveJobSteps(jobProjectOf(roster, p.frame, p.stlLayers)));
     },
   },
   // 'frame-corner-presets' (item 33: a board on butt_frame / quoin_corners became Soldier + a Corners-row pick) is
