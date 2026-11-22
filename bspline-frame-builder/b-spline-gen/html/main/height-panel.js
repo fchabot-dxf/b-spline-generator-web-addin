@@ -1102,7 +1102,9 @@ function renderControl(c) {
       c.options.map(([key, text, title]) => el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text })))]);
   }
   if (c.kind === 'check') {
-    return el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: `height_${c.id}` }), el('span', { text: c.label })]);
+    // the box itself reaches the touch floor on a coarse pointer (--touch-target-min is declared only there, styles/editor.css;
+    // a mouse keeps the platform box)
+    return el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: `height_${c.id}`, style: 'min-width:var(--touch-target-min, 0px); min-height:var(--touch-target-min, 0px);' }), el('span', { text: c.label })]);
   }
   const [min, max] = c.range(P);
   const s = el('input', { type: 'range', id: `height_${c.id}Slider`, class: 'cad-slider', min: String(min), max: String(max), step: String(c.step) });
@@ -1198,13 +1200,16 @@ function syncLayerList(rec) {
   const act = rec ? layerOf(rec) : null;
   for (const l of [...ls].reverse()) {
     const i = ls.indexOf(l);
-    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id, style: 'gap:2px;' }, [
+    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id, style: 'gap:2px; flex-wrap:wrap;' }, [
       el('input', { type: 'checkbox', 'data-patch-layer-visible': l.id, title: 'Show this layer (it counts in the patch)' }),
       // not .stl-row-name: its open / closed arrow belongs to a card, and a layer row needs the room for its name
-      el('button', { type: 'button', class: 'height-layer-name', style: 'flex:1 1 auto; min-width:0; min-height:32px; text-align:left; background:none; border:0; font:inherit; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
-      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
-      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
-      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
+      el('button', { type: 'button', class: 'height-layer-name', style: 'flex:1 0 auto; min-width:0; max-width:calc(100% - 24px); min-height:32px; text-align:left; background:none; border:0; font:inherit; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
+      // a name longer than the row's free width takes the whole row and its buttons move under it together, right-aligned
+      el('span', { style: 'display:flex; gap:2px; margin-left:auto;' }, [
+        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
+        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
+        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
+      ]),
     ]);
     row.querySelector('input').checked = l.visible !== false;
     row.querySelector(`[data-patch-layer-move="${l.id}:1"]`).disabled = i === ls.length - 1;
