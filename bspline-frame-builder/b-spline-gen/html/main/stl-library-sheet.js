@@ -268,7 +268,11 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   function showPicture(t) {
     media.textContent = '';
     if (!t.previewUrl && !t.thumbUrl) return; // no picture at all: the title alone
+    // Fred 2026-11-22 (the SMK pane looked empty: its large picture takes 1-2 s to arrive): the THUMBNAIL (already loaded by
+    // the grid) sits BEHIND the picture as a placeholder, so the pane shows the model at once; the large picture covers it
+    // when it has loaded. The picture itself is unchanged (src, fallbacks).
     const img = el('img', { class: 'stl-lib-preview', src: t.previewUrl || t.thumbUrl, alt: '' });
+    if (t.thumbUrl && t.previewUrl) img.style.backgroundImage = `url("${t.thumbUrl}")`; // the placeholder (CSS: .stl-lib-preview)
     let fellBack = !t.previewUrl;
     img.addEventListener('error', () => {
       if (!fellBack) { fellBack = true; img.setAttribute('src', t.thumbUrl); } else img.remove(); // the thumbnail, then the title alone

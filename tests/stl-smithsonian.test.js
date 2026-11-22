@@ -447,6 +447,8 @@ describe('f. the full-screen sheet', () => {
     expect(pane.hidden).toBe(false);
     expect(pane.querySelector('img').getAttribute('src')).toBe(t3.previewUrl);
     expect(pane.querySelector('img').getAttribute('src')).toMatch(/\/scene-image-medium\.jpg$/);
+    // Fred 2026-11-22 (the pane looked empty while the large picture loads): the grid's thumbnail is the placeholder behind it
+    expect(pane.querySelector('img').style.backgroundImage).toContain(t3.thumbUrl);
     expect(pane.querySelector('.stl-lib-pane-title').textContent).toBe(t3.title);
     expect(document.querySelector('#stlLibTurn').textContent).toBe('Turn in 3D');
     expect(document.querySelector('#stlLibInsert').textContent).toBe('Insert');
