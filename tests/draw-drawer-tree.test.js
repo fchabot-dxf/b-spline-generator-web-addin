@@ -29,7 +29,8 @@ beforeEach(() => {
 
 describe('the Draw tree', () => {
   it('General, Text, Expand, Layers -- no Pen, no Edit; the Art-tab strip hides on this tab (its buttons kept)', () => {
-    expect(DRAW_DRAWER_TREE.map((b) => b.id)).toEqual(['general', 'text', 'expand', 'layers']);
+    // DRAW-STAMP U (location only): + the Stamp branch, the selected layer's stamp settings moved in from the sidebar
+    expect(DRAW_DRAWER_TREE.map((b) => b.id)).toEqual(['general', 'text', 'expand', 'layers', 'stamp']);
     for (const t of ART_TABS) { expect($(`artTab_${t.id}`), t.id).not.toBeNull(); expect($(`artTab_${t.id}`).style.display, t.id).toBe('none'); }
   });
   it('each branch holds its content: stroke / colour / fill in General, the font group in Text, Expand\'s group, the Layers', () => {

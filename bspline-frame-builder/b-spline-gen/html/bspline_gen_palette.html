@@ -1066,221 +1066,20 @@
           <div id="stampLayersList" style="margin-bottom:8px;"></div>
 
           <div class="cad-status-divider" style="margin:4px 0 6px 0;"></div>
-          <div class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Settings below apply to the selected layer.</div>
+          <!-- DRAW-STAMP U (Fred 2026-11-22: edited in the editor, summarised here): each layer row above carries a
+               one-line read-only summary of its stamp (main/stamp/summary.js); the stamp settings themselves live in
+               the editor's Draw tab, its Stamp branch (main/draw-tree.js). SVG Blueprint stays here: it fills the
+               WHOLE layer (a layer-level action under the coming per-stroke settings). -->
+          <div id="stampSettingsWhere" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Stamp settings: Open Editor &rsaquo; Draw &rsaquo; Stamp.</div>
 
-          <!-- LABELS T: the layer's ONE signed `depth` (+ raised, - carved; P.stampDepth mirrors it) shown as a Relief
-               Raised | Carved toggle + a magnitude ("Height (in)"). main/stamp/depth.js writes the signed value into the
-               hidden #stampDepth pair below, which the generic binder (ui-bindings.js) already sends through applyParam,
-               so the stored key, value, range and rebuild path are exactly what "Plunge Depth" wrote. -->
-          <label class="cad-label">Relief</label>
-          <div class="relief-toggle" id="stampReliefToggle" style="margin-bottom:8px;">
-            <button type="button" class="relief-toggle-btn active" id="stampBtnReliefRaised" title="The artwork stands proud of the terrain"><span>Raised</span></button>
-            <button type="button" class="relief-toggle-btn" id="stampBtnReliefCarved" title="The artwork is carved into the terrain"><span>Carved</span></button>
-          </div>
-          <div>
-            <label class="cad-label">Height (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:12px;">
-              <input type="range" id="stampHeightSlider" class="cad-slider" min="0" max="2" step="0.005" value="0.25">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="stampHeight" value="0.25" step="0.05">
-              </div>
-            </div>
-            <div hidden>
-              <input type="range" id="stampDepthSlider" min="-2" max="2" step="0.005" value="0.25">
-              <input type="number" id="stampDepth" value="0.25" step="0.05">
-            </div>
-          </div>
-
-          <!-- F25 (Fred: "tool profile and vbit angle can be on the same
-               line"; amendment: pair with whichever size field a profile
-               shows): same paired-row SHAPE as Stock Dimensions' Width/
-               Height (H10/H11-item-0), not a new pattern -- a
-               .cad-paired-steppers flex row, each field in its own flex:1
-               column. NOT `.cad-label-inline` on these two labels (the H12
-               pattern) -- that class is specifically for a label + a
-               trailing muted SPAN sub-label staying on one line (base.css's
-               own doc comment); "Tool Profile"/"V-Bit Angle" are plain
-               single-text labels with no span, nothing to stack in the
-               first place, and h10_multiwidth_shots.mjs's own label sweep
-               assumes every `.cad-label-inline` has one (`span.getBounding
-               ClientRect()`) -- applying it here would crash that check,
-               not just be redundant. #vBitAngleContainer keeps its own
-               JS-driven show/hide (main/stamp/profile-control.js,
-               data-driven off the active profile's declared `uiParams`)
-               unchanged -- only `display` is toggled, so when it's 'none'
-               the Tool Profile column alone fills the row (a flex:1 sibling
-               naturally expands into a hidden item's space), matching "When
-               the profile has no angle field, the select takes the full
-               row." Today only V-Bit declares an angle uiParam --
-               adaptive/ballnose/flat declare `uiParams: []` (core/stamp/
-               profiles/{adaptive,ballnose,flat}.js), no Tool Diameter field
-               exists in the data model at all, so this row is solo for
-               them and the amendment's "ballnose/flat -> Tool Diameter" /
-               "if a profile shows BOTH" cases don't apply YET. A real
-               diameter field would need its OWN container + its own row
-               (this one only has two named children, #vBitAngleContainer
-               isn't a generic "any second uiParam" slot) -- a genuine
-               feature addition, not the "small, additive HTML/CSS" this
-               dispatch scoped; flagged in WORK-LOG, not built. -->
-          <!-- MEASURED (834px, iPad, the narrowest width this row is ever
-               forced to share -- 768/834/1024/1366 all share the SAME
-               fixed desktop-sidebar row width, ~207px; only 390's full-
-               width-stacked mobile sidebar gives more room): an even
-               50/50 flex:1 split clipped "V-Bit (Linear)" mid-word --
-               binary-searched the select's own true minimum live (a
-               `<select>`'s scrollWidth doesn't report text-overflow the
-               way an input does, so this had to be read visually,
-               screenshot by screenshot, not inferred): 110px renders it
-               whole, 100px was already the clipped case seen live. 120px
-               (a safety margin above the measured 110px floor) + the
-               angle's own `.cad-stepper` floor (this file's own CSS:
-               min-width:75px) + the 8px gap = 203px, fits inside the
-               ~207px row. Column widths below match those real minimums
-               -- Adaptive/Ballnose/Flat's longer names only ever appear
-               full-row, unpaired, since only V-Bit declares an angle
-               uiParam, so the select never needs to fit them while
-               paired. `flex-wrap:wrap` is the same safety net H10 used
-               for Width/Height, in case a narrower context ever appears
-               here too (390 already has room to spare; wrap never
-               triggers there). -->
-          <div class="cad-paired-steppers" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-            <div style="flex:1; min-width:120px;">
-              <label class="cad-label">Tool Profile</label>
-              <div class="cad-nested-input" style="width:100%;">
-                <select id="stampProfile" style="width:100%; border:none; background:transparent; font-size:11px;">
-                  <option value="vbit" selected>V-Bit (Linear)</option>
-                  <option value="adaptive">Adaptive (Fine Detail)</option>
-                  <option value="ballnose">Ballnose (Round)</option>
-                  <option value="flat">Flat Endmill (Hard)</option>
-                </select>
-              </div>
-            </div>
-            <div id="vBitAngleContainer" style="flex:1; min-width:75px; display:none;">
-              <label class="cad-label">V-Bit Angle (°)</label>
-              <div class="cad-nested-input" style="width:100%;">
-                <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
-              </div>
-            </div>
-          </div>
-
-          <!-- SE12 T36: fusionGeometry — an EXPLICIT per-layer pick (Fred:
-               "Don't choose automatically"), same segmented-control shape/
-               class (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH
-               group and SE7h's rail/tie orientation toggle — no new CSS.
-               IDs follow editor/layers.js's FUSION_GEOMETRY table
-               (stampFusionGeometry-<value>) so main/stamp/fusion-
-               geometry.js can build its button map from that table
-               instead of hand-listing the 3 values here too. Nothing
-               downstream reads this yet (Slice 3/4) — see that module's
-               own doc comment. -->
-          <label class="cad-label">Fusion Geometry</label>
-          <div role="group" class="segmented-group" style="margin-bottom:4px;">
-            <button type="button" id="stampFusionGeometry-centerline" class="editor-fillmode-btn active" style="flex:1;">Centerline</button>
-            <button type="button" id="stampFusionGeometry-outline" class="editor-fillmode-btn" style="flex:1;">Outline</button>
-            <button type="button" id="stampFusionGeometry-both" class="editor-fillmode-btn" style="flex:1;">Both</button>
-          </div>
-          <div id="stampFusionGeometryHint" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;"></div>
-
-          <label class="cad-label">SVG Blueprint</label>
+          <div data-stamp-scope="layer">
+          <label class="cad-label">SVG Blueprint (whole layer)</label>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
             <button id="btnStampChoose" class="cad-btn cad-btn-secondary" style="flex:1; font-size:11px;">Browse...</button>
             <button id="btnStampClear" class="cad-btn cad-btn-secondary" style="width:32px; padding:0;">🗑</button>
             <input type="file" id="stampUpload" accept=".svg" style="display:none;">
           </div>
           <div id="stampFileName" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">No file chosen</div>
-
-          <!-- Per-layer transform: position, rotation, scale, mirror -->
-          <details style="margin-bottom:12px;">
-            <summary class="cad-label" style="cursor:pointer;">Transform</summary>
-            <div style="margin-top:6px;">
-              <!-- H14: a declared "feel" pair -- see the Seed panel's
-                   Offset X/Y for the full rationale. -->
-              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:6px;">
-                <div style="flex:1;">
-                  <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
-                  <div class="cad-slider-row">
-                    <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                    <input type="number" id="stampTx" class="no-stepper cad-slider-readout" value="0" step="0.05">
-                  </div>
-                </div>
-                <div style="flex:1;">
-                  <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
-                  <div class="cad-slider-row">
-                    <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
-                    <input type="number" id="stampTy" class="no-stepper cad-slider-readout" value="0" step="0.05">
-                  </div>
-                </div>
-              </div>
-              <label class="cad-label" style="font-size:10px;">Rotation (°)</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampRotation" value="0" step="1" min="-180" max="180">
-                </div>
-              </div>
-              <label class="cad-label" style="font-size:10px;">Scale</label>
-              <div class="cad-slider-row" style="margin-bottom:6px;">
-                <input type="range" id="stampScaleSlider" class="cad-slider" min="0.1" max="3" step="0.05" value="1">
-                <div class="cad-stepper" style="width:75px;">
-                  <input type="number" id="stampScale" value="1" step="0.05" min="0.1">
-                </div>
-              </div>
-              <div style="display:flex; gap:12px; font-size:11px; user-select:none;">
-                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Mirror horizontally">
-                  <input type="checkbox" id="stampMirrorX" style="margin:0;"> Mirror X
-                </label>
-                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Mirror vertically">
-                  <input type="checkbox" id="stampMirrorY" style="margin:0;"> Mirror Y
-                </label>
-              </div>
-            </div>
-          </details>
-
-          <label class="cad-label">Blur (grid cells)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="10" step="1" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampBlur" value="0" min="0" max="10" step="1">
-            </div>
-          </div>
-
-          <label class="cad-label">Smoothing radius (grid cells)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="30" step="1" value="15">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampSmoothingRadius" value="15" min="0" max="30" step="1">
-            </div>
-          </div>
-
-          <label class="cad-label">Smooth the terrain under it (0–1)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampTextureSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.15">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampTextureSuppression" value="0.15">
-            </div>
-          </div>
-
-          <label class="cad-label">Edge Fillet (in)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampEdgeFilletRadius" value="0" min="0" max="1" step="0.01">
-            </div>
-          </div>
-
-          <label class="cad-label">Fillet Sharpness</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampFilletPowerSlider" class="cad-slider" min="1.2" max="4" step="0.1" value="2.2">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampFilletPower" value="2.2" min="1.2" max="4" step="0.1">
-            </div>
-          </div>
-
-          <!-- Live metrics readout: shows what the rasterizer actually
-               computed for the active layer (inscribed radius, fillet
-               cap status, etc.). Updates after every remask. -->
-          <div id="stampMetrics" class="cad-status-text" style="font-size:10px; opacity:0.65; margin-top:4px; line-height:1.4;">
-            <!-- filled by main/stamp/metrics.js -->
           </div>
         </div>
       </div>
@@ -3546,6 +3345,224 @@
             <div id="artGeneralBody"></div>
             <!-- phase 4: the Draw tree's other branch bodies (main/draw-tree.js); EDITOR_TABS artwork panelHosts fill them -->
             <div id="artTextBody"></div><div id="artExpandBody"></div><div id="drawLayersBody"></div>
+            <!-- DRAW-STAMP U (Fred 2026-11-22): the Draw tree's Stamp branch (main/draw-tree.js) -- the SELECTED layer's
+                 stamp settings, MOVED here from the sidebar VECTOR STAMPING panel (ids, bindings, P keys / layer fields,
+                 ranges unchanged; main/stamp/* binds them, every read / write through core/stamp/target.js stampTarget).
+                 data-job-lock="stamp-panel": a job-timeline-locked layer keeps them read-only (main/job-timeline-lock.js
+                 syncStampTabLock). The Transform is the whole layer's (data-stamp-scope="layer"). -->
+            <div id="drawStampBody">
+            <div id="stampLayerSettings" data-job-lock="stamp-panel">
+          <div class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">For the selected layer.</div>
+
+          <!-- LABELS T: the layer's ONE signed `depth` (+ raised, - carved; P.stampDepth mirrors it) shown as a Relief
+               Raised | Carved toggle + a magnitude ("Height (in)"). main/stamp/depth.js writes the signed value into the
+               hidden #stampDepth pair below, which the generic binder (ui-bindings.js) already sends through applyParam,
+               so the stored key, value, range and rebuild path are exactly what "Plunge Depth" wrote. -->
+          <label class="cad-label">Relief</label>
+          <div class="relief-toggle" id="stampReliefToggle" style="margin-bottom:8px;">
+            <button type="button" class="relief-toggle-btn active" id="stampBtnReliefRaised" title="The artwork stands proud of the terrain"><span>Raised</span></button>
+            <button type="button" class="relief-toggle-btn" id="stampBtnReliefCarved" title="The artwork is carved into the terrain"><span>Carved</span></button>
+          </div>
+          <div>
+            <label class="cad-label">Height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="stampHeightSlider" class="cad-slider" min="0" max="2" step="0.005" value="0.25">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="stampHeight" value="0.25" step="0.05">
+              </div>
+            </div>
+            <div hidden>
+              <input type="range" id="stampDepthSlider" min="-2" max="2" step="0.005" value="0.25">
+              <input type="number" id="stampDepth" value="0.25" step="0.05">
+            </div>
+          </div>
+
+          <!-- F25 (Fred: "tool profile and vbit angle can be on the same
+               line"; amendment: pair with whichever size field a profile
+               shows): same paired-row SHAPE as Stock Dimensions' Width/
+               Height (H10/H11-item-0), not a new pattern -- a
+               .cad-paired-steppers flex row, each field in its own flex:1
+               column. NOT `.cad-label-inline` on these two labels (the H12
+               pattern) -- that class is specifically for a label + a
+               trailing muted SPAN sub-label staying on one line (base.css's
+               own doc comment); "Tool Profile"/"V-Bit Angle" are plain
+               single-text labels with no span, nothing to stack in the
+               first place, and h10_multiwidth_shots.mjs's own label sweep
+               assumes every `.cad-label-inline` has one (`span.getBounding
+               ClientRect()`) -- applying it here would crash that check,
+               not just be redundant. #vBitAngleContainer keeps its own
+               JS-driven show/hide (main/stamp/profile-control.js,
+               data-driven off the active profile's declared `uiParams`)
+               unchanged -- only `display` is toggled, so when it's 'none'
+               the Tool Profile column alone fills the row (a flex:1 sibling
+               naturally expands into a hidden item's space), matching "When
+               the profile has no angle field, the select takes the full
+               row." Today only V-Bit declares an angle uiParam --
+               adaptive/ballnose/flat declare `uiParams: []` (core/stamp/
+               profiles/{adaptive,ballnose,flat}.js), no Tool Diameter field
+               exists in the data model at all, so this row is solo for
+               them and the amendment's "ballnose/flat -> Tool Diameter" /
+               "if a profile shows BOTH" cases don't apply YET. A real
+               diameter field would need its OWN container + its own row
+               (this one only has two named children, #vBitAngleContainer
+               isn't a generic "any second uiParam" slot) -- a genuine
+               feature addition, not the "small, additive HTML/CSS" this
+               dispatch scoped; flagged in WORK-LOG, not built. -->
+          <!-- MEASURED (834px, iPad, the narrowest width this row is ever
+               forced to share -- 768/834/1024/1366 all share the SAME
+               fixed desktop-sidebar row width, ~207px; only 390's full-
+               width-stacked mobile sidebar gives more room): an even
+               50/50 flex:1 split clipped "V-Bit (Linear)" mid-word --
+               binary-searched the select's own true minimum live (a
+               `<select>`'s scrollWidth doesn't report text-overflow the
+               way an input does, so this had to be read visually,
+               screenshot by screenshot, not inferred): 110px renders it
+               whole, 100px was already the clipped case seen live. 120px
+               (a safety margin above the measured 110px floor) + the
+               angle's own `.cad-stepper` floor (this file's own CSS:
+               min-width:75px) + the 8px gap = 203px, fits inside the
+               ~207px row. Column widths below match those real minimums
+               -- Adaptive/Ballnose/Flat's longer names only ever appear
+               full-row, unpaired, since only V-Bit declares an angle
+               uiParam, so the select never needs to fit them while
+               paired. `flex-wrap:wrap` is the same safety net H10 used
+               for Width/Height, in case a narrower context ever appears
+               here too (390 already has room to spare; wrap never
+               triggers there). -->
+          <div class="cad-paired-steppers" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <div style="flex:1; min-width:120px;">
+              <label class="cad-label">Tool Profile</label>
+              <div class="cad-nested-input" style="width:100%;">
+                <select id="stampProfile" style="width:100%; border:none; background:transparent; font-size:11px;">
+                  <option value="vbit" selected>V-Bit (Linear)</option>
+                  <option value="adaptive">Adaptive (Fine Detail)</option>
+                  <option value="ballnose">Ballnose (Round)</option>
+                  <option value="flat">Flat Endmill (Hard)</option>
+                </select>
+              </div>
+            </div>
+            <div id="vBitAngleContainer" style="flex:1; min-width:75px; display:none;">
+              <label class="cad-label">V-Bit Angle (°)</label>
+              <div class="cad-nested-input" style="width:100%;">
+                <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
+              </div>
+            </div>
+          </div>
+
+          <!-- SE12 T36: fusionGeometry — an EXPLICIT per-layer pick (Fred:
+               "Don't choose automatically"), same segmented-control shape/
+               class (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH
+               group and SE7h's rail/tie orientation toggle — no new CSS.
+               IDs follow editor/layers.js's FUSION_GEOMETRY table
+               (stampFusionGeometry-<value>) so main/stamp/fusion-
+               geometry.js can build its button map from that table
+               instead of hand-listing the 3 values here too. Nothing
+               downstream reads this yet (Slice 3/4) — see that module's
+               own doc comment. -->
+          <label class="cad-label">Fusion Geometry</label>
+          <div role="group" class="segmented-group" style="margin-bottom:4px;">
+            <button type="button" id="stampFusionGeometry-centerline" class="editor-fillmode-btn active" style="flex:1;">Centerline</button>
+            <button type="button" id="stampFusionGeometry-outline" class="editor-fillmode-btn" style="flex:1;">Outline</button>
+            <button type="button" id="stampFusionGeometry-both" class="editor-fillmode-btn" style="flex:1;">Both</button>
+          </div>
+          <div id="stampFusionGeometryHint" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;"></div>
+
+          <label class="cad-label">Blur (grid cells)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="10" step="1" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampBlur" value="0" min="0" max="10" step="1">
+            </div>
+          </div>
+
+          <label class="cad-label">Smoothing radius (grid cells)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="30" step="1" value="15">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampSmoothingRadius" value="15" min="0" max="30" step="1">
+            </div>
+          </div>
+
+          <label class="cad-label">Smooth the terrain under it (0–1)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampTextureSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.15">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampTextureSuppression" value="0.15">
+            </div>
+          </div>
+
+          <label class="cad-label">Edge Fillet (in)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampEdgeFilletRadius" value="0" min="0" max="1" step="0.01">
+            </div>
+          </div>
+
+          <label class="cad-label">Fillet Sharpness</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampFilletPowerSlider" class="cad-slider" min="1.2" max="4" step="0.1" value="2.2">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampFilletPower" value="2.2" min="1.2" max="4" step="0.1">
+            </div>
+          </div>
+
+          <!-- Live metrics readout: shows what the rasterizer actually
+               computed for the active layer (inscribed radius, fillet
+               cap status, etc.). Updates after every remask. -->
+          <div id="stampMetrics" class="cad-status-text" style="font-size:10px; opacity:0.65; margin-top:4px; line-height:1.4;">
+            <!-- filled by main/stamp/metrics.js -->
+          </div>
+
+          <!-- Per-layer transform: position, rotation, scale, mirror (the WHOLE layer: stays per layer under the coming
+               per-stroke settings) -->
+          <details data-stamp-scope="layer" style="margin-bottom:12px;">
+            <summary class="cad-label" style="cursor:pointer;">Transform (whole layer)</summary>
+            <div style="margin-top:6px;">
+              <!-- H14: a declared "feel" pair -- see the Seed panel's
+                   Offset X/Y for the full rationale. -->
+              <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:6px;">
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset X (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTxSlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTx" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
+                </div>
+                <div style="flex:1;">
+                  <label class="cad-label" style="font-size:10px;">Offset Y (in)</label>
+                  <div class="cad-slider-row">
+                    <input type="range" id="stampTySlider" class="cad-slider" min="-5" max="5" step="0.05" value="0">
+                    <input type="number" id="stampTy" class="no-stepper cad-slider-readout" value="0" step="0.05">
+                  </div>
+                </div>
+              </div>
+              <label class="cad-label" style="font-size:10px;">Rotation (°)</label>
+              <div class="cad-slider-row" style="margin-bottom:6px;">
+                <input type="range" id="stampRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
+                <div class="cad-stepper" style="width:75px;">
+                  <input type="number" id="stampRotation" value="0" step="1" min="-180" max="180">
+                </div>
+              </div>
+              <label class="cad-label" style="font-size:10px;">Scale</label>
+              <div class="cad-slider-row" style="margin-bottom:6px;">
+                <input type="range" id="stampScaleSlider" class="cad-slider" min="0.1" max="3" step="0.05" value="1">
+                <div class="cad-stepper" style="width:75px;">
+                  <input type="number" id="stampScale" value="1" step="0.05" min="0.1">
+                </div>
+              </div>
+              <div style="display:flex; gap:12px; font-size:11px; user-select:none;">
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Mirror horizontally">
+                  <input type="checkbox" id="stampMirrorX" style="margin:0;"> Mirror X
+                </label>
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer;" title="Mirror vertically">
+                  <input type="checkbox" id="stampMirrorY" style="margin:0;"> Mirror Y
+                </label>
+              </div>
+            </div>
+          </details>
+            </div>
+            </div>
           </div>
           <!-- F35 item 40: the header, the Brick start hint and the list are the ONE Layers component; the Brick tab
                hosts them in its own panel (main/editor-tabs.js EDITOR_TABS brick.panelHosts) and they come back here -->

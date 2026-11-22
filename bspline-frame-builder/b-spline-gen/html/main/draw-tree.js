@@ -5,6 +5,8 @@
  * `panelHosts` (main/editor-tabs.js), so a tab switch carries it out and back like the Brick tab's Layers.
  */
 import { createDrawerTree } from './drawer-tree.js';
+import { stampTarget, stampSummaryText } from '../core/stamp/target.js';
+import { STAMP_TARGET_CHANGED } from './stamp/summary.js';
 
 export const drawBranchDomId = (id) => `drawBranch_${id}`;
 /** A tool branch arms an editor MODE (its tool button: `tool<Mode>`). */
@@ -14,6 +16,10 @@ export const DRAW_DRAWER_TREE = Object.freeze([
   Object.freeze({ id: 'expand', title: 'Expand', summary: 'offset a shape', hosts: Object.freeze(['artExpandBody']), armsTool: 'expand' }),
   Object.freeze({ id: 'layers', title: 'Layers', hosts: Object.freeze(['drawLayersBody']),
     summary: (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; } }),
+  // DRAW-STAMP U (Fred 2026-11-22: edited in the editor, summarised in the sidebar): the SELECTED layer's stamp settings
+  // (#drawStampBody: moved from the sidebar VECTOR STAMPING panel); its summary = the sidebar row's own line
+  Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze(['drawStampBody']),
+    summary: () => { const t = stampTarget(); return t.layer ? stampSummaryText(t) : ''; } }),
 ]);
 // the first look: General open, and the Layers (Fred, phone: "We don't see layers" -- the Brick tree opens them too;
 // the layers matrix row reads the list on screen when the Draw tab is back); Text / Expand open with their tool
@@ -35,5 +41,6 @@ export function initDrawTree(doc = typeof document !== 'undefined' ? document : 
   doc.addEventListener('editorTabChanged', (e) => show(e.detail && e.detail.tab));
   doc.addEventListener('editorModeChanged', () => DRAW_TREE.sync(_mode()));
   doc.addEventListener('editorLayersChanged', () => DRAW_TREE.sync(_mode()));
+  doc.addEventListener(STAMP_TARGET_CHANGED, () => DRAW_TREE.sync(_mode())); // the Stamp branch's summary
   DRAW_TREE.sync(_mode());
 }
