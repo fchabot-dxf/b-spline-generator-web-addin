@@ -34,7 +34,7 @@ export const STOCK_SCOPE = Object.freeze([
 export const FORMULA_SECTIONS = Object.freeze([
   { section: 'STOCK DIMENSIONS', ids: ['widthIn', 'heightIn', 'carveZ'], names: [] },
   {
-    section: 'SKELETON',
+    section: 'TERRAIN SHAPE', // was SKELETON (TERRAIN-FLAT, 2026-11-22: the panel's header; tests/formula.test.js reads it)
     ids: ['peakShape', 'density', 'clustering', 'symOffsetX', 'symOffsetY', 'edgeMarginIn', 'smoothIntensity',
       'smoothRadius'],
     names: [
@@ -49,7 +49,7 @@ export const FORMULA_SECTIONS = Object.freeze([
     ],
   },
   {
-    section: 'FILTER',
+    section: 'TERRAIN TEXTURE', // was FILTER (TERRAIN-FLAT, 2026-11-22)
     ids: ['scale', 'detailDensity', 'detailStrength'],
     names: [
       pname('finescale', 'scale', 'Fine scale'),

@@ -286,6 +286,11 @@ export const DEFAULT = {
     // (substitutes a flat 0.5) so the user sees only the skeleton's
     // contribution: coarse field, detail-density gate, edge fade, smoothing.
     isolateSkeleton: false,
+    // TERRAIN-FLAT (Fred 2026-11-22, TERRAIN-FLAT-DESIGN.md): TERRAIN SHAPE's 'Flat (no hills)' -- no coarse layer, the board
+    // a flat base at surfaceHeightIn (inches; its slider travels 0..carveZ, a typed value is kept as typed) with the texture
+    // on top (core/terrain.js). Absent on a saved board = false = the hills, exactly as before (tests/terrain-flat.test.js).
+    surfaceHeightIn: 0,
+    shapeFlat: false,
     // Thicken
     thickenEnabled: true,
     thickness: 0.125,
@@ -409,6 +414,7 @@ export const SLIDER_PAIRS = {
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
+    surfaceHeightIn: 'surfaceHeightInSlider', // TERRAIN-FLAT: TERRAIN SHAPE's surface height (travel 0..carveZ, main/terrain-shape-flat.js)
     // H19 item 1: seedOffsetX/Y are plain steppers now (no slider to pair
     // with) -- picked up automatically by the generic Object.keys(P)
     // binder above, same as widthIn/heightIn.
@@ -626,7 +632,7 @@ export function updateP(key, value) {
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
-        'isolateSkeleton',
+        'isolateSkeleton', 'shapeFlat',
         'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay',
         'sameAsDisplayResolution', 'photoLayer',
     ];

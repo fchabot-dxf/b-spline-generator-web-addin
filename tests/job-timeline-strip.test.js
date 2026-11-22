@@ -67,7 +67,8 @@ describe('the strip', () => {
     // Fred's default order cuts Skeleton before Filter (Filter sets its frequency); the Back is snapshot-backed: no mark
     const sk = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
     expect(sk.querySelector('.job-dep-mark')).not.toBeNull();
-    expect(sk.title).toContain('Skeleton is cut before Filter, but Filter changes the skeleton');
+    // step labels follow the renamed panels (Fred 2026-11-22): Skeleton -> Terrain shape, Filter -> Terrain texture
+    expect(sk.title).toContain('Terrain shape is cut before Terrain texture, but Terrain texture changes the terrain shape');
     for (const id of ['seed', 'back']) expect($('jobStrip3d').querySelector(`[data-job-step="${id}"] .job-dep-mark`), id).toBeNull();
   });
 });
@@ -171,9 +172,9 @@ describe('Fred 2026-10-16: chips are icon-on-colour, no text -- a sub-item\'s ow
   });
   it('a chip never shows its name as visible text -- only as its title / aria-label', () => {
     const chip = $('jobStrip3d').querySelector('[data-job-step="skeleton"]');
-    expect(chip.textContent.trim()).not.toContain('Skeleton');
-    expect(chip.title).toContain('Skeleton');
-    expect(chip.getAttribute('aria-label')).toBe('Skeleton');
+    expect(chip.textContent.trim()).not.toContain('Terrain shape'); // the step label renamed with its panel (Fred 2026-11-22)
+    expect(chip.title).toContain('Terrain shape');
+    expect(chip.getAttribute('aria-label')).toBe('Terrain shape');
   });
   it('declares a minimum chip size so an icon-only chip stays a real touch target (>= 28px on a phone); the bar carries it, same pattern as --job-overhang', () => {
     expect(JOB_STRIP.chipMinPx.phone).toBeGreaterThanOrEqual(28);

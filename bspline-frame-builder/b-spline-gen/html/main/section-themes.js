@@ -35,7 +35,8 @@ export const SECTION_THEMES = Object.freeze({
  *  the SAME glyph the sidebar panel header already shows (bspline_gen_palette.html) -- reused, not reinvented.
  *  main/job-timeline-strip.js reads this + SECTION_THEMES' hue so a chip never carries its own hand-picked look. */
 export const SECTION_ICONS = Object.freeze({
-  stock: '📐', layers: '📑', frame: '🖼', skeleton: '🦴', filter: '🎨', brick: '🧱', stamp: '📐',
+  // skeleton = TERRAIN SHAPE's ⛰ since TERRAIN-FLAT (2026-11-22); filter = TERRAIN TEXTURE
+  stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰️', filter: '🎨', brick: '🧱', stamp: '📐',
   'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
 });
 

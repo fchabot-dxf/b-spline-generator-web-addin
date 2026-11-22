@@ -35,6 +35,7 @@ import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { initPhotoPanel, syncPhotoPanel, commitPhotoPlacement } from './photo-panel.js';
 import { initPhotoFootprint } from './photo-footprint.js';
 import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
+import { bindShapeFlat } from './terrain-shape-flat.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '../core/state.js';
@@ -191,6 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);
+    bindShapeFlat(); // TERRAIN SHAPE's Flat (no hills): greys the rows it no longer reads (after the generic binder writes P)
     bindProjectManager(preview);
     bindHeaderAndSettings(preview, {
         onGenerate,

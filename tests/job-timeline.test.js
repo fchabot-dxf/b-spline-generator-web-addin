@@ -83,7 +83,8 @@ describe('dependency marks: DETECTION ONLY', () => {
       { stepId: 'skeleton', before: ['filter'] },
       { stepId: 'bricks', before: ['frame'] },
     ]);
-    expect(dependencyNote(marks[0], steps)).toBe('Skeleton is cut before Filter, but Filter changes the skeleton');
+    // step labels follow the renamed panels (Fred 2026-11-22): Skeleton -> Terrain shape, Filter -> Terrain texture
+    expect(dependencyNote(marks[0], steps)).toBe('Terrain shape is cut before Terrain texture, but Terrain texture changes the terrain shape');
     expect(JOB_STEP_KINDS.back.snapshotOnLock).toBe(true);
   });
   it('an order that follows every read marks nothing', () => {

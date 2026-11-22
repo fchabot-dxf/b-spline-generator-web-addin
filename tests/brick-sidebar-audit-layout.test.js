@@ -110,7 +110,8 @@ describe('BRICK audit layout items', () => {
     expect(box.closest('.panel-brick')).toBeNull();
     const row = box.closest('label');
     expect(row.style.flexDirection).toBe('row');
-    expect(row.textContent.trim()).toBe('Hide filter texture');
+    // Fred 2026-11-22 (terrain reshuffle): the switch is relabelled 'Flat (no texture)' -- same id, key and behaviour
+    expect(row.textContent.trim()).toBe('Flat (no texture)');
     expect(box.style.width).toBe('auto');
   });
   it('A12: Wear says what its ends mean', () => {

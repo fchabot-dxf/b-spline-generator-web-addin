@@ -23,8 +23,8 @@
  *   readOnly               -- how a LOCKED step (left of the head) goes inert when opened: 'section' -- every
  *                             [data-job-lock="<this step's own id>"] element in the sidebar (main/ui-utils.js
  *                             setSectionReadOnly; the markup hook lives on the panel body, or narrower -- Seed's own
- *                             Offset X/Y + its Generate button, nested inside Filter's wider section, since the two
- *                             steps share one sidebar panel); 'layer' -- the step's OWN editor layer only (a lock
+ *                             Offset X/Y + its Generate button, and Filter's Region Scale / Map Zoom, nested inside
+ *                             TERRAIN SHAPE's wider section (TERRAIN-FLAT-DESIGN.md); 'layer' -- the step's OWN editor layer only (a lock
  *                             pushed onto that layer record, main/job-timeline-lock.js -> editor/layers.js), every
  *                             other layer stays editable;
  *   locksAlso               -- (Fred, 'layer' kinds only) sibling kind-layers that have no step of their own but
@@ -46,15 +46,17 @@
 const dep = (kind, extra = {}) => Object.freeze({ kind, ...extra });
 export const JOB_STEP_KINDS = Object.freeze({
   stock: Object.freeze({ label: 'Stock', icon: '▭', section: 'stock', fixed: 'first', opens: { sidebar: 'panel-stock' }, readOnly: 'section', dependsOn: [] }),
-  // Seed Offset X / Y sit in Filter; the seed itself is the pinned Generate New Seed bar.
+  // Seed Offset X / Y (Pan X / Y) sit in TERRAIN SHAPE (panel-skeleton) since TERRAIN-FLAT (2026-11-22; they sat in Filter
+  // before -- the lock is the same: their own data-job-lock="seed" scope); the seed itself is the pinned Generate New Seed bar.
   // seed -> stock: the grid is the board's (core/engine/rebuild.js:139 resolveGrid, core/terrain.js:126 aspect)
   // icon 🎲: the same dice the Generate New Seed button itself shows
-  seed: Object.freeze({ label: 'Seed', icon: '🎲', section: 'filter', opens: { sidebar: 'panel-filter' }, readOnly: 'section', dependsOn: ['stock'] }),
+  seed: Object.freeze({ label: 'Seed', icon: '🎲', section: 'filter', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['stock'] }),
   // filter <- seed: the fine noise is seeded (core/terrain.js:121, read at :206)
-  filter: Object.freeze({ label: 'Filter', icon: '≈', section: 'filter', opens: { sidebar: 'panel-filter' }, readOnly: 'section', dependsOn: ['seed', 'stock'] }),
+  // labels follow the renamed panels (Fred 2026-11-22: TERRAIN SHAPE / TERRAIN TEXTURE); the kind ids stay
+  filter: Object.freeze({ label: 'Terrain texture', icon: '≈', section: 'filter', opens: { sidebar: 'panel-filter' }, readOnly: 'section', dependsOn: ['seed', 'stock'] }),
   // skeleton <- seed (terrain.js:123, :264-270, :322) and <- filter: noiseType sets its frequency (terrain.js:246-248);
   // <- stock: the edge margin is a share of the board (rebuild.js:285)
-  skeleton: Object.freeze({ label: 'Skeleton', icon: '🦴', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['seed', 'filter', 'stock'] }),
+  skeleton: Object.freeze({ label: 'Terrain shape', icon: '⛰️', section: 'skeleton', opens: { sidebar: 'panel-skeleton' }, readOnly: 'section', dependsOn: ['seed', 'filter', 'stock'] }),
   // sculptTop <- the terrain (seed + skeleton + filter, combined at terrain.js:299): preDelta is added to it (rebuild.js:291)
   sculptTop: Object.freeze({ label: 'Sculpt top', icon: '▲', section: 'sculpt-top', opens: { sidebar: 'panel-sculpt-top' }, readOnly: 'section', cuts: 'top', dependsOn: ['seed', 'skeleton', 'filter'] }),
   // Back = Thicken + Sculpt bottom: reads the STAMPED heights -- every stamp pass, bricks included (rebuild.js:169 on

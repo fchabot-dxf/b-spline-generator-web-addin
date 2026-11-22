@@ -151,6 +151,15 @@ export function generateHeightmap(params, stampParams = null) {
   const [rangeLo, rangeHi] = (NoiseMetadata[noiseType] || NoiseMetadata['simplex']).nominalRange || [0, 1];
   const rangeSpan = (rangeHi - rangeLo) || 1;
 
+  // TERRAIN-FLAT (Fred 2026-11-22, TERRAIN-FLAT-DESIGN.md): TERRAIN SHAPE's 'Flat (no hills)' (P.shapeFlat) drops the coarse
+  // layer -- the board is a flat base at P.surfaceHeightIn (inches) with the TEXTURE on top, at the amplitude it has in
+  // today's valleys: height = surfaceHeightIn + (isolateSkeleton ? 0 : fine * LOW * carveZ). The Flat Border fades only
+  // that grain toward the surface height; Pass 3 smoothing smooths the result (an exactly flat board stays exactly flat).
+  // Off (absent on every board saved before) = the formula below, untouched (tests/terrain-flat.test.js pins).
+  const shapeFlat = params.shapeFlat === true;
+  const surfaceZ = shapeFlat ? (Number(params.surfaceHeightIn) || 0) : 0;
+  const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42; // the valley / peak shares of the fine value (Pass 2 below)
+
   const folded = { zu: 0, zv: 0, su: 0, sv: 0, mu: 0, mv: 0 }; // foldUV's output, one object for the whole heightmap
   const photoMirror = photoLayer && photoMirrors(params); // the photo's true mirror (no squeeze), when declared
   const photoAspect = photoLayer ? photoSampleAspect(params, aspect) : aspect; // 'whole': the source half's own proportions
@@ -238,6 +247,17 @@ export function generateHeightmap(params, stampParams = null) {
         const effectiveDetail = detailIntensity + (1.0 - detailIntensity) * strength;
         fine = lerp(0.5, fine, effectiveDetail);
 
+        const safeMargin = Math.max(0, Math.min(0.49, edgeMargin || 0));
+
+        // ── Flat (no hills): no coarse pass -- the grain alone, from the surface height ──
+        if (shapeFlat) {
+            let g = params.isolateSkeleton ? 0 : fine * LOW;
+            if (safeMargin > 0) g *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
+            const grainH = Math.max(0, g) * (carveZ || 0);
+            heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
+            continue;
+        }
+
         // ── Pass 2: Coarse Redistribution ──────
         // Seed (raw pattern) → Skeleton transforms (peakShape, clustering,
         // density, edge fade, smoothing). The seed type is dispatched
@@ -295,10 +315,8 @@ export function generateHeightmap(params, stampParams = null) {
             coarse = mask * coarse;
         }
 
-        const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42;
         let h = lerp(fine * LOW,  PEAK_BASE + fine * PEAK_RNG,  coarse);
-        
-        const safeMargin = Math.max(0, Math.min(0.49, edgeMargin || 0));
+
         if (safeMargin > 0) h *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
 
         const finalH = Math.max(0, h) * (carveZ || 0);
