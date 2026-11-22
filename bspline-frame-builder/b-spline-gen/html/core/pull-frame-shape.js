@@ -17,7 +17,7 @@
  *     only; the dialog leaves it unchecked -- advisor 66 / AGENTS.md: never a clamp).
  */
 import { frameCutProfile } from '../editor/editor-frame-profile.js';
-import { frameSeedGeometry, frameParamRanges, frameHandleTable, BASIS } from '../editor/frame-handles.js';
+import { frameSeedGeometry, frameParamRanges, frameHandleTable, isChoiceHandle, BASIS } from '../editor/frame-handles.js';
 import { CHANGE_EPS_IN } from './pull-changelist.js';
 
 /** Largest per-curve point distance (inches) at which the fitted handles still reproduce the pulled shape. Starting
@@ -113,7 +113,8 @@ export function fitPulledFrameShape(defs, record, board, pulled, { tol = FRAME_S
   const tpl = (defs.templates || []).find((t) => t.id === record.templateId);
   if (!tpl) return none;
   const W = board.widthIn, H = board.heightIn;
-  const handles = frameHandleTable(tpl).filter((h) => h.binding === 'seeded');
+  // T20: a choice (Narrow side Up | Down, the Symmetric link) is no size to fit -- the record keeps it
+  const handles = frameHandleTable(tpl).filter((h) => h.binding === 'seeded' && !isChoiceHandle(h));
   const profOf = (seeds) => frameCutProfile(defs, { ...record, seeds: { ...(record.seeds || {}), ...seeds } }, board);
   const modelOf = (seeds) => frameSeedGeometry(tpl, profOf(seeds), W, H);
   const prof0 = profOf({});

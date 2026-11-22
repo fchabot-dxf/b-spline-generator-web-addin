@@ -28,7 +28,7 @@ import { setEditorTab as switchEditorTab, getEditorTab, EDITOR_TABS } from './ed
 import { setHistoryRoute, updateHistoryButtons } from '../editor/editor-ui.js';
 import { AppState } from './app-state.js';
 import { deferToHold } from '../core/engine/scheduler.js';
-import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
+import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds, frameShapeControls, linkedSeedPatch } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile, frameGenerateIsValid, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
@@ -127,7 +127,8 @@ function _generateFrameNow(seed) {
   const region = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }).region;
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
   // Generate must never produce a broken frame (Fred): editor-frame-profile.js frameGenerateIsValid, the declared rule.
-  const seeds = generateValidFrameSeeds(tpl, region, seed, t, frameGenerateIsValid(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }, tpl, region, t));
+  // T20: the record's own seeds ride along -- a declared choice (Narrow side, the Symmetric link) is kept, not drawn
+  const seeds = generateValidFrameSeeds(tpl, region, seed, t, frameGenerateIsValid(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }, tpl, region, t), rec.seeds);
   pushFrameHistory();
   setFrameRecord({ seeds, genSeed: seed });
   syncFramePanel();
@@ -162,6 +163,107 @@ const INSET_WINDOW_FIELD_GROUPS = Object.freeze([
   { toggle: 'editorFrameInsetWindowToggle', fields: 'editorFrameInsetWindowFields',
     posX: 'editorWindowPosX', posY: 'editorWindowPosY', sizeW: 'editorWindowSizeW', sizeH: 'editorWindowSizeH' },
 ]);
+
+/** T20 TRAPEZOID: where a template's declared shape CONTROLS (editor/frame-handles.js frameShapeControls -- a slider,
+ *  a check, a switch, each declared on its handle in template_data.py) are drawn: the sidebar FRAME section and the
+ *  Frame tab's own panel, two views of the SAME record (the FRAME_PARAM_FIELDS / INSET_WINDOW_FIELD_GROUPS pattern).
+ *  A template that declares no control (every one before T20) leaves both empty and hidden. Every write goes through
+ *  editFrame (one undo step) and the declared link rule (linkedSeedPatch). */
+export const FRAME_SHAPE_CONTROL_HOSTS = Object.freeze(['frameShapeControls', 'editorFrameShapeControls']);
+const CONTROL_TOUCH_PX = 28; // Fred's phone rule: every touch target >= 28 px
+
+function _writeShapeSeed(tpl, key, value, label) {
+  const rec = getFrameRecord();
+  return editFrame({ seeds: { ...rec.seeds, ...linkedSeedPatch(tpl, rec.seeds, { [key]: value }) } }, label);
+}
+
+function _buildShapeControl(tpl, h) {
+  const c = h.control, row = document.createElement('div');
+  row.dataset.shapeKey = h.key;
+  row.style.cssText = 'display:flex; flex-direction:column; gap:4px; margin-bottom:10px;';
+  const head = (text) => {
+    const l = document.createElement('label');
+    l.className = 'cad-label cad-label-inline';
+    l.textContent = text;
+    return l;
+  };
+  if (c.kind === 'slider') {
+    const label = head(`${h.label} `), shown = document.createElement('span');
+    shown.className = 'frame-shape-value';
+    shown.style.cssText = 'color:#0a84ff; font-weight:600;';
+    label.appendChild(shown);
+    const input = document.createElement('input');
+    Object.assign(input, { type: 'range', className: 'cad-slider', min: String(c.min), max: String(c.max), step: String(c.step ?? 1) });
+    input.style.minHeight = `${CONTROL_TOUCH_PX}px`;
+    input.setAttribute('aria-label', h.label);
+    input.addEventListener('input', () => { shown.textContent = `${input.value}${c.unit || ''}`; }); // live readout only
+    input.addEventListener('change', () => _writeShapeSeed(tpl, h.key, Number(input.value) / (c.scale || 1), h.label));
+    row.append(label, input);
+  } else if (c.kind === 'check') {
+    const label = head('');
+    label.style.cssText = `display:flex; align-items:center; gap:8px; min-height:${CONTROL_TOUCH_PX}px;`;
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.addEventListener('change', () => _writeShapeSeed(tpl, h.key, box.checked ? 1 : 0, h.label));
+    label.append(box, document.createTextNode(h.label));
+    row.append(label);
+  } else if (c.kind === 'switch') {
+    const group = document.createElement('div');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', h.label);
+    group.className = 'segmented-group';
+    group.style.height = `${CONTROL_TOUCH_PX}px`;
+    for (const o of c.options || []) {
+      const b = document.createElement('button');
+      Object.assign(b, { type: 'button', className: 'editor-fillmode-btn', textContent: o.label });
+      b.dataset.value = String(o.value);
+      b.style.cssText = 'flex:1; min-width:44px; font-size:11px;';
+      b.addEventListener('click', () => _writeShapeSeed(tpl, h.key, o.value, `${h.label}: ${o.label}`));
+      group.appendChild(b);
+    }
+    row.append(head(h.label), group);
+  }
+  return row;
+}
+
+/** Draw (on a template change) and fill (always) the declared shape controls from the record's RESOLVED shape
+ *  params (frameCutProfile: the model default when the record has no seed). */
+function _syncShapeControls(tpl, rec) {
+  const controls = frameShapeControls(tpl);
+  let resolved = null;
+  for (const id of FRAME_SHAPE_CONTROL_HOSTS) {
+    const host = $(id);
+    if (!host) continue;
+    const sig = controls.length ? tpl.id : '';
+    if (host.dataset.template !== sig) {
+      host.replaceChildren(...controls.map((h) => _buildShapeControl(tpl, h)));
+      host.dataset.template = sig;
+    }
+    host.style.display = controls.length ? '' : 'none';
+    if (!controls.length) continue;
+    resolved ??= frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn })?.params || {};
+    for (const h of controls) {
+      const row = host.querySelector(`[data-shape-key="${h.key}"]`);
+      if (!row) continue;
+      const v = Number.isFinite(resolved[h.key]) ? resolved[h.key] : h.control.default;
+      if (h.control.kind === 'slider') {
+        const input = row.querySelector('input');
+        if (document.activeElement !== input) input.value = String(Math.round(v * (h.control.scale || 1) * 1000) / 1000);
+        row.querySelector('.frame-shape-value').textContent = `${input.value}${h.control.unit || ''}`;
+      } else if (h.control.kind === 'check') {
+        row.querySelector('input').checked = !!Number(v);
+      } else if (h.control.kind === 'switch') {
+        const opts = h.control.options || [];
+        const pick = opts.reduce((best, o) => (Math.abs(o.value - v) < Math.abs(best.value - v) ? o : best), opts[0] || { value: v });
+        for (const b of row.querySelectorAll('button')) {
+          const on = Number(b.dataset.value) === pick.value;
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('active', on);
+        }
+      }
+    }
+  }
+}
 
 function _option(value, label) {
   const o = document.createElement('option');
@@ -332,6 +434,7 @@ export function syncFramePanel() {
       if ($(g.sizeH) && document.activeElement !== $(g.sizeH)) $(g.sizeH).value = _round3(w.h);
     }
   }
+  _syncShapeControls(tpl, rec); // T20: the template's declared shape controls (none for every earlier template)
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : `— ${NO_FRAME_CHOICE.label}`;
 

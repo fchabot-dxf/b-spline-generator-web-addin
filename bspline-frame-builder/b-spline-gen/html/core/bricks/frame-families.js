@@ -21,6 +21,9 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
       'template_4',
       'template_12',
       'template_13',
+      // T20 TRAPEZOID: a straight top and bottom over straight tapered sides -- Templates 12 / 13's own taper class
+      // (their corners aren't square either). Suggests only: every preset stays listed (Fred 2026-10-14).
+      'template_20',
     ]),
     segmentTypes: Object.freeze({
       top: 'straight',

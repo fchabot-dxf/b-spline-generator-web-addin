@@ -282,6 +282,18 @@ export const PRESETS = {
     params: { topWidth: 0.45, neckHeightFrac: 0.45, domeFullnessFrac: 0.1421885365451818 },
     jitter: { topWidth: 0, neckHeightFrac: 0, domeFullnessFrac: 0 },
   },
+  // T20 TRAPEZOID (Fred 2026-11-22, amended "irregular taper sides too"): a FRAME-ONLY preset (Template 20), like
+  // tabTop: no Shape Lattice button offers it. Four straight pieces, the top and bottom parallel on the safe zone's
+  // own lines, the wide side its full width; the narrow side's two ends each set in on their own (`leftInset` /
+  // `rightInset`, fractions of hw like every seeded handle: 0.3 = 15% of the wide side), the narrow side up or down
+  // (`narrowSide` 1 / -1). `insetLink` is the Symmetric link (1 = on): no geometry reads it, it couples the two
+  // inset writes (frame-handles.js linkedSeedPatch). Plain defaults (DERIVED_PARAM_DEFAULTS.trapezoid), no jitter.
+  trapezoid: {
+    label: 'Trapezoid',
+    frameOnly: true,
+    params: { leftInset: 0.3, rightInset: 0.3, narrowSide: 1, insetLink: 1 }, // = TRAPEZOID_DEFAULT_INSET etc. (declared below; literal here)
+    jitter: { leftInset: 0, rightInset: 0, narrowSide: 0, insetLink: 0 },
+  },
 };
 
 /**
@@ -372,6 +384,9 @@ export const PARAM_ORDER = {
   // archedFunnel/tulip/sandTimer above; declared in the same order template_data.py's own
   // FRAME_HANDLES table lists them.
   flask: ['topWidth', 'neckHeightFrac', 'domeFullnessFrac'],
+  // T20 TRAPEZOID (frame-only preset): the two insets (independent ranges: each 0..45% of the wide side, the
+  // narrow side then always >= 10% of it), the Up/Down switch, the link -- template_data.py FRAME_HANDLES' order.
+  trapezoid: ['leftInset', 'rightInset', 'narrowSide', 'insetLink'],
 };
 const BASE_RANGES = {
   // F23/H11: cornerRadiusTop/cornerRadiusBottom used to have entries here too
@@ -508,6 +523,14 @@ export const DERIVED_PARAM_DEFAULTS = {
     neckHeightFrac: () => 0.45,
     domeFullnessFrac: () => 0.1421885365451818,
   },
+  // T20 TRAPEZOID: every param has a plain default (no seeded jitter: a frame always sets both insets from its
+  // model) -- 15% / 15% (Fred's example: a 70% narrow side), the narrow side UP, the Symmetric link ON.
+  trapezoid: {
+    leftInset: () => TRAPEZOID_DEFAULT_INSET,
+    rightInset: () => TRAPEZOID_DEFAULT_INSET,
+    narrowSide: () => 1,
+    insetLink: () => 1,
+  },
 };
 
 /** F12: the params the Shape Lattice panel offers (a slider and a handle each).
@@ -523,6 +546,10 @@ const EPS_FRAC = 1e-3;
  *  its Fusion manifest never sends them (editor-sketch-manifest.js; Fred's rule: no new parameters). */
 export const FRAME_ONLY_PARAM_KEYS = Object.freeze(['topInset', 'waistCenterYLeft', 'waistReachLeft', 'topDipWidth', 'topDipDepth',
   'tabWidth', 'tabHeight',
+  // T20 TRAPEZOID (frame-only preset). Inserted HERE, not appended: tests/frame-template-6.test.js pins T6's pair at
+  // positions 5..6 from the front and tests/frame-template-9.test.js T9's at -17..-15 from the end -- this spot moves
+  // neither (membership is all this list means).
+  'leftInset', 'rightInset', 'narrowSide', 'insetLink',
   // T8 DIPPED TOP + LEFT-ONLY WAVE (frame-only preset; topDipWidth/topDipDepth already listed above are shared
   // with T5's identically-named keys, so only its OWN new keys are added here):
   'topDipPosition', 'waveHeight', 'waveReach', 'waveCornerRadius', 'waveRadius',
@@ -584,6 +611,21 @@ const I_SHAPE_DEFAULT_FLANGE_HEIGHT = 0.4;
 // The frame's own rule (no bar shorter than the thickness, no flange side shorter than ~2 x it) narrows these
 // further (frame-handles.js).
 const I_SHAPE_RANGES = { stemWidth: [0.05, 0.95], flangeHeight: [0.05, 0.95] };
+
+/**
+ * T20 TRAPEZOID (a frame-only preset, like tabTop): four straight pieces, clockwise from the top-left corner
+ * (matching FRAME_SEED_MAP's own `prim` indices in template_data.py): 0 top, 1 side R, 2 bottom, 3 side L. The top
+ * and bottom lie on the region's own top / bottom lines; the WIDE side spans the full width; the NARROW side's left
+ * end sits `leftInset` x hw in from the wide side's left corner, its right end `rightInset` x hw in from the right
+ * one (each its own value: a 0 = that side vertical). `narrowSide` >= 0 = the narrow side UP, < 0 = DOWN (the same
+ * insets, mirrored top to bottom). 4 corners, none reflex; each corner's angle is its own.
+ */
+export const TRAPEZOID_SEGMENT_COUNT = 4;
+const TRAPEZOID_DEFAULT_INSET = 0.3; // fraction of hw: 15% of the wide side (a 70% narrow side, Fred's example)
+// The declared ranges = the Frame panel's slider travel (template_data.py's control: 0..45 % of the wide side =
+// 0..0.9 hw). Travel, not a frame rule: no frame-thickness narrowing (frame-handles.js frameParamRanges leaves this
+// preset alone), Fred's own "travel only, no clamp". Within it the narrow side is never under 10% of the wide one.
+const TRAPEZOID_RANGES = { leftInset: [0, 0.9], rightInset: [0, 0.9], narrowSide: [-1, 1], insetLink: [0, 1] };
 
 /**
  * T5 HOURGLASS DIPPED TOP: the top edge is a short straight stub from each top corner, then a smooth inward dip
@@ -805,6 +847,12 @@ function _iShapeRange(key, region, stroke) {
   return _range(lo, hi, -Infinity, (hh - stroke - EPS_FRAC * hh) / hh);
 }
 
+/** T20 TRAPEZOID: the declared travel (TRAPEZOID_RANGES), nothing narrowed. */
+function _trapezoidRange(key) {
+  const [lo, hi] = TRAPEZOID_RANGES[key];
+  return _range(lo, hi);
+}
+
 /**
  * T7 DIAMOND-TOP HOURGLASS: the silhouette's own ranges (fractions). FIRST CUT, DELIBERATELY CONSERVATIVE, not
  * yet visually verified (no browser/Fusion render from this seat) -- see LIVE_CHECK.md.
@@ -1000,6 +1048,9 @@ export function paramsFromShapeModel(preset, model, region) {
   for (const [name, c] of Object.entries(model.features)) f[name] = c.hw * hw + c.hh * hh + (c.const || 0);
   // T6 TAB TOP (frame_shape_fit.py `tab_top`): the tab's half width and height, in inches.
   if (preset === 'tabTop') return { tabWidth: f.tabHalfWidth / hw, tabHeight: f.tabHeight / hh };
+  // T20 TRAPEZOID (frame_shape_fit.py `trapezoid`): each narrow end's inset, in inches. Up/Down is no feature (a
+  // switch: DERIVED_PARAM_DEFAULTS.trapezoid.narrowSide, Up, unless the record's seed says Down).
+  if (preset === 'trapezoid') return { leftInset: f.leftInset / hw, rightInset: f.rightInset / hw };
   // T8 DIPPED TOP + LEFT-ONLY WAVE (frame_shape_fit.py `dipped_left_wave`): self-contained, like tabTop -- no
   // right pinch to share a depth-root pick with, so `waveDepth` (the extractor's own DIRECT measurement, not a
   // fitted approximation needing reconciling against the tangency equation the way T1's LEAST-SQUARES-fitted
@@ -1160,7 +1211,7 @@ function _optionalRange(preset, region, stroke, v) {
  *  wins (min = max), the same "validity wins" rule `_range` already uses. */
 export const MIN_ARC_RADIUS_IN = 0.125;
 function _arcFloorFrac(preset, key, region, stroke, v) {
-  if (preset === 'tabTop' || preset === 'iShape') return -Infinity; // T6, T9: no arcs
+  if (preset === 'tabTop' || preset === 'iShape' || preset === 'trapezoid') return -Infinity; // T6, T9, T20: no arcs
   const hw = region.w / 2;
   const convex = (MIN_ARC_RADIUS_IN + stroke) / hw, concave = Math.max(0, MIN_ARC_RADIUS_IN - stroke) / hw;
   if (preset === 'bottle') {
@@ -1242,7 +1293,8 @@ const _rangeFn = (preset) => (preset === 'bottle' ? _bottleRange : preset === 't
       : preset === 'diamondTopHourglassPinch' ? _diamondTopHourglassPinchRange
         : preset === 'archedFunnel' || preset === 'tulip' ? _archedTimerRange
           : preset === 'sandTimer' ? _sandTimerRange
-            : preset === 'flask' ? _flaskRange : _hourglassRange);
+            : preset === 'flask' ? _flaskRange
+              : preset === 'trapezoid' ? _trapezoidRange : _hourglassRange);
 
 /**
  * T84 item 3 (Templates 16/17, both share this range function -- every handle is independently
@@ -1378,9 +1430,18 @@ function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
     } else {
       v[key] = _jitteredParam(params[key], p[key], j[key], seed, salt[key], r.min, r.max);
     }
+    const choice = CHOICE_PARAMS[preset]?.[key];
+    if (choice) v[key] = choice(v[key]);
   }
   return v;
 }
+
+/** T20 TRAPEZOID: params that are a CHOICE, not a size (the Frame panel's Up | Down switch and Symmetric check):
+ *  each resolves to the value the construction reads it as, so the resolved params never report an in-between
+ *  value the shape does not have (narrowSide >= 0 is Up -- trapezoidConstruction's own rule). */
+const CHOICE_PARAMS = {
+  trapezoid: { narrowSide: (x) => (x < 0 ? -1 : 1), insetLink: (x) => (Number(x) ? 1 : 0) },
+};
 
 /**
  * F30 item 3 (Fred's own taper copies, "Hourglass - Tapered sides" / "Narrow Neck - Tapered sides"): the upper
@@ -1633,6 +1694,8 @@ const SALT = {
   sandTimer: { topWidth: 681, pinchReachFrac: 682, bulgeFrac: 683, pinchHeightFrac: 684 },
   // F31 item 2b: frameOnly (jitter 0 for all 3), same reason as dippedLeftWave's own comment above.
   flask: { topWidth: 685, neckHeightFrac: 686, domeFullnessFrac: 687 },
+  // T20 TRAPEZOID: every key is DERIVED (DERIVED_PARAM_DEFAULTS.trapezoid), so these are never drawn from either.
+  trapezoid: { leftInset: 691, rightInset: 692, narrowSide: 693, insetLink: 694 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -2130,6 +2193,54 @@ function _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth = 
   const fresh = keypoints.map(() => STRAIGHT_SEGMENT);
   const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
   return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments };
+}
+
+/** T20 TRAPEZOID: the construction from RESOLVED params (region-local, centred, Y-down, inches): the narrow side's
+ *  two ends, and the 4 corners TL, TR, BR, BL (piece i starts at corner i). The ONE place this algebra lives (solver
+ *  and handles). */
+export function trapezoidConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2, D = DERIVED_PARAM_DEFAULTS.trapezoid;
+  const left = hw * (resolved.leftInset ?? D.leftInset(resolved));
+  const right = hw * (resolved.rightInset ?? D.rightInset(resolved));
+  const up = !((resolved.narrowSide ?? D.narrowSide(resolved)) < 0);
+  const yNarrow = up ? -hh : hh, yWide = -yNarrow;
+  const narrowL = { x: -hw + left, y: yNarrow }, narrowR = { x: hw - right, y: yNarrow };
+  const wideL = { x: -hw, y: yWide }, wideR = { x: hw, y: yWide };
+  return { hw, hh, up, left, right, narrowL, narrowR, corners: up ? [narrowL, narrowR, wideR, wideL] : [wideL, wideR, narrowR, narrowL] };
+}
+
+/** A convex polygon's corners moved in by `s`: every edge shifted along its own inward normal by `s`, the shifted
+ *  edges re-joined (the true inward offset of straight pieces; `s` = 0 returns the corners untouched). */
+function _insetConvexPolygon(pts, s) {
+  if (!s) return pts;
+  const n = pts.length, cx = pts.reduce((a, p) => a + p.x, 0) / n, cy = pts.reduce((a, p) => a + p.y, 0) / n;
+  const lines = pts.map((p, i) => {
+    const q = pts[(i + 1) % n], L = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const d = { x: (q.x - p.x) / L, y: (q.y - p.y) / L };
+    let nx = -d.y, ny = d.x;
+    if (nx * (cx - p.x) + ny * (cy - p.y) < 0) { nx = -nx; ny = -ny; }
+    return { p: { x: p.x + nx * s, y: p.y + ny * s }, d };
+  });
+  return lines.map((b, i) => {
+    const a = lines[(i - 1 + n) % n], den = a.d.x * b.d.y - a.d.y * b.d.x;
+    const t = ((b.p.x - a.p.x) * b.d.y - (b.p.y - a.p.y) * b.d.x) / den;
+    return { x: a.p.x + t * a.d.x, y: a.p.y + t * a.d.y };
+  });
+}
+
+/**
+ * T20 TRAPEZOID solver: 4 straight pieces (see TRAPEZOID_SEGMENT_COUNT). `strokeHalfWidth` insets the drawn outline
+ * (every side moves in by it along its own normal: the top down, the bottom up, each side in). The mirror table
+ * pairs the two sides (the top and the bottom are their own mirrors).
+ */
+function _solveTrapezoid(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
+  const resolvedAll = _resolveParams('trapezoid', region, params, seed, strokeHalfWidth);
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  const { corners } = trapezoidConstruction(region, resolvedAll);
+  const keypoints = _insetConvexPolygon(corners, strokeHalfWidth).map((p) => ({ x: cx0 + p.x, y: cy0 + p.y }));
+  const fresh = keypoints.map(() => STRAIGHT_SEGMENT);
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
+  return { keypoints, segments, cx: cx0, params: { ...resolvedAll }, hasUserSegments, mirror: [0, 3, 2, 1] };
 }
 
 /**
@@ -2992,6 +3103,7 @@ const SILHOUETTE_SOLVERS = {
   tulip: { solve: _solveTulip }, // T84 item 3, T17 TULIP (a frame-only preset)
   sandTimer: { solve: _solveSandTimer }, // T84 item 5, T14 SAND TIMER (a frame-only preset)
   flask: { solve: _solveFlask }, // F31 item 2b, T15 FLASK (a frame-only preset)
+  trapezoid: { solve: _solveTrapezoid }, // T20 TRAPEZOID (a frame-only preset)
 };
 
 function _reportedParams(solver, resolved, callerParams) {

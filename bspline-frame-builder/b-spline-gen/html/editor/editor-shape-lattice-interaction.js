@@ -50,7 +50,7 @@ import {
   feasibleParamRanges, hourglassConstruction, bottleConstruction, generateSilhouette, SHAPE_PARAM_KEYS,
   TOP_DIP_SEGMENT_COUNT, topDipMirrorIndex, tabTopConstruction, iShapeConstruction, taperAngleForTopCornerX,
   diamondTopHourglassConstruction, diamondTopHourglassPinchConstruction, archedFunnelConstruction,
-  sandTimerConstruction, flaskConstruction,
+  sandTimerConstruction, flaskConstruction, trapezoidConstruction,
 } from './editor-shape-lattice-generator.js';
 import { arcPointAtFraction, distToSegment, distToArc } from './editor-primitives.js'; // audit tidy-up: the one copy
 
@@ -147,6 +147,26 @@ export function computeParamHandles(preset, region, resolvedParams, keys = SHAPE
         key: 'tabHeight', label: 'Tab height', axis: 'y', handleKind: 'position',
         anchor: { x: cx0 + (g.halfWidth + hw) / 2, y: top + g.height },
         valueFromWorld: (pt) => within('tabHeight', (pt.y - top) / hh),
+      },
+    ]));
+  }
+
+  if (preset === 'trapezoid') {
+    // T20 TRAPEZOID (a frame-only preset): two POSITION squares, one on each end of the NARROW side (top when it is
+    // up, bottom when down) -- the ends are independent (Fred: "irregular taper sides too"), so both sides get one.
+    // A horizontal drag sets that end's inset from its own wide-side corner; the Symmetric link (a record value,
+    // frame-handles.js linkedSeedPatch) then writes the other one too.
+    const g = trapezoidConstruction(region, resolvedParams);
+    return withRange(pick([
+      {
+        key: 'leftInset', label: 'Left inset', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.narrowL.x, y: cy0 + g.narrowL.y },
+        valueFromWorld: (pt) => within('leftInset', (pt.x - (cx0 - hw)) / hw),
+      },
+      {
+        key: 'rightInset', label: 'Right inset', axis: 'x', handleKind: 'position',
+        anchor: { x: cx0 + g.narrowR.x, y: cy0 + g.narrowR.y },
+        valueFromWorld: (pt) => within('rightInset', (cx0 + hw - pt.x) / hw),
       },
     ]));
   }
@@ -876,6 +896,9 @@ export const HANDLE_SEGMENT_INDEX = {
   // mirrorSegmentIndex(i,6) is exactly [4,3,2,1,0,5], matching _solveFlask's own declared `mirror`
   // table bit for bit) -- no declared SEGMENT_PAIRS table needed.
   flask: { topWidth: 5, neckHeightFrac: 1, domeFullnessFrac: 1 },
+  // T20 TRAPEZOID (4 pieces: 0 top, 1 side R, 2 bottom, 3 side L): each inset tilts its own side (TRAPEZOID_
+  // SEGMENT_PAIRS below: no mirror -- the two ends are independent).
+  trapezoid: { leftInset: 3, rightInset: 1 },
 };
 
 /** T8 DIPPED TOP + LEFT-ONLY WAVE: `controlledSegments`' own declared pairing (the shape has no bilateral
@@ -889,6 +912,10 @@ const DIPPED_LEFT_WAVE_SEGMENT_PAIRS = { topDipWidth: [8, 10] };
  *  plain single-axis mirror `mirrorSegmentIndex` assumes): the stem sides are a plain L/R pair; the flange height
  *  moves all 4 shoulders together (p02_05_symmetry's own 4-fold tie). */
 const I_SHAPE_SEGMENT_PAIRS = { stemWidth: [3, 9], flangeHeight: [2, 4, 8, 10] };
+
+/** T20 TRAPEZOID: `controlledSegments`' own declared pairing -- each inset moves its own side alone (the generic
+ *  `mirrorSegmentIndex(i, 4)` would pair a side with a horizontal piece). */
+const TRAPEZOID_SEGMENT_PAIRS = { leftInset: [3], rightInset: [1] };
 
 /** T7 DIAMOND-TOP HOURGLASS: `controlledSegments`' own declared pairing -- the generic `mirrorSegmentIndex(i,9)`
  *  assumes a different starting point/direction than this outline's own clockwise-from-the-peak convention
@@ -979,6 +1006,7 @@ export function controlledSegments(preset, key, n) {
   if (preset === 'dippedLeftWave') return DIPPED_LEFT_WAVE_SEGMENT_PAIRS[key] || [i];
   // T9 I SHAPE: a declared pairing too (4-fold symmetry, not the plain mirror formula below).
   if (preset === 'iShape') return I_SHAPE_SEGMENT_PAIRS[key] || [i];
+  if (preset === 'trapezoid') return TRAPEZOID_SEGMENT_PAIRS[key] || [i]; // T20: each end on its own
   // T7 DIAMOND-TOP HOURGLASS: a declared pairing too -- the generic mirror formula below gives the wrong index
   // for this outline's own starting point (see DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS' own doc comment).
   if (preset === 'diamondTopHourglass') return DIAMOND_TOP_HOURGLASS_SEGMENT_PAIRS[key] || [i];

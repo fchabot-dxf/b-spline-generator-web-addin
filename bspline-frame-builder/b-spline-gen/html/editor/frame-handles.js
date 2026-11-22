@@ -131,6 +131,11 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     const hh = region.h / 2;
     if (want('stemWidth')) R.stemWidth = _narrow(R.stemWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
     if (want('flangeHeight')) R.flangeHeight = _narrow(R.flangeHeight, (2 * t + 0.05) / hh, (2 * hh - 3 * t) / (2 * hh));
+  } else if (tpl.silhouettePreset === 'trapezoid') {
+    // T20 TRAPEZOID: nothing narrowed. Its ranges ARE the declared slider travel (0..45 % of the wide side each,
+    // _trapezoidRange) -- Fred: "travel only, no clamp" (AGENTS.md: a frame-thickness rule here would be a new clamp,
+    // the owner's call). A thick frame on a far-in pair can pinch the opening: the inner profile's own defects say
+    // so (detection, not prevention). This branch only keeps the generic `else` below (Template 1's keys) off it.
   } else if (tpl.silhouettePreset === 'diamondTopHourglass') {
     // T7 DIAMOND-TOP HOURGLASS: the opening rule at the neck (the silhouette's own narrowest point, by
     // construction) -- its inner edge (offset in by t on each side) must clear the minimum opening across the
@@ -271,6 +276,33 @@ export function clampToFrameRanges(tpl, region, params, t = _templateThickness(t
 /** The template's declared handles (the binding table). */
 export const frameHandleTable = (tpl) => (tpl && tpl.handles) || [];
 
+/**
+ * T20 TRAPEZOID: a handle may also declare a Frame-panel `control` (template_data.py FRAME_HANDLES; every other
+ * template declares none, so nothing changes for them):
+ *   {kind:'slider', unit, scale, min, max, step} -- the value x `scale` on a range input (travel min..max);
+ *   {kind:'check', default, links:[keys]}        -- 1 / 0; while 1, a write of any linked key writes them all;
+ *   {kind:'switch', default, options:[{value, label}]} -- one of the listed values (Narrow side Up | Down).
+ * A check / switch is a CHOICE, not a size: [Generate] keeps it, Pull from Fusion never fits it.
+ */
+export const frameShapeControls = (tpl) => frameHandleTable(tpl).filter((h) => h.control);
+export const isChoiceHandle = (h) => !!(h && h.control && (h.control.kind === 'check' || h.control.kind === 'switch'));
+
+/** The seeds patch `patch` really writes on a record whose seeds are `seeds`: each declared link (a 'check' control
+ *  with `links`) that is ON -- the patch's own value, else the record's, else its default -- copies the first linked
+ *  key the patch writes onto every other linked key. Turning a link on alone moves nothing. Pure. */
+export function linkedSeedPatch(tpl, seeds, patch) {
+  const out = { ...patch };
+  for (const h of frameHandleTable(tpl)) {
+    const c = h.control;
+    if (!c || c.kind !== 'check' || !Array.isArray(c.links)) continue;
+    const v = h.key in out ? out[h.key] : (seeds && Number.isFinite(seeds[h.key]) ? seeds[h.key] : c.default);
+    if (!Number(v)) continue;
+    const lead = c.links.find((k) => k in out);
+    if (lead != null) for (const k of c.links) out[k] = out[lead];
+  }
+  return out;
+}
+
 /** The shape-param values the record sets through its handles (seeds + bound params). */
 export function shapeParamOverrides(tpl, record, region) {
   const out = {};
@@ -405,7 +437,7 @@ export function frameSeedGeometry(tpl, prof, W, H) {
  * handles (frameHandles below) read the full feasible range directly and are
  * NOT affected -- this only changes what Generate is willing to draw.
  */
-export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl)) {
+export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl), current = {}) {
   const preset = tpl.silhouettePreset;
   const table = frameHandleTable(tpl);
   const seeded = new Set(table.filter((h) => h.binding === 'seeded').map((h) => h.key));
@@ -413,6 +445,11 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
   const seeds = {};
   PARAM_ORDER[preset].forEach((key, i) => {
     if (!seeded.has(key)) return;
+    // T20: a choice (Narrow side, the Symmetric link) is the user's, not drawn: `current` (the record's seeds) keeps it
+    if (isChoiceHandle(table.find((h) => h.key === key))) {
+      if (Number.isFinite(current?.[key])) params[key] = seeds[key] = current[key];
+      return;
+    }
     const resolved = silhouetteParams(region, { preset, params });
     let r = frameParamRanges(tpl, region, resolved, t, key)[key];
     const gen = table.find((h) => h.key === key)?.generateRange;
@@ -420,7 +457,8 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
     const u = FRAME_GEN_BAND[0] + (FRAME_GEN_BAND[1] - FRAME_GEN_BAND[0]) * seededUnit(seed, FRAME_GEN_SALT + i);
     params[key] = seeds[key] = r.min + (r.max - r.min) * u;
   });
-  return seeds;
+  // T20: a linked pair (the Symmetric link ON) is drawn once -- its first key's value, written to the others
+  return linkedSeedPatch(tpl, current, seeds);
 }
 
 // T10 ARCHED HOURGLASS (Fred: "Generate must never produce a broken frame"): a template whose handle table
@@ -447,10 +485,10 @@ const GENERATE_RETRY_SALT = 104729; // a prime, decorrelated from FRAME_GEN_SALT
 // exceeded that. 500 gives real margin above the observed worst case (273) and costs nothing -- even a
 // fully-exhausted 500-attempt budget (every attempt rejected, the pathological case) measures under 7ms.
 const GENERATE_MAX_ATTEMPTS = 500;
-export function generateValidFrameSeeds(tpl, region, seed, t, isValid) {
-  let seeds = generateFrameSeeds(tpl, region, seed, t);
+export function generateValidFrameSeeds(tpl, region, seed, t, isValid, current = {}) {
+  let seeds = generateFrameSeeds(tpl, region, seed, t, current);
   for (let attempt = 1; attempt < GENERATE_MAX_ATTEMPTS && !isValid(seeds); attempt++) {
-    seeds = generateFrameSeeds(tpl, region, seed + attempt * GENERATE_RETRY_SALT, t);
+    seeds = generateFrameSeeds(tpl, region, seed + attempt * GENERATE_RETRY_SALT, t, current);
   }
   return seeds;
 }
@@ -465,13 +503,16 @@ export function handleDragPatch(record, handle, pt, region, ctx = {}) {
   const table = handle.table || new Map();
   const seeds = { ...(record.seeds || {}) }, params = { ...(record.params || {}) };
   let seeded = false, bound = false;
+  const seedPatch = {};
   for (const [key, v] of Object.entries(patch)) {
     const b = key === handle.key ? handle : table.get(key);
     if (!b) continue;
-    if (b.binding === 'seeded') { seeds[key] = v; seeded = true; } else if (b.binding && b.binding.param) {
+    if (b.binding === 'seeded') { seedPatch[key] = v; seeded = true; } else if (b.binding && b.binding.param) {
       params[b.binding.param] = v * BASIS[b.basis](region);
       bound = true;
     }
   }
+  // T20: a declared link (the trapezoid's Symmetric switch) writes its partner key too -- none elsewhere
+  Object.assign(seeds, linkedSeedPatch({ handles: [...table.values()] }, record.seeds, seedPatch));
   return { ...(seeded ? { seeds } : {}), ...(bound ? { params } : {}) };
 }

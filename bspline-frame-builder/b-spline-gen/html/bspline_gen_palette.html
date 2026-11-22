@@ -682,6 +682,10 @@
                 <input type="number" id="frameThickness" step="0.0625">
               </div>
             </div>
+            <!-- T20 TRAPEZOID: the template's own declared shape controls (Left / Right inset, Symmetric, Narrow side
+                 Up | Down), drawn by main/frame-panel.js FRAME_SHAPE_CONTROL_HOSTS from frame-defs `handles[].control`;
+                 empty and hidden for a template that declares none. The Frame tab's panel shows the same record. -->
+            <div id="frameShapeControls" style="display:none;"></div>
             <label class="cad-label">Frame bottom (z)</label>
             <div class="cad-stepper" style="margin-bottom:12px;">
               <input type="number" id="frameBottomZ" value="-1" step="0.125">
@@ -2951,6 +2955,9 @@
               <button type="button" id="editorFrameGenerate" class="cad-btn cad-btn-primary" style="flex:1;">Generate</button>
               <button type="button" id="editorFrameUndo" class="cad-btn cad-btn-secondary" style="flex:1;" disabled>Undo</button>
             </div>
+            <!-- T20 TRAPEZOID: the same declared shape controls as the sidebar's #frameShapeControls (one record, two
+                 views; main/frame-panel.js FRAME_SHAPE_CONTROL_HOSTS) -- hidden for a template with none. -->
+            <div id="editorFrameShapeControls" style="display:none;"></div>
             <label>Thickness (in)
               <div class="cad-stepper" style="margin-top:4px;">
                 <input type="number" id="editorFrameThickness" step="0.0625">

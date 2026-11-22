@@ -69,6 +69,7 @@ describe('Template 6: listing and declaration', () => {
       '18. Arched Head', // H23 item 78c
       '19. Arched Head - Tapered sides', // H23 item 80
       '2. Narrow Neck',
+      '20. Trapezoid', // T20 (2026-11-22): template_20 sorts after template_2
       '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',
       '7. Diamond-top Hourglass', '8. Dipped Top + Left-Only Wave', '9. I Shape']);
     expect(T6.silhouettePreset).toBe('tabTop');
