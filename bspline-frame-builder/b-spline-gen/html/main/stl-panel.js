@@ -76,7 +76,7 @@ const turn = (axis, deg) => Object.freeze({
 });
 export const STL_ACTIONS = Object.freeze([
   Object.freeze({ id: 'stlFit', group: 'size', text: '⇕ Fit to carve depth', title: 'Set the Depth so this STL just fits the stock (Board > Carve Depth): Raised peaks at the top, Carved reaches the bottom', run: () => fitStlToCarveDepth() }),
-  Object.freeze({ id: 'stlLayFlat', group: 'rotate', text: '⤵ Lay flat', title: 'Turn it so its thinnest side points up and its longest runs along X (replaces the rotation)', run: () => layFlatStl() }),
+  Object.freeze({ id: 'stlLayFlat', group: 'rotate', text: '⤵ Lay flat', title: 'Turn it so its thinnest side points up and its longest runs up the board (replaces the rotation)', run: () => layFlatStl() }),
   turn('x', -90), turn('x', 90), turn('y', -90), turn('y', 90), turn('z', -90), turn('z', 90),
 ]);
 
@@ -354,7 +354,7 @@ export function layFlatStl() {
   const rec = activeStlLayer();
   if (!rec) return false;
   let rotation;
-  try { rotation = layFlatFrame(decodeMesh(rec.mesh)).rotation; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
+  try { rotation = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
   updateRecord(rec.id, (r) => ({ ...r, rotation }));
   commit('layFlat');
   syncStlPanel();

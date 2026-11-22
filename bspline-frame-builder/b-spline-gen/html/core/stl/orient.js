@@ -73,19 +73,24 @@ const neg = (a) => [-a[0], -a[1], -a[2]];
 const byLargest = (e) => { let i = 0; for (let k = 1; k < 3; k++) if (Math.abs(e[k]) > Math.abs(e[i]) + 1e-12) i = k; return e[i] >= 0 ? e : neg(e); };
 
 /**
- * 'Lay flat': the turn that puts the mesh's THINNEST dimension up (board +Z) and its LONGEST along +X -- the usual best relief view,
+ * 'Lay flat': the turn that puts the mesh's THINNEST dimension up (board +Z) and its LONGEST up the board (+Y) -- the usual best relief view,
  * the shallowest stamp. `mesh` = { positions, indices } (core/stl/mesh.js decodeMesh of the stored copy).
  * The axes are the principal axes of the mesh's SURFACE: its covariance from the exact second moment of every triangle
  * (integral of x x^T over the triangle = A/12 (a a^T + b b^T + c c^T + s s^T), s = a + b + c), area-weighted -- independent of how
- * finely a region is triangulated. Smallest variance -> e3 (up), largest -> e1 (+X), e2 = e3 x e1 (so det = +1).
+ * finely a region is triangulated. Smallest variance -> e3 (up), largest -> e2 (+Y, up the board), e1 = e2 x e3 (so det = +1).
  * Signs, deterministic:
+ *   e3, when the thin axis is ALREADY roughly vertical under `current` (|e3 . up-now| >= LAY_FLAT_KEEP_UP_COS, up-now = the mesh's
+ *       local direction that `current` maps to board +Z): the side facing up NOW stays up (a face-up Smithsonian bust is not flipped
+ *       onto its face -- advisor, real-browser finding 2026-11-22). Otherwise (the model lies on its side):
  *   e3: the side the surface reaches further out to points up -- the area-weighted third moment of the triangle centroids along e3
  *       is made >= 0 (a plaque's bump sticks up, its flat back down); a symmetric mesh (|moment| < 1e-7 of its magnitude) keeps
  *       the mesh's own +Z side up (e3 . Z >= 0); still tied: its largest component positive.
- *   e1: towards the mesh's own +X (e1 . X >= 0); tied: its largest component positive.
+ *   e2 (the longest): see below -- the side pointing up the board now keeps doing so; else the mesh's own +Y.
+ * @param current the record's rotation now ({x, y, z} degrees; absent = none)
  * @returns {{ R: number[9], rotation: {x, y, z} }} R's rows are e1, e2, e3 (world = R * local); rotation = its Euler angles
  */
-export function layFlatFrame(mesh) {
+export const LAY_FLAT_KEEP_UP_COS = 0.5; // within 60 degrees of vertical = "already lying flat"
+export function layFlatFrame(mesh, current = null) {
   const P = mesh.positions, I = mesh.indices;
   let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < P.length; i += 3) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], P[i + a]); hi[a] = Math.max(hi[a], P[i + a]); }
@@ -114,11 +119,22 @@ export function layFlatFrame(mesh) {
   let e3 = vectors[order[0]], e1 = vectors[order[2]];
   let m3 = 0, mag = 0;
   for (const [A, cx, cy, cz] of tris) { const d = (cx - m[0]) * e3[0] + (cy - m[1]) * e3[1] + (cz - m[2]) * e3[2]; m3 += A * d * d * d; mag += A * Math.abs(d * d * d); }
-  if (Math.abs(m3) > 1e-7 * mag) { if (m3 < 0) e3 = neg(e3); }
+  const Rc = current ? rotationMatrix(current.x || 0, current.y || 0, current.z || 0) : [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const upNow = [Rc[6], Rc[7], Rc[8]];
+  const along = e3[0] * upNow[0] + e3[1] * upNow[1] + e3[2] * upNow[2];
+  if (Math.abs(along) >= LAY_FLAT_KEEP_UP_COS) { if (along < 0) e3 = neg(e3); }
+  else if (Math.abs(m3) > 1e-7 * mag) { if (m3 < 0) e3 = neg(e3); }
   else if (Math.abs(e3[2]) > 1e-9) { if (e3[2] < 0) e3 = neg(e3); }
   else e3 = byLargest(e3);
-  e1 = Math.abs(e1[0]) > 1e-9 ? (e1[0] < 0 ? neg(e1) : e1) : byLargest(e1);
-  const e2 = cross(e3, e1);
+  // the LONGEST runs UP THE BOARD (+Y): Fred's boards are portrait, and a portrait bust keeps its head up the board (advisor,
+  // real-browser finding 2026-11-22: 'longest along X' laid a face-up bust sideways). Its sign: the side pointing up the board
+  // NOW keeps pointing up when it already roughly does; else towards the mesh's own +Y; tied: its largest component positive.
+  let e2 = e1;
+  const yNow = [Rc[3], Rc[4], Rc[5]];
+  const alongY = e2[0] * yNow[0] + e2[1] * yNow[1] + e2[2] * yNow[2];
+  if (Math.abs(alongY) >= LAY_FLAT_KEEP_UP_COS) { if (alongY < 0) e2 = neg(e2); }
+  else e2 = Math.abs(e2[1]) > 1e-9 ? (e2[1] < 0 ? neg(e2) : e2) : byLargest(e2);
+  e1 = cross(e2, e3); // X = Y x Z: right-handed, det = +1
   const R = [...e1, ...e2, ...e3];
   return { R, rotation: eulerFromMatrix(R) };
 }

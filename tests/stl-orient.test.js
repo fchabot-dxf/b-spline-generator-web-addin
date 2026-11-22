@@ -85,20 +85,34 @@ describe('quick turns: 90 degrees about the BOARD\'s axis (world frame: new = R(
   });
 });
 
-describe('lay flat: the thinnest dimension up, the longest along X', () => {
-  it('a slab on its side (thin along X, long along Y) lies flat: Z extent the smallest, X the largest', () => {
+// the longest runs UP THE BOARD (+Y): Fred's boards are portrait (advisor 2026-11-22: 'along X' laid a portrait bust sideways)
+describe('lay flat: the thinnest dimension up, the longest up the board (+Y)', () => {
+  it('a slab on its side (thin along X, long along Y) lies flat: Z extent the smallest, Y the largest', () => {
     const m = mesh(boxSoup(0, 1, 0, 10, 0, 6));
     expect(extents(m, { x: 0, y: 0, z: 0 })[0]).toBeCloseTo(1, 6); // before: thin along X
     const { rotation } = layFlatFrame(m);
     inRange(rotation);
     const [ex, ey, ez] = extents(m, rotation);
     expect(ez).toBeCloseTo(1, 5);
-    expect(ex).toBeCloseTo(10, 5);
-    expect(ey).toBeCloseTo(6, 5);
+    expect(ey).toBeCloseTo(10, 5);
+    expect(ex).toBeCloseTo(6, 5);
   });
-  it('an already-flat slab (longest along X) gets (near) the identity', () => {
-    const { rotation } = layFlatFrame(mesh(boxSoup(-5, 5, -3, 3, 0, 1)));
+  it('an already-flat portrait slab (longest along Y) gets (near) the identity', () => {
+    const { rotation } = layFlatFrame(mesh(boxSoup(-3, 3, -5, 5, 0, 1)));
     for (const a of ['x', 'y', 'z']) expect(Math.abs(rotation[a]), a).toBeLessThan(1e-6);
+  });
+  it('a flat landscape slab (longest along X) turns a quarter so its longest runs up the board', () => {
+    const { rotation } = layFlatFrame(mesh(boxSoup(-5, 5, -3, 3, 0, 1)));
+    const [ex, ey, ez] = extents(mesh(boxSoup(-5, 5, -3, 3, 0, 1)), rotation);
+    expect([ex, ey, ez].map((v) => +v.toFixed(5))).toEqual([6, 10, 1]);
+    expect(Math.abs(rotation.x) + Math.abs(rotation.y)).toBeLessThan(1e-6); // only a turn about Z
+  });
+  it('a portrait slab whose top points DOWN the board keeps it pointing down (its current up-the-board side stays)', () => {
+    const m = mesh(boxSoup(-3, 3, -5, 5, 0, 1).concat(boxSoup(-1, 1, 5, 6, 0, 0.5))); // a tab at +Y = its "head"
+    const cur = { x: 0, y: 0, z: 180 }; // currently turned so the head points down the board
+    const { rotation } = layFlatFrame(m, cur);
+    const yNow = R(cur).slice(3, 6), yAfter = R(rotation).slice(3, 6);
+    expect(yNow[0] * yAfter[0] + yNow[1] * yAfter[1] + yNow[2] * yAfter[2]).toBeGreaterThan(0.99);
   });
   it('the angles round-trip through rotationMatrix exactly (the frame\'s matrix re-derived from them)', () => {
     const m = mesh(boxSoup(0, 1, 0, 10, 0, 6).concat(boxSoup(0.2, 0.6, 1, 3, 4, 5.5))); // not a symmetric box
@@ -106,6 +120,20 @@ describe('lay flat: the thinnest dimension up, the longest along X', () => {
     expectMatrix(R(rotation), frame);
     let det = frame[0] * (frame[4] * frame[8] - frame[5] * frame[7]) - frame[1] * (frame[3] * frame[8] - frame[5] * frame[6]) + frame[2] * (frame[3] * frame[7] - frame[4] * frame[6]);
     expect(det).toBeCloseTo(1, 9);
+  });
+  // advisor, real-browser finding 2026-11-22: a Smithsonian bust inserted FACE UP was flipped face DOWN by Lay flat (the
+  // third-moment rule picked its back). When the thin axis is already roughly vertical, the side facing up NOW stays up.
+  it('a mesh already lying flat keeps the side that faces up now (no flip), whichever way its bump points', () => {
+    const A = [2, 2, 0], B = [8, 2, 0], C = [8, 8, 0], D = [2, 8, 0], T = [5, 5, -3]; // a plate, its bump hanging DOWN (-Z)
+    const m = mesh(boxSoup(0, 10, 0, 10, 0, 1).concat(tri(A, B, T), tri(B, C, T), tri(C, D, T), tri(D, A, T)));
+    const upNow = (rotation) => R(rotation).slice(6, 9);  // the mesh's local direction that maps to board +Z
+    const keepsUp = (cur) => {
+      const { rotation } = layFlatFrame(m, cur);
+      const before = upNow(cur), after = upNow(rotation);
+      return before[0] * after[0] + before[1] * after[1] + before[2] * after[2];
+    };
+    expect(keepsUp({ x: 0, y: 0, z: 0 })).toBeGreaterThan(0.99);   // bump down stays down (the old rule turned it up)
+    expect(keepsUp({ x: 180, y: 0, z: 0 })).toBeGreaterThan(0.99); // turned over (bump up) stays bump up
   });
   it('a relief plaque lying on its side with its bump facing -X: the bump ends up facing UP (+Z)', () => {
     // a 10 x 10 plate thin along X, with a pyramid sticking out of its x = 0 face to x = -3
