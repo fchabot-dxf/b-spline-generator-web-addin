@@ -95,6 +95,38 @@ export function setStlField(controlId, value) {
   return true;
 }
 
+/**
+ * The 3D placement gizmo's release (core/preview/stl-gizmo.js): write the dragged position / turn of layer `id` in ONE
+ * copy-on-write write and ONE commit (one undo step, one rebuild), then re-sync the panel. `t` = { x?, y?, z?, rotZ? }, absolute
+ * values; a key that is not a finite number is left out (as setStlField writes nothing for a non-number). Nothing to write or
+ * no such layer: false, nothing happens. No clamp (owner: floating Z allowed; X / Y may go past the board).
+ */
+export function applyStlTransform(id, t = {}) {
+  const rec = find(id);
+  if (!rec || !t) return false;
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  const pos = {};
+  for (const k of ['x', 'y', 'z']) if (num(t[k])) pos[k] = t[k];
+  const hasPos = Object.keys(pos).length > 0, hasRot = num(t.rotZ);
+  if (!hasPos && !hasRot) return false;
+  updateRecord(id, (r) => ({
+    ...r,
+    ...(hasPos ? { position: { ...(r.position || {}), ...pos } } : {}),
+    ...(hasRot ? { rotation: { ...(r.rotation || {}), z: t.rotZ } } : {}),
+  }));
+  commit('gizmo');
+  syncStlPanel();
+  return true;
+}
+
+/** A press on another STL's ghost in the 3D view makes it the active layer: UI state only (P is not written), the panel re-synced. */
+export function pickStlLayer(id) {
+  if (!find(id)) return false;
+  _active = id;
+  syncStlPanel();
+  return true;
+}
+
 // ── actions ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 const board = () => ({ widthIn: P.widthIn, heightIn: P.heightIn });
 const status = (text, isError = false) => {

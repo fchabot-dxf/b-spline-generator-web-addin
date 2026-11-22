@@ -38,7 +38,7 @@ import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-se
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '../core/state.js';
-import { renderStlPanel, bindStlPanel } from './stl-panel.js';
+import { renderStlPanel, bindStlPanel, applyStlTransform, pickStlLayer, isStlLocked, activeStlLayer } from './stl-panel.js';
 import { updateStlGhosts, ghostSurface } from '../core/stl/ghost.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
@@ -159,6 +159,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const r = lastResult;
             if (r && ghostSurface(r)) updateStlGhosts(preview, P.stlLayers, ghostSurface(r), { nx: r.nx, nz: r.nz, widthIn: P.widthIn, heightIn: P.heightIn });
         },
+    });
+    // the 3D placement gizmo (core/preview/stl-gizmo.js): its release is ONE panel write; a press on another ghost picks that STL;
+    // the job timeline's STL lock turns it off (orbit then gets every press)
+    preview.setStlGizmoHandlers({
+        commit: (id, values) => applyStlTransform(id, values),
+        pick: (id) => pickStlLayer(id),
+        isLocked: () => isStlLocked(),
+        activeId: () => activeStlLayer()?.id ?? null,
     });
     syncPhotoPanel();
     initPhotoFootprint({ commit: commitPhotoPlacement }); // the photo's footprint on the board, on the Photo tab

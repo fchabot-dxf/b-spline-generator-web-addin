@@ -58,10 +58,44 @@ export function openEdgeVertices(mesh) {
 }
 
 /**
+ * The INTERSECTION LINE: where the ghost meets the surface, the rel = 0 contour of its triangles (marching triangles).
+ * `rel[v]` = how far vertex v stands above (+) or below (-) the surface it is stamped into (Z offset + its placed height, the
+ * value ghostGeometry colours by). A vertex counts as ABOVE when rel > 0 (so a vertex exactly on the surface is "not above"):
+ * a triangle with vertices on both sides is crossed by exactly two of its edges, and the segment joins the two crossings
+ * (linear interpolation of the scene `positions`, so the points lie at the ghost's own z for rel = 0). A base resting exactly
+ * on the surface (rel = 0) yields its outline through the side faces; a zero-length segment (a triangle touching 0 at a single
+ * vertex) is skipped.
+ * @returns {Float32Array} segment endpoints, 6 floats per segment (x0, y0, z0, x1, y1, z1), scene coordinates
+ */
+export function meetLine(positions, rel, indices) {
+  const out = [];
+  const cross = (u, v) => {
+    const t = (0 - rel[u]) / (rel[v] - rel[u]);
+    return [0, 1, 2].map((k) => positions[u * 3 + k] + t * (positions[v * 3 + k] - positions[u * 3 + k]));
+  };
+  for (let t = 0; t < indices.length; t += 3) {
+    const tri = [indices[t], indices[t + 1], indices[t + 2]];
+    const up = tri.map((v) => rel[v] > 0);
+    if (up[0] === up[1] && up[1] === up[2]) continue;
+    const pts = [];
+    for (let e = 0; e < 3; e++) {
+      const u = tri[e], v = tri[(e + 1) % 3];
+      if (up[e] !== up[(e + 1) % 3]) pts.push(cross(u, v));
+    }
+    const [a, b] = pts;
+    if (a[0] === b[0] && a[1] === b[1] && a[2] === b[2]) continue;
+    out.push(...a, ...b);
+  }
+  return Float32Array.from(out);
+}
+
+/**
  * @param rec     an STL layer record
  * @param heights the surface it sits on: the board's heights BEFORE the stamps (ghostSurface), or null (it then sits on z = 0)
  * @param grid    { nx, nz, widthIn, heightIn }
- * @returns {{ positions: Float32Array, indices: Uint32Array, colours: Float32Array, counts: {shows, buried, meets, overhang, open} }}
+ * @returns {{ id, positions: Float32Array, indices: Uint32Array, colours: Float32Array, counts: {shows, buried, meets, overhang, open},
+ *   meetLine: Float32Array, place: { x, y, z, rotZ, baseZ } }}  id = the record's id (the placement gizmo picks a ghost by it);
+ *   place = the record's position / rotation.z and the surface height under its centre (the gizmo's pivot and start values)
  */
 export function ghostGeometry(rawRec, heights, grid) {
   const rec = normaliseStlLayer(rawRec);
@@ -85,8 +119,10 @@ export function ghostGeometry(rawRec, heights, grid) {
   const colours = new Float32Array(nv * 3);
   const counts = { shows: 0, buried: 0, meets: 0, overhang: 0, open: 0 };
   const C = STL_GHOST_COLOURS;
+  const rels = new Float64Array(nv);
   for (let v = 0; v < nv; v++) {
     const rel = zOff + xyz[v * 3 + 2]; // above (+) or below (-) the surface it is stamped into
+    rels[v] = rel;
     positions[v * 3] = xyz[v * 3]; positions[v * 3 + 1] = xyz[v * 3 + 1]; positions[v * 3 + 2] = baseZ + rel;
     let kind = rel > 0 ? 'shows' : 'buried';
     if (Math.abs(rel) <= STL_MEET_BAND_IN) kind = 'meets';
@@ -96,7 +132,11 @@ export function ghostGeometry(rawRec, heights, grid) {
     counts[kind]++;
     colours[v * 3] = C[kind][0]; colours[v * 3 + 1] = C[kind][1]; colours[v * 3 + 2] = C[kind][2];
   }
-  return { positions, indices: mesh.indices, colours, counts };
+  return {
+    id: rec.id, positions, indices: mesh.indices, colours, counts,
+    meetLine: meetLine(positions, rels, mesh.indices),
+    place: { x: rec.position.x, y: rec.position.y, z: zOff, rotZ: rec.rotation.z, baseZ },
+  };
 }
 
 /** Ghost state (UI-only, never saved): the ghosts show while this is true. */

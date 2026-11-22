@@ -42,6 +42,8 @@ import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh
 import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
 import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
+import { StlGizmoController, StlGizmoThreeView } from './stl-gizmo.js';
+import { STL_GHOST_COLOURS } from '../stl/ghost.js';
 import {
   buildHeightField,
   buildLiveBrushColours,
@@ -142,6 +144,14 @@ export class TerrainPreview {
       canvas,
       getMeshState: () => ({ nx: this._lastNx, offsetPts: this._lastOffsetPts }),
       hasOrbitDrag: () => this._orbit.hasDrag(),
+    });
+
+    // STL-RELIEF: the placement gizmo on the active STL's ghost -- a link of the pointer chain AFTER sculpt, BEFORE orbit.
+    // Its commit / pick / lock come from main/ through setStlGizmoHandlers (core/preview never imports main/).
+    this._stlGizmo = new StlGizmoController({
+      view: new StlGizmoThreeView({ THREE, scene: this._scene, camera: this._camera, canvas }),
+      isSuppressed: () => this._sculpt.hasMode(),
+      requestRender: () => { this._needsRender = true; },
     });
 
     this._initUI();
@@ -540,8 +550,9 @@ export class TerrainPreview {
    *  the previous ones; [] removes them. Overlay meshes of their own, never part of the terrain, never saved or exported. */
   setStlGhosts(list) {
     const THREE = this._THREE;
-    for (const m of this._stlGhosts || []) { this._scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    for (const m of [...(this._stlGhosts || []), ...(this._stlMeetLines || [])]) { this._scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
     this._stlGhosts = [];
+    this._stlMeetLines = [];
     for (const g of list || []) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3));
@@ -551,16 +562,34 @@ export class TerrainPreview {
       const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.renderOrder = 5;
+      mesh.userData.stlId = g.id; // the placement gizmo picks a ghost by its layer id
       this._scene.add(mesh);
       this._stlGhosts.push(mesh);
+      // the intersection LINE (ghost.js meetLine): where the STL meets the surface, drawn over it (no depth test: it lies ON it)
+      if (g.meetLine && g.meetLine.length) {
+        const lg = new THREE.BufferGeometry();
+        lg.setAttribute('position', new THREE.BufferAttribute(g.meetLine, 3));
+        const c = STL_GHOST_COLOURS.meets;
+        const line = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: new THREE.Color(c[0], c[1], c[2]), depthTest: false }));
+        line.renderOrder = 6;
+        line.userData.stlId = g.id;
+        this._scene.add(line);
+        this._stlMeetLines.push(line);
+      }
     }
+    this._stlGizmo?.setGhosts(list || [], { meshes: this._stlGhosts, lines: this._stlMeetLines });
     this._needsRender = true;
   }
+
+  /** STL-RELIEF gizmo: { commit(id, {x?, y?, z?, rotZ?}), pick(id), isLocked(), activeId() } from main/ (main/stl-panel.js). */
+  setStlGizmoHandlers(handlers) { this._stlGizmo.setHandlers(handlers); this._needsRender = true; }
 
   /** PNG data URL of the current scene at a custom resolution. */
   getSnapshot(width = 400, height = 300) {
     const renderer = this._renderer;
-    for (const m of this._stlGhosts || []) m.visible = false; // a thumbnail / export view never shows the placement ghost
+    // a thumbnail / export view never shows the placement ghost, its meet line or the gizmo (only the visible ones come back)
+    const overlays = [...(this._stlGhosts || []), ...(this._stlMeetLines || []), ...(this._stlGizmo?.sceneObjects() || [])].filter((o) => o.visible);
+    for (const m of overlays) m.visible = false;
     const oldW = this._canvas.width;
     const oldH = this._canvas.height;
     const oldAspect = this._camera.aspect;
@@ -575,7 +604,7 @@ export class TerrainPreview {
     renderer.setSize(oldW, oldH, false);
     this._camera.aspect = oldAspect;
     this._camera.updateProjectionMatrix();
-    for (const m of this._stlGhosts || []) m.visible = true;
+    for (const m of overlays) m.visible = true;
     return dataUrl;
   }
 
@@ -585,6 +614,7 @@ export class TerrainPreview {
     this._ro.disconnect();
     this._groundGrid.dispose();
     this._sculpt.dispose();
+    this._stlGizmo.dispose();
     if (this._drapeMesh) { this._scene.remove(this._drapeMesh); this._drapeMesh.material.dispose(); }
     if (this._frameRimDrapeMesh) { this._scene.remove(this._frameRimDrapeMesh); this._frameRimDrapeMesh.material.dispose(); }
     if (this._drapeTexture) this._drapeTexture.dispose();
@@ -753,6 +783,7 @@ export class TerrainPreview {
 
     el.addEventListener('mousedown', e => {
       if (this._sculpt.tryHandleCanvasMousedown(e)) return;
+      if (this._stlGizmo.tryHandleCanvasMousedown(e)) return;
       this._orbit.handleCanvasMousedown(e);
     });
 
@@ -766,13 +797,19 @@ export class TerrainPreview {
 
     window.addEventListener('mousemove', e => {
       if (this._sculpt.tryHandleWindowMousemove(e)) return;
+      if (this._stlGizmo.tryHandleWindowMousemove(e)) return;
       this._orbit.tryHandleWindowMousemove(e);
     });
 
     window.addEventListener('mouseup', () => {
       this._sculpt.handleWindowMouseup();
+      this._stlGizmo.handleWindowMouseup();
       this._orbit.handleWindowMouseup();
     });
+
+    // STL gizmo: Escape or a lost pointer (the window loses focus) cancels a drag -- the ghost goes back, nothing is written
+    window.addEventListener('keydown', e => this._stlGizmo.handleKeydown(e));
+    window.addEventListener('blur', () => this._stlGizmo.handleBlur());
 
     // Wheel is registered passive so modern browsers can keep
     // compositing while high-frequency wheel/trackpad events fire (BUG-08).
@@ -791,14 +828,23 @@ export class TerrainPreview {
           e.preventDefault();
           return;
         }
+        if (this._stlGizmo.tryHandleTouchstart(touch)) {
+          e.preventDefault();
+          return;
+        }
         this._orbit.beginTouchOrbit(touch);
       } else if (e.touches.length === 2) {
+        this._stlGizmo.cancel(); // a second finger = a pinch: an STL drag in progress goes back, nothing is written
         this._orbit.beginTouchPinch(e.touches[0], e.touches[1]);
       }
     }, { passive: false });
 
     el.addEventListener('touchmove', e => {
       if (e.touches.length === 1 && this._sculpt.tryHandleTouchmove(e.touches[0])) {
+        e.preventDefault();
+        return;
+      }
+      if (e.touches.length === 1 && this._stlGizmo.tryHandleTouchmove(e.touches[0])) {
         e.preventDefault();
         return;
       }
@@ -819,6 +865,7 @@ export class TerrainPreview {
     el.addEventListener('touchend', e => {
       if (e.touches.length === 0) {
         this._sculpt.handleTouchend();
+        this._stlGizmo.handleTouchend();
         this._orbit.endTouch();
       } else if (e.touches.length === 1 && this._orbit._touchPan) {
         // one finger of a pinch lifted: the other one orbits from HERE, not from where it first touched (the stale
@@ -827,6 +874,7 @@ export class TerrainPreview {
         this._orbit.beginTouchOrbit(e.touches[0]);
       }
     });
+    el.addEventListener('touchcancel', () => this._stlGizmo.cancel()); // a lost touch: the STL drag goes back, nothing is written
   }
 
   _startLoop() {
@@ -834,6 +882,7 @@ export class TerrainPreview {
     const loop = () => {
       this._animId = requestAnimationFrame(loop);
       if (this._orbit.step()) this._needsRender = true;
+      if (this._stlGizmo.sync()) this._needsRender = true; // the STL handles: shown / hidden (lock, sculpt) / rescaled with the zoom
 
       if (this._needsRender) {
         if (this._viewCube) {
