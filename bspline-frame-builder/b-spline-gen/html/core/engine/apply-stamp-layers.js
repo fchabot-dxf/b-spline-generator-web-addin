@@ -124,6 +124,8 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     const base = flatTop && anyArt ? stampedHeights.map((v, k) => v - artDelta[k]) : stampedHeights;
     const planeZ = flatTop ? flatBrickPlaneHeights(base, flatTop.brickOf, flatTop.count, nx) : null;
     const isArt = layer.kind !== STAMP_PASS_KIND.bricks;
+    // STL-RELIEF: Carved (read only by the two STL branches below); a pass without the flag falls back to its depth's sign
+    const stlCarves = layer.carve === true || (layer.carve === undefined && layerDepth < 0);
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
@@ -144,14 +146,16 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       }
       if (layer.blend === 'max') {
         // STL-RELIEF: the object only shows where it stands ABOVE the surface (zOffset < 0 sinks it in). Only covered points
-        // (isStamped) count; a carve (negative depth) is the same shape as a hollow. A pass with no `blend` takes the add below.
+        // (isStamped) count; a carve is the same shape as a hollow. A pass with no `blend` takes the add below. The carve
+        // is the pass's own `carve` flag (core/stl/layer.js stlPass): a FLAT mesh has depth -0, whose sign cannot say it.
         if (stamped) {
           const lift = Math.max(0, (layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
-          stampedHeights[k] += layerDepth < 0 ? -lift : lift;
+          stampedHeights[k] += stlCarves ? -lift : lift;
         }
       } else if (layer.kind === STAMP_PASS_KIND.stl) {
-        // STL, Add: the object's height plus its Z offset over the points it covers (a sunk object digs a pit)
-        if (stamped) stampedHeights[k] += (layer.zOffset || 0) + bodyVal * layerDepth;
+        // STL, Add: the object's height plus its Z offset over the points it covers (a sunk object digs a pit); a carve is
+        // the same signed the other way (into the surface)
+        if (stamped) stampedHeights[k] += (stlCarves ? -1 : 1) * ((layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
       } else {
         stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
       }

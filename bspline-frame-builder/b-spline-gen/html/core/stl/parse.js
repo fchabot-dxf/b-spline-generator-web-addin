@@ -32,13 +32,18 @@ export function parseStl(buf) {
   const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   if (u8.byteLength < 15) throw new Error('This is not an STL file (too short).');
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
-  // a binary STL's size is EXACTLY 84 + 50 * triangles; that beats the "solid" header test (some binary exporters
-  // start their 80-byte header with the word "solid")
-  if (u8.byteLength >= 84) {
-    const n = dv.getUint32(80, true);
-    if (n > 0 && 84 + n * 50 === u8.byteLength) return { soup: parseBinary(dv, n), triCount: n, format: 'binary' };
+  // 1. a binary STL whose size is EXACTLY 84 + 50 * triangles: binary, whatever its header says (some binary exporters
+  //    start their 80-byte header with the word "solid")
+  // 2. a "solid" header with "facet" in the first 2000 bytes: ASCII
+  // 3. a triangle count whose triangles fit in the file: binary with trailing bytes (padding), which are ignored
+  // 4. otherwise: a "solid" header is read as ASCII (its own error if it has no triangles), anything else is refused
+  const n = u8.byteLength >= 84 ? dv.getUint32(80, true) : 0;
+  if (n > 0 && 84 + n * 50 === u8.byteLength) return { soup: parseBinary(dv, n), triCount: n, format: 'binary' };
+  const solid = asciiAt(u8, 0, 5).toLowerCase() === 'solid';
+  if (!(solid && asciiAt(u8, 0, 2000).toLowerCase().includes('facet')) && n > 0 && 84 + n * 50 <= u8.byteLength) {
+    return { soup: parseBinary(dv, n), triCount: n, format: 'binary' };
   }
-  if (asciiAt(u8, 0, 5).toLowerCase() === 'solid') {
+  if (solid) {
     const soup = parseAscii(u8);
     return { soup, triCount: soup.length / 9, format: 'ascii' };
   }

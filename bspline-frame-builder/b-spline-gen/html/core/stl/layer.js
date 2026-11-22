@@ -65,13 +65,19 @@ export function fitUnitIn(mesh, board) {
   return (0.5 * Math.min(board.widthIn, board.heightIn)) / side;
 }
 
+export const STL_NO_TRIANGLES_MESSAGE = 'The STL has no usable triangles.';
+
 /**
  * Build the record for an imported STL soup. The ORIGINAL welded mesh is returned too (kept in memory this session so
  * Stored detail can go up as well as down; only the stored copy is saved).
+ * The mesh health is measured on the ORIGINAL here and kept in the record (`health`): the decimated copy's vertex
+ * clustering makes open / non-manifold edges of its own, so measuring the stored copy would report holes the file has not.
+ * A soup with no usable triangle (empty, or every triangle collapsed) throws STL_NO_TRIANGLES_MESSAGE (the panel shows it).
  * @returns {{ record: object, original: {positions, indices} }}
  */
 export function createStlLayer({ soup, name, board, storedDetail = STL_STORED_DETAIL_DEFAULT }) {
   const original = indexMesh(soup);
+  if (!(original.indices.length > 0)) throw new Error(STL_NO_TRIANGLES_MESSAGE);
   const stored = decimate(original, storedDetail);
   const record = {
     ...normaliseStlLayer({}),
@@ -81,49 +87,60 @@ export function createStlLayer({ soup, name, board, storedDetail = STL_STORED_DE
     storedDetail,
     origTris: original.indices.length / 3,
     storedTris: stored.indices.length / 3,
+    health: meshHealth(original),
     mesh: encodeMesh(stored),
   };
   return { record, original };
 }
 
-/** Re-store the layer's mesh at a new detail from `source` (the in-memory original, or the stored copy: lower only). */
+/** Re-store the layer's mesh at a new detail from `source` (the in-memory original, or the stored copy: lower only).
+ *  The record's `health` (measured on the original at import) is kept as it is. */
 export function restoreAtDetail(record, source, storedDetail) {
   const stored = decimate(source, storedDetail);
   return { ...record, storedDetail, storedTris: stored.indices.length / 3, mesh: encodeMesh(stored) };
 }
 
-export const stlHealth = (record) => meshHealth(decodeMesh(record.mesh));
+/** The mesh report: the one measured on the original at import (record.health), else measured on the stored copy. */
+export const stlHealth = (record) => record.health ?? meshHealth(decodeMesh(record.mesh));
 
 /** Total stored triangles over the project's STLs (the panel's size warning reads this). */
 export const totalStoredTris = (layers) => (layers || []).reduce((n, l) => n + (l?.storedTris || l?.mesh?.nt || 0), 0);
 
 // ── the pass ────────────────────────────────────────────────────────────────────────────────────────────────────────
-const _meshCache = new Map(); // mesh.h -> decoded mesh (small LRU)
+// Three LRU caches (a get moves the entry to the newest end; the oldest is dropped past the cap):
+//   mesh   mesh.h -> the decoded mesh
+//   raster (mesh, unit, scale, zScale, position x/y, rotation, grid) -> renderDepth's { height, covered, hMax }
+//   body   raster key + compress + softness -> the FINAL { body, covered, hMax } a pass carries (the softness blur is the
+//          costly step: ~1e9 multiply-adds on a 1000 x 1000 grid at 2 in)
+// position.z, raise and blend are applied at pass time / in applyStampLayers, so they never rebuild a raster or a body.
+export const STL_CACHE_CAPS = Object.freeze({ mesh: 8, raster: 16, body: 16 });
+const _meshCache = new Map();
+const _rasterCache = new Map();
+const _bodyCache = new Map();
+function lruGet(map, key) {
+  const v = map.get(key);
+  if (v !== undefined) { map.delete(key); map.set(key, v); }
+  return v;
+}
+function lruSet(map, key, v, cap) {
+  map.set(key, v);
+  while (map.size > cap) map.delete(map.keys().next().value);
+  return v;
+}
 function decoded(rec) {
   const key = rec.mesh.h || `${rec.mesh.nv}:${rec.mesh.nt}`;
-  let m = _meshCache.get(key);
-  if (!m) {
-    m = decodeMesh(rec.mesh);
-    _meshCache.set(key, m);
-    if (_meshCache.size > 4) _meshCache.delete(_meshCache.keys().next().value);
-  }
-  return m;
+  return lruGet(_meshCache, key) || lruSet(_meshCache, key, decodeMesh(rec.mesh), STL_CACHE_CAPS.mesh);
 }
-const _rasterCache = new Map(); // key -> { height, covered, hMax } (small LRU)
 const rasterKey = (rec, g) => JSON.stringify([rec.mesh.h || rec.mesh.nt, rec.unitIn, rec.scale, rec.zScale, rec.position.x, rec.position.y, rec.rotation, g.nx, g.nz, g.widthIn, g.heightIn]);
 
-/** One STL record as a stamp pass (core/engine/apply-stamp-layers.js), or null when it contributes nothing. */
-export function stlPass(rawRec, grid) {
-  const rec = normaliseStlLayer(rawRec);
-  if (rec.enabled === false || !rec.mesh) return null;
-  const { nx, nz, widthIn, heightIn } = grid;
-  const key = rasterKey(rec, grid);
-  let r = _rasterCache.get(key);
-  if (!r) {
-    r = renderDepth(decoded(rec), rec, grid);
-    _rasterCache.set(key, r);
-    if (_rasterCache.size > 8) _rasterCache.delete(_rasterCache.keys().next().value);
-  }
+/** The pass's final body (0..1), its coverage and the relief height, from the caches when the inputs are the same. */
+function passBody(rec, grid) {
+  const { nx, nz, widthIn } = grid;
+  const rKey = rasterKey(rec, grid);
+  const bKey = JSON.stringify([rKey, rec.compress, rec.softness]);
+  const hit = lruGet(_bodyCache, bKey);
+  if (hit) { lruGet(_rasterCache, rKey); return hit; } // the body's raster is "used" too: the two caches age together
+  const r = lruGet(_rasterCache, rKey) || lruSet(_rasterCache, rKey, renderDepth(decoded(rec), rec, grid), STL_CACHE_CAPS.raster);
   const n = nx * nz;
   let body = new Float32Array(n);
   let covered = r.covered;
@@ -134,6 +151,18 @@ export function stlPass(rawRec, grid) {
     body = gaussianSmooth(body, nx, nz, sigma);
     covered = Uint8Array.from(covered, (c, k) => (c || body[k] > 1e-4 ? 1 : 0));
   }
+  return lruSet(_bodyCache, bKey, { body, covered, hMax: r.hMax }, STL_CACHE_CAPS.body);
+}
+
+/**
+ * One STL record as a stamp pass (core/engine/apply-stamp-layers.js), or null when it contributes nothing.
+ * `carve` carries Raised / Carved on its own: a flat mesh has hMax 0, so the sign of `depth` (-0) cannot say it.
+ * The mask arrays are SHARED with the cache (applyStampLayers only reads them): never write into them.
+ */
+export function stlPass(rawRec, grid) {
+  const rec = normaliseStlLayer(rawRec);
+  if (rec.enabled === false || !rec.mesh) return null;
+  const { body, covered, hMax } = passBody(rec, grid);
   return {
     id: `stl:${rec.id}`,
     kind: 'stl',
@@ -141,7 +170,8 @@ export function stlPass(rawRec, grid) {
     enabled: true,
     svg: '1', // applyStampLayers' guard wants a non-empty marker; the mask is already built
     mask: { body, fillet: null, isStamped: covered },
-    depth: (rec.raise ? 1 : -1) * r.hMax,
+    depth: (rec.raise ? 1 : -1) * hMax,
+    carve: !rec.raise,
     blend: rec.blend,
     zOffset: rec.position.z,
     profile: 'flat',
@@ -152,10 +182,29 @@ export function stlPass(rawRec, grid) {
   };
 }
 
-/** Every enabled STL record as a pass, in list order (the grid is the build's own). [] when there are none. */
+// ── errors ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+// The one STL error map: record id -> message. stlPasses clears and refills it at each call (a layer that cannot be read is
+// skipped, never breaks the board's build); updateStlGhosts (core/stl/ghost.js) adds its own failures. The panel reads it.
+const _errors = new Map();
+/** The id a record's error is filed under (its own id; `#<list index>` for a record without one). */
+export const stlErrorId = (rec, i) => (rec && rec.id != null ? String(rec.id) : `#${i}`);
+export function recordStlError(id, err) { _errors.set(String(id), String((err && err.message) || err)); }
+/** { recordId: message } for every STL layer the last build (and the ghosts since) could not use. A fresh plain object. */
+export function getStlErrors() { return Object.fromEntries(_errors); }
+
+/** Every enabled STL record as a pass, in list order (the grid is the build's own). [] when there are none.
+ *  A record that throws (a bad stored mesh) is skipped and its message recorded (getStlErrors). */
 export function stlPasses(layers, grid) {
+  _errors.clear();
   if (!Array.isArray(layers) || !layers.length) return [];
-  return layers.map((l) => stlPass(l, grid)).filter(Boolean);
+  const out = [];
+  layers.forEach((l, i) => {
+    try {
+      const p = stlPass(l, grid);
+      if (p) out.push(p);
+    } catch (e) { recordStlError(stlErrorId(l, i), e); }
+  });
+  return out;
 }
 
-export function _resetStlCachesForTests() { _meshCache.clear(); _rasterCache.clear(); }
+export function _resetStlCachesForTests() { _meshCache.clear(); _rasterCache.clear(); _bodyCache.clear(); _errors.clear(); }

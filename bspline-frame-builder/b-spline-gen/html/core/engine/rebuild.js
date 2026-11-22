@@ -27,7 +27,7 @@ import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { stlPasses } from '../stl/layer.js';
-import { updateStlGhosts } from '../stl/ghost.js';
+import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
@@ -61,13 +61,20 @@ let _nextObjectId = 1;
 const _idOf = (o) => { if (!o || typeof o !== 'object') return 0; if (!_objectIds.has(o)) _objectIds.set(o, _nextObjectId++); return _objectIds.get(o); };
 function _fnv(h, str) { for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h; }
 function _fnvArray(h, a) { if (!a) return _fnv(h, '-'); h = _fnv(h, String(a.length)); for (let i = 0; i < a.length; i++) { h ^= Math.round(a[i] * 1e6); h = Math.imul(h, 16777619); } return h; }
+/**
+ * STL-RELIEF: a stored STL mesh (core/stl/mesh.js encodeMesh, ~0.6 MB of base64 per layer) is digested by its content hash
+ * `h` (which covers the box, the counts and the text) and its counts, not re-stringified on every slider tick. Every other
+ * value is itself.
+ */
+const _digestValue = (v) => ((v && typeof v === 'object' && typeof v.pos === 'string' && typeof v.idx === 'string' && v.h)
+    ? { h: v.h, nv: v.nv, nt: v.nt } : v);
 /** The declared build inputs as one digest, or null when they cannot be read (then the build always runs). */
 export function rebuildInputDigest(preview, nx, nz) {
     try {
         let h = 2166136261;
         // + the one async input outside P: the Photo filter's decoded image (core/photo/state.js) lands after its URL
         h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}|${isPhotoReady(P.photoImageDataUrl)}`);
-        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) ? undefined : v)));
+        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta); h = _fnvArray(h, postDelta); h = _fnvArray(h, extraThickenThinMask);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
@@ -101,7 +108,7 @@ export function heightsInputDigest(nx, nz) {
     try {
         let h = 2166136261;
         h = _fnv(h, `${nx}x${nz}|${isPhotoReady(P.photoImageDataUrl)}`);
-        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : v)));
+        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
@@ -196,8 +203,9 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                     P.thickenWireframe, thicken.data?.botColours, P.flatShading, P.adaptiveDisplay,
                 );
                 updatePreviewSculptMode(preview, scheduleRebuild);
-                // STL-RELIEF: the placement ghosts follow the surface just built (none = removes them)
-                updateStlGhosts(preview, P.stlLayers, heights, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn });
+                // STL-RELIEF: the placement ghosts follow the surface just built (none = removes them). They sit on the
+                // surface BEFORE the stamps (ghostSurface = cleanHeights), never on top of their own relief.
+                updateStlGhosts(preview, P.stlLayers, ghostSurface({ heights, cleanHeights }), { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn });
             }
 
             await yieldToMain();
@@ -388,7 +396,8 @@ export function _collectStampPasses(nx, nz) {
 
     // STL-RELIEF: the STL stamps (P.stlLayers), AFTER every editor layer's art and bricks -- always on top. Only when the caller
     // gives the grid (buildHeights does); no STL layer = no pass = the passes above, untouched (tests/stl-layers-absent.test.js).
-    if (nx > 1 && nz > 1 && Array.isArray(P.stlLayers) && P.stlLayers.length) {
+    // stlPasses runs for an absent / empty list too: it returns [] and clears the STL error map (a removed layer's error goes).
+    if (nx > 1 && nz > 1) {
         passes.push(...stlPasses(P.stlLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
     }
 

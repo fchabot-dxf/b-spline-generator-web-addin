@@ -31,9 +31,11 @@ describe('surfaceAt', () => {
     expect(surfaceAt(h, GRID, 0, 0)).toBeCloseTo(10, 6);
     expect(surfaceAt(h, GRID, 0.25, 7)).toBeCloseTo(10.25, 6); // between columns
     expect(surfaceAt(h, GRID, 99, 0)).toBeCloseTo(20, 6);
-    const v = Float32Array.from({ length: GRID.nx * GRID.nz }, (_, k) => Math.floor(k / GRID.nx)); // rises with the ROW (down the screen)
-    expect(surfaceAt(v, GRID, 0, 10)).toBeCloseTo(0, 6);   // y = +10 is the top row
-    expect(surfaceAt(v, GRID, 0, -10)).toBeCloseTo(40, 6); // y = -10 is the bottom row
+    // rises with the ROW = UP the screen (core/preview/terrain-mesh.js buildHeightField: row j at y = -H/2 + j*dy)
+    const v = Float32Array.from({ length: GRID.nx * GRID.nz }, (_, k) => Math.floor(k / GRID.nx));
+    expect(surfaceAt(v, GRID, 0, 10)).toBeCloseTo(40, 6); // y = +10 is the top of the view = the LAST row (40)
+    expect(surfaceAt(v, GRID, 0, -10)).toBeCloseTo(0, 6); // y = -10 is the bottom = row 0
+    expect(surfaceAt(v, GRID, 0, 3)).toBeCloseTo(26, 6);  // y = +3: row (3 + 10) / 0.5 = 26
   });
 });
 

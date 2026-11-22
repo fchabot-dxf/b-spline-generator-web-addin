@@ -9,12 +9,13 @@
  *   overhang    above the surface, the face looks DOWN: a top-down stamp loses it
  *   open        an open edge of the mesh (a hole): shows as a pit in the relief
  *
- * The ghost is a RIGID copy placed on the surface height under its centre; the stamp itself is relative per point (the object
+ * The ghost is a RIGID copy placed on the surface height under its centre (the surface BEFORE the stamps, ghostSurface: never
+ * on top of its own relief); the stamp itself is relative per point (the object
  * follows the surface), so on a strongly curved board the ghost is the honest first look, the Stamp result is the truth.
  */
 import { decodeMesh } from './mesh.js';
 import { placeMesh } from './raster.js';
-import { normaliseStlLayer } from './layer.js';
+import { normaliseStlLayer, recordStlError, stlErrorId } from './layer.js';
 
 export const STL_GHOST_COLOURS = Object.freeze({
   shows: [0.25, 0.75, 0.35],
@@ -26,11 +27,14 @@ export const STL_GHOST_COLOURS = Object.freeze({
 export const STL_MEET_BAND_IN = 0.03;
 export const STL_OVERHANG_NZ = -0.05; // a face normal pointing this far down is an overhang
 
-/** The surface height at scene (x, y), bilinear; clamped to the board. */
+/**
+ * The surface height at scene (x, y), bilinear; clamped to the board. The grid is buildHeightField's own
+ * (core/preview/terrain-mesh.js): column i at x = -W/2 + i*dx, row j at y = -H/2 + j*dy (row 0 = the bottom, +y = a larger row).
+ */
 export function surfaceAt(heights, grid, x, y) {
   const { nx, nz, widthIn, heightIn } = grid;
   const fi = Math.min(nx - 1, Math.max(0, ((x + widthIn / 2) / widthIn) * (nx - 1)));
-  const fj = Math.min(nz - 1, Math.max(0, ((heightIn / 2 - y) / heightIn) * (nz - 1)));
+  const fj = Math.min(nz - 1, Math.max(0, ((y + heightIn / 2) / heightIn) * (nz - 1)));
   const i0 = Math.floor(fi), j0 = Math.floor(fj), i1 = Math.min(nx - 1, i0 + 1), j1 = Math.min(nz - 1, j0 + 1);
   const ti = fi - i0, tj = fj - j0;
   const h = (i, j) => heights[j * nx + i];
@@ -55,7 +59,7 @@ export function openEdgeVertices(mesh) {
 
 /**
  * @param rec     an STL layer record
- * @param heights the board's current heights (or null: the ghost then sits on z = 0)
+ * @param heights the surface it sits on: the board's heights BEFORE the stamps (ghostSurface), or null (it then sits on z = 0)
  * @param grid    { nx, nz, widthIn, heightIn }
  * @returns {{ positions: Float32Array, indices: Uint32Array, colours: Float32Array, counts: {shows, buried, meets, overhang, open} }}
  */
@@ -98,14 +102,24 @@ export function ghostGeometry(rawRec, heights, grid) {
 /** Ghost state (UI-only, never saved): the ghosts show while this is true. */
 export const ghostState = { visible: true };
 
-/** Hand the preview the current ghosts (or none). Called after every build and after every panel change. */
+/**
+ * The surface a ghost sits on, from a build result (core/state.js lastResult or rebuild's own): the heights BEFORE the stamps
+ * (cleanHeights), so a ghost never floats on top of its own relief; a result without them falls back to its heights.
+ */
+export const ghostSurface = (result) => (result ? (result.cleanHeights ?? result.heights ?? null) : null);
+
+/**
+ * Hand the preview the current ghosts (or none). Called after every build and after every panel change.
+ * `heights` = the surface the ghosts sit on: pass ghostSurface(result) (the pre-stamp surface), not the stamped heights.
+ */
 export function updateStlGhosts(preview, layers, heights, grid) {
   if (!preview || typeof preview.setStlGhosts !== 'function') return;
   if (!ghostState.visible || !Array.isArray(layers) || !layers.length || !heights) { preview.setStlGhosts([]); return; }
   const list = [];
-  for (const l of layers) {
-    if (!l || l.enabled === false || !l.mesh) continue;
-    try { list.push(ghostGeometry(l, heights, grid)); } catch (_) { /* a bad stored mesh shows no ghost; the stamp path reports it */ }
-  }
+  layers.forEach((l, i) => {
+    if (!l || l.enabled === false || !l.mesh) return;
+    // a bad stored mesh shows no ghost; its message is recorded in the STL error map (core/stl/layer.js getStlErrors)
+    try { list.push(ghostGeometry(l, heights, grid)); } catch (e) { recordStlError(stlErrorId(l, i), e); }
+  });
   preview.setStlGhosts(list);
 }

@@ -49,10 +49,31 @@ describe('GUARD: a board with no STL layer is unchanged', () => {
     P.stlLayers = [];
     expect(_collectStampPasses().map((p) => p.id)).toEqual(absent);
   });
+  it('through the GRID-AWARE call (the one buildHeights makes, the STL gate reached): absent, [] and [a disabled STL] collect exactly the editor-only passes', () => {
+    window.svgEditor = BOARD();
+    const editorOnly = _collectStampPasses();
+    const view = (ps) => ps.map((p) => [p.id, p.kind, p.depth, p.mask]);
+    delete P.stlLayers;
+    expect(view(_collectStampPasses(NX, NZ))).toEqual(view(editorOnly));
+    P.stlLayers = [];
+    expect(view(_collectStampPasses(NX, NZ))).toEqual(view(editorOnly));
+    // a disabled record in the real shape: it reaches stlPasses (the grid is given) and contributes nothing
+    P.stlLayers = [{ v: 1, id: 'off', enabled: false, mesh: { v: 1, nv: 3, nt: 1, min: [0, 0, 0], size: [1, 1, 0], idxBits: 16, pos: 'AAAAAAAA//8AAAAA//8AAA==', idx: 'AAABAAIA', h: 'x' } }];
+    expect(view(_collectStampPasses(NX, NZ))).toEqual(view(editorOnly));
+  });
   it('the stamped heights are byte-identical to the golden measured before the STL work', () => {
     window.svgEditor = BOARD();
     const heights = applyStampLayers(CLEAN(), _collectStampPasses(), NX, NZ, { stampDepth: 0, stampEdgeFilletRadius: 0 });
     expect(sha(heights)).toBe('8f6095ecfe52b833');
+  });
+  it('the golden holds through the grid-aware call too, with P.stlLayers absent, [] or [a disabled STL]', () => {
+    window.svgEditor = BOARD();
+    const opts = { stampDepth: 0, stampEdgeFilletRadius: 0 };
+    for (const layers of [undefined, [], [{ v: 1, id: 'off', enabled: false, mesh: { v: 1 } }]]) {
+      if (layers === undefined) delete P.stlLayers; else P.stlLayers = layers;
+      const heights = applyStampLayers(CLEAN(), _collectStampPasses(NX, NZ), NX, NZ, opts);
+      expect(sha(heights), JSON.stringify(layers)).toBe('8f6095ecfe52b833');
+    }
   });
   it('persistableP already keeps an STL record, so it is saved and loaded with the project (no save-path change needed)', () => {
     const rec = [{ v: 1, id: 'stl1' }];
