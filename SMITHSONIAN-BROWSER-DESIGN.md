@@ -161,3 +161,51 @@ byte-identical (the stl-layers-absent golden covers the passes).
   advisor's 2026-11-22 crawl converted with `--from-json` (every uri reproduced from base + g). At 0.30: 154 flat, 356 rods.
 - **Known limit:** d is the GLB's RAW axis-aligned box (before the Voyager pose), so a plate stored tilted reads thicker than it
   is (the NPG "Theodore Roosevelt" bronze relief: 416 x 492 x 606, not flat).
+
+## 9. SMK, the second library, and ALL LIBRARIES at once (SMK-LIBRARY, Fred 2026-11-22)
+
+- **Fred:** "Smk for the win" (only no-key, no-login libraries), then "searching searches all libs at once and simply tells me
+  which libs they're from along their sizes etc".
+- **The SMK API, measured live 2026-11-22 (plain curl; recorded: `tests/fixtures/smk/search-all-p1.json` = rows 24, and
+  `item-relief-kas2906-8.json` = `api/v1/art/?object_number=KAS2906/8`):** `GET api.smk.dk/api/v1/art/search/?keys=<words | *>&
+  filters=[has_3d_file:true]&offset&rows&lang=en` -> `{ found: 373, items }`, no key, CORS *. The 3D file reference is
+  **`files_3D: [{ url, mime_type, file_size }]`** (`file_size` missing on some rows). `rights`: 371 of 373 = the Public Domain
+  Mark (the 2 others: smk.dk's own terms, left out). A second filter `[object_names:Relief]` narrows (41); two object_names
+  filters are ANDed (0), so a Type of several names runs one search per name. Images: IIIF on iip-thumb.smk.dk (CORS *).
+  Download: `api/v1/download-3d/<file>.stl`, no auth, CORS *, ranges OK (`Content-Range: bytes 0-0/20005084`). 367 of 373
+  list a `_small` STL (10-20 MB; one is `_small8`); without one, the smallest STL listed. **Z-up, standing, 130 mm tall**
+  (KAS2906/8, a relief, measured: 49 x 21 x 130 mm, thin along Y).
+- **Declared, one mechanism:** `core/stl/smk.js` `SMK_SOURCE` (+ `SMK_TYPES`: All types / Relief = Relief + Tympanum + Stele /
+  Bust = Bust + Herma / Head / Statue = Statue + Statuette + Group of statues + Group of statuettes + Torso + Kore / Other =
+  Sculpture in the round + Sculpture related to architecture; every name on the 373 models is in exactly one type, a later new
+  name shows under All types only). `core/stl/libraries.js`: `STL_LIBRARIES = [SMITHSONIAN_SOURCE, SMK_SOURCE]`, `ALL_LIBRARIES`
+  and `LIBRARY_OPS` (per library: its searches, a page, the file a tile downloads, the download, the record's `source`). A tile
+  is the SAME shape for both; an SMK tile also says `format: 'stl'`, `stlUrl`, `sizeBytes`, `dims`, `licence`. (A Smithsonian
+  tile was NOT given `format: 'glb'`: main's test pins its exact shape; the library -- `SMITHSONIAN_SOURCE.format` -- says it,
+  and the sheet hands `onPick(tile, library)`.)
+- **The sheet:** a Library `<select>` heads the row, **All libraries by default** (the panel's '🏛 Browse 3D libraries…' opens
+  `STL_LIBRARIES`; opened with one source the sheet is the Smithsonian sheet as before). Every search is a list of FEEDS (a
+  library, or one object_name of an SMK Type) fetched in parallel (`Promise.allSettled`), merged **round-robin** into the one
+  grid; More results asks each feed that has more for its next page. A library that fails is one note line ('SMK: could not
+  reach api.smk.dk (…)'), the others still show. Filters: the words go to every library; the museum (Smithsonian) and the Type
+  (SMK) show only when that one library is picked (their values are kept while hidden); with All the Shape shows too, and a
+  library with no shape data is left out of a Shape search with a note ('SMK: no shape data …').
+- **Tiles say where they are from and how big:** a badge ('Smithsonian' / 'SMK') and the listed download size ('20 MB';
+  the Smithsonian API lists none) or a catalog tile's shape word ('flat' / 'rod'). The selected tile's pane: the library and the
+  licence, the download size (not listed: ONE 1-byte Range request for the selected tile, 400 ms after it is selected so
+  tapping through tiles sends nothing), the object's own size from SMK's listing (W × H × D cm), the credit.
+- **Insert (SMK):** the `_small` STL (behind the 'stl' loading card; the panel status line shows 'Downloading <name>: 4.2 of
+  20 MB…') -> parseStl -> `addStlFromSoup(soup, title, { source: { provider: 'smk', id, title, uri }, orient: 'layFlat' })`:
+  the library's orientation rule, the Lay flat rotation (the same `layFlatRotationOf` the Lay flat button uses), in the SAME
+  write and undo step. Live: KAS2906/8 laid with its thin side up (|R[2][thin]| 0.999), the figure up the board. The Smithsonian
+  keeps its Voyager pose (`orient: 'voyager'`, nothing at insert). The Stored-detail re-download reads the record's library
+  (`provider`) and downloads its `uri` again.
+- **Turn in 3D (SMK):** the model IS the STL: the pane says 'Turn in 3D downloads the model (~20 MB).' and it loads on press
+  only (progress in MB in the pane note). Shown UPRIGHT as stored: the Z-up soup turned -90° about X (`SMK_SOURCE.previewTurn`)
+  for the view's front camera (+Y up, the model's -Y side to the camera).
+- **Licence:** PDM only (the 2 others are dropped; `parseSmkSearch` counts them). Credit: 'SMK — National Gallery of Denmark,
+  public domain (PDM). Models load from api.smk.dk.'
+- **Known:** in headless Chrome (an honest HeadlessChrome user agent, never changed) the Smithsonian API answers WITHOUT its
+  CORS header (Chrome: `MissingAllowOriginHeader`) while curl gets `Access-Control-Allow-Origin: *` with or without an Origin:
+  the sheet then shows SMK alone with 'Smithsonian: Could not reach 3d-api.si.edu (Failed to fetch).' SMK answered the same
+  browser normally.
