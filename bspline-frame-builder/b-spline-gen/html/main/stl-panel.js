@@ -17,7 +17,8 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh, indexMesh } from '../core/stl/mesh.js';
 import { soupFromGlbBuffer } from '../core/stl/gltf.js';
-import { downloadSmithsonianModelSoup } from '../core/stl/smithsonian.js';
+import { SMITHSONIAN_SOURCE } from '../core/stl/smithsonian.js';
+import { STL_LIBRARIES, opsOf, downloadLibrarySoup, libraryOfRecordSource, mbNumber } from '../core/stl/libraries.js';
 import { openStlLibrarySheet } from './stl-library-sheet.js';
 import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
@@ -28,13 +29,30 @@ import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/sto
 import { layFlatFrame, quickTurnRotation, wrapDeg } from '../core/stl/orient.js';
 import { resolveGrid } from '../core/terrain.js';
 
-/** The controls' groups, in order. */
+/** The controls' groups, in order: each one FOLDS inside the open STL's card (the app's .panel-sub collapse); `open` = its
+ *  default (the user's last fold is remembered per viewer, never in P). 'detail' holds no STL_CONTROLS entry: the Stored detail
+ *  slider / box, the stored-size, source and mesh-health notes and Re-import (renderDetailGroup). */
 export const STL_GROUPS = Object.freeze([
-  Object.freeze({ id: 'place', label: 'Place', note: 'inches from the board centre; +Y is up the screen' }),
-  Object.freeze({ id: 'size', label: 'Size' }),
-  Object.freeze({ id: 'rotate', label: 'Rotate', note: 'degrees' }),
-  Object.freeze({ id: 'stamp', label: 'Stamp' }),
+  Object.freeze({ id: 'place', label: 'Place', note: 'inches from the board centre; +Y is up the screen', open: true }),
+  Object.freeze({ id: 'size', label: 'Size', open: false }),
+  Object.freeze({ id: 'rotate', label: 'Rotate', note: 'degrees', open: false }),
+  Object.freeze({ id: 'stamp', label: 'Stamp', open: false }),
+  Object.freeze({ id: 'detail', label: 'Detail', note: 'stored in the project', open: false }),
 ]);
+/** Where the folds are remembered (a per-viewer convenience, like the sidebar's open sections; UI state, never P). */
+export const STL_GROUP_OPEN_KEY = 'bspline.stl.groupOpen';
+let _groupOpen = null; // group id -> open
+const groupIsOpen = (g) => {
+  if (!_groupOpen) {
+    try { _groupOpen = JSON.parse(localStorage.getItem(STL_GROUP_OPEN_KEY) || '{}') || {}; } catch (_) { _groupOpen = {}; }
+  }
+  return typeof _groupOpen[g.id] === 'boolean' ? _groupOpen[g.id] : g.open === true;
+};
+function setGroupOpen(g, open) {
+  groupIsOpen(g);
+  _groupOpen[g.id] = open;
+  try { localStorage.setItem(STL_GROUP_OPEN_KEY, JSON.stringify(_groupOpen)); } catch (_) { /* storage unavailable: kept this session only */ }
+}
 
 /**
  * Every setting of the ACTIVE STL, once. kind: 'slider' (a range + number pair) or 'choice' (a segmented pair of buttons).
@@ -82,6 +100,7 @@ export const STL_ACTIONS = Object.freeze([
 
 // ── state (UI only; the data is P.stlLayers) ────────────────────────────────────────────────────────────────────────
 let _active = null;                 // the active record's id
+let _open = null;                   // the id of the OPEN card (one at a time; the open card holds the settings); null = all closed
 const _originals = new Map();       // record id -> the full welded mesh, this session only (Stored detail can go back up)
 let _hooks = { onChange: () => {}, refreshGhosts: () => {} };
 
@@ -150,7 +169,10 @@ export function applyStlTransform(id, t = {}) {
 export function pickStlLayer(id) {
   if (!find(id)) return false;
   _active = id;
+  _open = id;
   syncStlPanel();
+  const c = typeof document !== 'undefined' ? [...document.querySelectorAll('[data-stl-card]')].find((x) => x.getAttribute('data-stl-card') === String(id)) : null;
+  if (c && typeof c.scrollIntoView === 'function') c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   return true;
 }
 
@@ -175,12 +197,14 @@ export function noteStlProjectReplaced() { _projectEpoch++; }
 /**
  * THE import path (an STL file, a GLB file, a library model all end here): a triangle soup (core/stl/parse.js parseStl's `.soup`
  * shape) becomes a new layer, placed at the board centre, fitted to half the board. `name` is shown as given (file callers pass
- * fileBase(file name)). `extra.source` ({ provider, modelUrl, title, uri }: where a library model came from) is stored on the
- * record when given; a record without it has no `source` key at all.
+ * fileBase(file name)). `extra.source` ({ provider, modelUrl | id, title, uri }: where a library model came from) is stored on the
+ * record when given; a record without it has no `source` key at all. `extra.orient` = the library's orientation rule at insert:
+ * 'layFlat' (SMK: its STLs stand Z-up) sets the Lay flat rotation in this same write / undo step; anything else, nothing.
  */
 export function addStlFromSoup(soup, name, extra = {}) {
   const { record: made, original } = createStlLayer({ soup, name: name || 'STL', board: board() });
   let record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
+  if (extra && extra.orient === 'layFlat') record = { ...record, rotation: layFlatRotationOf(record) };
   // Fred 2026-11-22: fitting at insert is an OPTION (P.stlFitOnInsert, default off) -- fitted once, in this same write / undo
   // step, on the surface already built (the clean terrain an STL is stamped on does not depend on the STL); none built yet:
   // after the next build (onStlStockChanged)
@@ -190,6 +214,7 @@ export function addStlFromSoup(soup, name, extra = {}) {
   P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
   _active = record.id;
+  _open = record.id; // a new STL opens its card
   commit('add');
   syncStlPanel();
   announceStlLayersChanged();
@@ -212,11 +237,13 @@ async function soupFromBuffer(buf) {
   return isGlb(buf) ? soupFromGlbBuffer(buf) : parseStl(buf).soup;
 }
 
-/** Download a library model as ONE soup (core/stl/smithsonian.js downloadSmithsonianModelSoup): every part of its Voyager scene,
- *  upright; without a scene every Low part of model `modelId` (a bust and its base), or `uri` alone when that lookup fails. */
-async function downloadModelSoup(modelId, uri) {
-  return downloadSmithsonianModelSoup({ modelId, glbUri: uri }, (...a) => globalThis.fetch(...a));
+/** Download a library model as ONE soup (core/stl/libraries.js downloadLibrarySoup): the Smithsonian's every part of its Voyager
+ *  scene, upright (no scene: every Low part, or `ref.uri` alone); SMK's STL as stored. `opts.onProgress(bytes, total)` while it streams. */
+async function downloadModelSoup(lib, ref, opts = {}) {
+  return downloadLibrarySoup(lib, ref, (...a) => globalThis.fetch(...a), opts);
 }
+/** The panel status line while a model downloads: 'Downloading <name>: 4.2 of 15 MB...'. */
+const downloadProgress = (name) => (got, total) => status(`Downloading ${name || 'the model'}: ${mbNumber(got)}${total ? ` of ${mbNumber(total)}` : ''} MB…`);
 
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
 export function reimportStlBuffer(buf, name, id = activeStlLayer()?.id) {
@@ -241,6 +268,7 @@ export function removeStlLayer(id) {
   P.stlLayers = list().filter((l) => !(l && l.id === id));
   _originals.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
+  if (_open === id) _open = null; // removing the open STL opens nothing
   commit('remove');
   syncStlPanel();
   announceStlLayersChanged();
@@ -278,13 +306,17 @@ function restoreDetail(id, source, want) {
   syncStlPanel();
 }
 
-/** Download layer `id`'s model again (all its parts; its source.uri if the lookup fails), keep it as the in-memory original, then re-store at `want`. */
+/** Download layer `id`'s model again from its library (Smithsonian: all its parts, its source.uri if the lookup fails; SMK: its
+ *  STL), keep it as the in-memory original, then re-store at `want`. */
 async function redownloadAndRestore(id, want) {
   const rec = find(id);
   const epoch = _projectEpoch;
   let original = null;
   try {
-    await withLoadingStage('stl', async () => { original = indexMesh(await downloadModelSoup(rec.source.modelUrl, rec.source.uri)); });
+    const lib = libraryOfRecordSource(rec.source);
+    await withLoadingStage('stl', async () => {
+      original = indexMesh(await downloadModelSoup(lib, opsOf(lib).refOf(rec.source), { onProgress: downloadProgress(rec.name) }));
+    });
   } catch (e) {
     status(`Could not download ${rec.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
     syncStlPanel();
@@ -348,15 +380,22 @@ export function fitStlToCarveDepth(id = activeStlLayer()?.id) {
 /** Layers added with P.stlFitOnInsert on before any surface was built: fitted once, after the next build (onStlStockChanged). */
 const _fitAfterBuild = new Set();
 
-/** 'Lay flat': the active STL's rotation REPLACED by the one that puts its thinnest side up (core/stl/orient.js layFlatFrame on
- *  the decoded stored mesh). One write, one undo step; nothing else changes. */
+/** The Lay flat rotation of record `rec` (core/stl/orient.js layFlatFrame on its decoded stored mesh, from its rotation now),
+ *  written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0.
+ *  The ONE rule: the Lay flat button and a library's 'layFlat' insert both use it. Throws when the stored mesh cannot be read. */
+function layFlatRotationOf(rec) {
+  const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
+  const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation;
+  return { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) };
+}
+
+/** 'Lay flat': the active STL's rotation REPLACED by the one that puts its thinnest side up (layFlatRotationOf). One write, one
+ *  undo step; nothing else changes. */
 export function layFlatStl() {
   const rec = activeStlLayer();
   if (!rec) return false;
   let rotation;
-  // written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0
-  const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
-  try { const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation; rotation = { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) }; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
+  try { rotation = layFlatRotationOf(rec); } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
   updateRecord(rec.id, (r) => ({ ...r, rotation }));
   commit('layFlat');
   syncStlPanel();
@@ -376,10 +415,16 @@ export function turnStl(axis, deg) {
 
 /** The active STL against the stock, from the last build's report (core/stl/stock.js): one line, hidden when it fits. */
 function showStlStock() {
+  const report = getStlStockReport();
+  for (const w of document.querySelectorAll('[data-stl-warn]')) { // every card header: the same message, as the icon's title
+    const text = stlStockMessage(report[String(w.getAttribute('data-stl-warn'))]);
+    w.title = text;
+    w.hidden = !text;
+  }
   const line = byId('stlStock');
   if (!line) return;
   const rec = activeStlLayer();
-  const text = rec && rec.id != null ? stlStockMessage(getStlStockReport()[String(rec.id)]) : '';
+  const text = rec && rec.id != null ? stlStockMessage(report[String(rec.id)]) : '';
   line.textContent = text;
   line.hidden = !text;
 }
@@ -412,16 +457,20 @@ async function importFile(file, { reimport = false } = {}) {
 }
 const STALE_IMPORT = 'The project changed while the STL was being read: add it again.';
 
-/** The library sheet's Insert: download the model (all its parts) and add it through the one import path, with where it came from. */
-export async function addStlFromLibrary(tile) {
+/**
+ * The library sheet's Insert: download the model from its library (`lib`, core/stl/libraries.js; the Smithsonian when not given)
+ * and add it through the one import path, with where it came from and the library's orientation rule (SMK: laid flat).
+ */
+export async function addStlFromLibrary(tile, lib = SMITHSONIAN_SOURCE) {
   const epoch = _projectEpoch; // a project load during the download drops it (as importFile)
+  const ops = opsOf(lib);
   try {
     let done = null;
     let stale = false;
     await withLoadingStage('stl', async () => {
-      const soup = await downloadModelSoup(tile.id, tile.glbUrl);
+      const soup = await downloadModelSoup(lib, { id: tile.id, uri: ops.fileUrl(tile) }, { onProgress: downloadProgress(tile.title) });
       if (epoch !== _projectEpoch) { stale = true; return; }
-      done = addStlFromSoup(soup, tile.title, { source: { provider: 'smithsonian', modelUrl: tile.id, title: tile.title, uri: tile.glbUrl } });
+      done = addStlFromSoup(soup, tile.title, { source: ops.sourceRecord(tile), orient: lib.orient });
     });
     if (stale) status(STALE_IMPORT, true);
     else if (done) status('');
@@ -461,13 +510,25 @@ function renderControl(c) {
 const actionRow = (actions) => el('div', { class: 'photo-layer-buttons' },
   actions.map((a) => el('button', { type: 'button', id: a.id, class: 'cad-btn cad-btn-secondary', text: a.text, title: a.title })));
 
+/** The Detail group's content: the Stored detail slider + box, the stored-size / source / mesh-health notes, Re-import. */
+function renderDetailGroup(gbody) {
+  gbody.appendChild(el('div', { class: 'cad-slider-row', style: 'margin-bottom:6px;' }, [
+    el('input', { type: 'range', id: 'stlDetailSlider', class: 'cad-slider', min: String(DETAIL_SLIDER.min), max: String(DETAIL_SLIDER.min), step: String(DETAIL_SLIDER.step) }),
+    el('div', { class: 'cad-stepper cad-stepper-wide' }, [el('input', { type: 'number', id: 'stlDetail', min: '100', max: '400000', step: '1000' })]),
+    el('span', { class: 'stl-unit', text: 'triangles' })]));
+  gbody.appendChild(el('div', { id: 'stlStored', class: 'photo-layer-note' }));
+  gbody.appendChild(el('div', { id: 'stlSource', class: 'photo-layer-note', hidden: '' }));
+  gbody.appendChild(el('div', { id: 'stlHealth', class: 'photo-layer-note' }));
+  gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' })]));
+}
+
 /** Build the panel from STL_CONTROLS into `body` (main.js, before bindStlPanel). */
 export function renderStlPanel(body) {
   if (!body) return;
   body.innerHTML = '';
   body.appendChild(el('div', { class: 'stl-add-row' }, [
     el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add STL…' }),
-    el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse Smithsonian…', title: 'Pick a model from the Smithsonian\'s open 3D collection' }),
+    el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse 3D libraries…', title: `Pick a model from the open 3D collections: ${STL_LIBRARIES.map((l) => l.label).join(', ')}` }),
     el('input', { type: 'file', id: 'stlFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
     el('input', { type: 'file', id: 'stlReimportFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
   ]));
@@ -476,44 +537,41 @@ export function renderStlPanel(body) {
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlList', class: 'stl-list' }));
-  const active = el('div', { id: 'stlActive' });
+  const active = el('div', { id: 'stlActive', hidden: '' }); // moved into the open card by syncStlPanel (never copied)
   for (const g of STL_GROUPS) {
     const mine = STL_CONTROLS.filter((c) => c.group === g.id);
-    active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
+    const grp = el('div', { class: `panel-sub stl-group${groupIsOpen(g) ? '' : ' collapsed'}`, 'data-stl-group': g.id });
+    const head = el('div', { class: 'panel-header stl-group-head', role: 'button', tabindex: '0', 'aria-expanded': String(groupIsOpen(g)) },
+      [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: g.note }) : null]);
+    const gbody = el('div', { class: 'panel-body' });
+    grp.append(head, gbody);
+    const flip = () => { const open = grp.classList.contains('collapsed'); grp.classList.toggle('collapsed', !open); head.setAttribute('aria-expanded', String(open)); setGroupOpen(g, open); };
+    head.addEventListener('click', flip);
+    head.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
     for (const c of mine) {
-      active.appendChild(renderControl(c));
+      gbody.appendChild(renderControl(c));
       const next = STL_ACTIONS.filter((a) => a.after === c.id); // e.g. the quick turns beside their Rotate slider
-      if (next.length) active.appendChild(actionRow(next));
+      if (next.length) gbody.appendChild(actionRow(next));
     }
     const own = STL_ACTIONS.filter((a) => a.group === g.id && !a.after);
-    if (own.length) active.appendChild(actionRow(own));
-    if (g.id === 'size') active.appendChild(el('div', { id: 'stlStock', class: 'photo-layer-note stl-error', role: 'status', hidden: '' })); // over the stock: detection only
+    if (own.length) gbody.appendChild(actionRow(own));
+    if (g.id === 'size') gbody.appendChild(el('div', { id: 'stlStock', class: 'photo-layer-note stl-error', role: 'status', hidden: '' })); // over the stock: detection only
     if (g.id === 'place') {
-      active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
+      gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [
         el('button', { type: 'button', id: 'stlSnap', class: 'cad-btn cad-btn-secondary', text: '⤓ Base on surface', title: 'Z = 0: the lowest point rests on the surface' }),
         el('button', { type: 'button', id: 'stlCentre', class: 'cad-btn cad-btn-secondary', text: '⌖ Centre' }),
       ]));
     }
     if (g.id === 'rotate') {
-      active.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRotReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset rotation' })]));
+      gbody.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRotReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset rotation' })]));
     }
+    if (g.id === 'detail') renderDetailGroup(gbody);
+    active.appendChild(grp);
   }
-  // stored detail + health + the ghost
-  active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: 'Stored in the project' })]));
-  active.appendChild(el('div', { class: 'cad-slider-row', style: 'margin-bottom:6px;' }, [
-    el('input', { type: 'range', id: 'stlDetailSlider', class: 'cad-slider', min: String(DETAIL_SLIDER.min), max: String(DETAIL_SLIDER.min), step: String(DETAIL_SLIDER.step) }),
-    el('div', { class: 'cad-stepper cad-stepper-wide' }, [el('input', { type: 'number', id: 'stlDetail', min: '100', max: '400000', step: '1000' })]),
-    el('span', { class: 'stl-unit', text: 'triangles' })]));
-  active.appendChild(el('div', { id: 'stlStored', class: 'photo-layer-note' }));
-  active.appendChild(el('div', { id: 'stlSource', class: 'photo-layer-note', hidden: '' }));
-  active.appendChild(el('div', { id: 'stlHealth', class: 'photo-layer-note' }));
-  active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
-    el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' }),
-    el('button', { type: 'button', id: 'stlRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Remove' }),
-  ]));
+  active.appendChild(el('div', { class: 'photo-layer-buttons' }, [el('button', { type: 'button', id: 'stlRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Remove' })]));
   active.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlGhost' }), el('span', { text: 'Show the placement ghost' })]));
   active.appendChild(el('div', { id: 'stlLegend', class: 'stl-legend' }));
-  body.appendChild(active);
+  body.appendChild(active); // parked here while no card is open
   body.appendChild(el('div', { id: 'stlTotal', class: 'photo-layer-note' }));
 }
 
@@ -563,20 +621,27 @@ export function syncStlPanel() {
   if (!listEl) return;
   const recs = list();
   if (!find(_active)) _active = recs[0]?.id ?? null;
+  if (!find(_open)) _open = null;
+  const activeEl = byId('stlActive');
+  if (activeEl) { activeEl.hidden = true; listEl.after(activeEl); } // park the settings before the cards are rebuilt
   listEl.innerHTML = '';
   if (!recs.length) listEl.appendChild(el('div', { class: 'photo-layer-note', text: 'No STL yet. Add one: it is placed at the board centre and stamped into the surface.' }));
   for (const r of recs) {
     const on = r.enabled !== false;
+    const isOpen = r.id === _open;
     const row = el('div', { class: `stl-row${r.id === _active ? ' stl-row-active' : ''}` }, [
       el('input', { type: 'checkbox', 'data-stl-enable': r.id, title: 'Stamp this STL', ...(on ? { checked: '' } : {}) }),
-      el('button', { type: 'button', class: 'stl-row-name', 'data-stl-pick': r.id, text: r.name || 'STL' }),
+      el('button', { type: 'button', class: 'stl-row-name', 'data-stl-pick': r.id, 'aria-expanded': String(isOpen), title: isOpen ? 'Close its settings' : 'Open its settings', text: r.name || 'STL' }),
+      el('span', { class: 'stl-row-warn', 'data-stl-warn': r.id, role: 'img', 'aria-label': 'Over the stock', text: '⚠', hidden: '' }),
+      el('button', { type: 'button', class: 'stl-row-del', 'data-stl-del': r.id, title: 'Remove this STL', 'aria-label': `Remove ${r.name || 'STL'}`, text: '🗑' }),
     ]);
     row.querySelector('input').checked = on;
-    listEl.appendChild(row);
+    const cardBody = el('div', { class: 'stl-card-body' });
+    const cardEl = el('div', { class: `stl-card${isOpen ? ' stl-card-open' : ''}`, 'data-stl-card': r.id }, [row, cardBody]);
+    if (isOpen && activeEl) { cardBody.appendChild(activeEl); activeEl.hidden = false; } // the ONE settings block moves into the open card
+    listEl.appendChild(cardEl);
   }
   const rec = activeStlLayer();
-  const activeEl = byId('stlActive');
-  if (activeEl) activeEl.hidden = !rec;
   if (rec) {
     const n = normaliseStlLayer(rec);
     for (const c of STL_CONTROLS) {
@@ -602,7 +667,7 @@ export function syncStlPanel() {
     const refetch = !can && !!(rec.source && rec.source.uri);
     if (stored) stored.textContent = `Stored ${(rec.storedTris ?? rec.mesh?.nt ?? 0).toLocaleString()} of ${(rec.origTris ?? rec.mesh?.nt ?? 0).toLocaleString()} triangles, about ${mb(sizeOf(rec))} MB. ${can ? 'The original is loaded: the detail can go up or down.' : refetch ? 'After a reload, more detail downloads the model again.' : 'After a reload the detail can only go down; re-import the file for more.'}`;
     const src = byId('stlSource');
-    if (src) { src.hidden = !rec.source; src.textContent = rec.source ? `From the Smithsonian (CC0): ${rec.source.title || rec.name || ''}` : ''; }
+    if (src) { src.hidden = !rec.source; src.textContent = rec.source ? `${libraryOfRecordSource(rec.source).sourceNote}: ${rec.source.title || rec.name || ''}` : ''; }
     const h = byId('stlHealth'); if (h) h.textContent = healthText(rec);
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
@@ -641,11 +706,20 @@ export function bindStlPanel(hooks = {}) {
   // the slider: the box follows live while dragging; the re-store (a decimate, ~100 ms+) runs on release only
   byId('stlDetailSlider')?.addEventListener('input', (e) => { const b = byId('stlDetail'); if (b) b.value = e.target.value; });
   byId('stlDetailSlider')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
-  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ onPick: (tile) => addStlFromLibrary(tile) }));
+  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib) => addStlFromLibrary(tile, lib) }));
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');
-    if (pick) { _active = pick.getAttribute('data-stl-pick'); syncStlPanel(); _hooks.refreshGhosts(); }
+    if (pick) {
+      const id = pick.getAttribute('data-stl-pick');
+      _open = _open === id ? null : id; // tap = open / close the card (accordion: opening one closes the other)
+      _active = id;
+      syncStlPanel();
+      _hooks.refreshGhosts();
+      return;
+    }
+    const del = e.target.closest('[data-stl-del]');
+    if (del) removeStlLayer(del.getAttribute('data-stl-del')); // one write, one undo step; it opens nothing
   });
   byId('stlList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-stl-enable]');
@@ -668,4 +742,4 @@ export function bindStlPanel(hooks = {}) {
 }
 
 /** Test / host hook. */
-export function _resetStlPanelForTests() { _active = null; _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
+export function _resetStlPanelForTests() { _active = null; _open = null; _groupOpen = null; try { localStorage.removeItem(STL_GROUP_OPEN_KEY); } catch (_) { /* none */ } _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }

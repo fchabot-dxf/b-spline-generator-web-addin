@@ -138,3 +138,94 @@ byte-identical (the stl-layers-absent golden covers the passes).
    is a slider (min 500, step 500, applied on release) + the number box. Its top: the in-memory original's triangle count;
    after a reload a record with `source.uri` keeps its `origTris` (moving up downloads the model again behind the 'stl'
    loading card and keeps it as the original); any other STL the stored count (down only, as before).
+
+## 8. The Shape filter over a mirrored catalog (Fred 2026-11-22)
+
+- **Fred's answer:** the flat catalog is just a FILTER (no sorting), with a RATIO; "a rod would be good too". So the sheet has a
+  **Shape** picker (a native `<select>`): **Any shape** (default) · **Flat** · **Rod** · **Flat or rod**, and, when it is not Any,
+  a **Ratio** slider + number box (0.05..1, step 0.01, default 0.30) that re-filters live (debounced, no network). With the box
+  sides sorted `d = [small, mid, large]`: **Flat = small / mid <= ratio** (a plate: thin against BOTH other sides), **Rod = mid /
+  large <= ratio** (long and thin). It combines with the search words (every word somewhere in the title, any case) and the museum.
+- **Any = the live API exactly as before.** Not Any = the mirrored catalog, fetched ONCE per sheet on first use (status line
+  'Loading the catalog…'; a failed load is tried again next time), filtered in the page and paged 24 at a time with More results,
+  the same 'N models shown · more available' line. Its tiles are built by the same `tileFromGlb` the API search uses, so the
+  preview, Turn in 3D and Insert work unchanged. A model with no box (9 of 3,482) only shows under Any.
+- **The catalog format is SOURCE-NEUTRAL** (`core/stl/catalog.js`; a later library writes the same fields and names itself):
+  `{ v: 1, source: '<source id>', built: 'YYYY-MM-DD', base: '<common uri prefix>', models: [{ id, t: title, u: owning unit,
+  g: <the GLB uri without base>, d: [small, mid, large] | null }] }`. Declared: `CATALOG_SHAPES`, `CATALOG_FILTER` (the defaults),
+  `SMITHSONIAN_SOURCE.catalogPath`.
+- **The file:** `b-spline-gen/html/data/stl-catalog-smithsonian.json` (beside `photo-patterns.json`, fetched relative to the app
+  root; the Pages build copies every `.json` under `html/`), 3,482 models, 3,473 with a box (817,858 bytes, 198,055 gzipped).
+  Built by `tools/build_stl_catalog.py` (one Range request per GLB for the header + JSON chunk, the POSITION accessors' min / max;
+  polite pauses, a plain client name; `--limit N` to test, `--from-json OLD` to convert an earlier crawl). The shipped file is the
+  advisor's 2026-11-22 crawl converted with `--from-json` (every uri reproduced from base + g). At 0.30: 154 flat, 356 rods.
+- **Known limit:** d is the GLB's RAW axis-aligned box (before the Voyager pose), so a plate stored tilted reads thicker than it
+  is (the NPG "Theodore Roosevelt" bronze relief: 416 x 492 x 606, not flat).
+
+## 9. SMK, the second library, and ALL LIBRARIES at once (SMK-LIBRARY, Fred 2026-11-22)
+
+- **Fred:** "Smk for the win" (only no-key, no-login libraries), then "searching searches all libs at once and simply tells me
+  which libs they're from along their sizes etc".
+- **The SMK API, measured live 2026-11-22 (plain curl; recorded: `tests/fixtures/smk/search-all-p1.json` = rows 24, and
+  `item-relief-kas2906-8.json` = `api/v1/art/?object_number=KAS2906/8`):** `GET api.smk.dk/api/v1/art/search/?keys=<words | *>&
+  filters=[has_3d_file:true]&offset&rows&lang=en` -> `{ found: 373, items }`, no key, CORS *. The 3D file reference is
+  **`files_3D: [{ url, mime_type, file_size }]`** (`file_size` missing on some rows). `rights`: 371 of 373 = the Public Domain
+  Mark (the 2 others: smk.dk's own terms, left out). A second filter `[object_names:Relief]` narrows (41); two object_names
+  filters are ANDed (0), so a Type of several names runs one search per name. Images: IIIF on iip-thumb.smk.dk (CORS *).
+  Download: `api/v1/download-3d/<file>.stl`, no auth, CORS *, ranges OK (`Content-Range: bytes 0-0/20005084`). 367 of 373
+  list a `_small` STL (10-20 MB; one is `_small8`); without one, the smallest STL listed. **Z-up, standing, 130 mm tall**
+  (KAS2906/8, a relief, measured: 49 x 21 x 130 mm, thin along Y).
+- **Declared, one mechanism:** `core/stl/smk.js` `SMK_SOURCE` (+ `SMK_TYPES`: All types / Relief = Relief + Tympanum + Stele /
+  Bust = Bust + Herma / Head / Statue = Statue + Statuette + Group of statues + Group of statuettes + Torso + Kore / Other =
+  Sculpture in the round + Sculpture related to architecture; every name on the 373 models is in exactly one type, a later new
+  name shows under All types only). `core/stl/libraries.js`: `STL_LIBRARIES = [SMITHSONIAN_SOURCE, SMK_SOURCE]`, `ALL_LIBRARIES`
+  and `LIBRARY_OPS` (per library: its searches, a page, the file a tile downloads, the download, the record's `source`). A tile
+  is the SAME shape for both; an SMK tile also says `format: 'stl'`, `stlUrl`, `sizeBytes`, `dims`, `licence`. (A Smithsonian
+  tile was NOT given `format: 'glb'`: main's test pins its exact shape; the library -- `SMITHSONIAN_SOURCE.format` -- says it,
+  and the sheet hands `onPick(tile, library)`.)
+- **The sheet:** a Library `<select>` heads the row, **All libraries by default** (the panel's '🏛 Browse 3D libraries…' opens
+  `STL_LIBRARIES`; opened with one source the sheet is the Smithsonian sheet as before). Every search is a list of FEEDS (a
+  library, or one object_name of an SMK Type) fetched in parallel (`Promise.allSettled`), merged **round-robin** into the one
+  grid; More results asks each feed that has more for its next page. A library that fails is one note line ('SMK: could not
+  reach api.smk.dk (…)'), the others still show. Filters: the words go to every library; the museum (Smithsonian) and the Type
+  (SMK) show only when that one library is picked (their values are kept while hidden); with All the Shape shows too, and a
+  library with no shape data is left out of a Shape search with a note ('SMK: no shape data …').
+- **Tiles say where they are from and how big:** a badge ('Smithsonian' / 'SMK') and the listed download size ('20 MB';
+  the Smithsonian API lists none) or a catalog tile's shape word ('flat' / 'rod'). The selected tile's pane: the library and the
+  licence, the download size (not listed: ONE 1-byte Range request for the selected tile, 400 ms after it is selected so
+  tapping through tiles sends nothing), the object's own size from SMK's listing (W × H × D cm), the credit.
+- **Insert (SMK):** the `_small` STL (behind the 'stl' loading card; the panel status line shows 'Downloading <name>: 4.2 of
+  20 MB…') -> parseStl -> `addStlFromSoup(soup, title, { source: { provider: 'smk', id, title, uri }, orient: 'layFlat' })`:
+  the library's orientation rule, the Lay flat rotation (the same `layFlatRotationOf` the Lay flat button uses), in the SAME
+  write and undo step. Live: KAS2906/8 laid with its thin side up (|R[2][thin]| 0.999), the figure up the board. The Smithsonian
+  keeps its Voyager pose (`orient: 'voyager'`, nothing at insert). The Stored-detail re-download reads the record's library
+  (`provider`) and downloads its `uri` again.
+- **Turn in 3D (SMK):** the model IS the STL: the pane says 'Turn in 3D downloads the model (~20 MB).' and it loads on press
+  only (progress in MB in the pane note). Shown UPRIGHT as stored: the Z-up soup turned -90° about X (`SMK_SOURCE.previewTurn`)
+  for the view's front camera (+Y up, the model's -Y side to the camera).
+- **Licence:** PDM only (the 2 others are dropped; `parseSmkSearch` counts them). Credit: 'SMK — National Gallery of Denmark,
+  public domain (PDM). Models load from api.smk.dk.'
+- **Known:** in headless Chrome (an honest HeadlessChrome user agent, never changed) the Smithsonian API answers WITHOUT its
+  CORS header (Chrome: `MissingAllowOriginHeader`) while curl gets `Access-Control-Allow-Origin: *` with or without an Origin:
+  the sheet then shows SMK alone with 'Smithsonian: Could not reach 3d-api.si.edu (Failed to fetch).' SMK answered the same
+  browser normally.
+
+## 10. The sheet's UX pass (3D-LIBRARIES worker O, Fred 2026-11-22: "And the 2D image view? How do we see the next results? Can it be better")
+
+- **2D | 3D pill** in the pane (the main view's own `view-mode-toggle` look). 2D = the picture (default); `#stlLibTurn` is the 3D
+  half (its label is now '3D'; the main test that asserted 'Turn in 3D' was changed, advisor-approved). The first 3D press loads
+  as before (same download, same notes, e.g. SMK's '~20 MB'); back to 2D re-attaches the picture and KEEPS the 3D view hidden
+  (not disposed), so 3D again is instant with no second download. Selecting another tile or closing disposes it.
+  The picture is detached (not hidden) while 3D shows, so `#stlLibPane img` is null then, as the older test requires.
+- **Lightbox:** tapping the picture opens a full-screen `cad-modal-overlay stl-lib-lightbox` over the sheet: wheel zoom about the
+  cursor, pinch (two pointers), double-tap (zoom in / out), drag pan, a 36 px close button, Esc (closes the lightbox first, then
+  the sheet). Zoom is 1x..8x (`LIGHTBOX`, one declared object). Closing returns to the sheet, same selection.
+- **Endless scroll:** an IntersectionObserver on `#stlLibSentinel` (after the grid, 300 px margin) loads the next page exactly as
+  'More results' (same per-library paging and dedupe); one load at a time (`pending`); after each page the sentinel is observed
+  again (a short page that leaves it in view loads the next). Where IntersectionObserver is missing, 'More results' remains.
+- **Totals** sit beside the status line in `#stlLibTotals` ('Smithsonian 3,523 · SMK 373', All libraries; a library with no
+  known total shows nothing). They are a separate element so the status line's own text (asserted by main tests) is unchanged.
+- **Keyboard** (no field or select focused): arrows move the selection (left/right = previous/next, up/down = the tile one row
+  above/below, from the tiles' positions), scrolled into view; Enter inserts; Esc as above.
+- **Desktop tiles:** > 600 px wide, `--stl-lib-tile-desktop` (136 px, declared once in layout-app.css) sizes the grid:
+  1400 x 900 shows 7 columns x 3 full rows = 21 tiles beside the pane (measured). The phone keeps `PICKER_TILE.tilePx` (80 px).

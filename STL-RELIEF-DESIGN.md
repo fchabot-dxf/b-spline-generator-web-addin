@@ -310,3 +310,13 @@ prone) hash; core/preview/terrain-mesh.js buildLiveBrushColours uses y = H/2 - j
 file. Checked 2026-11-22: NOT a bug -- it flips both the cell and the brush centre, and only their distance is used, so the
 highlight lands on the cells the sculpt tool picks (cj = (y + H/2)/dy).
 
+
+**STL cards (STL-PANEL worker P, Fred 2026-11-22: "STL params are too many for the panel").** Each STL in the list is a CARD: a header
+row (enable box, the name = tap to open / close it and make it the active STL, a warning icon when the last build's stock report
+says it leaves the stock (title = the message), a row trash = removeStlLayer, one undo step, opens nothing, and a chevron). Only the
+OPEN card holds the settings: the ONE `#stlActive` block is moved into it by syncStlPanel (never copied, so every id and handler is
+unchanged); one card open at a time. The settings fold in the declared STL_GROUPS (Place open by default; Size, Rotate, Stamp, Detail
+closed; Detail = Stored detail, the stored-size / source / mesh-health notes, Re-import), reusing the app's `.panel-sub` + `.collapsed`
+fold; the fold state is a per-viewer convenience (localStorage `bspline.stl.groupOpen`), never P. Adding an STL or a gizmo pick
+(pickStlLayer, which also scrolls the card into view) opens that card; removing the open STL opens nothing; a loaded project shows
+every card closed. Add / Browse, the status and error lines, the fit-on-insert box and the total line stay at the panel level.

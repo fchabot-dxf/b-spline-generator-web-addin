@@ -1098,6 +1098,20 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-row { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 4px; border-radius: 4px; }
 .stl-row input { width: auto; margin: 0; flex: 0 0 auto; min-width: 20px; min-height: 20px; }
 .stl-row-active { background: rgba(0, 0, 0, 0.07); }
+/* STL cards (STL-PANEL worker P): a header row + the open card's settings; the settings fold in .panel-sub groups (above) */
+.stl-card { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 6px; margin-bottom: 6px; overflow: hidden; }
+.stl-card-open { border-color: rgba(0, 0, 0, 0.3); }
+.stl-card-body:empty { display: none; }
+.stl-card-body { padding: 4px 4px 6px; }
+.stl-row-name { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: break-word; }
+.stl-row-name::before { content: '\25B8'; flex: 0 0 16px; text-align: center; opacity: 0.6; }
+.stl-card-open .stl-row-name::before { content: '\25BE'; }
+.stl-row-warn { flex: 0 0 auto; color: #b3261e; font-size: 16px; min-width: 20px; text-align: center; cursor: help; }
+.stl-row-warn[hidden] { display: none; }
+.stl-row-del { flex: 0 0 auto; min-width: 28px; min-height: 28px; padding: 0 4px; background: none; border: 0; font: inherit; cursor: pointer; }
+.stl-group { margin-bottom: 6px; }
+.stl-group-head { min-height: 28px; flex-wrap: wrap; }
+.stl-group > .panel-body { padding: 4px 6px !important; gap: 4px; }
 .stl-row-name { flex: 1; min-height: 32px; text-align: left; background: none; border: 0; font: inherit; cursor: pointer; }
 .stl-unit { font-size: 11px; opacity: 0.7; margin-left: 6px; }
 .stl-error { color: #b3261e; opacity: 1; }
@@ -1113,6 +1127,12 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-lib-query { flex: 2 1 160px; min-width: 0; min-height: 32px; font: inherit; padding: 2px 8px; }
 .stl-lib-museum { flex: 1 1 140px; min-width: 0; min-height: 32px; font: inherit; }
 .stl-lib-search .cad-btn { min-height: 32px; }
+/* the Shape filter (design section 8): a native select beside the museum; the ratio row (base.css .slider-row: the range
+   flexes, the number box 62 px) only when Shape is not Any */
+.stl-lib-shape { flex: 1 1 110px; min-width: 0; min-height: 32px; font: inherit; }
+.stl-lib-ratio { margin: -2px 0 8px; font-size: 12px; }
+.stl-lib-ratio[hidden] { display: none; }
+.stl-lib-ratio input { min-height: 28px; }
 .stl-lib-main { display: flex; gap: 12px; align-items: flex-start; }
 .stl-lib-results { flex: 1 1 auto; min-width: 0; }
 .stl-lib-status { margin: 0 0 6px; }
@@ -1128,12 +1148,47 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-lib-pane { flex: 0 0 340px; position: sticky; top: 0; display: flex; flex-direction: column; gap: 6px; }
 .stl-lib-pane[hidden] { display: none; }
 .stl-lib-pane-media { width: 100%; }
-.stl-lib-preview { width: 100%; max-height: 60vh; object-fit: contain; background: #eee; display: block; }
+.stl-lib-preview { width: 100%; max-height: 60vh; object-fit: contain; background: #eee; display: block;
+  /* a square box from the start (an image still loading has no height), the grid's thumbnail behind it as a placeholder */
+  aspect-ratio: 1; background-size: contain; background-position: center; background-repeat: no-repeat; }
 .stl-lib-view { display: block; max-width: 100%; touch-action: none; cursor: grab; background: #f2f2f2; }
 .stl-lib-pane-title { font-size: 13px; font-weight: 600; }
 .stl-lib-pane-buttons { display: flex; gap: 8px; }
 .stl-lib-pane-buttons .cad-btn { flex: 1; min-height: 32px; }
 .stl-lib-credit { justify-content: flex-start; font-size: 11px; opacity: 0.85; }
+/* SMK-LIBRARY (design section 9): the Library picker heads the row, SMK's Type beside it; a library's own filter is hidden while
+   another (or All) is picked; each tile's library badge + listed size; the pane's library / licence / size / credit lines */
+.stl-lib-library { flex: 1 1 130px; min-width: 0; min-height: 32px; font: inherit; font-weight: 600; }
+.stl-lib-type { flex: 1 1 110px; min-width: 0; min-height: 32px; font: inherit; }
+.stl-lib-search [hidden] { display: none; }
+.stl-lib-notes { margin: 0 0 6px; }
+.stl-lib-notes[hidden] { display: none; }
+.stl-lib-meta { display: flex; flex-wrap: wrap; gap: 3px; font-size: 10px; line-height: 1.2; }
+.stl-lib-badge { padding: 0 4px; border-radius: 3px; background: #e7eefc; color: #1f3f7a; font-weight: 600; }
+.stl-lib-tile[data-library="smk"] .stl-lib-badge { background: #f6e9dc; color: #6b3a12; }
+.stl-lib-size, .stl-lib-shape-word { color: #555; }
+.stl-lib-pane-info { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.stl-lib-pane-info[hidden] { display: none; }
+.stl-lib-pane-credit { font-size: 11px; opacity: 0.85; }
+/* 3D-LIBRARIES worker O (Fred 2026-11-22): the 2D | 3D pill, the lightbox, the status row, endless scroll's sentinel */
+.stl-lib-statusrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.stl-lib-totals { margin: 0 0 6px; }
+.stl-lib-sentinel { height: 1px; }
+.stl-lib-pane-buttons { align-items: center; }
+.stl-lib-pill { flex: 0 0 auto; }
+.stl-lib-pill button { min-height: 28px; min-width: 44px; font: inherit; }
+.stl-lib-pane-pic .stl-lib-preview { cursor: zoom-in; }
+.stl-lib-pane-3d[hidden] { display: none; }
+.cad-modal-overlay.stl-lib-lightbox { z-index: 100000; background: rgba(0, 0, 0, 0.96); align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
+.stl-lib-lightbox-img { max-width: 100vw; max-height: 100vh; object-fit: contain; touch-action: none; user-select: none; -webkit-user-drag: none; cursor: grab; }
+.stl-lib-lightbox-close { position: absolute; top: 10px; right: 10px; min-width: 36px; min-height: 36px; padding: 0 8px; }
+/* Fred 2026-11-22 ("maybe on desktop make the tiles bigger so we have about 20 tiles"): on a desktop sheet (> 600 px wide) the grid's
+   tiles are this big (7 columns, 3 full rows = 21 tiles in view beside the preview pane at 1400 x 900); the phone keeps PICKER_TILE.tilePx (set inline by the sheet).
+   The ONE desktop number. It overrides the inline phone value, hence !important. */
+.stl-lib-grid { --stl-lib-tile-desktop: 136px; }
+@media (min-width: 601px) {
+  .stl-lib-grid { grid-template-columns: repeat(auto-fill, minmax(var(--stl-lib-tile-desktop), 1fr)) !important; }
+}
 @media (max-width: 600px) {
   .stl-lib-main { flex-direction: column; align-items: stretch; }
   .stl-lib-pane { order: -1; flex: none; position: static; }
@@ -1142,7 +1197,11 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 @media (pointer: coarse) {
   .stl-row input { min-width: 28px; min-height: 28px; }
   .stl-row-name, .stl-add-row .cad-btn, #stlRemove { min-height: 32px; }
+  .stl-row-del { min-width: 32px; min-height: 32px; }
+  .stl-group-head { min-height: 32px; }
   .stl-lib-tile { min-height: 32px; }
-  .stl-lib-close, .stl-lib-query, .stl-lib-museum, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
+  .stl-lib-pill button { min-height: 36px; }
+  .stl-lib-close, .stl-lib-query, .stl-lib-library, .stl-lib-museum, .stl-lib-type, .stl-lib-shape, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
+  .stl-lib-ratio input { min-height: 36px; }
   .stl-lib-close { min-width: 36px; }
 }
