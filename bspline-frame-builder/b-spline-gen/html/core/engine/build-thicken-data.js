@@ -23,6 +23,12 @@
  *   3. Spatial Gaussian smoothing of the offset surface
  *   4. Per-cell intersection / thinness analysis → vertex colours +
  *      worst-point list
+ *
+ * The back's source: opts.backHeights (Back locked: the frozen underside) wins;
+ * else opts.backFrom (STL-RELIEF 'afterBack': the heights without the
+ * "After thicken" STLs, core/engine/rebuild.js buildHeights backBase) feeds
+ * steps 1-3 (normals, safe map, offset); else the top heights, as always.
+ * The top side (z bounds, step 4, the returned normals) always reads `heights`.
  */
 
 import {
@@ -51,10 +57,14 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
     thickenMode, thickenDir, extraThickenThin,
     extraThickenThinFalloff, thickenYellowOffset,
   } = params;
-  const { extraThickenThinMask = null, postDelta = null, backHeights = null } = opts;
+  const { extraThickenThinMask = null, postDelta = null, backHeights = null, backFrom = null } = opts;
 
+  // STL-RELIEF 'afterBack': the OFFSET (back) side reads `under` (the heights without the afterBack STLs); the TOP side
+  // (z bounds, analysis, the returned normals) reads `heights`. No backFrom = one array, one normals pass, as before.
+  const under = (backFrom && backFrom.length === nx * nz && backFrom !== heights) ? backFrom : heights;
   const normals = computeNormals(heights, nx, nz, widthIn, heightIn);
-  const safeMap = computeSafeOffsetMap(heights, nx, nz, widthIn, heightIn, SAFE_MAP_BOTTOM_SMOOTH_IN);
+  const underNormals = under === heights ? normals : computeNormals(under, nx, nz, widthIn, heightIn);
+  const safeMap = computeSafeOffsetMap(under, nx, nz, widthIn, heightIn, SAFE_MAP_BOTTOM_SMOOTH_IN);
   const maxSafe = computeMaxSafeThickness(safeMap);
   const hasIntersect = thickness > maxSafe + 1e-4;
 
@@ -83,7 +93,7 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
   const offsetPts = backHeights
     ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights })
     : buildAdjustedOffsetPts({
-        heights, normals, nx, nz, widthIn, heightIn,
+        heights: under, normals: underNormals, nx, nz, widthIn, heightIn,
         thickness, thickenMode, safeMap, sign,
         extraThickenThin, extraThickenThinFalloff,
         extraThickenThinMask, postDelta,

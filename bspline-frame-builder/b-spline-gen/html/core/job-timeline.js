@@ -62,7 +62,9 @@ export const JOB_STEP_KINDS = Object.freeze({
   // snapshotOnLock (Fred 2026-10-14): the Back is cut FIRST in his real flow and its lock will be a carve-time snapshot of
   // the underside -- later stamps no longer feed it, so its reads are never marked (detection skips a snapshot kind)
   back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
-    // 'stl': thicken reads the stamped heights, the STL passes included (they are stamped last, rebuild.js _collectStampPasses)
+    // 'stl': thicken reads the stamped heights, the STL passes included (they are stamped last, rebuild.js _collectStampPasses);
+    // an 'afterBack' ("After thicken") STL is NOT read by the back (rebuild.js buildHeights backBase) -- no data change: Back is
+    // snapshotOnLock, its marks are never shown
     dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks', 'stl'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES

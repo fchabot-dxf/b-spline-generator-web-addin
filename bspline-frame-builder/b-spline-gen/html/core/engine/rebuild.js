@@ -125,7 +125,7 @@ function _copyBuilt(b) {
     const c = (a) => { if (!ArrayBuffer.isView(a)) return a; if (!seen.has(a)) seen.set(a, a.slice()); return seen.get(a); };
     const generated = {};
     for (const [k, v] of Object.entries(b.generated)) generated[k] = c(v);
-    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated };
+    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated, backBase: c(b.backBase) };
 }
 function buildHeightsReusing(nx, nz) {
     const digest = heightsInputDigest(nx, nz);
@@ -173,7 +173,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
         await withLoadingStage('rebuild', async () => {
             await yieldToMain();
-            const { heights, cleanHeights, baseHeights, generated } = buildHeightsReusing(nx, nz);
+            const { heights, cleanHeights, baseHeights, generated, backBase } = buildHeightsReusing(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
 
             await yieldToMain();
@@ -188,6 +188,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                 extraThickenThinMask,
                 postDelta,
                 backHeights,
+                backFrom: backBase, // null unless an 'afterBack' STL: the back from the heights without it
             });
             lastResult.thickenData = thicken.data;
 
@@ -315,12 +316,19 @@ function buildHeights(nx, nz) {
 
     // Step 3 unification: build the pass list from editor layers.
     const passes = _collectStampPasses(nx, nz);
-    const heights = applyStampLayers(cleanHeights, passes, nx, nz, {
+    // STL-RELIEF placement 'afterBack' ("After thicken"): those STL passes are stamped LAST, on the top only; the back is
+    // thickened from the heights without them (backBase -> buildThickenData backFrom). None = today's one call, same arguments.
+    const late = passes.filter((p) => p.kind === 'stl' && p.placement === 'afterBack');
+    const early = late.length ? passes.filter((p) => !late.includes(p)) : passes;
+    const defaults = {
         stampDepth:            P.stampDepth,
         stampEdgeFilletRadius: P.stampEdgeFilletRadius,
-    });
+    };
+    const surfaceHeights = applyStampLayers(cleanHeights, early, nx, nz, defaults);
+    const heights = late.length ? applyStampLayers(surfaceHeights, late, nx, nz, defaults) : surfaceHeights;
+    const backBase = late.length ? surfaceHeights : null;
 
-    return { heights, cleanHeights, baseHeights: generated.heights, generated };
+    return { heights, cleanHeights, baseHeights: generated.heights, generated, backBase };
 }
 
 /**

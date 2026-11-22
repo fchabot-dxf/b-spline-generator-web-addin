@@ -48,6 +48,8 @@ export const STL_CONTROLS = Object.freeze([
     options: [['max', 'Max', 'Only the part above the surface shows; nothing is dug'], ['add', 'Add', 'Its height is added to the surface everywhere it covers']] },
   { id: 'raise', group: 'stamp', kind: 'choice', path: ['raise'], label: 'Relief',
     options: [[true, 'Raised', 'The STL stands out of the surface'], [false, 'Carved', 'The STL is cut into the surface as a hollow']] },
+  { id: 'placement', group: 'stamp', kind: 'choice', path: ['placement'], label: 'Thicken',
+    options: [['withSurface', 'Before thicken', 'The back follows the STL: thicken offsets the surface with the STL in it'], ['afterBack', 'After thicken', 'Top only: the back stays as it is without this STL']] },
   { id: 'compress', group: 'stamp', kind: 'slider', path: ['compress'], label: 'Compress (bas-relief)', step: 0.05, range: () => [0, 1],
     note: '0 = true heights; more lifts the low parts and flattens the tall ones' },
   { id: 'softness', group: 'stamp', kind: 'slider', path: ['softness'], label: 'Edge softness (in)', step: 0.05, range: () => [0, 2] },

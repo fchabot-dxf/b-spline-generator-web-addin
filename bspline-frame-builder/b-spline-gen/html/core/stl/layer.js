@@ -11,7 +11,8 @@ import { renderDepth } from './raster.js';
 import { gaussianSmooth } from '../gaussian.js';
 
 export const STL_BLENDS = Object.freeze(['max', 'add']);
-/** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (later slice): the back stays as before the STL. */
+/** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
+ *  heights without it (core/engine/rebuild.js buildHeights backBase -> build-thicken-data.js backFrom). */
 export const STL_PLACEMENTS = Object.freeze(['withSurface', 'afterBack']);
 /** Triangles a stored mesh is capped at when imported (a size WARNING shows past STL_WARN_TOTAL_TRIS; no hard stop). */
 export const STL_STORED_DETAIL_DEFAULT = 50000;
@@ -173,6 +174,7 @@ export function stlPass(rawRec, grid) {
     depth: (rec.raise ? 1 : -1) * hMax,
     carve: !rec.raise,
     blend: rec.blend,
+    placement: rec.placement, // 'afterBack': stamped on the top only (core/engine/rebuild.js buildHeights backBase)
     zOffset: rec.position.z,
     profile: 'flat',
     suppression: 0,
