@@ -20,10 +20,12 @@
  */
 import { meshBounds } from './mesh.js';
 import { placeMesh } from './raster.js';
-import { earClip, pointInPolygon } from '../preview/frame-mesh.js';
+import { earClip, pointInPolygon } from '../polygon.js'; // the shared ones (core/preview/frame-mesh.js re-exports them)
 import { BRUSH_FALLOFFS, brushFalloff, curveFromPoints } from '../height/brush.js';
 
 export const CROP_AXES = Object.freeze(['x', 'y', 'z']);
+/** How a crop PREVIEW draws (the library's 3D view and the STL ghost): the cut-away part faint, the box's edges accent blue. */
+export const CROP_PREVIEW_LOOK = Object.freeze({ faintColour: 0x8a96a3, faintOpacity: 0.16, edgeColour: 0x0078d4 });
 
 /** `box` with every axis read: [min, max] as given (numbers), an absent axis or end = [0, 1]. A fresh object. */
 export function normaliseCropBox(box) {
@@ -99,17 +101,17 @@ function cutAt(pos, idx, { axis: a, value: c, keep: s }, eps, tol) {
   const nv = pos.length / 3;
   const d = new Float64Array(nv), side = new Int8Array(nv);
   for (let v = 0; v < nv; v++) { const dv = s * (pos[v * 3 + a] - c); d[v] = dv; side[v] = dv > eps ? 1 : dv < -eps ? -1 : 0; }
-  const P = Array.from(pos); // grows: the crossing points are appended
-  for (let v = 0; v < nv; v++) if (side[v] === 0) P[v * 3 + a] = c; // ON the plane: exactly on it
+  const pts = Array.from(pos); // grows: the crossing points are appended
+  for (let v = 0; v < nv; v++) if (side[v] === 0) pts[v * 3 + a] = c; // ON the plane: exactly on it
   const cut = new Map(); // undirected edge -> its crossing vertex (one per edge: the two triangles on it share it)
   const cross = (u, v) => {
     const lo = u < v ? u : v, hi = u < v ? v : u, k = lo * nv + hi;
     let id = cut.get(k);
     if (id === undefined) {
       const t = d[lo] / (d[lo] - d[hi]);
-      id = P.length / 3;
-      P.push(pos[lo * 3] + t * (pos[hi * 3] - pos[lo * 3]), pos[lo * 3 + 1] + t * (pos[hi * 3 + 1] - pos[lo * 3 + 1]), pos[lo * 3 + 2] + t * (pos[hi * 3 + 2] - pos[lo * 3 + 2]));
-      P[id * 3 + a] = c;
+      id = pts.length / 3;
+      pts.push(pos[lo * 3] + t * (pos[hi * 3] - pos[lo * 3]), pos[lo * 3 + 1] + t * (pos[hi * 3 + 1] - pos[lo * 3 + 1]), pos[lo * 3 + 2] + t * (pos[hi * 3 + 2] - pos[lo * 3 + 2]));
+      pts[id * 3 + a] = c;
       cut.set(k, id);
     }
     return id;
@@ -144,13 +146,13 @@ function cutAt(pos, idx, { axis: a, value: c, keep: s }, eps, tol) {
   // ── the cap: the 2D frame (ua, va) is chosen so that CCW faces OUT of the kept part ──
   const U = (a + 1) % 3, V = (a + 2) % 3;
   const [ua, va] = s < 0 ? [U, V] : [V, U];
-  const nP = P.length / 3;
+  const nP = pts.length / 3;
   const alias = new Int32Array(nP);
   for (let i = 0; i < nP; i++) alias[i] = i;
   const canon = new Map();
   for (let k = 0; k < segs.length; k++) {
     const id = segs[k];
-    const key = `${Math.round(P[id * 3 + ua] / tol)},${Math.round(P[id * 3 + va] / tol)}`;
+    const key = `${Math.round(pts[id * 3 + ua] / tol)},${Math.round(pts[id * 3 + va] / tol)}`;
     const r = canon.get(key);
     if (r === undefined) canon.set(key, id); else if (r !== id) alias[id] = r;
   }
@@ -168,7 +170,7 @@ function cutAt(pos, idx, { axis: a, value: c, keep: s }, eps, tol) {
   }
   const { loops, open } = chainSegments(segList);
   let capped = 0;
-  for (const poly of capPolygons(loops.map((ids) => ids.map((id) => ({ x: P[id * 3 + ua], y: P[id * 3 + va], id }))))) {
+  for (const poly of capPolygons(loops.map((ids) => ids.map((id) => ({ x: pts[id * 3 + ua], y: pts[id * 3 + va], id }))))) {
     for (const [i, j, k] of earClip(poly)) out.push(poly[i].id, poly[j].id, poly[k].id);
     capped++;
   }
@@ -183,7 +185,7 @@ function cutAt(pos, idx, { axis: a, value: c, keep: s }, eps, tol) {
     for (const v of [p0, p1, p2]) { if (keep[v] < 0) keep[v] = nk++; ix.push(keep[v]); }
   }
   const np = new Float64Array(nk * 3);
-  for (let v = 0; v < nP; v++) { const k = keep[v]; if (k >= 0) { np[k * 3] = P[v * 3]; np[k * 3 + 1] = P[v * 3 + 1]; np[k * 3 + 2] = P[v * 3 + 2]; } }
+  for (let v = 0; v < nP; v++) { const k = keep[v]; if (k >= 0) { np[k * 3] = pts[v * 3]; np[k * 3 + 1] = pts[v * 3 + 1]; np[k * 3 + 2] = pts[v * 3 + 2]; } }
   return { pos: np, idx: Uint32Array.from(ix), capped, openLoops: open };
 }
 

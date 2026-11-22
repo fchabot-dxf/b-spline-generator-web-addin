@@ -26,6 +26,7 @@
  */
 import { FRAME_COLORS } from '../color-utils.js';
 import { rectContains, rectToPrimitives } from '../inset-window.js';
+import { pointInPolygon, earClip } from '../polygon.js';
 
 /** Sample a closed primitive loop (editor coords) at fixed fractions per
  *  primitive, so two loops of the same topology correspond point-for-point. */
@@ -67,14 +68,8 @@ export function samplePairedOutlines(outerPrims, innerPrims, maxStep) {
 
 export const toWorld = (pts, W, H) => pts.map((p) => ({ x: p.x - W / 2, y: H / 2 - p.y }));
 
-export function pointInPolygon(x, y, poly) {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i], b = poly[j];
-    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
-  }
-  return inside;
-}
+// pointInPolygon(x, y, poly): core/polygon.js (moved there verbatim, re-exported here for every caller)
+export { pointInPolygon, earClip };
 
 /** pointInPolygon for MANY points against one polygon -- the same answer, measured byte-identical (frame-clip-identical
  *  test): an edge toggles only when min(a.y, b.y) <= y < max(a.y, b.y), so each y-band lists every edge that can
@@ -311,28 +306,8 @@ function _trianglePolygonPieces(tri, poly, cand) {
   return loops;
 }
 
-/** Ear-clip a CCW polygon into triangles (index triples into `pts`). */
-function _earClip(pts) {
-  const idx = pts.map((_, i) => i), tris = [];
-  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const inTri = (p, a, b, c) => cross(a, b, p) > 1e-12 && cross(b, c, p) > 1e-12 && cross(c, a, p) > 1e-12;
-  while (idx.length > 3) {
-    let cut = -1;
-    for (let k = 0; k < idx.length && cut < 0; k++) {
-      const i0 = idx[(k + idx.length - 1) % idx.length], i1 = idx[k], i2 = idx[(k + 1) % idx.length];
-      if (cross(pts[i0], pts[i1], pts[i2]) < -1e-12) continue; // reflex
-      if (idx.some((j) => j !== i0 && j !== i1 && j !== i2 && inTri(pts[j], pts[i0], pts[i1], pts[i2]))) continue;
-      cut = k;
-    }
-    if (cut < 0) cut = 0; // only degenerate (zero-area) corners are left
-    tris.push([idx[(cut + idx.length - 1) % idx.length], idx[cut], idx[(cut + 1) % idx.length]]);
-    idx.splice(cut, 1);
-  }
-  tris.push(idx);
-  return tris;
-}
-/** The ONE ear-clipper, shared: core/stl/crop.js caps its cut faces with it (pts = [{ x, y }], CCW). */
-export const earClip = _earClip;
+// Ear-clip a CCW polygon into triangles (index triples into `pts`): the ONE ear-clipper, core/polygon.js (shared with the STL crop's caps).
+const _earClip = earClip;
 
 /** Sutherland-Hodgman: convex `poly` (any winding) clipped to `inside(p)`; `cut(a,b)` interpolates the
  *  boundary crossing between two consecutive points where exactly one is inside. Winding is preserved. */
