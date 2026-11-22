@@ -130,11 +130,56 @@ export const UNDO_STEP_RESTORES = Object.freeze({
 });
 const _restoreSide = (restore, side) => (restore ? Object.fromEntries(Object.entries(restore).map(([k, t]) => [k, t[side]])) : undefined);
 
+// ── the undo MESH STORE (STL-RELIEF, Fred 2026-11-22: "undo should store the instruction, not the model") ─────────────
+// Measured before: every snapshot deep-copied every STL mesh string (~0.5 MB at 50k triangles), even a step that only moved an
+// STL. Now a snapshot holds `{ ref: h }` in place of each P.stlLayers[i].mesh that has a content hash `h`
+// (core/stl/mesh.js encodeMesh), and the mesh object itself is kept ONCE here, h -> mesh. Mesh objects are never written
+// (main/stl-panel.js is copy-on-write: a change is a NEW mesh object with a new h), so the store hands the restore the SAME
+// objects. The live P is never changed; saved files / sessions / cloud saves go through persistableP and never see a ref.
+// A mesh without `h` (an old record) stays inline, as before. An `h` that names DIFFERENT text (the collision-prone hash of
+// records saved before the hash fix) stays inline too, never swapped for the other mesh. Entries no snapshot references any
+// more are dropped whenever the history drops snapshots (_pruneMeshStore).
+const _meshStore = new Map();
+const _isStoredMesh = (m) => !!(m && typeof m === 'object' && typeof m.h === 'string' && m.h && typeof m.pos === 'string' && typeof m.idx === 'string');
+const _isMeshRef = (m) => !!(m && typeof m === 'object' && typeof m.ref === 'string' && !('pos' in m));
+/** `mesh` kept once under its h; false when the store holds DIFFERENT content under that h (then it stays inline). */
+function _keepMesh(mesh) {
+    const had = _meshStore.get(mesh.h);
+    if (had === undefined) { _meshStore.set(mesh.h, mesh); return true; }
+    return had === mesh || (had.pos === mesh.pos && had.idx === mesh.idx && had.nv === mesh.nv && had.nt === mesh.nt);
+}
+/** A snapshot's deep copy of persistableP() with each stored mesh as `{ ref: h }`. */
+function _snapshotP() {
+    const p = persistableP();
+    if (!Array.isArray(p.stlLayers) || !p.stlLayers.some((l) => l && _isStoredMesh(l.mesh))) return JSON.parse(JSON.stringify(p));
+    const stlLayers = p.stlLayers.map((l) => (l && _isStoredMesh(l.mesh) && _keepMesh(l.mesh) ? { ...l, mesh: { ref: l.mesh.h } } : l));
+    return JSON.parse(JSON.stringify({ ...p, stlLayers }));
+}
+/** The snapshot as the restore must see it: every `{ ref }` back to its stored mesh object (the snapshot itself is untouched). */
+function _rehydrated(snap) {
+    const layers = snap && snap.P && snap.P.stlLayers;
+    if (!Array.isArray(layers) || !layers.some((l) => l && _isMeshRef(l.mesh))) return snap;
+    const stlLayers = layers.map((l) => (l && _isMeshRef(l.mesh) && _meshStore.has(l.mesh.ref) ? { ...l, mesh: _meshStore.get(l.mesh.ref) } : l));
+    return { ...snap, P: { ...snap.P, stlLayers } };
+}
+/** Drop the meshes no snapshot (undo or redo) references any more. */
+function _pruneMeshStore() {
+    if (!_meshStore.size) return;
+    const used = new Set();
+    for (const s of [...globalHistoryLog, ...globalRedoLog]) {
+        const layers = s && s.P && s.P.stlLayers;
+        if (Array.isArray(layers)) for (const l of layers) if (l && _isMeshRef(l.mesh)) used.add(l.mesh.ref);
+    }
+    for (const h of [..._meshStore.keys()]) if (!used.has(h)) _meshStore.delete(h);
+}
+/** How many meshes the undo store holds (tests / diagnostics). */
+export function historyMeshStoreSize() { return _meshStore.size; }
+
 export function takeSnapshot(label = "Action", extra = {}) {
     // Capture state into a single object
     const snapshot = {
         label: label,
-        P: JSON.parse(JSON.stringify(persistableP())), // Deep copy parameters
+        P: _snapshotP(), // Deep copy parameters (each STL mesh by reference to the mesh store)
         preDelta: preDelta ? new Float32Array(preDelta) : null,
         postDelta: postDelta ? new Float32Array(postDelta) : null,
         extraThickenThinMask: extraThickenThinMask ? new Float32Array(extraThickenThinMask) : null,
@@ -147,6 +192,7 @@ export function takeSnapshot(label = "Action", extra = {}) {
     globalHistoryLog.push(snapshot);
     globalRedoLog.length = 0; // New action clears redo path
     if (globalHistoryLog.length > GLOBAL_MAX_HISTORY) globalHistoryLog.shift();
+    _pruneMeshStore();
     if (label !== "Initial") markDirty();
     updateGlobalButtons();
 }
@@ -160,7 +206,9 @@ export function takeSnapshot(label = "Action", extra = {}) {
  *  brick re-lay rewriting editorSvg -- the only difference -- so the next change recorded a baseline whose undo changed
  *  nothing on screen. */
 export const UNDO_KEEPS = Object.freeze(['editorSvg', 'frame']);
-const _undoComparable = (p) => JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => !UNDO_KEEPS.includes(k))));
+// a stored STL mesh compares by its content hash, never by its text (a snapshot holds `{ ref: h }`, the live P the mesh)
+const _undoComparable = (p) => JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => !UNDO_KEEPS.includes(k))),
+    (k, v) => (_isStoredMesh(v) ? { ref: v.h } : v));
 
 export function ensureUndoBaseline(label = 'Before change') {
     const top = globalHistoryLog[globalHistoryLog.length - 1];
@@ -242,7 +290,7 @@ export function unifiedUndo(applySnapshot) {
     if (current.restore) {
         for (const [k, t] of Object.entries(current.restore)) if (t.after === undefined) t.after = UNDO_STEP_RESTORES[k].read();
     }
-    applySnapshot(previous, _restoreSide(current.restore, 'before')); // items 69 / 71: the undone step's own restores
+    applySnapshot(_rehydrated(previous), _restoreSide(current.restore, 'before')); // items 69 / 71: the undone step's own restores
     updateGlobalButtons();
 }
 
@@ -256,7 +304,7 @@ export function unifiedRedo(applySnapshot) {
 
     const snap = globalRedoLog.pop();
     globalHistoryLog.push(snap);
-    applySnapshot(snap, _restoreSide(snap.restore, 'after')); // items 69 / 71: the redone step's own restores
+    applySnapshot(_rehydrated(snap), _restoreSide(snap.restore, 'after')); // items 69 / 71: the redone step's own restores
     updateGlobalButtons();
 }
 

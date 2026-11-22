@@ -10,7 +10,7 @@
  * new record (nested position / rotation copied) and assigns it to P.stlLayers. The STL file itself is STORED in the project (a compact, capped copy:
  * "Stored detail"); the original stays in memory this session so the detail can go up as well as down.
  */
-import { P, scheduleSessionSave } from '../core/state.js';
+import { P, scheduleSessionSave, lastResult } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { setSectionReadOnly } from '../core/ui-utils.js';
 import { withLoadingStage } from '../core/loading-signal.js';
@@ -23,6 +23,10 @@ import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
 } from '../core/stl/layer.js';
 import { ghostState, STL_GHOST_COLOURS } from '../core/stl/ghost.js';
+import { stlPass } from '../core/stl/layer.js';
+import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/stock.js';
+import { layFlatFrame, quickTurnRotation } from '../core/stl/orient.js';
+import { resolveGrid } from '../core/terrain.js';
 
 /** The controls' groups, in order. */
 export const STL_GROUPS = Object.freeze([
@@ -58,6 +62,22 @@ export const STL_CONTROLS = Object.freeze([
   { id: 'compress', group: 'stamp', kind: 'slider', path: ['compress'], label: 'Compress (bas-relief)', step: 0.05, range: () => [0, 1],
     note: '0 = true heights; more lifts the low parts and flattens the tall ones' },
   { id: 'softness', group: 'stamp', kind: 'slider', path: ['softness'], label: 'Edge softness (in)', step: 0.05, range: () => [0, 2] },
+]);
+
+/**
+ * The panel's ACTION buttons on the active STL (Fred 2026-11-22), declared once: rendered in their `group` (in a row right after
+ * the control `after` names, else after the group's controls) and bound by one loop. Each press is ONE copy-on-write write and
+ * ONE undo step; nothing runs at insert except the Fit when P.stlFitOnInsert is on.
+ */
+const turn = (axis, deg) => Object.freeze({
+  id: `stlTurn${axis.toUpperCase()}${deg < 0 ? 'Minus' : 'Plus'}`, group: 'rotate', after: `rot${axis.toUpperCase()}`,
+  text: `${deg < 0 ? '−' : '+'}90° ${axis.toUpperCase()}`, title: `Turn it ${deg}° about the board's ${axis.toUpperCase()} axis`,
+  run: () => turnStl(axis, deg),
+});
+export const STL_ACTIONS = Object.freeze([
+  Object.freeze({ id: 'stlFit', group: 'size', text: '⇕ Fit to carve depth', title: 'Set the Depth so this STL just fits the stock (Board > Carve Depth): Raised peaks at the top, Carved reaches the bottom', run: () => fitStlToCarveDepth() }),
+  Object.freeze({ id: 'stlLayFlat', group: 'rotate', text: '⤵ Lay flat', title: 'Turn it so its thinnest side points up and its longest runs along X (replaces the rotation)', run: () => layFlatStl() }),
+  turn('x', -90), turn('x', 90), turn('y', -90), turn('y', 90), turn('z', -90), turn('z', 90),
 ]);
 
 // ── state (UI only; the data is P.stlLayers) ────────────────────────────────────────────────────────────────────────
@@ -160,7 +180,13 @@ export function noteStlProjectReplaced() { _projectEpoch++; }
  */
 export function addStlFromSoup(soup, name, extra = {}) {
   const { record: made, original } = createStlLayer({ soup, name: name || 'STL', board: board() });
-  const record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
+  let record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
+  // Fred 2026-11-22: fitting at insert is an OPTION (P.stlFitOnInsert, default off) -- fitted once, in this same write / undo
+  // step, on the surface already built (the clean terrain an STL is stamped on does not depend on the STL); none built yet:
+  // after the next build (onStlStockChanged)
+  const fit = P.stlFitOnInsert === true ? stlFitFor(record) : null;
+  if (fit && fit.zScale !== undefined) record = { ...record, zScale: fit.zScale };
+  else if (fit && fit.reason === 'notBuilt') _fitAfterBuild.add(record.id);
   P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
   _active = record.id;
@@ -276,6 +302,91 @@ export function snapStlBase() { return setStlField('posZ', 0); }
 export function centreStl() { const a = setStlField('posX', 0), b = setStlField('posY', 0); return a && b; }
 export function resetStlRotation() { return ['rotX', 'rotY', 'rotZ'].every((id) => setStlField(id, 0)); }
 
+// ── fit to the stock, lay flat, quick turns (Fred 2026-11-22) ───────────────────────────────────────────────────────
+/**
+ * The Depth that fits record `rec` inside the stock on the LAST BUILT surface (core/stl/stock.js fitStlDepth, the one rule):
+ * { zScale } or { reason }. The pass is the record's own at its current Depth (the build's cached raster; Depth 0 reads Depth 1);
+ * the relief height per unit Depth is |pass.depth| / |zScale| (raster.js: the height is linear in zScale) and a negative Depth
+ * keeps its sign. 'notBuilt' = no surface for the current board grid yet.
+ */
+function stlFitFor(rec) {
+  const r = lastResult;
+  const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+  if (!r || !r.cleanHeights || r.nx !== nx || r.nz !== nz || r.cleanHeights.length !== nx * nz) return { reason: 'notBuilt' };
+  const zNow = normaliseStlLayer(rec).zScale;
+  const zs = Number.isFinite(zNow) && zNow !== 0 ? zNow : 1;
+  let pass;
+  try { pass = stlPass({ ...rec, enabled: true, zScale: zs }, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }); } catch (e) { return { reason: 'unreadable' }; }
+  if (!pass) return { reason: 'empty' };
+  const f = fitStlDepth(pass, r.cleanHeights, nx, nz, P.carveZ, Math.abs(pass.depth) / Math.abs(zs));
+  return f.zScale !== undefined ? { zScale: Math.sign(zs) * f.zScale } : f;
+}
+/** Why the Fit changed nothing, one line per reason (the status line shows it). */
+const FIT_NO_ROOM = Object.freeze({
+  terrain: (top) => `Nothing changed: the terrain under this STL already reaches the stock ${top ? 'top' : 'bottom'} (Carve Depth ${P.carveZ} in).`,
+  zOffset: (top) => `Nothing changed: its Z offset alone already takes it to the stock ${top ? 'top' : 'bottom'} (Carve Depth ${P.carveZ} in).`,
+  flat: () => 'Nothing changed: this STL has no height to scale.',
+  empty: () => 'Nothing changed: this STL covers no point of the board.',
+  unreadable: () => 'Nothing changed: the stored mesh cannot be read.',
+  notBuilt: () => 'The surface is not built yet: try again once it is.',
+});
+
+/** 'Fit to carve depth': set layer `id`'s Depth (zScale) -- and nothing else -- so its stamp just fits the stock. One write, one
+ *  undo step (the zScale control's own copy-on-write path). No room: nothing changes and the status line says why. */
+export function fitStlToCarveDepth(id = activeStlLayer()?.id) {
+  const rec = find(id);
+  if (!rec) return false;
+  const f = stlFitFor(rec);
+  if (f.zScale === undefined) { status((FIT_NO_ROOM[f.reason] || FIT_NO_ROOM.flat)(normaliseStlLayer(rec).raise), true); return false; }
+  updateRecord(rec.id, (r) => withPath(r, ['zScale'], f.zScale));
+  commit('zScale');
+  syncStlPanel();
+  status(`Depth set to ${f.zScale.toFixed(3)}: it fits the stock (Carve Depth ${P.carveZ} in).`);
+  return true;
+}
+
+/** Layers added with P.stlFitOnInsert on before any surface was built: fitted once, after the next build (onStlStockChanged). */
+const _fitAfterBuild = new Set();
+
+/** 'Lay flat': the active STL's rotation REPLACED by the one that puts its thinnest side up (core/stl/orient.js layFlatFrame on
+ *  the decoded stored mesh). One write, one undo step; nothing else changes. */
+export function layFlatStl() {
+  const rec = activeStlLayer();
+  if (!rec) return false;
+  let rotation;
+  try { rotation = layFlatFrame(decodeMesh(rec.mesh)).rotation; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
+  updateRecord(rec.id, (r) => ({ ...r, rotation }));
+  commit('layFlat');
+  syncStlPanel();
+  return true;
+}
+
+/** A quick turn: `deg` about the BOARD's `axis` (core/stl/orient.js quickTurnRotation). One write, one undo step. */
+export function turnStl(axis, deg) {
+  const rec = activeStlLayer();
+  if (!rec) return false;
+  const rotation = quickTurnRotation(normaliseStlLayer(rec).rotation, axis, deg);
+  updateRecord(rec.id, (r) => ({ ...r, rotation }));
+  commit(`turn${axis.toUpperCase()}`);
+  syncStlPanel();
+  return true;
+}
+
+/** The active STL against the stock, from the last build's report (core/stl/stock.js): one line, hidden when it fits. */
+function showStlStock() {
+  const line = byId('stlStock');
+  if (!line) return;
+  const rec = activeStlLayer();
+  const text = rec && rec.id != null ? stlStockMessage(getStlStockReport()[String(rec.id)]) : '';
+  line.textContent = text;
+  line.hidden = !text;
+}
+/** A build just finished its heights (core/engine/rebuild.js -> setStlStockReport): the pending insert fits, then the line. */
+function onStlStockChanged() {
+  for (const id of [..._fitAfterBuild]) { _fitAfterBuild.delete(id); if (find(id)) fitStlToCarveDepth(id); }
+  showStlStock();
+}
+
 async function importFile(file, { reimport = false } = {}) {
   if (!file) return;
   const target = reimport ? activeStlLayer()?.id : undefined; // the layer the user chose, captured BEFORE the file is read
@@ -344,6 +455,10 @@ function renderControl(c) {
     c.note ? el('div', { class: 'photo-layer-note', text: c.note }) : null]);
 }
 
+/** A row of STL_ACTIONS buttons (the panel's own button row: .photo-layer-buttons, 32 px tall). */
+const actionRow = (actions) => el('div', { class: 'photo-layer-buttons' },
+  actions.map((a) => el('button', { type: 'button', id: a.id, class: 'cad-btn cad-btn-secondary', text: a.text, title: a.title })));
+
 /** Build the panel from STL_CONTROLS into `body` (main.js, before bindStlPanel). */
 export function renderStlPanel(body) {
   if (!body) return;
@@ -354,6 +469,8 @@ export function renderStlPanel(body) {
     el('input', { type: 'file', id: 'stlFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
     el('input', { type: 'file', id: 'stlReimportFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
   ]));
+  // a board-wide P key (DEFAULT false): its id IS the key, so main/ui-bindings.js bindControls binds it the generic way
+  body.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlFitOnInsert' }), el('span', { text: 'Fit new STLs to the carve depth' })]));
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlList', class: 'stl-list' }));
@@ -361,7 +478,14 @@ export function renderStlPanel(body) {
   for (const g of STL_GROUPS) {
     const mine = STL_CONTROLS.filter((c) => c.group === g.id);
     active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
-    for (const c of mine) active.appendChild(renderControl(c));
+    for (const c of mine) {
+      active.appendChild(renderControl(c));
+      const next = STL_ACTIONS.filter((a) => a.after === c.id); // e.g. the quick turns beside their Rotate slider
+      if (next.length) active.appendChild(actionRow(next));
+    }
+    const own = STL_ACTIONS.filter((a) => a.group === g.id && !a.after);
+    if (own.length) active.appendChild(actionRow(own));
+    if (g.id === 'size') active.appendChild(el('div', { id: 'stlStock', class: 'photo-layer-note stl-error', role: 'status', hidden: '' })); // over the stock: detection only
     if (g.id === 'place') {
       active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
         el('button', { type: 'button', id: 'stlSnap', class: 'cad-btn cad-btn-secondary', text: '⤓ Base on surface', title: 'Z = 0: the lowest point rests on the surface' }),
@@ -481,6 +605,8 @@ export function syncStlPanel() {
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
   showStlErrors(recs);
+  showStlStock();
+  const fitBox = byId('stlFitOnInsert'); if (fitBox) fitBox.checked = P.stlFitOnInsert === true;
   if (isStlLocked()) setSectionReadOnly('stl', true); // the rows were rebuilt enabled: put the job-timeline lock back (the one mechanism)
   const g = byId('stlGhost'); if (g) g.checked = ghostState.visible;
   const legend = byId('stlLegend');
@@ -523,6 +649,8 @@ export function bindStlPanel(hooks = {}) {
     const box = e.target.closest('[data-stl-enable]');
     if (box) setStlEnabled(box.getAttribute('data-stl-enable'), box.checked);
   });
+  for (const a of STL_ACTIONS) byId(a.id)?.addEventListener('click', () => a.run()); // each run writes, commits and re-syncs
+  if (typeof document !== 'undefined') document.addEventListener('stlStockChanged', onStlStockChanged); // one listener (same function)
   for (const c of STL_CONTROLS) {
     if (c.kind === 'slider') {
       const s = byId(`stl_${c.id}Slider`), n = byId(`stl_${c.id}`);
@@ -538,4 +666,4 @@ export function bindStlPanel(hooks = {}) {
 }
 
 /** Test / host hook. */
-export function _resetStlPanelForTests() { _active = null; _originals.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
+export function _resetStlPanelForTests() { _active = null; _originals.clear(); _fitAfterBuild.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
