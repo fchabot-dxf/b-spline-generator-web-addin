@@ -9,6 +9,7 @@
 import { indexMesh, decimate, encodeMesh, decodeMesh, meshBounds, meshHealth } from './mesh.js';
 import { renderDepth } from './raster.js';
 import { gaussianSmooth } from '../gaussian.js';
+import { cropFalloffOf, applyCropFalloff, placedFootprint } from './crop.js';
 
 export const STL_BLENDS = Object.freeze(['max', 'add']);
 /** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
@@ -144,7 +145,9 @@ const rasterKey = (rec, g) => JSON.stringify([rec.mesh.h || rec.mesh.nt, rec.uni
 function passBody(rec, grid) {
   const { nx, nz, widthIn } = grid;
   const rKey = rasterKey(rec, grid);
-  const bKey = JSON.stringify([rKey, rec.compress, rec.softness]);
+  // the crop-edge falloff (core/stl/crop.js): null when absent / width 0 / no edge -- then the key and the body are as before
+  const fo = cropFalloffOf(rec.cropFalloff);
+  const bKey = JSON.stringify(fo ? [rKey, rec.compress, rec.softness, fo] : [rKey, rec.compress, rec.softness]);
   const hit = lruGet(_bodyCache, bKey);
   if (hit) { lruGet(_rasterCache, rKey); return hit; } // the body's raster is "used" too: the two caches age together
   const r = lruGet(_rasterCache, rKey) || lruSet(_rasterCache, rKey, renderDepth(decoded(rec), rec, grid), STL_CACHE_CAPS.raster);
@@ -153,6 +156,7 @@ function passBody(rec, grid) {
   let covered = r.covered;
   if (r.hMax > 1e-9) for (let k = 0; k < n; k++) body[k] = r.covered[k] ? r.height[k] / r.hMax : 0;
   if (rec.compress > 0) for (let k = 0; k < n; k++) if (covered[k]) body[k] = compressRelief(body[k], rec.compress);
+  if (fo) applyCropFalloff(body, covered, r.height, placedFootprint(decoded(rec), rec), fo, grid);
   if (rec.softness > 0) {
     const sigma = rec.softness / (widthIn / (nx - 1));
     body = gaussianSmooth(body, nx, nz, sigma);

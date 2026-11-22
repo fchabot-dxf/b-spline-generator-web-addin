@@ -331,6 +331,8 @@ function _earClip(pts) {
   tris.push(idx);
   return tris;
 }
+/** The ONE ear-clipper, shared: core/stl/crop.js caps its cut faces with it (pts = [{ x, y }], CCW). */
+export const earClip = _earClip;
 
 /** Sutherland-Hodgman: convex `poly` (any winding) clipped to `inside(p)`; `cut(a,b)` interpolates the
  *  boundary crossing between two consecutive points where exactly one is inside. Winding is preserved. */
