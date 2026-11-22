@@ -59,14 +59,17 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'VECTOR STAMPING',
+    // LABELS T: #stampDepth is now the hidden signed field; the visible magnitude #stampHeight (no P key) is attached
+    // to THIS section's scope by main/stamp/depth.js
     ids: ['stampDepth', 'stampVBitAngle', 'stampBlur', 'stampSmoothingRadius', 'stampTextureSuppression',
       'stampEdgeFilletRadius', 'stampFilletPower'],
     names: [
-      pname('plunge', 'stampDepth', 'Plunge depth', IN),
+      pname('plunge', 'stampDepth', 'Relief height, signed (+ raised, - carved)', IN),
+      { name: 'relief', label: 'Relief height', get: () => Math.abs(P.stampDepth), unit: IN },
       pname('angle', 'stampVBitAngle', 'V-bit angle', DEG),
-      pname('blur', 'stampBlur', 'Blur radius'),
-      pname('smoothing', 'stampSmoothingRadius', 'Smoothing'),
-      pname('suppression', 'stampTextureSuppression', 'Texture suppression'),
+      pname('blur', 'stampBlur', 'Blur (grid cells)'),
+      pname('smoothing', 'stampSmoothingRadius', 'Smoothing radius (grid cells)'),
+      pname('suppression', 'stampTextureSuppression', 'Smooth the terrain under it (0-1)'),
       pname('fillet', 'stampEdgeFilletRadius', 'Edge fillet', IN),
       pname('sharpness', 'stampFilletPower', 'Fillet sharpness'),
     ],

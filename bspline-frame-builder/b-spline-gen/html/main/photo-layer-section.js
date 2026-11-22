@@ -43,7 +43,7 @@ export const PHOTO_CONTROLS = Object.freeze([
   { id: 'rotation', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak', tweak: 'rotation', steps: [-90, 90] },
   { id: 'repeat', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak-check', tweak: 'repeat', label: 'Repeat (tile the photo)' },
   { id: 'flip', needsLayer: true, home: 'both', group: 'image', kind: 'flip', ids2d: ['photoBtnFlipH', 'photoBtnFlipV'], ids3d: ['photo3dFlipH', 'photo3dFlipV'] },
-  { id: 'blur', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Blur', op: 'blur', key: 'radius', fallback: { radius: 0 },
+  { id: 'blur', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Blur (image px)', op: 'blur', key: 'radius', fallback: { radius: 0 },
     ids2d: ['photoBlurSlider', 'photoBlur'], ids3d: ['photo3dBlurSlider', 'photo3dBlur'] },
   { id: 'brightness', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Brightness', op: 'brightnessContrast', key: 'brightness',
     fallback: { brightness: 0, contrast: 0 }, ids2d: ['photoBrightnessSlider', 'photoBrightness'], ids3d: ['photo3dBrightnessSlider', 'photo3dBrightness'] },

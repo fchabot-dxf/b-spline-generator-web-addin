@@ -14,6 +14,7 @@
 export const vbit = {
   id: 'vbit',
   label: 'V-Bit (Linear)',
+  summary: 'V-bit', // the sidebar's one-line layer summary (core/stamp/target.js stampSummaryText)
 
   Zp(ctx) {
     if (ctx.distIn <= 0) return 0;

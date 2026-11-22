@@ -1634,6 +1634,36 @@
     padding: 0 2px;
 }
 
+/* DRAW-STAMP U (Fred 2026-11-22: stamp settings edited in the editor, summarised in the sidebar): the sidebar row's
+   one-line read-only stamp summary (main/stamp/summary.js), a full-width second line of the row; there it says what
+   the terse inline tool summary said, so that one stays out of the way in the sidebar list only. */
+/* the row's first line exactly as the flex row lays it (grip, name, toggles, delete) in its usual 40 px; the summary
+   sits in 14 px added under it */
+#stampLayersList .layer-row {
+    position: relative;
+    height: 54px;
+    padding-bottom: 14px;
+}
+.layer-stamp-summary {
+    position: absolute;
+    left: 28px; /* under the name, past the grip */
+    right: 8px;
+    bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    line-height: 1.3;
+    opacity: 0.75;
+}
+.layer-stamp-summary.not-carved { opacity: 0.4; }
+/* the Stamp branch's one fold (Transform): a 28 px touch target on a touch screen, like every other control there
+   (the global touch-target rule below covers buttons, selects, inputs and checkbox labels, not a <summary>) */
+@media (pointer: coarse) {
+    #stampLayerSettings details > summary { min-height: var(--touch-target-min, 28px); line-height: var(--touch-target-min, 28px); }
+}
+#stampLayersList .layer-name .layer-tool-summary { display: none; }
+
 .layer-name-input {
     flex: 1;
     min-width: 0;

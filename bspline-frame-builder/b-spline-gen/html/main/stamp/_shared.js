@@ -16,6 +16,7 @@ import { P } from '../../core/state.js';
 import { resolveGrid } from '../../core/terrain.js';
 import { createUpdateScheduler } from './_update-scheduler.js';
 import { createDomBinders } from './_dom-binders.js';
+import { stampTarget } from '../../core/stamp/target.js';
 
 export function createStampCtx(preview) {
   const modules = [];   // each: { syncFromLayer?: (layer) => void }
@@ -27,19 +28,9 @@ export function createStampCtx(preview) {
   // SE4c: that fallback object is tooling-only now (no `.svg`/`.mask` —
   // content moved to editor._layers[i]._mask / P.editorSvg), narrower
   // than the editor-layer shape callers get the rest of the time.
-  const activeEditorLayer = () => {
-    try {
-      if (typeof window === 'undefined' || !window.svgEditor) return null;
-      const layers = window.svgEditor._layers;
-      if (!Array.isArray(layers) || layers.length === 0) return null;
-      return layers[P.activeLayerIdx] || null;
-    } catch (_) { return null; }
-  };
-  const activeLayer = () => {
-    const e = activeEditorLayer();
-    if (e) return e;
-    return (P.stampLayers ? P.stampLayers[P.activeLayerIdx] : undefined);
-  };
+  // DRAW-STAMP U (advisor 2026-11-22): read through the ONE stamp target (core/stamp/target.js), which the binders'
+  // writes go through too -- the per-stroke step swaps that target, not these.
+  const activeLayer = () => stampTarget().layer || undefined;
   const grid = () => resolveGrid(P.widthIn, P.heightIn, P.spacing);
   // SE5a: editor._layers is the single tooling store — read it directly,
   // same editor-preferring shape as activeLayer() above, instead of the
@@ -58,7 +49,7 @@ export function createStampCtx(preview) {
 
   // ─── Composed behaviour ───────────────────────────────────────────
   const scheduler = createUpdateScheduler({ preview, grid, isFilletActive });
-  const binders = createDomBinders({ activeLayer, activeEditorLayer, requestRemask: scheduler.requestRemask });
+  const binders = createDomBinders({ target: stampTarget, requestRemask: scheduler.requestRemask });
 
   // ─── Registry ─────────────────────────────────────────────────────
   const registerModule = (mod) => {

@@ -28,6 +28,7 @@ import { initSuppression } from './suppression.js';
 import { initFillet } from './fillet.js';
 import { initTransform } from './transform.js';
 import { initMetrics } from './metrics.js';
+import { initSummary } from './summary.js';
 
 export function initStampPanel(preview) {
   const ctx = createStampCtx(preview);
@@ -53,6 +54,10 @@ export function initStampPanel(preview) {
 
   // SVG source after layer so it can call back into layer.syncEnabled.
   initSvgSource(ctx, layerModule);
+
+  // DRAW-STAMP U: the sidebar rows' one-line summaries -- after layer.js, so a layer switch has moved
+  // P.activeLayerIdx (the stamp target) before the Draw tree's Stamp header re-reads it
+  initSummary();
 
   return ctx;
 }

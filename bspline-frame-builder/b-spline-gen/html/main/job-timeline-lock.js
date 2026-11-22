@@ -166,3 +166,28 @@ export function syncLatticeTabLock(steps, order, head, editor, onMoveHead, doc =
   setSectionReadOnly(LATTICE_PANEL_LOCK_ID, isLocked, doc);
   syncLatticeBanner(root, owner.name || 'This layer', lockedLabels, firstLockedStepId, onMoveHead);
 }
+
+const STAMP_PANEL_LOCK_ID = 'stamp-panel'; // data-job-lock on #stampLayerSettings (the Draw tab's Stamp branch)
+
+/** DRAW-STAMP U: the selected layer's stamp settings (moved from the sidebar into the editor's Draw > Stamp branch) go
+ *  inert + the step's banner while a job-timeline step that locks THAT layer is left of the head -- the same 'layer'
+ *  rule syncLayerLocks applies to its geometry (targetLayerId / locksAlso), the same setSectionReadOnly + banner
+ *  mechanism as the sidebar sections and the Lattice tab. Another selected layer: editable again. */
+export function syncStampTabLock(steps, order, head, editor, onMoveHead, doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || !editor || !Array.isArray(editor._layers)) return;
+  const root = doc.getElementById('stampLayerSettings');
+  if (!root) return;
+  const activeId = getActiveLayer(editor);
+  const locked = new Set(order.slice(0, head));
+  let lockStep = null, lockKind = null;
+  if (activeId != null) {
+    for (const step of steps) {
+      const kind = JOB_STEP_KINDS[step.kind];
+      if (kind.readOnly !== 'layer' || !locked.has(step.id)) continue;
+      const ids = [targetLayerId(editor, step), ...locksAlsoIds(editor, step, kind)].filter((id) => id != null).map(String);
+      if (ids.includes(String(activeId))) { lockStep = step; lockKind = kind; break; }
+    }
+  }
+  setSectionReadOnly(STAMP_PANEL_LOCK_ID, !!lockStep, doc);
+  syncBanner(root, lockStep, lockKind, !!lockStep, onMoveHead);
+}
