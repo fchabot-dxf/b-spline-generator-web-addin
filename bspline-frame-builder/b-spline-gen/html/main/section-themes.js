@@ -36,7 +36,7 @@ export const SECTION_THEMES = Object.freeze({
  *  main/job-timeline-strip.js reads this + SECTION_THEMES' hue so a chip never carries its own hand-picked look. */
 export const SECTION_ICONS = Object.freeze({
   // skeleton = TERRAIN SHAPE's ⛰ since TERRAIN-FLAT (2026-11-22); filter = TERRAIN TEXTURE
-  stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰', filter: '🎨', brick: '🧱', stamp: '📐',
+  stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰️', filter: '🎨', brick: '🧱', stamp: '📐',
   'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
 });
 

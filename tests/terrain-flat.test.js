@@ -147,7 +147,7 @@ beforeEach(() => { document.body.innerHTML = BODY; });
 describe('TERRAIN SHAPE / TERRAIN TEXTURE: the controls in their new panels', () => {
   const header = (cls) => document.querySelector(`.${cls} > .panel-header`).textContent.trim();
   it('the panels are renamed (labels only: the section classes stay panel-skeleton / panel-filter)', () => {
-    expect(header('panel-skeleton')).toBe('⛰ TERRAIN SHAPE');
+    expect(header('panel-skeleton')).toBe('⛰️ TERRAIN SHAPE');
     expect(header('panel-filter')).toBe('🎨 TERRAIN TEXTURE');
   });
   it('each control exists once, inside its new panel, in the declared order', () => {
