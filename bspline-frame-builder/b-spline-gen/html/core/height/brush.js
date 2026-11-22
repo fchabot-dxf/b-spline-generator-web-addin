@@ -2,7 +2,8 @@
  * height/brush.js -- HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md section 4): the dab engine of the height brush. Pure.
  *
  * Photoshop semantics (Fred 2026-11-22: "opacity 50% and value % are similar until they cross over each other"):
- *  - a DAB's falloff: 1 inside hardness * R, then a smoothstep roll-off to 0 at R (hardness 1 = a hard edge, 0 = all soft);
+ *  - a DAB's falloff: 1 inside hardness * R, then a roll-off to 0 at R shaped by the brush's PROFILE (BRUSH_FALLOFFS;
+ *    'smooth' = a smoothstep) (hardness 1 = a hard edge, 0 = all roll-off);
  *  - a STROKE keeps a coverage buffer: each dab moves a pixel's coverage toward the dab's cap (the opacity, x the pen
  *    pressure when "pressure -> opacity" is on) by flow x falloff. So one stroke never passes the opacity at a pixel,
  *    however often it scrubs over it;
@@ -22,6 +23,7 @@ export const BRUSH_DEFAULTS = Object.freeze({
   mode: 'raise',
   sizeIn: 0.5,       // the dab's diameter
   hardness: 0.5,
+  falloff: 'smooth', // BRUSH_FALLOFFS: the roll-off's shape outside the hard core
   opacity: 1,
   flow: 1,
   spacing: 0.1,      // between dabs, as a fraction of the size
@@ -34,13 +36,27 @@ export const BRUSH_DEFAULTS = Object.freeze({
 /** The smooth mode's box half-width, as a fraction of the dab radius (at least one pixel). */
 export const SMOOTH_KERNEL_FRACTION = 0.25;
 
-/** The falloff at distance `r` from a dab of radius `R` and `hardness` (0..1). */
-export function brushFalloff(r, R, hardness) {
+/**
+ * The falloff PROFILES (Fred 2026-11-22: "for a brush I'd also want to decide the falloff profile"). Hardness says WHERE the
+ * roll-off starts (1 inside hardness x R); the profile is its SHAPE from there (t = 0) to the rim (t = 1): each `curve(t)` is
+ * 1 at t = 0, 0 at t = 1 and never rises. 'smooth' is the slice-1 curve, so a brush without a profile paints as before.
+ */
+export const BRUSH_FALLOFFS = Object.freeze({
+  smooth: Object.freeze({ label: 'Smooth', title: 'An S-curve: soft start, soft end', curve: (t) => 1 - t * t * (3 - 2 * t) }),
+  linear: Object.freeze({ label: 'Linear', title: 'A straight slope (a cone)', curve: (t) => 1 - t }),
+  dome: Object.freeze({ label: 'Dome', title: 'Round shoulders, a steep rim (a ball)', curve: (t) => Math.sqrt(Math.max(0, 1 - t * t)) }),
+  soft: Object.freeze({ label: 'Soft', title: 'A long gaussian-like tail', curve: (t) => Math.exp(-4.5 * t * t) * Math.pow(1 - t, 0.25) }),
+  spike: Object.freeze({ label: 'Spike', title: 'Drops fast, a point at the centre', curve: (t) => (1 - t) ** 3 }),
+  plateau: Object.freeze({ label: 'Plateau', title: 'A flat top and a steep rim', curve: (t) => 1 - t ** 6 }),
+});
+
+/** The falloff at distance `r` from a dab of radius `R`, `hardness` (0..1) and profile `falloff` (a BRUSH_FALLOFFS key). */
+export function brushFalloff(r, R, hardness, falloff = 'smooth') {
   const core = hardness * R;
   if (r <= core) return 1;
   if (r >= R) return 0;
   const t = (r - core) / (R - core);
-  return 1 - t * t * (3 - 2 * t);
+  return (BRUSH_FALLOFFS[falloff] || BRUSH_FALLOFFS.smooth).curve(t);
 }
 
 /** A summed-area table of `src` (cols x rows) for box means. */
@@ -90,7 +106,7 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY }) {
     let touched = false;
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
-        const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness);
+        const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness, b.falloff);
         if (!(f > 0)) continue;
         const k = r * cols + c;
         const a0 = cov[k];

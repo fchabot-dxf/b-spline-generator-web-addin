@@ -16,7 +16,7 @@ import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded } from '../core/height/raster.js';
-import { BRUSH_DEFAULTS, BRUSH_MODES, createStroke } from '../core/height/brush.js';
+import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke } from '../core/height/brush.js';
 import { newHeightLayer, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -48,6 +48,9 @@ export const HEIGHT_CONTROLS = Object.freeze([
     options: BRUSH_MODES.map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
+  // Fred 2026-11-22: the shape of the roll-off outside the hard core (core/height/brush.js BRUSH_FALLOFFS)
+  { id: 'falloff', group: 'brush', target: 'brush', kind: 'choice', path: ['falloff'], label: 'Falloff',
+    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title]) },
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
   { id: 'flow', group: 'brush', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },

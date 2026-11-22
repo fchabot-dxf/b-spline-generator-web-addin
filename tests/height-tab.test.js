@@ -56,7 +56,7 @@ describe('the tab is declared', () => {
   });
   it('its controls render from HEIGHT_CONTROLS: one element per entry, the brush mode in the rail too', () => {
     expect(HEIGHT_CONTROLS.map((c) => c.id)).toEqual([
-      'mode', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn', 'pressureSize', 'pressureOpacity',
+      'mode', 'sizeIn', 'hardness', 'falloff', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn', 'pressureSize', 'pressureOpacity',
       'posX', 'posY', 'rotation', 'sizeW', 'sizeH', 'raise', 'blend', 'zOffset', 'placement',
     ]);
     // Fred 2026-11-22 ("No rigid"): a height patch always follows the terrain -- no Level / rigid choice
