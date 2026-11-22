@@ -8,8 +8,8 @@ import { CROP_AXES, normaliseCropBox, isFullCropBox } from '../core/stl/crop.js'
 
 /** The six sliders, in order: [axis, end (0 = min, 1 = max), label]. */
 export const CROP_SLIDERS = Object.freeze(CROP_AXES.flatMap((a) => [
-  Object.freeze({ axis: a, end: 0, label: `${a.toUpperCase()} min` }),
-  Object.freeze({ axis: a, end: 1, label: `${a.toUpperCase()} max` }),
+  Object.freeze({ axis: a, end: 0, label: `${a.toUpperCase()} min (%)` }),
+  Object.freeze({ axis: a, end: 1, label: `${a.toUpperCase()} max (%)` }),
 ]));
 /** The sliders' travel (attributes only, not a rule). */
 export const CROP_SLIDER_TRAVEL = Object.freeze({ min: 0, max: 100, step: 1 });
@@ -32,11 +32,11 @@ export function renderCropSliders(host, { idPrefix, onInput = () => {} }) {
   const rows = CROP_SLIDERS.map((s) => {
     const t = CROP_SLIDER_TRAVEL;
     const id = cropSliderId(idPrefix, s);
-    const range = el('input', { type: 'range', id, class: 'cad-slider', min: String(t.min), max: String(t.max), step: String(t.step), 'aria-label': `${s.label} (%)` });
-    const num = el('input', { type: 'number', id: `${id}Num`, min: String(t.min), max: String(t.max), step: String(t.step), 'aria-label': `${s.label} (%)` });
+    const range = el('input', { type: 'range', id, class: 'cad-slider', min: String(t.min), max: String(t.max), step: String(t.step), 'aria-label': s.label });
+    const num = el('input', { type: 'number', id: `${id}Num`, min: String(t.min), max: String(t.max), step: String(t.step), 'aria-label': s.label });
     host.appendChild(el('div', { class: 'stl-crop-row' }, [
       el('label', { class: 'cad-label stl-crop-label', for: id, text: s.label }),
-      el('div', { class: 'cad-slider-row' }, [range, el('div', { class: 'cad-stepper', style: 'width:62px;' }, [num]), el('span', { class: 'stl-unit', text: '%' })]),
+      el('div', { class: 'cad-slider-row' }, [range, el('div', { class: 'cad-stepper', style: 'width:66px;' }, [num])]),
     ]));
     return { s, range, num };
   });

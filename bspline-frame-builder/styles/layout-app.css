@@ -1204,4 +1204,15 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
   .stl-lib-close, .stl-lib-query, .stl-lib-library, .stl-lib-museum, .stl-lib-type, .stl-lib-shape, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
   .stl-lib-ratio input { min-height: 36px; }
   .stl-lib-close { min-width: 36px; }
+  .stl-crop-row input, #stlCropApply, #stlCropReset, #stlLibCropReset { min-height: 32px; }
 }
+/* STL-CROP (STL-RELIEF-DESIGN.md section 14): the six crop sliders (sheet pane + panel Crop group), the pressed Crop button,
+   the falloff profile's six choices wrapping in the narrow panel (two rows of three) */
+.stl-crop-label { margin-bottom: 0; }
+#stlCropReset[hidden] { display: none; } /* .cad-btn's display would show it: Reset is for a box not applied yet */
+.stl-crop-row .cad-slider-row { margin-bottom: 4px; }
+.stl-lib-crop { margin-top: 8px; }
+.stl-lib-crop-btn.active { background: var(--cad-accent-blue, #0078d4); color: #fff; }
+.stl-crop-sub { margin-top: 10px; font-weight: 600; }
+#stl_cropFalloffProfile { flex-wrap: wrap; }
+#stl_cropFalloffProfile .relief-toggle-btn { flex: 1 0 30%; }
