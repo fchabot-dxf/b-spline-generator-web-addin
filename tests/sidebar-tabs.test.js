@@ -39,7 +39,7 @@ describe('phase 5: the main sidebar tree', () => {
 
   it('Fred 2026-10-11 (final): three branches; Surface ends with a "2D editor" GROUP -- Photo, Brick, Vector stamping', () => {
     expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'output']);
-    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot', 'panel-photo', 'panel-brick', 'panel-stamp']);
+    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-thicken', 'panel-sculpt-bot', 'panel-photo', 'panel-brick', 'panel-stamp']); // STL-RELIEF: panel-stl before Thicken (its heights are what thicken reads)
     expect(groupOfSection('panel-brick')).toMatchObject({ id: 'editor', label: '2D editor' });
     expect(groupOfSection('panel-filter')).toBeNull();
     initSidebarTabs();

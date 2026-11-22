@@ -36,6 +36,7 @@ export const LOADING_STAGES = {
   // on screen (a template 2.2 s, Generate 0.6-1.1 s); a photo pattern 1.2 s before the rebuild's card came up
   frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
   photo: { group: 'computing', label: 'loading the photo', surface: 'pill' },
+  stl: { group: 'computing', label: 'reading the STL', surface: 'card' }, // STL-RELIEF: parse + weld + store a mesh (main/stl-panel.js)
   // seat A's re-time 2026-10-09 (phone, CPU x4): the Art tab's Undo / Redo and a lattice Generate froze 0.56-0.9 s with
   // nothing on screen
   undo: { group: 'refreshing', label: 'undoing', surface: 'pill' },

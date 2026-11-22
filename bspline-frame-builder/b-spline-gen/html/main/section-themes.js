@@ -21,6 +21,7 @@ export const SECTION_THEMES = Object.freeze({
   brick: { hue: 6 },
   stamp: { hue: 135 }, // Vector Stamping = the editor's Artwork tab
   'sculpt-top': { hue: 320 },
+  stl: { hue: 75 }, // STL stamp (STL-RELIEF-DESIGN.md): its own, clear of Thicken's 48 and Export's 90
   thicken: { hue: 48 },
   'sculpt-bot': { hue: 295 },
   view: { hue: 195 },
@@ -35,7 +36,7 @@ export const SECTION_THEMES = Object.freeze({
  *  main/job-timeline-strip.js reads this + SECTION_THEMES' hue so a chip never carries its own hand-picked look. */
 export const SECTION_ICONS = Object.freeze({
   stock: '📐', layers: '📑', frame: '🖼', skeleton: '🦴', filter: '🎨', brick: '🧱', stamp: '📐',
-  'sculpt-top': '🎨', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
+  'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
 });
 
 /** A SECTION_THEMES hue as a flat CSS colour (not themeTokens' body/header/stripe/text derivation, which is for

@@ -37,7 +37,9 @@ import { initPhotoFootprint } from './photo-footprint.js';
 import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
-import { saveLastSession, flushSessionSave, isFusionMode } from '../core/state.js';
+import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '../core/state.js';
+import { renderStlPanel, bindStlPanel } from './stl-panel.js';
+import { updateStlGhosts } from '../core/stl/ghost.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -141,6 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2026-10-10: Surface > Photo, rendered from its declared PHOTO_CONTROLS BEFORE the Photo tab binds (Max Height moved
     // there with its ids) and before bindControls (the layer's own P-key controls bind the generic way)
     renderPhotoLayerSection(document.getElementById('photoLayerBody'));
+    renderStlPanel(document.getElementById('stlLayerBody')); // STL-RELIEF: Surface > STL stamp, from its declared STL_CONTROLS
     initPhotoPanel({
         onChange: (opts) => {
             const action = inEditor3dAction('photo', opts); // opts.drag: a slider's drag tick (its release notifies again)
@@ -149,6 +152,14 @@ document.addEventListener('DOMContentLoaded', () => {
         },
     });
     bindPhotoLayerSection(); // its mirrored image edits go through the Photo tab's own steps (photo-panel.js photoEditApi)
+    bindStlPanel({
+        onChange: () => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0),
+        // the ghost toggle / a different STL picked: redraw the ghosts from the heights already built (no rebuild)
+        refreshGhosts: () => {
+            const r = lastResult;
+            if (r && r.heights) updateStlGhosts(preview, P.stlLayers, r.heights, { nx: r.nx, nz: r.nz, widthIn: P.widthIn, heightIn: P.heightIn });
+        },
+    });
     syncPhotoPanel();
     initPhotoFootprint({ commit: commitPhotoPlacement }); // the photo's footprint on the board, on the Photo tab
 

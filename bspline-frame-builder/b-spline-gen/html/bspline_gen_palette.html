@@ -974,6 +974,13 @@
         <div class="panel-body hidden" id="photoLayerBody"></div>
       </div>
 
+      <!-- STL-RELIEF (STL-RELIEF-DESIGN.md): an STL stamped into the surface -- place, size, rotate (X / Y / Z), Max / Add, Raised / Carved.
+           Rendered from main/stl-panel.js STL_CONTROLS; each STL is one record in P.stlLayers. -->
+      <div class="panel panel-stl">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🗿 STL STAMP</div>
+        <div class="panel-body hidden" id="stlLayerBody"></div>
+      </div>
+
       <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (since F35 item 27 both the editor and the sidebar apply
            at once): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
            QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
