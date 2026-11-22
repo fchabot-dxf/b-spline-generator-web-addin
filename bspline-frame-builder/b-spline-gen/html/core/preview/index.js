@@ -614,7 +614,7 @@ export class TerrainPreview {
     this._ro.disconnect();
     this._groundGrid.dispose();
     this._sculpt.dispose();
-    this._stlGizmo.dispose();
+    this._stlGizmo?.dispose();
     if (this._drapeMesh) { this._scene.remove(this._drapeMesh); this._drapeMesh.material.dispose(); }
     if (this._frameRimDrapeMesh) { this._scene.remove(this._frameRimDrapeMesh); this._frameRimDrapeMesh.material.dispose(); }
     if (this._drapeTexture) this._drapeTexture.dispose();
@@ -882,7 +882,7 @@ export class TerrainPreview {
     const loop = () => {
       this._animId = requestAnimationFrame(loop);
       if (this._orbit.step()) this._needsRender = true;
-      if (this._stlGizmo.sync()) this._needsRender = true; // the STL handles: shown / hidden (lock, sculpt) / rescaled with the zoom
+      if (this._stlGizmo?.sync()) this._needsRender = true; // the STL handles: shown / hidden (lock, sculpt) / rescaled with the zoom
 
       if (this._needsRender) {
         if (this._viewCube) {
