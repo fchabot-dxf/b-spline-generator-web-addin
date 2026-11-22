@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "4c002ea206d7b5fcfdcb291c1c2340eca688c09052e3ba509c4d2b3db12c765c",
+  "sourceHash": "a509ddb9218ac8a78b9e24fff170497de3b73a3b427f6f7701d328f72bce5a3a",
   "templates": [
     {
       "features": [
@@ -17467,6 +17467,7 @@ export default {
             "min": 0,
             "scale": 50,
             "step": 1,
+            "stopBeforeOverlap": true,
             "unit": "%"
           },
           "generateRange": {
@@ -17485,6 +17486,7 @@ export default {
             "min": 0,
             "scale": 50,
             "step": 1,
+            "stopBeforeOverlap": true,
             "unit": "%"
           },
           "generateRange": {

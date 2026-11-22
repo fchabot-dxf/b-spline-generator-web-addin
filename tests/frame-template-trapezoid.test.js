@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { normalizeFrameRecord, framePayload, getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile, frameInnerProfile, frameMiters, frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, frameMiters, frameSolidSpec, frameSeedSafeMax, frameGenerateFailure } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
   frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds, frameParamRanges, linkedSeedPatch, frameShapeControls,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
@@ -344,6 +344,54 @@ const FIXTURE = `
   <aside id="editorFramePanel" style="display:none"><select id="editorFrameTemplate"></select><div id="editorFrameShapeControls"></div></aside>
   <aside id="editorLayersPanel"></aside>`;
 
+describe("Template 20: the inset sliders stop just before the narrow side's mitres overlap (Fred-approved 2026-11-22)", () => {
+  // The first failing inset MEASURED before this rule (both insets equal, 1 % steps): 7x9 41 %, 6x9 38 %, 9x12 43 % at
+  // t 0.75; 29 / 24 / 35 % at t 1.5 -- each mitresCollide. The stop must sit just below: inside [first - 1, first).
+  const failure = (r, W, H) => {
+    const prof = frameCutProfile(FRAME_DEFS, r, board(W, H));
+    return frameGenerateFailure(FRAME_DEFS, r, board(W, H), T20, prof.region, r.params.frame_thickness ?? T)(r.seeds);
+  };
+  it.each([[7, 9, 0.75, 41], [6, 9, 0.75, 38], [9, 12, 0.75, 43], [7, 9, 1.5, 29], [6, 9, 1.5, 24], [9, 12, 1.5, 35]])(
+    '%dx%d at t %s: the linked (Symmetric) max is just below %d percent, safe at the max, colliding just past it', (W, H, t, first) => {
+      const r = rec({}, { params: { frame_thickness: t } });
+      const max = frameSeedSafeMax(FRAME_DEFS, r, board(W, H), 'leftInset');
+      expect(max * 50).toBeLessThan(first);
+      expect(max * 50).toBeGreaterThanOrEqual(first - 1);
+      expect(frameSeedSafeMax(FRAME_DEFS, r, board(W, H), 'rightInset')).toBeCloseTo(max, 9); // the joint max
+      const at = rec({ leftInset: max, rightInset: max }, { params: { frame_thickness: t } });
+      expect(failure(at, W, H)).toBeNull();
+      expect(failure(rec({ leftInset: max + 0.005, rightInset: max + 0.005 }, { params: { frame_thickness: t } }), W, H)).toBe('mitersCollide');
+    });
+
+  it("asymmetric (link off): each end's max depends on the OTHER inset and the narrow side", () => {
+    const p = { params: { frame_thickness: 1.5 } }; // 7x9, t 1.5
+    const r0 = rec({ leftInset: 0, rightInset: 0.6, insetLink: 0 }, p); // right 30 %
+    const maxL = frameSeedSafeMax(FRAME_DEFS, r0, board(7, 9), 'leftInset');
+    const linkedMax = frameSeedSafeMax(FRAME_DEFS, rec({}, p), board(7, 9), 'leftInset');
+    expect(maxL * 50).toBeGreaterThan(26.5); expect(maxL * 50).toBeLessThan(27.5); // MEASURED 27.06 % (linked: 28.53 %)
+    expect(maxL).toBeLessThan(linkedMax); // a different pair, a different stop
+    expect(failure(rec({ leftInset: maxL, rightInset: 0.6, insetLink: 0 }, p), 7, 9)).toBeNull();
+    expect(failure(rec({ leftInset: maxL + 0.005, rightInset: 0.6, insetLink: 0 }, p), 7, 9)).toBe('mitersCollide');
+    // the other inset sets the stop: with the right end at 10 % the left one runs its whole 45 % travel
+    expect(frameSeedSafeMax(FRAME_DEFS, rec({ leftInset: 0, rightInset: 0.2, insetLink: 0 }, p), board(7, 9), 'leftInset')).toBe(0.9);
+    // Down: the same stop (the narrow side mirrored, the same mitres)
+    expect(frameSeedSafeMax(FRAME_DEFS, rec({ leftInset: 0, rightInset: 0.6, insetLink: 0, narrowSide: -1 }, p), board(7, 9), 'leftInset')).toBeCloseTo(maxL, 6);
+  });
+
+  it("a saved inset above today's max is NOT rewritten on load: the record and the drawn shape keep it", () => {
+    const saved = { leftInset: 0.88, rightInset: 0.88 }; // 44 %, past the 7x9 / t 1.5 stop (~28 %)
+    const r = normalizeFrameRecord(JSON.parse(JSON.stringify({ templateId: 'template_20', seeds: saved, params: { frame_thickness: 1.5 } })));
+    expect(r.seeds).toEqual(saved);
+    expect(frameCutProfile(FRAME_DEFS, r, board(7, 9)).params.leftInset).toBe(0.88);
+    expect(frameSeedSafeMax(FRAME_DEFS, r, board(7, 9), 'leftInset') * 50).toBeLessThan(29);
+  });
+
+  it('no other template declares the stop (their panels have no slider at all)', () => {
+    for (const t of FRAME_DEFS.templates) for (const h of t.handles) if (h.control?.stopBeforeOverlap) expect(t.id).toBe('template_20');
+    expect(T20.handles.filter((h) => h.control?.stopBeforeOverlap).map((h) => h.key)).toEqual(['leftInset', 'rightInset']);
+  });
+});
+
 describe('the Frame panel shows the declared controls (sidebar + Frame tab, two views of one record)', () => {
   let root;
   beforeEach(() => {
@@ -388,5 +436,23 @@ describe('the Frame panel shows the declared controls (sidebar + Frame tab, two 
     // the sidebar view follows the same record
     expect(document.querySelector('#frameShapeControls [data-shape-key="rightInset"] input[type="range"]').value).toBe('0');
     expect(document.querySelector('#frameShapeControls [data-shape-key="narrowSide"] button[aria-pressed="true"]').textContent).toBe('Down');
+  });
+  it('the slider ends at the stop (re-read on a thickness change); a saved value past it shows pinned and stays saved', () => {
+    setFrameRecord({ templateId: 'template_20' }); syncFramePanel();
+    const left = () => document.querySelector('#editorFrameShapeControls [data-shape-key="leftInset"] input[type="range"]');
+    const want = (t) => String(Math.floor(frameSeedSafeMax(FRAME_DEFS, getFrameRecord(), board(7, 9), 'leftInset') * 50 + 1e-9));
+    expect(left().max).toBe(want());
+    expect(Number(left().max)).toBeLessThan(41);
+    setFrameRecord({ params: { frame_thickness: 1.5 } }); syncFramePanel();
+    expect(left().max).toBe(want());
+    expect(Number(left().max)).toBeLessThan(29);
+    setFrameRecord({ seeds: { leftInset: 0.88, rightInset: 0.88 } }); syncFramePanel(); // e.g. a board loaded / resized smaller
+    expect(left().value).toBe(left().max); // pinned at its end
+    expect(document.querySelector('#editorFrameShapeControls [data-shape-key="leftInset"] .frame-shape-value').textContent).toBe('44%');
+    expect(getFrameRecord().seeds).toEqual({ leftInset: 0.88, rightInset: 0.88 }); // never rewritten by the panel
+    // a user drag to the end writes the stop (linked: both)
+    left().value = left().max; left().dispatchEvent(new Event('change'));
+    expect(getFrameRecord().seeds.leftInset * 50).toBeCloseTo(Number(left().max), 9);
+    expect(getFrameRecord().seeds.rightInset).toBe(getFrameRecord().seeds.leftInset);
   });
 });

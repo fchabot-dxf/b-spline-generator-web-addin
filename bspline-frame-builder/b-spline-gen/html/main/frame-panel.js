@@ -30,7 +30,7 @@ import { AppState } from './app-state.js';
 import { deferToHold } from '../core/engine/scheduler.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds, frameShapeControls, linkedSeedPatch } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameGenerateIsValid, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameGenerateIsValid, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn, frameSeedSafeMax } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { inputProfileFor } from '../editor/editor-input.js';
@@ -234,6 +234,18 @@ function _buildShapeControl(tpl, h) {
 function _syncShapeControls(tpl, rec) {
   const controls = frameShapeControls(tpl);
   let resolved = null;
+  // Fred-approved clamp, 2026-11-22: "Stop just before overlap" -- a slider declaring `stopBeforeOverlap` ends at
+  // frameSeedSafeMax (this board / thickness / trim / switch / other inset, re-read on every sync). Travel only: a
+  // value already past it shows pinned at the end, its label says the real value, and nothing here rewrites it.
+  const stops = new Map();
+  const stopOf = (h) => {
+    if (!stops.has(h.key)) {
+      const safe = frameSeedSafeMax(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }, h.key);
+      const c = h.control, step = c.step || 1;
+      stops.set(h.key, Number.isFinite(safe) ? Math.max(c.min, Math.min(c.max, Math.floor((safe * (c.scale || 1)) / step + 1e-9) * step)) : c.max);
+    }
+    return stops.get(h.key);
+  };
   for (const id of FRAME_SHAPE_CONTROL_HOSTS) {
     const host = $(id);
     if (!host) continue;
@@ -251,8 +263,11 @@ function _syncShapeControls(tpl, rec) {
       const v = Number.isFinite(resolved[h.key]) ? resolved[h.key] : h.control.default;
       if (h.control.kind === 'slider') {
         const input = row.querySelector('input');
-        if (document.activeElement !== input) input.value = String(Math.round(v * (h.control.scale || 1) * 1000) / 1000);
-        row.querySelector('.frame-shape-value').textContent = `${input.value}${h.control.unit || ''}`;
+        const shown = Math.round(v * (h.control.scale || 1) * 1000) / 1000;
+        const end = h.control.stopBeforeOverlap ? stopOf(h) : h.control.max;
+        input.max = String(end);
+        if (document.activeElement !== input) input.value = String(Math.min(shown, end)); // past the stop: pinned at the end
+        row.querySelector('.frame-shape-value').textContent = `${shown}${h.control.unit || ''}`; // the real value
       } else if (h.control.kind === 'check') {
         row.querySelector('input').checked = !!Number(v);
       } else if (h.control.kind === 'switch') {

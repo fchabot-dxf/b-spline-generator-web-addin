@@ -625,6 +625,10 @@ const TRAPEZOID_DEFAULT_INSET = 0.3; // fraction of hw: 15% of the wide side (a 
 // The declared ranges = the Frame panel's slider travel (template_data.py's control: 0..45 % of the wide side =
 // 0..0.9 hw). Travel, not a frame rule: no frame-thickness narrowing (frame-handles.js frameParamRanges leaves this
 // preset alone), Fred's own "travel only, no clamp". Within it the narrow side is never under 10% of the wide one.
+// The sliders' END inside this travel: Fred-approved clamp, 2026-11-22, "Stop just before overlap" -- the largest
+// inset before the narrow side's mitres collide, for this board / frame / other inset (editor-frame-profile.js
+// frameSeedSafeMax: it needs the frame's own profiles, which import this file, so it is declared there). Only the
+// sliders read it; the resolver below never clamps a saved value to it (AGENTS.md rule 3).
 const TRAPEZOID_RANGES = { leftInset: [0, 0.9], rightInset: [0, 0.9], narrowSide: [-1, 1], insetLink: [0, 1] };
 
 /**

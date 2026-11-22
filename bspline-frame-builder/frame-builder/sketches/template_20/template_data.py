@@ -113,7 +113,10 @@ FRAME_REGIONS = {
 # times `scale` (fraction of hw -> % of the wide side) over its travel `min`..`max` (travel only, no clamp: the
 # app's declared feasible range is the same 0..0.9 hw); a check / switch writes the listed values. `generateRange`
 # (H23 item 40's own mechanism): [Generate] draws the insets in 0..30% only -- a drag or the slider still reaches 45%.
-_SLIDER = {"kind": "slider", "unit": "%", "scale": 50, "min": 0, "max": 45, "step": 1}
+# `stopBeforeOverlap` -- Fred-approved clamp, 2026-11-22: "Stop just before overlap". The slider's END moves with the
+# board and the frame: it stops at the largest inset Generate's own check still passes (the narrow side's two mitres
+# just short of colliding; editor/editor-frame-profile.js frameSeedSafeMax). A saved value past it is kept as it is.
+_SLIDER = {"kind": "slider", "unit": "%", "scale": 50, "min": 0, "max": 45, "step": 1, "stopBeforeOverlap": True}
 FRAME_HANDLES = [
     {"key": "leftInset",  "label": "Left inset",  "basis": "hw", "binding": "seeded",
      "control": dict(_SLIDER), "generateRange": {"min": 0.0, "max": 0.6}},

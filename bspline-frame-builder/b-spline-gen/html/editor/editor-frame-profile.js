@@ -15,7 +15,7 @@ import { generateSilhouette, outlineDefects, primitivesToPathD, primitiveToPathD
 import { sampleOutline, pointInPolygon } from '../core/preview/frame-mesh.js';
 import { offsetOutlineInward } from './outline-offset.js';
 import { insetWindowGeometry } from '../core/inset-window.js';
-import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS } from './frame-handles.js';
+import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS, frameParamRanges, linkedSeedPatch } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
 import { handleKindVisual, handleHoverVisual, drawParamHandle, drawSegmentHighlight, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
@@ -776,4 +776,33 @@ export function frameGenerateFailure(defs, rec, board, tpl, region, t) {
     if (mitersCollide(miters, t)) return 'mitersCollide';
     return miterStaysInsideWood(outer.primitives, miters, t) ? null : 'miterMargin';
   };
+}
+
+/**
+ * T20 TRAPEZOID -- Fred-approved clamp, 2026-11-22: "Stop just before overlap" (the Left / Right inset sliders' END
+ * moves with the board and the frame). The largest value of the seeded handle `key` (inside its declared travel,
+ * frameParamRanges) at which `record` still passes Generate's OWN check above (frameGenerateFailure: the mitre
+ * collision rule among the rest -- reused, not a second copy of the geometry test), on `board`, with the record's
+ * frame thickness / trim / every other seed as they are and the declared link applied (linkedSeedPatch: the
+ * Symmetric link moves both insets, so this is their JOINT max). Bisection; null = no frame. A slider declaring
+ * `control.stopBeforeOverlap` (template_data.py) reads it as its end -- main/frame-panel.js. It only bounds the
+ * slider's travel: a saved value already past it is drawn and kept as it is (AGENTS.md rule 3).
+ * When the rule fails even at the travel's start (the frame does not fit, or something else breaks it), there is
+ * nothing for this stop to say: the full travel is returned.
+ */
+export function frameSeedSafeMax(defs, record, board, key, steps = 32) {
+  const tpl = (defs.templates || []).find((x) => x.id === record?.templateId);
+  const prof = tpl && frameCutProfile(defs, record, board);
+  if (!prof) return null;
+  const travel = frameParamRanges(tpl, prof.region, prof.params)[key];
+  if (!prof.fit.ok || !travel) return travel ? travel.max : null;
+  const failure = frameGenerateFailure(defs, record, board, tpl, prof.region, _param(tpl, record, 'frame_thickness') ?? 0);
+  const ok = (v) => failure({ ...(record.seeds || {}), ...linkedSeedPatch(tpl, record.seeds, { [key]: v }) }) === null;
+  if (ok(travel.max) || !ok(travel.min)) return travel.max;
+  let lo = travel.min, hi = travel.max;
+  for (let i = 0; i < steps; i++) {
+    const mid = (lo + hi) / 2;
+    if (ok(mid)) lo = mid; else hi = mid;
+  }
+  return lo;
 }
