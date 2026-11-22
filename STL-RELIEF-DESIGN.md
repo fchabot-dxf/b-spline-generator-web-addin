@@ -230,8 +230,17 @@ import finishing during a project load is dropped with a message, compress NaN, 
 Gate: full vitest 545 files / 7521 tests green; real Chrome: body drag moves X/Y only, arrow drag Z only, Escape and a no-move
 click write nothing, a drag off the ghost still orbits, the stamp-only peak sits under the ghost apex, no console errors.
 
-**Still not built:** placement `afterBack` (field declared, `withSurface` only); opacity/blend on the other layers; a
-Layers-panel row for STLs.
+**Built since (2026-11-22, commit ef9e32be):** placement `afterBack`, shown as Stamp > Thicken: "Before thicken" (default,
+`withSurface`) / "After thicken". rebuild.js buildHeights stamps the afterBack STL passes LAST and keeps the heights before them
+(`backBase`); build-thicken-data.js takes it as `backFrom` and builds the back side (normals, safe map, offset) from it, while the
+top side (z bounds, thin / intersect analysis, colours) reads the final heights. A frozen Back lock still wins. No afterBack STL =
+today's single call, the same arrays (hash pins in tests/stl-after-back.test.js measured before the change). Gate: full vitest 546
+files / 7530 tests green; real Chrome: After thicken leaves the back equal to the STL-off board's (z sum 11133.6335 both) while
+the top carries the STL; Before thicken moves the back; no console errors. The Back step's `dependsOn: 'stl'` stays (Back is
+snapshotOnLock, its marks are never shown).
+
+**Still not built:** opacity/blend on the other layers and a Layers-panel row for STLs (both outside Fred's "STL stamp only"
+scope, section 11.1 / 11.6).
 
 **Gizmo decisions for Fred (left as they are, nothing added):** no tap slop (a 1 px jitter on a tap commits a tiny move; a
 threshold would be a new guard); a drag that starts ON the ghost moves it instead of orbiting (orbit by starting off the ghost,
