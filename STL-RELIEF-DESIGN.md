@@ -184,10 +184,18 @@ and the panel shows the project's STL total (warning only, no hard stop).
    and an optional per-STL position (absent = after everything) can be added later without changing saved boards.
 7. **STL passes run after the editor layers** (always on top) in slice 1.
 
-## 12. Still open (small, decide while building)
+## 12. Nothing open: the small choices are per-STL parameters (Fred, 2026-11-21)
 
-- Default `placement` for a new STL (`withSurface` assumed) and whether the lock alone is enough, or `afterBack` is wanted.
+Fred: the earlier "still open" items are not decisions, they are settings the user adjusts. Each is a field of the
+`P.stlLayers[i]` record with a declared default, so nothing needs deciding before building:
 
-- Exact default and the triangle cap for **Stored detail** (start ~50k per layer; tune on Fred's real STLs).
-- Compression curve for the depth (linear first; log/tanh later) and whether it ships in slice 1 or 3.
-- Whether the STL layer later also appears in the Layers panel (declared, not built, in slice 1).
+| Param | Default | Notes |
+|---|---|---|
+| `placement` | `withSurface` | `afterBack` is a later slice; the Back lock already covers the cut-back case |
+| `storedDetail` (triangles) | ~50k | the Stored detail slider (section 5); warning only, no hard stop |
+| `compress` (depth compression) | 0 (off, linear) | a slider; the curve shape (log / tanh) can be added later as another param |
+| `blend` | `max` | `add` also offered |
+| `zOffset`, `scale`, `rotation`, `position`, `depth`, `softness`, `raise/carve` | declared in section 3 | |
+
+The defaults are constants in one declared table; changing one later does not touch saved boards, because a saved layer
+stores its own value (an absent field reads as the declared default).
