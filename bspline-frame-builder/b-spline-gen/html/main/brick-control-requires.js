@@ -42,7 +42,7 @@ export const BRICK_CONTROL_REQUIRES = [
   // item 9: Clumping also shapes the frame's crumble ("Crumble frame too")
   { controls: ['brickClumping', 'brickClumpingSlider'], requires: { anyOf: [
     { control: 'brickSuppression', satisfied: { gt: 0 } }, { control: 'brickSuppressFrame', satisfied: { checked: true } }] },
-    why: 'Clumping only shapes which bricks the crumble removes -- no effect at Suppression 0 with the frame crumble off' },
+    why: 'Clumping only shapes which bricks the crumble removes -- no effect at Remove bricks 0 with the frame crumble off' },
   { controls: ['brickFrameSuppression', 'brickFrameSuppressionSlider'], requires: { control: 'brickSuppressFrame', satisfied: { checked: true } },
     why: 'The frame crumbles only with "Crumble frame too" on' },
   { controls: ['brickGroutDepth'], requires: { control: 'brickBtnGroutRecessed', satisfied: { active: true } },
