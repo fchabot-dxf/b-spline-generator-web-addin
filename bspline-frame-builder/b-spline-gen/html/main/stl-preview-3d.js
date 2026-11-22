@@ -1,10 +1,13 @@
 /**
  * main/stl-preview-3d.js -- SMITHSONIAN-BROWSER (design section 7, answer 4): the library sheet's "Turn in 3D" view. A small
- * THREE r128 view of a triangle soup (core/stl/gltf.js soupFromGltfScene: already Z-up, as the board gets it) on its own canvas,
- * with a plain material and a light. Drag to turn: sideways turns the model about Z, up / down tilts it. No OrbitControls (it is
- * not loaded in this app) and no animation loop: it draws once, then on each drag move.
+ * THREE r128 view of a triangle soup (core/stl/gltf.js soupFromGltfScene: in the board's frame, the model face up) on its own
+ * canvas, with a plain material and a light. It opens as the model's PICTURE shows it: a FRONT view, the camera on +Z looking
+ * down -Z with up = +Y (glTF's front and up), framed on the soup's bounds. Drag to turn: sideways turns the model about Z, up /
+ * down tilts it. No OrbitControls (it is not loaded in this app) and no animation loop: it draws once, then on each drag move.
  * `dispose()` frees everything it made (renderer + its WebGL context, geometry, material, the canvas, its listeners).
  */
+
+const VIEW_FOV_DEG = 35;
 
 /** The soup's centre and radius (for the camera), in plain JS. */
 function bounds(soup) {
@@ -38,11 +41,12 @@ export function createSoupView(container, soup, { sizePx = 300 } = {}) {
   scene.add(model);
   scene.add(new T.AmbientLight(0xffffff, 0.45));
   const sun = new T.DirectionalLight(0xffffff, 0.8);
-  sun.position.set(-1, -2, 3);
+  sun.position.set(-1, 2, 3); // from the upper left, in front
   scene.add(sun);
-  const camera = new T.PerspectiveCamera(35, 1, r / 100, r * 100);
-  camera.up.set(0, 0, 1); // Z-up, as the board
-  camera.position.set(0, -r * 3.2, r * 1.6);
+  const camera = new T.PerspectiveCamera(VIEW_FOV_DEG, 1, r / 100, r * 100);
+  // the front view (as the model's picture): on +Z looking down -Z, +Y up; the bounding sphere just fills the view's height
+  camera.up.set(0, 1, 0);
+  camera.position.set(0, 0, r / Math.sin((VIEW_FOV_DEG / 2) * (Math.PI / 180)));
   camera.lookAt(0, 0, 0);
   camera.updateProjectionMatrix();
 

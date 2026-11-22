@@ -8,9 +8,9 @@
  * onPick does the import (main/stl-panel.js).
  */
 import {
-  SMITHSONIAN_SOURCE, fetchSmithsonianPage, fetchSmithsonianThumbGlb,
+  SMITHSONIAN_SOURCE, fetchSmithsonianPage, fetchSmithsonianThumbGlb, fetchSmithsonianModelGlbs,
 } from '../core/stl/smithsonian.js';
-import { loadGlbScene, soupFromGltfScene, disposeGltfScene } from '../core/stl/gltf.js';
+import { soupFromGlbUrls } from '../core/stl/gltf.js';
 import { PICKER_TILE } from './icon-select.js';
 import { createSoupView } from './stl-preview-3d.js';
 
@@ -100,8 +100,10 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
         grid.appendChild(tileEl(t));
       }
       const end = Math.min((page + 1) * source.pageSize, st.total);
-      setStatus(st.total > 0 ? `1–${fmt(end)} of ${fmt(st.total)}` : 'No models found');
       more.hidden = end >= st.total;
+      // what is SHOWN: the API's rowCount counts FILES (a bust and its base are two rows of one model), not models
+      const n = st.shown.size;
+      setStatus(st.total > 0 ? `${fmt(n)} model${n === 1 ? '' : 's'} shown${more.hidden ? '' : ' · more available'}` : 'No models found');
     } catch (e) {
       if (closed || my !== st.seq) return;
       setStatus(msgOf(e), true);
@@ -146,18 +148,17 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
     const my = ++viewSeq;
     turnBtn.disabled = true;
     setPaneNote('Loading the 3D preview…');
-    let scene = null;
     try {
-      let url = await fetchSmithsonianThumbGlb(t.id, doFetch, source);
+      const thumb = await fetchSmithsonianThumbGlb(t.id, doFetch, source);
       if (my !== viewSeq) return;
-      if (!url) { url = t.glbUrl; setPaneNote('No small preview for this one: loading the full model (~0.8 MB)…'); }
-      const res = await doFetch(url);
-      if (!res || !res.ok) throw new Error(`the download answered ${res ? res.status : '?'}${res && res.statusText ? ` ${res.statusText}` : ''}`);
-      const buf = await res.arrayBuffer();
+      let urls = thumb ? [thumb] : null;
+      if (!urls) {
+        setPaneNote('No small preview for this one: loading the full model (~0.8 MB)…');
+        urls = await fetchSmithsonianModelGlbs(t.id, t.glbUrl, doFetch, source); // every Low part (a bust and its base)
+        if (my !== viewSeq) return;
+      }
+      const soup = await soupFromGlbUrls(urls, doFetch); // each loaded scene is freed once read: the view keeps the soup
       if (my !== viewSeq) return;
-      scene = await loadGlbScene(buf);
-      if (my !== viewSeq) return;
-      const soup = soupFromGltfScene(scene);
       media.textContent = '';
       view = createSoupView(media, soup);
       setPaneNote('Drag to turn it.');
@@ -165,8 +166,6 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
       if (my !== viewSeq) return;
       setPaneNote(`Could not show it in 3D: ${msgOf(e)}`, true); // the picture stays
       turnBtn.disabled = false;
-    } finally {
-      disposeGltfScene(scene); // the view has its own copy (the soup)
     }
   }
 

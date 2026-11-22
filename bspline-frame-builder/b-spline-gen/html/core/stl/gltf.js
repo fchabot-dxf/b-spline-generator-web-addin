@@ -1,13 +1,18 @@
 /**
  * core/stl/gltf.js -- SMITHSONIAN-BROWSER (SMITHSONIAN-BROWSER-DESIGN.md section 3): a GLB as the SAME triangle soup an STL gives
  * (core/stl/parse.js parseStl's `.soup`: Float32Array, 9 floats per triangle), so a GLB enters the one STL import path.
- * glTF is Y-up, the board is Z-up: every vertex is turned by GLTF_TO_BOARD after its node's world matrix.
+ * Every vertex goes through GLTF_TO_BOARD after its node's world matrix.
  * The loaders (three r128's GLTFLoader + DRACOLoader, pinned to the same r128 the palette loads) are added ON FIRST USE only:
  * a board that never opens a GLB never loads them.
  */
 
-/** The declared turn, glTF (Y-up) -> board (Z-up): +90 degrees about X, (x, y, z) -> (x, -z, y). */
-export const GLTF_TO_BOARD = Object.freeze((p) => [p[0], -p[2], p[1]]);
+/**
+ * The declared turn, glTF -> board: the IDENTITY, (x, y, z) -> (x, y, z). For a RELIEF a model lies FACE UP: glTF's front (+Z)
+ * points out of the board (the relief's height), its up (+Y) toward the top of the board (+y, up the screen), as its picture
+ * shows it. (Measured 2026-11-22: the earlier Y-up -> Z-up turn stood a Smithsonian bust UP, so the top-down stamp was a 2.6 in
+ * column = the top of the head.) A default only: the Rotate sliders turn it any way.
+ */
+export const GLTF_TO_BOARD = Object.freeze((p) => [p[0], p[1], p[2]]);
 
 export const GLTF_LOADER_URLS = Object.freeze({
   gltf: 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js',
@@ -25,11 +30,10 @@ function positionReader(attr) {
   return { count: attr.count ?? Math.floor(a.length / size), at: (i, k) => a[i * size + k] };
 }
 
-/** Every mesh of a THREE scene (as GLTFLoader returns it), in world space, turned Z-up, as one triangle soup. */
+/** Every mesh of a THREE scene (as GLTFLoader returns it), in world space, through GLTF_TO_BOARD, as one triangle soup. */
 export function soupFromGltfScene(scene) {
   scene.updateMatrixWorld?.(true);
   const parts = [];
-  let total = 0;
   scene.traverse((o) => {
     if (!o || !o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
     const g = o.geometry;
@@ -48,9 +52,13 @@ export function soupFromGltfScene(scene) {
       out[t * 3] = b[0]; out[t * 3 + 1] = b[1]; out[t * 3 + 2] = b[2];
     }
     parts.push(out);
-    total += out.length;
   });
-  const soup = new Float32Array(total);
+  return concatSoups(parts);
+}
+
+/** Several triangle soups as one (a model in several parts = one layer). */
+export function concatSoups(parts) {
+  const soup = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
   for (const p of parts) { soup.set(p, at); at += p.length; }
   return soup;
@@ -110,6 +118,23 @@ export function disposeGltfScene(scene) {
       m.dispose?.();
     }
   });
+}
+
+/** A GLB's bytes -> its soup (the loaded scene freed once read). */
+export async function soupFromGlbBuffer(buf) {
+  const scene = await loadGlbScene(buf);
+  try { return soupFromGltfScene(scene); } finally { disposeGltfScene(scene); }
+}
+
+/** Download every GLB in `uris` (the parts of one model), read each, and return ONE soup. A failed download throws. */
+export async function soupFromGlbUrls(uris, fetchImpl = (...a) => globalThis.fetch(...a)) {
+  const parts = [];
+  for (const uri of uris) {
+    const res = await fetchImpl(uri);
+    if (!res || !res.ok) throw new Error(`the download answered ${res ? res.status : '?'}${res && res.statusText ? ` ${res.statusText}` : ''}`);
+    parts.push(await soupFromGlbBuffer(await res.arrayBuffer()));
+  }
+  return concatSoups(parts);
 }
 
 /** Test hook. */

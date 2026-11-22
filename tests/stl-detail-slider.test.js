@@ -23,10 +23,10 @@ function binaryStl(soup) {
   for (let t = 0; t < n; t++) for (let k = 0; k < 9; k++) dv.setFloat32(84 + t * 50 + 12 + k * 4, soup[t * 9 + k], true);
   return buf;
 }
-/** The same grid as a GLB scene would hold it (glTF Y-up: board (x, y, z) is glTF (x, z, -y)), THREE-shaped, one non-indexed mesh. */
+/** The same grid as a GLB scene would hold it (face up: board (x, y, z) is glTF (x, y, z), GLTF_TO_BOARD is the identity),
+ *  THREE-shaped, one non-indexed mesh. */
 function gridScene(n) {
-  const s = gridSoup(n), g = new Float32Array(s.length);
-  for (let i = 0; i < s.length; i += 3) { g[i] = s[i]; g[i + 1] = s[i + 2]; g[i + 2] = -s[i + 1]; }
+  const g = gridSoup(n);
   const mesh = { isMesh: true, geometry: { attributes: { position: { array: g, itemSize: 3, count: g.length / 3 } }, index: null },
     matrixWorld: { elements: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }, children: [] };
   return { isMesh: false, children: [mesh], traverse(cb) { cb(this); cb(mesh); } };
@@ -107,7 +107,9 @@ describe('the Stored detail slider', () => {
 
 describe('a library model after a reload downloads again to go up', () => {
   it('max = origTris; moving up downloads once, re-stores at the request, and keeps the original (a second move up does not fetch)', async () => {
-    const f = vi.fn(async () => new Response(GLB(), { status: 200 }));
+    // the model's parts lookup (model_url, Low GLB) answers its one row; the GLB itself = the grid
+    const f = vi.fn(async (url) => (String(url).endsWith('.glb') ? new Response(GLB(), { status: 200 })
+      : new Response(JSON.stringify({ rows: [{ title: 'Tile', content: { uri: URI, model_url: '3d_package:abc', file_type: 'glb', quality: 'Low' } }], rowCount: 1 }), { status: 200 })));
     vi.stubGlobal('fetch', f);
     const three = stubThree();
     const rec = reloadedAt1000({ source: { provider: 'smithsonian', modelUrl: '3d_package:abc', title: 'Tile', uri: URI } });
@@ -116,8 +118,9 @@ describe('a library model after a reload downloads again to go up', () => {
     expect(s.max).toBe('7200');
     s.value = '4000'; fire(s, 'change');
     await flush();
-    expect(f).toHaveBeenCalledTimes(1);
-    expect(String(f.mock.calls[0][0])).toBe(URI);
+    expect(f).toHaveBeenCalledTimes(2); // the parts lookup, then the one part
+    expect(new URL(String(f.mock.calls[0][0])).searchParams.get('model_url')).toBe('3d_package:abc');
+    expect(String(f.mock.calls[1][0])).toBe(URI);
     expect(three.parsed).toBe(1);
     const mid = activeStlLayer();
     expect(mid.storedDetail).toBe(4000);
@@ -127,7 +130,7 @@ describe('a library model after a reload downloads again to go up', () => {
     expect($('stlStored').textContent).toMatch(/the detail can go up or down/);
     s.value = '6000'; fire(s, 'change');
     await flush();
-    expect(f).toHaveBeenCalledTimes(1);
+    expect(f).toHaveBeenCalledTimes(2);
     expect(activeStlLayer().storedTris).toBeGreaterThan(mid.storedTris);
   });
   it('a failed download: the record is unchanged and the status line says so', async () => {

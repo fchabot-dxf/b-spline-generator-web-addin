@@ -13,6 +13,7 @@ export const SMITHSONIAN_SOURCE = Object.freeze({
   modelFilter: Object.freeze({ file_type: 'glb', file_quality: 'Low' }),       // one row per model: its Low GLB (~0.8 MB, Draco)
   previewGlbFilter: Object.freeze({ file_type: 'glb', file_quality: 'Thumb' }), // the 20k-triangle GLB the preview turns in 3D
   pageSize: 24,
+  partsRows: 50,                         // the per-model Low-GLB lookup's rows (a bust and its base = 2 rows of one model)
   thumbName: 'scene-image-thumb.jpg',    // beside the GLB, ~10 KB (the grid tile)
   previewName: 'scene-image-medium.jpg', // beside the GLB, ~123 KB (the preview pane's large picture)
   credit: 'Smithsonian Open Access (CC0). Models load from 3d-api.si.edu.',
@@ -98,4 +99,39 @@ export function pickThumbGlbUri(json) {
 /** The model's preview GLB uri, or null when it has none. */
 export async function fetchSmithsonianThumbGlb(modelId, fetchImpl = fetch, source = SMITHSONIAN_SOURCE) {
   return pickThumbGlbUri(await getJson(smithsonianThumbGlbUrl(modelId, source), fetchImpl));
+}
+
+/**
+ * The lookup of ALL of one model's Low GLBs: a model in several parts (a bust and its base) lists one Low GLB row per part,
+ * while the search keeps one tile per model. model_url + the model filter + rows = partsRows.
+ */
+export function smithsonianModelGlbsUrl(modelId, source = SMITHSONIAN_SOURCE) {
+  const p = new URLSearchParams({ model_url: String(modelId || '') });
+  for (const [k, v] of Object.entries(source.modelFilter)) p.set(k, v);
+  p.set('rows', String(source.partsRows));
+  return `${source.api}?${p}`;
+}
+
+/** Every GLB uri of model `modelId` in the lookup's answer (a row naming another model is not a part of it), in row order, once each. */
+export function pickModelGlbUris(json, modelId) {
+  const out = [];
+  for (const row of (json && Array.isArray(json.rows) ? json.rows : [])) {
+    const c = row && row.content;
+    const uri = c && c.uri;
+    if (!uri || !/\.glb$/i.test(uri) || out.includes(uri)) continue;
+    if (c.model_url && modelId && c.model_url !== modelId) continue;
+    out.push(uri);
+  }
+  return out;
+}
+
+/**
+ * The GLBs to download for one model: every Low part from the lookup; a failed lookup, or one that lists none, falls back to
+ * `fallbackUri` (the tile's own GLB). No model id: the fallback alone.
+ */
+export async function fetchSmithsonianModelGlbs(modelId, fallbackUri, fetchImpl = fetch, source = SMITHSONIAN_SOURCE) {
+  if (!modelId) return fallbackUri ? [fallbackUri] : [];
+  let uris = [];
+  try { uris = pickModelGlbUris(await getJson(smithsonianModelGlbsUrl(modelId, source), fetchImpl), modelId); } catch (_) { uris = []; }
+  return uris.length ? uris : (fallbackUri ? [fallbackUri] : []);
 }

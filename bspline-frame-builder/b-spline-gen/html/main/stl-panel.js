@@ -16,7 +16,8 @@ import { setSectionReadOnly } from '../core/ui-utils.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh, indexMesh } from '../core/stl/mesh.js';
-import { soupFromGltfScene, loadGlbScene, disposeGltfScene } from '../core/stl/gltf.js';
+import { soupFromGlbBuffer, soupFromGlbUrls } from '../core/stl/gltf.js';
+import { fetchSmithsonianModelGlbs } from '../core/stl/smithsonian.js';
 import { openStlLibrarySheet } from './stl-library-sheet.js';
 import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
@@ -178,22 +179,16 @@ const isGlb = (buf) => {
   return u8.byteLength >= 4 && u8[0] === 0x67 && u8[1] === 0x6c && u8[2] === 0x54 && u8[3] === 0x46;
 };
 
-/** A GLB's bytes -> its soup (the loaded scene freed once read). */
-async function soupFromGlb(buf) {
-  const scene = await loadGlbScene(buf);
-  try { return soupFromGltfScene(scene); } finally { disposeGltfScene(scene); }
-}
-
 /** A file's bytes -> its triangle soup: a GLB through the glTF loader, anything else as an STL. */
 async function soupFromBuffer(buf) {
-  return isGlb(buf) ? soupFromGlb(buf) : parseStl(buf).soup;
+  return isGlb(buf) ? soupFromGlbBuffer(buf) : parseStl(buf).soup;
 }
 
-/** Download a library model's GLB and read it as a soup. */
-async function downloadGlbSoup(uri) {
-  const res = await fetch(uri);
-  if (!res || !res.ok) throw new Error(`the download answered ${res ? res.status : '?'}${res && res.statusText ? ` ${res.statusText}` : ''}`);
-  return soupFromGlb(await res.arrayBuffer());
+/** Download a library model as ONE soup: every Low part of model `modelId` (a bust and its base), or `uri` alone when the
+ *  parts lookup fails or there is no model id. */
+async function downloadModelSoup(modelId, uri) {
+  const doFetch = (...a) => globalThis.fetch(...a);
+  return soupFromGlbUrls(await fetchSmithsonianModelGlbs(modelId, uri, doFetch), doFetch);
 }
 
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
@@ -256,13 +251,13 @@ function restoreDetail(id, source, want) {
   syncStlPanel();
 }
 
-/** Download layer `id`'s model again (its source.uri), keep it as the in-memory original, then re-store at `want`. */
+/** Download layer `id`'s model again (all its parts; its source.uri if the lookup fails), keep it as the in-memory original, then re-store at `want`. */
 async function redownloadAndRestore(id, want) {
   const rec = find(id);
   const epoch = _projectEpoch;
   let original = null;
   try {
-    await withLoadingStage('stl', async () => { original = indexMesh(await downloadGlbSoup(rec.source.uri)); });
+    await withLoadingStage('stl', async () => { original = indexMesh(await downloadModelSoup(rec.source.modelUrl, rec.source.uri)); });
   } catch (e) {
     status(`Could not download ${rec.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
     syncStlPanel();
@@ -303,14 +298,14 @@ async function importFile(file, { reimport = false } = {}) {
 }
 const STALE_IMPORT = 'The project changed while the STL was being read: add it again.';
 
-/** The library sheet's Insert: download the model's GLB and add it through the one import path, with where it came from. */
+/** The library sheet's Insert: download the model (all its parts) and add it through the one import path, with where it came from. */
 export async function addStlFromLibrary(tile) {
   const epoch = _projectEpoch; // a project load during the download drops it (as importFile)
   try {
     let done = null;
     let stale = false;
     await withLoadingStage('stl', async () => {
-      const soup = await downloadGlbSoup(tile.glbUrl);
+      const soup = await downloadModelSoup(tile.id, tile.glbUrl);
       if (epoch !== _projectEpoch) { stale = true; return; }
       done = addStlFromSoup(soup, tile.title, { source: { provider: 'smithsonian', modelUrl: tile.id, title: tile.title, uri: tile.glbUrl } });
     });

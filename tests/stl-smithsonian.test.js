@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   SMITHSONIAN_SOURCE, smithsonianSearchUrl, parseSmithsonianSearch, fetchSmithsonianPage, smithsonianThumbGlbUrl, pickThumbGlbUri,
+  smithsonianModelGlbsUrl, pickModelGlbUris,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/smithsonian.js';
 import {
   GLTF_TO_BOARD, GLTF_LOADER_URLS, soupFromGltfScene, loadGlbScene, _resetGltfLoaderForTests,
@@ -17,7 +18,7 @@ import {
 import { parseStl } from '../bspline-frame-builder/b-spline-gen/html/core/stl/parse.js';
 import { openStlLibrarySheet } from '../bspline-frame-builder/b-spline-gen/html/main/stl-library-sheet.js';
 import {
-  renderStlPanel, bindStlPanel, addStlFromBuffer, addStlFromSoup, noteStlProjectReplaced, _resetStlPanelForTests,
+  renderStlPanel, bindStlPanel, addStlFromBuffer, addStlFromSoup, noteStlProjectReplaced, setStoredDetail, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
 import { PICKER_TILE } from '../bspline-frame-builder/b-spline-gen/html/main/icon-select.js';
 
@@ -65,16 +66,23 @@ function tetraScene() {
   const parent = obj3d({ matrix: T4(10, 5, -3), children: [mesh] });
   return obj3d({ children: [parent] });
 }
-const GLB_BYTES = () => { const b = new Uint8Array(64); b.set([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0]); return b.buffer; }; // 'glTF' v2 header
+/** 'glTF' v2 header; byte 8 = a tag the stub loader reads (which part this file is: the stub's scene is moved by 100 * tag in x). */
+const GLB_BYTES = (tag = 0) => { const b = new Uint8Array(64); b.set([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, tag]); return b.buffer; };
+/** The tetrahedron scene moved by `dx` along x (a second part of one model). */
+const tetraSceneAt = (dx) => obj3d({ matrix: T4(dx, 0, 0), children: [tetraScene()] });
 
 // ── a stand-in THREE (node has none): the two CDN loaders (what GLTFLoader.js / DRACOLoader.js add to the global) and the few
 //    r128 classes the preview's 3D view uses, counting what is created and disposed ─────────────────────────────────────────────
 function stubThree({ scene = tetraScene, fail = null } = {}) {
-  const seen = { decoderPath: null, parsed: 0, draco: null, renderers: [], geometries: [], materials: [] };
+  const seen = { decoderPath: null, parsed: 0, draco: null, renderers: [], geometries: [], materials: [], cameras: [] };
   class DRACOLoader { setDecoderPath(p) { seen.decoderPath = p; return this; } }
   class GLTFLoader {
     setDRACOLoader(d) { seen.draco = d; return this; }
-    parse(buf, path, ok, err) { seen.parsed++; if (fail) err(new Error(fail)); else ok({ scene: scene() }); }
+    parse(buf, path, ok, err) {
+      seen.parsed++;
+      const tag = new Uint8Array(buf)[8] || 0;
+      if (fail) err(new Error(fail)); else ok({ scene: tag ? tetraSceneAt(100 * tag) : scene() });
+    }
   }
   class WebGLRenderer {
     constructor() { this.domElement = document.createElement('canvas'); this.renders = 0; this.disposed = false; seen.renderers.push(this); }
@@ -88,11 +96,11 @@ function stubThree({ scene = tetraScene, fail = null } = {}) {
   }
   class MeshStandardMaterial { constructor(o) { Object.assign(this, o); this.disposed = false; seen.materials.push(this); } dispose() { this.disposed = true; } }
   const v3 = () => ({ x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } });
-  class Object3D { constructor() { this.children = []; this.position = v3(); this.up = v3(); this.rotation = { x: 0, y: 0, z: 0 }; } add(...c) { this.children.push(...c); return this; } lookAt() {} }
+  class Object3D { constructor() { this.children = []; this.position = v3(); this.up = v3(); this.rotation = { x: 0, y: 0, z: 0 }; } add(...c) { this.children.push(...c); return this; } lookAt(...a) { this.lookedAt = a; } }
   class Group extends Object3D {}
   class Scene extends Object3D {}
   class Mesh extends Object3D { constructor(g, m) { super(); this.geometry = g; this.material = m; } }
-  class PerspectiveCamera extends Object3D { constructor(fov, aspect, near, far) { super(); Object.assign(this, { fov, aspect, near, far }); } updateProjectionMatrix() {} }
+  class PerspectiveCamera extends Object3D { constructor(fov, aspect, near, far) { super(); Object.assign(this, { fov, aspect, near, far }); seen.cameras.push(this); } updateProjectionMatrix() {} }
   class AmbientLight extends Object3D {}
   class DirectionalLight extends Object3D {}
   globalThis.THREE = { GLTFLoader, DRACOLoader, WebGLRenderer, BufferAttribute, BufferGeometry, MeshStandardMaterial, Group, Scene, Mesh,
@@ -220,38 +228,47 @@ describe('c. the museum table', () => {
 });
 
 describe('d. GLB scene -> triangle soup', () => {
-  it('the declared turn is +90 degrees about X: glTF up (+Y) becomes the board up (+Z)', () => {
-    expect(GLTF_TO_BOARD([0, 1, 0]).map((v) => v + 0)).toEqual([0, 0, 1]);
-    expect(GLTF_TO_BOARD([1, 2, 3])).toEqual([1, -3, 2]);
+  it('the declared turn is the IDENTITY (relief default: a model lies FACE UP, its front +Z out of the board, its up +Y up the board)', () => {
+    expect(GLTF_TO_BOARD([0, 1, 0])).toEqual([0, 1, 0]); // glTF up = up the board (the top of the board)
+    expect(GLTF_TO_BOARD([0, 0, 1])).toEqual([0, 0, 1]); // glTF front = out of the board (the relief's height)
+    expect(GLTF_TO_BOARD([1, 2, 3])).toEqual([1, 2, 3]);
   });
-  it('an indexed tetrahedron under a translated parent: 4 triangles, the world matrices applied, the apex is the highest board z', () => {
+  it('a STANDING model (tall in glTF +Y, shallow in +Z) lies face up: its height runs up the board, its depth is the relief', () => {
+    // a bust 2.6 tall (y), 1 wide (x), 0.4 deep (z): the measured column stamp came from standing it up out of the board
+    const bust = Float32Array.from([0, 0, 0, 1, 0, 0, 0.5, 2.6, 0.4]);
+    const soup = soupFromGltfScene(obj3d({ geometry: { attributes: { position: attr(bust) }, index: null } }));
+    const zs = [soup[2], soup[5], soup[8]], ys = [soup[1], soup[4], soup[7]];
+    expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(0.4, 6); // the relief height = its depth, not its 2.6 height
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(2.6, 6);
+  });
+  it('an indexed tetrahedron under a translated parent: 4 triangles, the world matrices applied, the apex is the highest board y', () => {
     const soup = soupFromGltfScene(tetraScene());
     expect(soup).toBeInstanceOf(Float32Array);
     expect(soup.length).toBe(4 * 9); // the SAME soup shape parseStl returns: 9 floats per triangle
     const pts = []; for (let i = 0; i < soup.length; i += 3) pts.push([soup[i], soup[i + 1], soup[i + 2]]);
-    const zMax = Math.max(...pts.map((p) => p[2]));
-    // apex (0.2, 2, 0.2) + child (0, 1, 0) + parent (10, 5, -3) = (10.2, 8, -2.8) in glTF -> (10.2, 2.8, 8) on the board
-    const apex = pts.find((p) => p[2] === zMax);
-    expect(apex[0]).toBeCloseTo(10.2, 5); expect(apex[1]).toBeCloseTo(2.8, 5); expect(apex[2]).toBeCloseTo(8, 5);
-    // the base (y = 0 in glTF, + 6 from the two translations) is the flat bottom at board z = 6
-    expect(Math.min(...pts.map((p) => p[2]))).toBeCloseTo(6, 5);
-    expect(pts.filter((p) => Math.abs(p[2] - 6) < 1e-5)).toHaveLength(9); // 3 base vertices on each of the 3 triangles that touch it
-    // first triangle = index (0, 2, 1): glTF (10,6,-3), (10,6,-2), (11,6,-3) -> (10,3,6), (10,2,6), (11,3,6)
-    expect(Array.from(soup.slice(0, 9))).toEqual([10, 3, 6, 10, 2, 6, 11, 3, 6]);
+    const yMax = Math.max(...pts.map((p) => p[1]));
+    // apex (0.2, 2, 0.2) + child (0, 1, 0) + parent (10, 5, -3) = (10.2, 8, -2.8) in glTF = on the board (face up)
+    const apex = pts.find((p) => p[1] === yMax);
+    expect(apex[0]).toBeCloseTo(10.2, 5); expect(apex[1]).toBeCloseTo(8, 5); expect(apex[2]).toBeCloseTo(-2.8, 5);
+    // the base (y = 0 in glTF, + 6 from the two translations) is at board y = 6
+    expect(Math.min(...pts.map((p) => p[1]))).toBeCloseTo(6, 5);
+    expect(pts.filter((p) => Math.abs(p[1] - 6) < 1e-5)).toHaveLength(9); // 3 base vertices on each of the 3 triangles that touch it
+    // first triangle = index (0, 2, 1): glTF (10,6,-3), (10,6,-2), (11,6,-3), unchanged on the board
+    expect(Array.from(soup.slice(0, 9))).toEqual([10, 6, -3, 10, 6, -2, 11, 6, -3]);
   });
   it('a non-indexed mesh reads consecutive triples; meshes add up; non-mesh nodes are skipped', () => {
     const flat = obj3d({ geometry: { attributes: { position: attr(Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0])) }, index: null } });
     const scene = obj3d({ children: [flat, obj3d(), tetraScene()] });
     const soup = soupFromGltfScene(scene);
     expect(soup.length).toBe((1 + 4) * 9);
-    expect(Array.from(soup.slice(0, 9)).map((v) => v + 0)).toEqual([0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    expect(Array.from(soup.slice(0, 9)).map((v) => v + 0)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   });
   it('an interleaved position attribute (stride + offset) is read in place', () => {
     // [x y z u v] per vertex, the position at offset 0 of a 5-float stride
     const data = { array: Float32Array.from([0, 0, 0, 9, 9, 1, 0, 0, 9, 9, 0, 1, 0, 9, 9]), stride: 5 };
     const pos = { isInterleavedBufferAttribute: true, data, offset: 0, itemSize: 3, count: 3 };
     const soup = soupFromGltfScene(obj3d({ geometry: { attributes: { position: pos }, index: null } }));
-    expect(Array.from(soup).map((v) => v + 0)).toEqual([0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    expect(Array.from(soup).map((v) => v + 0)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   });
   it('the loader URLs are pinned to the same three r128 the palette loads; nothing loads them at app start', () => {
     expect(GLTF_LOADER_URLS).toEqual({
@@ -338,7 +355,7 @@ describe('f. the full-screen sheet', () => {
     const p = new URL(fetchImpl.mock.calls[0][0]).searchParams;
     expect(p.has('q')).toBe(false); expect(p.has('owning_unit')).toBe(false); expect(p.get('start')).toBe('0');
     expect(tiles()).toHaveLength(24);
-    expect(statusText()).toBe('1–24 of 3,523');
+    expect(statusText()).toBe('24 models shown · more available'); // models SHOWN (the API's rowCount counts files)
     const first = tiles()[0];
     expect(first.tagName).toBe('BUTTON');
     expect(first.getAttribute('data-model-id')).toBe('3d_package:3f24212e-6753-4e25-b8c6-ed267375607a');
@@ -370,13 +387,13 @@ describe('f. the full-screen sheet', () => {
     expect(tiles()).toHaveLength(47);
     expect(new Set(tiles().map((t) => t.getAttribute('data-model-id'))).size).toBe(47);
     expect(tiles()[0].getAttribute('data-model-id')).toBe('3d_package:3f24212e-6753-4e25-b8c6-ed267375607a');
-    expect(statusText()).toMatch(/^1–48 of /);
+    expect(statusText()).toBe('47 models shown · more available');
     // "leaf": 2 of 2, nothing more to fetch
     document.querySelector('#stlLibQuery').value = 'leaf';
     document.querySelector('#stlLibSearch').click();
     await flush();
     expect(tiles()).toHaveLength(2);
-    expect(statusText()).toBe('1–2 of 2');
+    expect(statusText()).toBe('2 models shown');
     expect(more.hidden).toBe(true);
   });
   it('a museum + Search refetches with owning_unit and resets the grid; Enter in the box searches too', async () => {
@@ -391,7 +408,7 @@ describe('f. the full-screen sheet', () => {
     expect(p.get('owning_unit')).toBe('NPG'); expect(p.get('start')).toBe('0'); expect(p.has('q')).toBe(false);
     expect(tiles()).toHaveLength(12); // 14 rows, two models listed twice
     expect(tiles()[0].textContent).toContain('Theodore Roosevelt');
-    expect(statusText()).toBe('1–14 of 14');
+    expect(statusText()).toBe('12 models shown'); // was '1–14 of 14' with 12 tiles: the rows are files, not models
     document.querySelector('#stlLibMuseum').value = '';
     const q = document.querySelector('#stlLibQuery');
     q.value = 'nothing-here';
@@ -413,7 +430,7 @@ describe('f. the full-screen sheet', () => {
     release(); // the whole-collection page lands late
     await flush();
     expect(tiles()).toHaveLength(2);
-    expect(statusText()).toBe('1–2 of 2');
+    expect(statusText()).toBe('2 models shown');
   });
   it('a tile tap SELECTS it and fills the preview pane (nothing inserted); Insert calls onPick with that tile and closes', async () => {
     const onPick = vi.fn();
@@ -674,5 +691,139 @@ describe('g. the panel', () => {
     expect(P.stlLayers).toHaveLength(1);
     expect(P.stlLayers[0]).toMatchObject({ name: 'bust', origTris: 4 });
     expect('source' in P.stlLayers[0]).toBe(false);
+  });
+});
+
+describe('A2. Turn in 3D shows the model as its picture does (front view, upright)', () => {
+  it('the camera sits on +Z looking down -Z at the centred model, camera.up = +Y, at the distance that frames its bounds', async () => {
+    const three = stubThree();
+    const fetchImpl = vi.fn(async (url) => {
+      const s = String(url);
+      if (s.endsWith('.glb')) return new Response(GLB_BYTES(), { status: 200 });
+      if (new URL(s).searchParams.get('file_quality') === 'Thumb') return new Response(JSON.stringify({ rows: [{ title: 't', content: { uri: 'https://x/a/t-20k-thumb.glb' } }], rowCount: 1 }), { status: 200 });
+      return fixtureFetch()(s);
+    });
+    openStlLibrarySheet({ fetchImpl, onPick: vi.fn() });
+    await flush();
+    document.querySelector('.stl-lib-tile').click();
+    document.querySelector('#stlLibTurn').click();
+    await flush();
+    expect(three.cameras).toHaveLength(1);
+    const cam = three.cameras[0];
+    expect([cam.up.x, cam.up.y, cam.up.z]).toEqual([0, 1, 0]);
+    expect(cam.position.x).toBe(0);
+    expect(cam.position.y).toBe(0);
+    expect(cam.position.z).toBeGreaterThan(0);
+    expect(cam.lookedAt).toEqual([0, 0, 0]);
+    // framed on the soup's bounds: the tetrahedron (world) spans x 10..11, y 6..8, z -3..-2; its bounding sphere fits the fov
+    const r = Math.hypot(1, 2, 1) / 2;
+    expect(cam.position.z).toBeCloseTo(r / Math.sin((cam.fov / 2) * Math.PI / 180), 5);
+  });
+});
+
+describe('A3. a multi-part model (a bust and its base: two Low GLB rows of ONE model) loads every part', () => {
+  const NPG = FX('search-npg');
+  const WASH = '3d_package:d8c63fde-4ebc-11ea-b77f-2e728ce88125'; // George Washington: listed twice in the live NPG answer
+  /** the per-model Low-GLB lookup's answer, in the recorded row shape: the model's two rows of search-npg.json */
+  const partsJson = () => ({ rows: NPG.rows.filter((r) => r.content.model_url === WASH), rowCount: 2, message: NPG.message });
+  const PARTS = () => partsJson().rows.map((r) => r.content.uri);
+  const washTile = () => parseSmithsonianSearch(NPG).tiles.find((t) => t.id === WASH);
+  /** fetch: the lookup (model_url, Low) -> lookup(); a part's .glb -> a GLB tagged 1, 2 (its row order); else the recorded NPG page */
+  const npgFetch = ({ lookup = () => new Response(JSON.stringify(partsJson()), { status: 200 }) } = {}) => vi.fn(async (url) => {
+    const s = String(url);
+    if (s.endsWith('.glb')) return new Response(GLB_BYTES(PARTS().indexOf(s) + 1), { status: 200 });
+    const p = new URL(s).searchParams;
+    if (p.get('model_url') && p.get('file_quality') === 'Low') return lookup();
+    if (p.get('model_url') && p.get('file_quality') === 'Thumb') return new Response(JSON.stringify({ rows: [], rowCount: 0 }), { status: 200 });
+    return new Response(JSON.stringify(NPG), { status: 200 });
+  });
+  const isLowLookup = (u) => !u.endsWith('.glb') && !!new URL(u).searchParams.get('model_url') && new URL(u).searchParams.get('file_quality') === 'Low';
+  const lowLookups = (f) => f.mock.calls.map(([u]) => String(u)).filter(isLowLookup);
+  const glbCalls = (f) => f.mock.calls.map(([u]) => String(u)).filter((u) => u.endsWith('.glb'));
+  const insertWash = async () => {
+    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    $('stlBrowseSi').click();
+    await flush();
+    document.querySelector(`.stl-lib-tile[data-model-id="${WASH}"]`).click();
+    document.querySelector('#stlLibInsert').click();
+    await flush(10);
+  };
+
+  it('the declared lookup: model_url + the model filter (glb, Low) + rows=50; the row choice keeps every GLB of that model', () => {
+    const u = new URL(smithsonianModelGlbsUrl(WASH));
+    expect(`${u.origin}${u.pathname}`).toBe(SMITHSONIAN_SOURCE.api);
+    expect(Object.fromEntries(u.searchParams)).toEqual({ model_url: WASH, file_type: 'glb', file_quality: 'Low', rows: '50' });
+    expect(PARTS()).toHaveLength(2);
+    expect(pickModelGlbUris(partsJson(), WASH)).toEqual(PARTS());
+    expect(pickModelGlbUris({ rows: [], rowCount: 0 }, WASH)).toEqual([]);
+    expect(pickModelGlbUris(null, WASH)).toEqual([]);
+  });
+  it('Insert downloads BOTH parts and adds ONE layer holding both soups', async () => {
+    const f = npgFetch(); vi.stubGlobal('fetch', f);
+    const three = stubThree();
+    await insertWash();
+    expect(lowLookups(f)).toHaveLength(1);
+    expect(new URL(lowLookups(f)[0]).searchParams.get('model_url')).toBe(WASH);
+    expect(glbCalls(f).sort()).toEqual(PARTS().sort());
+    expect(three.parsed).toBe(2);
+    expect(P.stlLayers).toHaveLength(1);
+    expect(P.stlLayers[0]).toMatchObject({ name: washTile().title, origTris: 8, source: { provider: 'smithsonian', modelUrl: WASH, uri: washTile().glbUrl } });
+  });
+  it('a lookup failure falls back to the tile\'s own GLB (one part)', async () => {
+    const f = npgFetch({ lookup: () => new Response('no', { status: 502, statusText: 'Bad Gateway' }) }); vi.stubGlobal('fetch', f);
+    const three = stubThree();
+    await insertWash();
+    expect(lowLookups(f)).toHaveLength(1);
+    expect(glbCalls(f)).toEqual([washTile().glbUrl]);
+    expect(three.parsed).toBe(1);
+    expect(P.stlLayers).toHaveLength(1);
+    expect(P.stlLayers[0]).toMatchObject({ origTris: 4 });
+  });
+  it('Turn in 3D without a Thumb GLB falls back to ALL the Low parts', async () => {
+    const three = stubThree();
+    const f = npgFetch();
+    openStlLibrarySheet({ fetchImpl: f, onPick: vi.fn() });
+    await flush();
+    document.querySelector(`.stl-lib-tile[data-model-id="${WASH}"]`).click();
+    document.querySelector('#stlLibTurn').click();
+    await flush(10);
+    expect(lowLookups(f)).toHaveLength(1);
+    expect(glbCalls(f).sort()).toEqual(PARTS().sort());
+    expect(three.parsed).toBe(2);
+    expect(three.geometries[0].attributes.position.array.length).toBe(8 * 9);
+  });
+  it('the Stored-detail re-download (after a reload) fetches every part too', async () => {
+    const f = npgFetch(); vi.stubGlobal('fetch', f);
+    const three = stubThree();
+    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    // the two parts as imported, then stored at 4 triangles and a reload (the in-memory original gone)
+    const both = new Float32Array([...soupFromGltfScene(tetraSceneAt(100)), ...soupFromGltfScene(tetraSceneAt(200))]);
+    addStlFromSoup(both, 'George Washington', { source: { provider: 'smithsonian', modelUrl: WASH, title: 'George Washington', uri: washTile().glbUrl } });
+    expect(P.stlLayers[0].origTris).toBe(8);
+    setStoredDetail(4);
+    const low = P.stlLayers[0].storedTris;
+    expect(low).toBeLessThan(8);
+    _resetStlPanelForTests();
+    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    $('stlDetailSlider').value = '8'; $('stlDetailSlider').dispatchEvent(new Event('change', { bubbles: true }));
+    await flush(10);
+    expect(lowLookups(f)).toHaveLength(1);
+    expect(glbCalls(f).sort()).toEqual(PARTS().sort());
+    expect(three.parsed).toBe(2);
+    expect(P.stlLayers[0].storedTris).toBe(8);
+  });
+});
+
+describe('A5. phone: the preview stays small enough for the grid to show below it', () => {
+  const CSS = readFileSync('bspline-frame-builder/styles/layout-app.css', 'utf8').replace(/\r\n/g, '\n');
+  it('<= 600 px: the picture AND the 3D canvas max-height 40vh, object-fit contain', () => {
+    const at = CSS.indexOf('@media (max-width: 600px) {\n  .stl-lib-main');
+    expect(at).toBeGreaterThan(-1);
+    const block = CSS.slice(at, CSS.indexOf('\n}', at));
+    const decl = (sel) => [...block.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sels]) => sels.split(',').map((x) => x.trim()).includes(sel)).map(([, , d]) => d).join(';');
+    for (const sel of ['.stl-lib-preview', '.stl-lib-view']) {
+      expect(decl(sel)).toMatch(/max-height:\s*40vh/);
+      expect(decl(sel)).toMatch(/object-fit:\s*contain/);
+    }
   });
 });

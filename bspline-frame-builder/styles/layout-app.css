@@ -1137,7 +1137,7 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 @media (max-width: 600px) {
   .stl-lib-main { flex-direction: column; align-items: stretch; }
   .stl-lib-pane { order: -1; flex: none; position: static; }
-  .stl-lib-preview { max-height: 40vh; }
+  .stl-lib-preview, .stl-lib-view { max-height: 40vh; object-fit: contain; } /* the grid stays in sight below the preview */
 }
 @media (pointer: coarse) {
   .stl-row input { min-width: 28px; min-height: 28px; }
