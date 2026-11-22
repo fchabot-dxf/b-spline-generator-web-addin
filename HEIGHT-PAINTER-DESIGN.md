@@ -89,3 +89,36 @@ Purely additive: a new record list (absent = off), a new pass kind, no default c
    turned and reusable; several per board.
 3. **Sculpt top stays** as it is (the quick in-3D tweak); the painter is for designed pieces. Saved boards untouched.
 4. **Slice 1 first** (section 9: the paint core), then precision tools, shape presets, polish.
+5. **Height patches follow the terrain like SVG layers; no rigid option** ("No rigid"): a patch's values are added on the
+   terrain under each point; a height record has no `surface` field and never takes the STL's Level branch.
+
+Advisor amendments (2026-11-22, from Fred): (a) Photoshop opacity semantics ("opacity 50% and value % are similar until
+they cross over each other"): one stroke reaches at most opacity x the effect; a second, separate stroke starts from what is
+there. 0 = transparent (eraser and unpainted pixels). (b) "Tabs content carry over visually": the patches are drawn ON the
+shared editor canvas, not a separate view.
+
+## 11. Build status (slice 1, branch `height-painter`, worker K)
+
+Built (tests: `tests/height-*.test.js`, 6 files):
+- `core/height/raster.js`: Float32 inches <-> Float16 -> deflate-raw (CompressionStream) -> base64, content hash `h`,
+  decode cache (LRU 8). A 7 x 9 in blank patch stores in < 20 KB; two painted strokes measured 39 KB.
+- `core/height/brush.js`: falloff (hardness), stroke-level coverage buffer capped by opacity (x pressure), flow,
+  spacing, raise / lower / set / smooth / erase, cancel, touched box only.
+- `core/height/layer.js`: `P.heightLayers` records (declared defaults, normalise, `newHeightLayer` = whole board at
+  100 px/in), `heightPass` (kind 'height', signed height as body, depth +/-1, covered = inside AND painted), after the STL
+  passes in `_collectStampPasses`; `afterBack` split and the STL Add / Max / Carved / Z offset branches shared through
+  `RECORD_PASS_KINDS`. Always follows the terrain (answer 5).
+- History: `core/history.js` `UNDO_BLOB_STORES` (STL mesh + height raster, each kept once by hash; snapshots hold
+  `{ ref: h }`); the editor's undo part `heightLayers` (the copy-on-write list by reference).
+- The Height tab (`main/height-panel.js`, `editor/editor-height-tool.js`): EDITOR_TABS entry, `heightBrush` mode,
+  HEIGHT_CONTROLS (panel + rail), patches as shaded SVG images in the editor's own coordinates (full + on top in the
+  Height tab, faded 0.4 + under the drawing elsewhere), brush ring, height readout, one commit per stroke.
+- Smoke probe: `tools/repro/height_painter_shots.mjs` (real pointer strokes, desktop and 390 px; no page exceptions).
+
+Not done / open (for the advisor):
+- The 3D follows on Apply / the 3D toggle (Fred's "no 3D while editing"), not after each stroke.
+- No `height` rows in `EDITOR_TAB_FOCUS` / `EDITOR_TAB_SELECTABLE` / `IN_EDITOR_3D`: each is pinned by an exact-equality
+  main test; adding the rows means updating those pins (advisor's call). The other tabs' content is therefore not dimmed in
+  the Height tab yet; the patches' own fade elsewhere uses `INACTIVE_LAYER_OPACITY` directly.
+- Cancel keeps painted strokes (the Photo tab's precedent); undo stores the whole encoded raster per stroke (not tiles).
+- Live stroke redraw re-encodes a <= 512 px PNG per animation frame: not measured on a phone yet.
