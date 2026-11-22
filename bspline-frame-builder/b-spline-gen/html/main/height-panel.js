@@ -27,6 +27,7 @@ import { getLayerSvg } from '../editor/editor-io.js';
 import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
 import { FILL_DEFAULTS, applyFill } from '../core/height/fill.js';
 import { HEIGHTMAP_LOADERS, decodeHeightmap, resampleToGrid, mappingFromName } from '../core/height/import.js';
+import { exportHeightmapPng } from '../core/height/export.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -650,6 +651,40 @@ export async function importHeightmap(file, { asNewPatch = _tools.file.asNewPatc
   return made.layer;
 }
 
+// ── heightmap export (slice 2; core/height/export.js): the composite as a 16-bit grey PNG ─────────────────────────────
+/** The browser's download of `bytes` as `fileName`. */
+function saveBytes(bytes, fileName, type) {
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+/**
+ * 'Export heightmap': the active patch's composite (every visible layer) as a 16-bit greyscale PNG named with its range
+ * (name_0-0.5in.png). `png16`: the library loader (tests); `download` false: only return it. Resolves to
+ * { bytes, fileName, range } or null (the reason in the panel status).
+ */
+export async function exportHeightmap({ png16 = null, download = true } = {}) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchGrid(rec)) return null;
+  let out = null;
+  try {
+    await withLoadingStage('heightExport', async () => {
+      const comp = patchComposite(rec) || await ensurePatchDecoded(rec);
+      const g = patchGrid(rec);
+      out = await exportHeightmapPng(comp, g.cols, g.rows, rec.name || 'height', png16 ? { png16 } : {});
+    });
+  } catch (e) {
+    status(`Could not write the heightmap: ${e && e.message ? e.message : e}`, true);
+    return null;
+  }
+  if (download) saveBytes(out.bytes, out.fileName, 'image/png');
+  status(`${out.fileName}: 16-bit grey, ${out.range.lo === 0 ? 'black = 0' : 'mid-grey = 0'}, ${out.range.lo} to ${out.range.hi} in.`);
+  return out;
+}
+
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
 export async function newHeightPatch() {
@@ -1091,6 +1126,7 @@ const GROUP_HEADS = Object.freeze({
   file: () => el('div', { class: 'photo-layer-buttons' }, [
     el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
     el('button', { type: 'button', id: 'heightImportBtn', class: 'cad-btn cad-btn-secondary', text: 'Import heightmap…', title: 'A grey picture as an image layer (its grey values kept; the mapping stays live)' }),
+    el('button', { type: 'button', id: 'heightExportBtn', class: 'cad-btn cad-btn-secondary', text: 'Export heightmap', title: 'The patch (all its layers) as a 16-bit grey PNG; its height range is in the file name' }),
   ]),
   fill: () => el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightFillApply', class: 'cad-btn cad-btn-secondary', text: '▣ Fill', title: 'The selection (or the whole layer) to the fill height' }),
@@ -1223,6 +1259,7 @@ export function syncHeightPanel() {
   }
   const rm = byId('heightRemove'); if (rm) rm.disabled = !rec;
   const add = byId('heightLayerAdd'); if (add) add.disabled = !rec;
+  const exp = byId('heightExportBtn'); if (exp) exp.disabled = !rec;
   const hasSel = !!heightSelection();
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
@@ -1268,6 +1305,7 @@ export function initHeightPanel(hooks = {}) {
   });
   byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
   byId('heightImportBtn')?.addEventListener('click', () => byId('heightImportFile')?.click());
+  byId('heightExportBtn')?.addEventListener('click', () => { exportHeightmap(); });
   byId('heightImportFile')?.addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
