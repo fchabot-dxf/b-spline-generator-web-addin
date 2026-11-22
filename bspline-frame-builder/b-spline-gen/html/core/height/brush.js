@@ -38,34 +38,6 @@ export const BRUSH_TIPS = Object.freeze({
     dist: (u, v, R, k) => (Math.abs(u) <= R ? Math.abs(v) / k : Infinity) }),
 });
 
-/**
- * The BRUSH PRESETS (slice 3b; Fred 2026-11-22: "a simple brush tool with the different brushes inside of it in the right
- * panel, with the falloff and the different chisel and bevel tools or profiles"): the picker's tiles, in order. A preset
- * sets the TIP and its PROFILE only (tip, roundness, angle, followStroke, falloff, hardness, buildUp) -- never the size, opacity,
- * flow or amount. 'custom' keeps the brush's own custom curve (it is edited below the picker). The session's first brush
- * (BRUSH_DEFAULTS) is 'softRound'. The Brush and the Eraser share them.
- */
-const ROUND_TIP = Object.freeze({ tip: 'round', roundness: 1, angle: 0, followStroke: false });
-// buildUp: the two plain rounds paint as slice 1 (dabs build up); every PROFILE preset keeps its cross-section along a stroke
-const preset = (label, title, brush) => Object.freeze({ label, title, brush: Object.freeze(brush) });
-export const BRUSH_PRESETS = Object.freeze({
-  softRound: preset('Soft round', 'A round brush with a soft, smooth edge', { ...ROUND_TIP, falloff: 'smooth', hardness: 0.5, buildUp: true }),
-  hardRound: preset('Hard round', 'A round brush with a crisp edge', { ...ROUND_TIP, falloff: 'smooth', hardness: 0.9, buildUp: true }),
-  dome: preset('Dome', 'Round shoulders and a steep rim (a ball)', { ...ROUND_TIP, falloff: 'dome', hardness: 0, buildUp: false }),
-  spike: preset('Spike', 'Drops fast from a point at the centre', { ...ROUND_TIP, falloff: 'spike', hardness: 0, buildUp: false }),
-  plateau: preset('Plateau', 'A flat top and a steep rim', { ...ROUND_TIP, falloff: 'plateau', hardness: 0.2, buildUp: false }),
-  square: preset('Square', 'A flat-topped square', { tip: 'square', roundness: 1, angle: 0, followStroke: false, falloff: 'plateau', hardness: 0.5, buildUp: false }),
-  bevel: preset('Bevel', 'A square tip with straight (linear) sides: a chamfered, bevelled edge', { tip: 'square', roundness: 1, angle: 0, followStroke: false, falloff: 'linear', hardness: 0.3, buildUp: false }),
-  chisel: preset('Chisel', 'A flat blade along the stroke with straight sides: a crisp V ridge (Lower / Alt: a V groove)', { tip: 'chisel', roundness: 0.25, angle: 0, followStroke: true, falloff: 'linear', hardness: 0, buildUp: false }),
-  custom: preset('Custom', 'A round brush with your own falloff curve (edit it below)', { ...ROUND_TIP, falloff: 'custom', hardness: 0, buildUp: false }),
-});
-/** The preset brush `b` is exactly (every key the preset sets; an absent brush key reads as BRUSH_DEFAULTS), or null. */
-export function brushPresetOf(b) {
-  for (const [id, p] of Object.entries(BRUSH_PRESETS)) {
-    if (Object.entries(p.brush).every(([k, v]) => (b[k] === undefined ? BRUSH_DEFAULTS[k] : b[k]) === v)) return id;
-  }
-  return null;
-}
 /** Alt held while painting with the Brush (slice 3b, Fred 2026-11-22): that stroke's mode (Photoshop's Alt). */
 export const BRUSH_ALT_MODE = Object.freeze({ raise: 'lower', lower: 'raise' });
 

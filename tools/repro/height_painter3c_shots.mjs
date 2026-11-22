@@ -1,9 +1,10 @@
-// HEIGHT-PAINTER slice 3b smoke + shots (headless Chrome, hidden; REAL pointer / touch input): on desktop 1400 x 900 and
-// phone 390 x 844 (touch): the brush PICKER opened by its chip, Chisel picked and a stroke, Bevel picked and a dab, the mode
-// row and the Modified note, the ERASER from the rail with Hard round. Prints the brush state, the control sizes (28 px
-// touch targets) and the raster values it read back, and every page exception.
+// HEIGHT-PAINTER slice 3c smoke + shots (headless Chrome, hidden; REAL pointer / touch input). Fred 2026-11-22: no brush
+// presets -- the Brush section is Mode, Tip (Round | Square | Chisel), Falloff (the profiles), then the settings. On desktop
+// 1400 x 900 and phone 390 x 844 (touch): the Brush section with its Tip and Falloff rows on screen without scrolling; a
+// Square + Linear dab (the bevel); a Chisel stroke (Turn with the stroke, Build up off). Prints the row positions, the
+// button sizes (28 px touch targets), the raster values it read back, and every page exception.
 //   (cd bspline-frame-builder && python ../tools/brick-matrix/serve.py 8810)
-//   node tools/repro/height_painter3b_shots.mjs <outDir> http://127.0.0.1:8810/b-spline-gen/html/bspline_gen_palette.html [cdpPort] [desktop|phone|both]
+//   node tools/repro/height_painter3c_shots.mjs <outDir> http://127.0.0.1:8810/b-spline-gen/html/bspline_gen_palette.html [cdpPort] [desktop|phone|both]
 import { spawn, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
@@ -115,7 +116,6 @@ async function run(tag, metrics, touchOn) {
   console.log(tag, 'board', W, H, 'patch', cols, 'x', rows);
   // editor point (inches, y down) of raster pixel (c, r) and back
   const ed = (c, r) => [(c + 0.5) / ppi, H - (r + 0.5) / ppi];
-  // a control's centre on screen (scrolled into view first); tap / click it with a REAL pointer or touch
   const rect = (sel) => evalJS(`(()=>{ const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return 'null'; e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return JSON.stringify([r.x + r.width / 2, r.y + r.height / 2, Math.round(r.width), Math.round(r.height)]); })()`);
   const tapSel = async (sel) => {
     await sleep(300);
@@ -127,69 +127,51 @@ async function run(tag, metrics, touchOn) {
   };
   // the phone drawer: its handle dragged up (the panel shows) or down (the canvas shows), a real touch drag
   const drawer = async (up) => { if (!TOUCH) return; const hv = JSON.parse(await rect('#editorDrawerHandle')); await drag(line([hv[0], hv[1]], [hv[0], hv[1] + (up ? -420 : 600)], 10)); };
-  await drawer(true);
-  const brushState = () => evalJS(`(async()=>{ const m = await import('./main/height-panel.js'); const b = m.heightBrush();
-    const tiles = [...document.querySelectorAll('[data-height-brush-preset]')]; const r = (e) => { const q = e.getBoundingClientRect(); return [Math.round(q.width), Math.round(q.height)]; };
-    return JSON.stringify({ tool: m.heightTool(), tip: b.tip, falloff: b.falloff, hardness: b.hardness, followStroke: b.followStroke, buildUp: b.buildUp, mode: b.mode,
-      active: tiles.filter((t) => t.classList.contains('active')).map((t) => t.dataset.heightBrushPreset), note: document.getElementById('heightBrushPresetNote')?.textContent,
-      chip: r(document.getElementById('heightBrushChip')), tile: r(tiles[0]), rail: [...document.querySelectorAll('#editorToolbarHeight [data-height-tool]')].map((t) => [t.dataset.heightTool, ...r(t)]),
-      modes: [...document.querySelectorAll('[data-height-control="mode"] [data-height-choice]')].map((t) => [t.dataset.heightChoice, ...r(t)]),
-      tipShown: !document.getElementById('heightGroup_tip').hidden,
-      // the panel's scroller and how far it is scrolled (0 = the Brush section shows without scrolling)
-      scroll: (() => { let n = document.getElementById('heightPanelBody'); while (n && !(n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement; return n ? [n.id || n.className, n.scrollTop] : null; })(),
-      brushTop: Math.round(document.getElementById('heightGroup_brush').getBoundingClientRect().top), pickerTop: Math.round(document.getElementById('heightBrushChip').getBoundingClientRect().top), viewH: window.innerHeight }); })()`);
+  const section = () => evalJS(`(async()=>{ const m = await import('./main/height-panel.js'); const b = m.heightBrush();
+    const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const q = e.getBoundingClientRect(); return [Math.round(q.top), Math.round(q.bottom), Math.round(q.width), Math.round(q.height)]; };
+    let n = document.getElementById('heightPanelBody'); while (n && !(n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;
+    return JSON.stringify({ tool: m.heightTool(), tip: b.tip, falloff: b.falloff, hardness: b.hardness, roundness: b.roundness, followStroke: b.followStroke, buildUp: b.buildUp, mode: b.mode,
+      presets: document.querySelectorAll('[data-height-brush-preset]').length, viewH: window.innerHeight, scroll: n ? [n.id || n.className, n.scrollTop] : null,
+      brush: box('#heightGroup_brush'), modeRow: box('#height_mode'), tipRow: box('#height_tip'), falloffRow: box('#height_falloff'),
+      tipBtns: [...document.querySelectorAll('[data-height-choice^="tip:"]')].map((t) => [t.dataset.heightChoice, Math.round(t.getBoundingClientRect().width), Math.round(t.getBoundingClientRect().height), !!t.querySelector('svg')]),
+      falloffBtns: [...document.querySelectorAll('[data-height-choice^="falloff:"]')].map((t) => [t.dataset.heightChoice, Math.round(t.getBoundingClientRect().width), Math.round(t.getBoundingClientRect().height), !!t.querySelector('svg')]),
+      tipExtras: !document.getElementById('heightGroup_tip').hidden }); })()`);
 
-  // 1. the picker, opened by a real tap on its chip
-  console.log(tag, 'chip', await tapSel('#heightBrushChip'));
-  console.log(tag, 'picker open', await brushState());
-  await shot('1-picker-open');
-  // 2. pick Chisel (a real tap on its tile), raise, a stroke
-  console.log(tag, 'tile', await tapSel('#heightBrushPreset_chisel'));
-  await typeInto('height_sizeIn', 0.6); await typeInto('height_amountIn', 0.12);
-  await tapSel('[data-height-choice="mode:raise"]');
-  console.log(tag, 'chisel picked', await brushState());
-  await drawer(false);
-  const sPath = Array.from({ length: 30 }, (_, i) => { const t = i / 29; return [W * (0.2 + 0.3 * t), H * (0.25 + 0.15 * Math.sin(t * Math.PI))]; });
-  await drag(await toScreen(sPath));
-  const cm = [Math.round(W * 0.35 * ppi), Math.round((H - H * 0.4) * ppi)]; // the path's middle (t = 0.5) as a raster pixel
-  console.log(tag, 'chisel stroke', await readPx([cm, [cm[0], cm[1] + 4], [cm[0], cm[1] + 7], [cm[0], cm[1] + 12]]));
-  await shot('2-chisel-stroke');
-  // 3. pick Bevel, Set 0.15, size 1, a dab
+  // 1. the Brush section: Mode, Tip, Falloff on screen without scrolling
   await drawer(true);
-  await tapSel('#heightBrushChip'); await tapSel('#heightBrushPreset_bevel');
-  await tapSel('[data-height-choice="mode:set"]');
-  await typeInto('height_targetIn', 0.15); await typeInto('height_sizeIn', 1);
-  console.log(tag, 'bevel picked', await brushState());
+  console.log(tag, 'section', await section());
+  await shot('1-brush-section');
+  // 2. a bevel: Square + Linear, hardness 0.3, Set 0.15, size 1 -- real taps on the rows' buttons; one dab
+  await tapSel('[data-height-choice="tip:square"]'); await tapSel('[data-height-choice="falloff:linear"]'); await tapSel('[data-height-choice="mode:set"]');
+  await typeInto('height_hardness', 0.3); await typeInto('height_targetIn', 0.15); await typeInto('height_sizeIn', 1);
+  console.log(tag, 'bevel set', await section());
+  await shot('2-square-linear-picked');
   await drawer(false);
   const dc = [Math.round(cols * 0.7), Math.round(rows * 0.3)];
   const [dp] = await toScreen([ed(dc[0], dc[1])]);
   await tapAt(dp[0], dp[1]);
   console.log(tag, 'bevel dab', await readPx([dc, [dc[0] + 20, dc[1]], [dc[0] + 20, dc[1] + 20], [dc[0] + 52, dc[1]]]));
   await shot('3-bevel-dab');
-  // 4. the mode row in view; an edit marks the picker Modified
+  // 3. a Chisel stroke: Chisel, Turn with the stroke, Build up off, Raise 0.12, size 0.6, hardness 0
   await drawer(true);
-  await typeInto('height_hardness', 0.45);
-  await rect('[data-height-control="mode"]');
-  console.log(tag, 'modified', await brushState());
-  await shot('4-mode-row');
-  // 5. the ERASER: a real tap on its rail button, Hard round, a stroke across the chisel ridge and the bevel
-  console.log(tag, 'eraser btn', await tapSel('#editorToolbarHeight [data-height-tool="eraser"]'));
-  await tapSel('#heightBrushChip'); await tapSel('#heightBrushPreset_hardRound');
-  await typeInto('height_sizeIn', 0.3);
-  console.log(tag, 'eraser', await brushState());
+  await tapSel('[data-height-choice="tip:chisel"]'); await tapSel('[data-height-choice="mode:raise"]');
+  await tapSel('#height_followStroke'); await tapSel('#height_buildUp');
+  await typeInto('height_sizeIn', 0.6); await typeInto('height_amountIn', 0.12); await typeInto('height_hardness', 0);
+  console.log(tag, 'chisel set', await section());
   await drawer(false);
-  await drag(await toScreen(line([W * 0.35, H * 0.2], [W * 0.35, H * 0.55], 20)));
-  await drag(await toScreen(line([W * 0.6, H * 0.7], [W * 0.8, H * 0.7], 16)));
-  console.log(tag, 'erased', await readPx([cm, [cm[0] + 20, cm[1]], dc, [dc[0] + 20, dc[1] + 20]]));
-  if (!TOUCH) await mouse('mouseMoved', ...(await toScreen([[W * 0.5, H * 0.5]]))[0]);
-  TAG = `b_eraser_${tag.slice(2)}`; await shot('stroke'); TAG = tag; // b_eraser_<viewport>-stroke.png
+  const sPath = Array.from({ length: 30 }, (_, i) => { const t = i / 29; return [W * (0.2 + 0.3 * t), H * (0.25 + 0.15 * Math.sin(t * Math.PI))]; });
+  await drag(await toScreen(sPath));
+  const cm = [Math.round(W * 0.35 * ppi), Math.round((H - H * 0.4) * ppi)];
+  console.log(tag, 'chisel stroke', await readPx([cm, [cm[0], cm[1] + 4], [cm[0], cm[1] + 7], [cm[0], cm[1] + 12]]));
+  if (!TOUCH) await mouse('mouseMoved', ...(await toScreen([[W * 0.55, H * 0.3]]))[0]);
+  await shot('4-chisel-stroke');
 }
 
 try {
   await send('Runtime.enable'); await send('Page.enable'); await send('DOM.enable');
   const only = process.argv[5] || 'both';
-  if (only !== 'phone') await run('b_desktop', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false }, false);
-  if (only !== 'desktop') await run('b_phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }, true);
+  if (only !== 'phone') await run('c_desktop', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false }, false);
+  if (only !== 'desktop') await run('c_phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }, true);
   console.log('exceptions', JSON.stringify(errors));
 } finally { killChrome(); }
 process.exit(0);

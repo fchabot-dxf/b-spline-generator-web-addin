@@ -225,6 +225,8 @@ shortcut letter.
 
 ### 12b. The brush picker and the Eraser (slice 3b)
 
+(The picker and its preset table were RETIRED by 12c; the Eraser, Alt, Build up and the section order stand.)
+
 Fred 2026-11-22: "I was more expecting a simple brush tool with the different brushes inside of it in the right panel, with
 the falloff and the different chisel and bevel tools or profiles" (by "bevel" he first meant the chisel tip; the Bevel
 square stays its own profile), and "In the height map tab, we need an eraser too". Tests: `tests/height-brush-picker.test.js`;
@@ -269,3 +271,21 @@ probe `tools/repro/height_painter3b_shots.mjs`.
 
 The Chisel is a flat blade ALONG the stroke with straight (linear) sides: Raise draws a crisp V ridge, Lower (or Alt) a V
 groove.
+
+### 12c. No presets: Tip and Falloff picked separately (slice 3c)
+
+Fred 2026-11-22: "I'd rather not have presets like that, we just pick square or round and pick separately a falloff
+profile." Branch `height-painter-3c`. Tests: `tests/height-brush-section.test.js` (replaces height-brush-picker); probe
+`tools/repro/height_painter3c_shots.mjs` (replaces the 3b probe).
+
+- Removed: `BRUSH_PRESETS`, `brushPresetOf`, the picker tiles (and their `mountIconGrid` mount), the "Modified (from ...)"
+  note, `applyHeightBrushPreset`.
+- The Brush section, top to bottom (HEIGHT_CONTROLS order): **Mode** (raise / lower / set / smooth; hidden for the
+  Eraser), **Tip** (Round | Square | Chisel), **Falloff** (the BRUSH_FALLOFFS profiles; Custom opens the curve widget), then
+  size, hardness, opacity, flow, spacing, amount, set-to-height, the pen-pressure checks, **Build up**. The tip extras
+  (roundness, angle, turn with the stroke) are the `tip` group right after, shown only for Square / Chisel.
+- Each Tip and Falloff option carries a small drawn icon: a choice option's optional 4th entry (svg markup made by
+  `tipIcon` / `falloffIcon` in main/height-panel.js), drawn before its name by the one choice renderer.
+- A bevel is Square + Linear (hardness about 0.3) by choice; there is no Bevel button.
+- **Build up**: a checkbox, default ON (the slice-1 build-up); only the user switches it (no choice sets it).
+- Unchanged: the Eraser, Alt flips raise <-> lower, the Move tool, the `leads` section order, the round-brush byte pin.
