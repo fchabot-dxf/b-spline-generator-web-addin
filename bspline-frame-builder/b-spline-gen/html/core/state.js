@@ -370,6 +370,9 @@ export const DEFAULT = {
     // the STL STAMPS (STL-RELIEF-DESIGN.md): one self-contained record per STL (core/stl/layer.js STL_LAYER_DEFAULTS), saved with
     // the project. [] = none = the board lays exactly as before (tests/stl-layers-absent.test.js).
     stlLayers: [],
+    // Fred 2026-11-22: fit a NEWLY added STL's Depth to the carve depth (main/stl-panel.js addStlFromSoup). An option, off by
+    // default; absent on a saved board = off. Never read by a build (core/engine/rebuild.js REBUILD_INERT_KEYS).
+    stlFitOnInsert: false,
 };
 
 export let P = { ...DEFAULT };

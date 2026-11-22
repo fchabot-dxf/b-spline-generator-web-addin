@@ -27,6 +27,7 @@ import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { stlPasses } from '../stl/layer.js';
+import { stlStockReport, setStlStockReport } from '../stl/stock.js';
 import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
@@ -55,6 +56,7 @@ export const REBUILD_INERT_KEYS = new Set([
     'sculptTopRadius', 'sculptTopStrength', 'sculptTopNoiseScale', // Strength = the Hardness control (state.js INPUT_PAIRS)
     'sculptBotRadius', 'sculptBotStrength', 'sculptBotNoiseScale',
     'decalOpacity',
+    'stlFitOnInsert', // read only by main/stl-panel.js when an STL is added
 ]);
 const _objectIds = new WeakMap();
 let _nextObjectId = 1;
@@ -125,7 +127,7 @@ function _copyBuilt(b) {
     const c = (a) => { if (!ArrayBuffer.isView(a)) return a; if (!seen.has(a)) seen.set(a, a.slice()); return seen.get(a); };
     const generated = {};
     for (const [k, v] of Object.entries(b.generated)) generated[k] = c(v);
-    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated, backBase: c(b.backBase) };
+    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated, backBase: c(b.backBase), stlStock: b.stlStock };
 }
 function buildHeightsReusing(nx, nz) {
     const digest = heightsInputDigest(nx, nz);
@@ -173,8 +175,9 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
         await withLoadingStage('rebuild', async () => {
             await yieldToMain();
-            const { heights, cleanHeights, baseHeights, generated, backBase } = buildHeightsReusing(nx, nz);
+            const { heights, cleanHeights, baseHeights, generated, backBase, stlStock } = buildHeightsReusing(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
+            setStlStockReport(stlStock); // STL-RELIEF: each STL against the stock (detection only; main/stl-panel.js shows it)
 
             await yieldToMain();
             // job-timeline step 3 slice 2: Back LOCKED + the Settings switch ON -- the frozen underside, resampled
@@ -327,8 +330,11 @@ function buildHeights(nx, nz) {
     const surfaceHeights = applyStampLayers(cleanHeights, early, nx, nz, defaults);
     const heights = late.length ? applyStampLayers(surfaceHeights, late, nx, nz, defaults) : surfaceHeights;
     const backBase = late.length ? surfaceHeights : null;
+    // STL-RELIEF (Fred 2026-11-22): per STL pass, its covered points where these FINAL heights leave the stock (the sculpt
+    // check's bounds, core/stl/stock.js). Detection only: one pass over the points per STL, nothing is changed.
+    const stlStock = stlStockReport(passes, heights, P.carveZ);
 
-    return { heights, cleanHeights, baseHeights: generated.heights, generated, backBase };
+    return { heights, cleanHeights, baseHeights: generated.heights, generated, backBase, stlStock };
 }
 
 /**
