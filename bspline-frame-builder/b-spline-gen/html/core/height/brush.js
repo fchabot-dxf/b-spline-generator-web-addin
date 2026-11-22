@@ -102,10 +102,17 @@ export function curvePointsFromProfile(key, n = 6) {
  */
 export function brushFalloff(r, R, hardness, falloff = 'smooth', customFn = null) {
   const core = hardness * R;
+  // inside the hard core: the curve's STARTING value -- 1 for every built-in; a custom ring holds its low centre (no step
+  // at the core edge; advisor 2026-11-22)
+  if (falloff === 'custom') {
+    const f = customFn || DEFAULT_CUSTOM_CURVE_FN;
+    if (r <= core) return f(0);
+    if (r >= R) return 0;
+    return f((r - core) / (R - core));
+  }
   if (r <= core) return 1;
   if (r >= R) return 0;
   const t = (r - core) / (R - core);
-  if (falloff === 'custom') return (customFn || DEFAULT_CUSTOM_CURVE_FN)(t);
   return (BRUSH_FALLOFFS[falloff] || BRUSH_FALLOFFS.smooth).curve(t);
 }
 

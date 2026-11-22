@@ -15,6 +15,20 @@ import {
 
 const RING = [[0, 0.2], [0.6, 1], [1, 0]];
 
+// advisor 2026-11-22 (worker N's finding): inside the hard core the brush holds the CURVE's starting value, so a ring
+// (low in the middle) stays a ring at any hardness -- no step at the core edge. Built-ins all start at 1: unchanged.
+describe('the hard core holds the curve\'s starting value', () => {
+  it('a custom ring: inside the core = curve(0) = 0.2, continuous at the core edge', () => {
+    const f = curveFromPoints(RING);
+    expect(brushFalloff(0, 1, 0.5, 'custom', f)).toBeCloseTo(0.2, 12);
+    expect(brushFalloff(0.49999, 1, 0.5, 'custom', f)).toBeCloseTo(0.2, 12);
+    expect(brushFalloff(0.50001, 1, 0.5, 'custom', f)).toBeCloseTo(0.2, 3);
+  });
+  it('every built-in profile still reads 1 inside the core', () => {
+    for (const k of Object.keys(BRUSH_FALLOFFS).filter((k) => k !== 'custom')) expect(brushFalloff(0.1, 1, 0.5, k), k).toBe(1);
+  });
+});
+
 describe('curveFromPoints', () => {
   it('passes exactly through every point', () => {
     const pts = [[0, 1], [0.3, 0.8], [0.7, 0.2], [1, 0]];
