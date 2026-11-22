@@ -136,6 +136,31 @@ describe('picking', () => {
   });
 });
 
+describe('the active tool\'s own section comes first (advisor 2026-11-22: no scrolling past Layers to reach the picker)', () => {
+  const order = (id) => Number(document.getElementById(id).style.order);
+  const first = () => {
+    const body = document.getElementById('heightPanelBody');
+    return [...body.children].filter((c) => !c.hidden && c.id.startsWith('heightGroup_')).sort((a, b) => Number(a.style.order) - Number(b.style.order))[0].id;
+  };
+  it('each HEIGHT_TOOLS row declares the groups it leads with; the panel orders its sections by them (CSS order, no DOM moves)', () => {
+    for (const t of HEIGHT_TOOLS) expect(Array.isArray(t.leads) && t.leads.length > 0, t.id).toBe(true);
+    expect(getComputedStyle(document.getElementById('heightPanelBody')).display).toBe('flex');
+    expect(first()).toBe('heightGroup_brush');
+    expect(order('heightGroup_brush')).toBeLessThan(order('heightGroup_layers'));
+    expect(order('heightGroup_brush')).toBeLessThan(order('heightList'));
+    setHeightTool('eraser');
+    expect(first()).toBe('heightGroup_brush');
+  });
+  it('Move, a selection tool, Gradient, Fill: each one\'s section first', async () => {
+    await newHeightPatch();
+    for (const [tool, group] of [['move', 'heightGroup_move'], ['selectLasso', 'heightGroup_select'], ['gradient', 'heightGroup_gradient'], ['fill', 'heightGroup_fill']]) {
+      setHeightTool(tool);
+      expect(first(), tool).toBe(group);
+      expect(order(group)).toBeLessThan(order('heightGroup_layers'));
+    }
+  });
+});
+
 describe('the Eraser tool and Alt', () => {
   const at = (c, r) => decodedRaster(activeHeightLayer().raster)[r * 200 + c];
   const drag = async (e) => {

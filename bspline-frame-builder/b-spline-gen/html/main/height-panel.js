@@ -103,18 +103,20 @@ export const HEIGHT_CONTROLS = Object.freeze([
  * by the same renderer / setter (one mechanism; a second table only so the slice-1 table stays as it was). target 'layer' =
  * the ACTIVE layer of the active patch (`path` in that layer). Each group shows by its own showWhen(ctx).
  */
-/** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below. */
+/** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below.
+ *  `leads`: the panel groups shown FIRST while the tool is active (advisor 2026-11-22: the active tool's own section
+ *  on top, no scrolling past the patch and the layers to reach it); the others keep their declared order after them. */
 export const HEIGHT_TOOLS = Object.freeze([
-  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null } }),
+  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'tip'] }),
   // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
-  Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' } }),
-  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it' }),
-  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
-  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
+  Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
+  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
+  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
+  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
   // slice 3 (Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool")
-  Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels' }),
-  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)' }),
-  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height' }),
+  Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'select'] }),
+  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
+  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height', leads: ['fill'] }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
@@ -1060,6 +1062,18 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   return true;
 }
 export const heightBrush = () => ({ ..._brush });
+/** The panel's sections in view order: the active tool's declared `leads` first (in their order; the status line, when
+ *  shown, just above them), then every other part of the panel in its built order. CSS `order` on the flex column body
+ *  (renderHeightPanel): no element is moved, so the listeners, the ids and the picker's mount stay as built. */
+function orderPanelGroups() {
+  const body = byId('heightPanelBody');
+  if (!body) return;
+  const leads = (HEIGHT_TOOLS.find((x) => x.id === _tool) || {}).leads || [];
+  [...body.children].forEach((ch, i) => {
+    const k = ch.id && ch.id.startsWith('heightGroup_') ? leads.indexOf(ch.id.slice('heightGroup_'.length)) : -1;
+    ch.style.order = String(ch.id === 'heightStatus' ? 0 : k >= 0 ? k + 1 : 100 + i);
+  });
+}
 let _lastPreset = 'softRound'; // the preset last picked (the "Modified (from ...)" note)
 /** A BRUSH_PRESETS entry over the current brush: its tip and profile; the size, opacity, flow and amount stay. */
 export function applyHeightBrushPreset(id) {
@@ -1413,7 +1427,7 @@ const GROUP_HEADS = Object.freeze({
       b.innerHTML = brushPresetIcon(p.brush);
       return b;
     })),
-    el('div', { id: 'heightBrushPresetNote', class: 'photo-layer-note', hidden: '' }),
+    el('div', { id: 'heightBrushPresetNote', class: 'photo-layer-note', hidden: '', style: 'margin-top:6px;' }), // measured at 390 px: it touched the chip
   ]),
   file: () => el('div', { class: 'photo-layer-buttons' }, [
     el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
@@ -1457,6 +1471,8 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   }
   if (!body) return;
   body.innerHTML = '';
+  // a flex column: the sections take their view order from orderPanelGroups (the active tool's own section first)
+  body.style.display = 'flex'; body.style.flexDirection = 'column';
   body.appendChild(el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightNew', class: 'cad-btn cad-btn-secondary', text: '＋ New height patch', title: 'An unpainted patch over the whole board (100 pixels per inch)' }),
     el('button', { type: 'button', id: 'heightRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Delete' }),
@@ -1564,6 +1580,7 @@ export function syncHeightPanel() {
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
   syncBrushPicker();
+  orderPanelGroups();
   const stored = byId('heightStored');
   if (stored) {
     const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);

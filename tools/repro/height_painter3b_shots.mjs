@@ -116,7 +116,7 @@ async function run(tag, metrics, touchOn) {
   // editor point (inches, y down) of raster pixel (c, r) and back
   const ed = (c, r) => [(c + 0.5) / ppi, H - (r + 0.5) / ppi];
   // a control's centre on screen (scrolled into view first); tap / click it with a REAL pointer or touch
-  const rect = (sel) => evalJS(`(()=>{ const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return 'null'; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return JSON.stringify([r.x + r.width / 2, r.y + r.height / 2, Math.round(r.width), Math.round(r.height)]); })()`);
+  const rect = (sel) => evalJS(`(()=>{ const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return 'null'; e.scrollIntoView({ block: 'nearest' }); const r = e.getBoundingClientRect(); return JSON.stringify([r.x + r.width / 2, r.y + r.height / 2, Math.round(r.width), Math.round(r.height)]); })()`);
   const tapSel = async (sel) => {
     await sleep(300);
     const v = await rect(sel);
@@ -134,7 +134,10 @@ async function run(tag, metrics, touchOn) {
       active: tiles.filter((t) => t.classList.contains('active')).map((t) => t.dataset.heightBrushPreset), note: document.getElementById('heightBrushPresetNote')?.textContent,
       chip: r(document.getElementById('heightBrushChip')), tile: r(tiles[0]), rail: [...document.querySelectorAll('#editorToolbarHeight [data-height-tool]')].map((t) => [t.dataset.heightTool, ...r(t)]),
       modes: [...document.querySelectorAll('[data-height-control="mode"] [data-height-choice]')].map((t) => [t.dataset.heightChoice, ...r(t)]),
-      tipShown: !document.getElementById('heightGroup_tip').hidden }); })()`);
+      tipShown: !document.getElementById('heightGroup_tip').hidden,
+      // the panel's scroller and how far it is scrolled (0 = the Brush section shows without scrolling)
+      scroll: (() => { let n = document.getElementById('heightPanelBody'); while (n && !(n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement; return n ? [n.id || n.className, n.scrollTop] : null; })(),
+      brushTop: Math.round(document.getElementById('heightGroup_brush').getBoundingClientRect().top), pickerTop: Math.round(document.getElementById('heightBrushChip').getBoundingClientRect().top), viewH: window.innerHeight }); })()`);
 
   // 1. the picker, opened by a real tap on its chip
   console.log(tag, 'chip', await tapSel('#heightBrushChip'));

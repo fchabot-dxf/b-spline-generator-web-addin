@@ -243,6 +243,10 @@ probe `tools/repro/height_painter3b_shots.mjs`.
   size, opacity, flow, spacing, amount and target stay. Custom keeps the brush's own curve (edited below).
 - **Modified**: an edit after a pick leaves NO tile highlighted and the note under the picker reads "Modified (from
   <last pick>)"; picking a tile again restores it (`brushPresetOf`: the preset whose every key the brush matches).
+- **The active tool's section comes first** (advisor 2026-11-22): each `HEIGHT_TOOLS` row declares `leads` (Brush and
+  Eraser: brush, tip; the selection tools: select; Move: move, select; Gradient: gradient; Fill: fill); the panel body is a
+  flex column and `orderPanelGroups` gives those groups the first CSS `order`, the rest keep their built order. No element
+  is moved (listeners, ids and the picker's mount stay as built).
 - **Tip settings** (tip, roundness, angle, turn with the stroke) show only for a non-round tip (the `tip` group's declared
   showWhen); a non-round tip comes from the picker.
 - **buildUp** (a new brush key; absent = true = slice 1): with build-up each dab adds to the stroke's coverage, so along a
