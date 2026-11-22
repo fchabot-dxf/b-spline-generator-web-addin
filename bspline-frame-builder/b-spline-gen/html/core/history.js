@@ -142,16 +142,38 @@ const _restoreSide = (restore, side) => (restore ? Object.fromEntries(Object.ent
 // HEIGHT-PAINTER: the same store for a height patch's raster (P.heightLayers[i].raster, core/height/raster.js) -- the
 // stored blobs are DECLARED here, one entry each (the P list, the record field holding the blob, how to recognise a stored
 // one, when two with the same h are the same content), each with its own h -> blob map; one mechanism reads them all.
+// HEIGHT-PAINTER slice 2: `inner` = a list INSIDE each record whose items hold the same field (a layered height patch's
+// `layers[i].raster`, core/height/compose.js); its blobs go through the same store, the same way.
 const _isStoredMesh = (m) => !!(m && typeof m === 'object' && typeof m.h === 'string' && m.h && typeof m.pos === 'string' && typeof m.idx === 'string');
 const _isStoredRaster = (m) => !!(m && typeof m === 'object' && typeof m.h === 'string' && m.h && typeof m.data === 'string' && typeof m.enc === 'string');
 export const UNDO_BLOB_STORES = Object.freeze([
     Object.freeze({ list: 'stlLayers', field: 'mesh', isStored: _isStoredMesh,
         same: (a, b) => a.pos === b.pos && a.idx === b.idx && a.nv === b.nv && a.nt === b.nt }),
-    Object.freeze({ list: 'heightLayers', field: 'raster', isStored: _isStoredRaster,
+    Object.freeze({ list: 'heightLayers', field: 'raster', inner: 'layers', isStored: _isStoredRaster,
         same: (a, b) => a.data === b.data && a.enc === b.enc && a.cols === b.cols && a.rows === b.rows }),
 ]);
 const _blobMaps = new Map(UNDO_BLOB_STORES.map((s) => [s.list, new Map()]));
 const _isBlobRef = (s, m) => !!(m && typeof m === 'object' && typeof m.ref === 'string' && !s.isStored(m) && !('pos' in m) && !('data' in m));
+/** `rec` with each blob slot of store `s` (rec[field], and rec[inner][i][field]) through `fn`; the SAME object when none changed. */
+function _mapBlobs(s, rec, fn) {
+    if (!rec || typeof rec !== 'object') return rec;
+    let out = rec;
+    if (rec[s.field] !== undefined) { const n = fn(rec[s.field]); if (n !== rec[s.field]) out = { ...out, [s.field]: n }; }
+    if (s.inner && Array.isArray(rec[s.inner])) {
+        let changed = false;
+        const items = rec[s.inner].map((it) => {
+            if (!it || typeof it !== 'object' || it[s.field] === undefined) return it;
+            const n = fn(it[s.field]);
+            if (n === it[s.field]) return it;
+            changed = true;
+            return { ...it, [s.field]: n };
+        });
+        if (changed) out = { ...out, [s.inner]: items };
+    }
+    return out;
+}
+/** Each blob slot's value of store `s` in `rec` (read only). */
+function _eachBlob(s, rec, visit) { _mapBlobs(s, rec, (b) => { visit(b); return b; }); }
 /** `blob` kept once under its h; false when the store holds DIFFERENT content under that h (then it stays inline). */
 function _keepBlob(s, blob) {
     const map = _blobMaps.get(s.list);
@@ -165,8 +187,10 @@ function _snapshotP() {
     const swapped = {};
     for (const s of UNDO_BLOB_STORES) {
         const recs = p[s.list];
-        if (!Array.isArray(recs) || !recs.some((l) => l && s.isStored(l[s.field]))) continue;
-        swapped[s.list] = recs.map((l) => (l && s.isStored(l[s.field]) && _keepBlob(s, l[s.field]) ? { ...l, [s.field]: { ref: l[s.field].h } } : l));
+        if (!Array.isArray(recs)) continue;
+        let any = false;
+        const next = recs.map((l) => { const n = _mapBlobs(s, l, (b) => (s.isStored(b) && _keepBlob(s, b) ? { ref: b.h } : b)); if (n !== l) any = true; return n; });
+        if (any) swapped[s.list] = next;
     }
     return JSON.parse(JSON.stringify(Object.keys(swapped).length ? { ...p, ...swapped } : p));
 }
@@ -176,9 +200,11 @@ function _rehydrated(snap) {
     const back = {};
     for (const s of UNDO_BLOB_STORES) {
         const recs = snap.P[s.list];
-        if (!Array.isArray(recs) || !recs.some((l) => l && _isBlobRef(s, l[s.field]))) continue;
+        if (!Array.isArray(recs)) continue;
         const map = _blobMaps.get(s.list);
-        back[s.list] = recs.map((l) => (l && _isBlobRef(s, l[s.field]) && map.has(l[s.field].ref) ? { ...l, [s.field]: map.get(l[s.field].ref) } : l));
+        let any = false;
+        const next = recs.map((l) => { const n = _mapBlobs(s, l, (b) => (_isBlobRef(s, b) && map.has(b.ref) ? map.get(b.ref) : b)); if (n !== l) any = true; return n; });
+        if (any) back[s.list] = next;
     }
     return Object.keys(back).length ? { ...snap, P: { ...snap.P, ...back } } : snap;
 }
@@ -190,7 +216,7 @@ function _pruneMeshStore() {
         const used = new Set();
         for (const snap of [...globalHistoryLog, ...globalRedoLog]) {
             const recs = snap && snap.P && snap.P[s.list];
-            if (Array.isArray(recs)) for (const l of recs) if (l && _isBlobRef(s, l[s.field])) used.add(l[s.field].ref);
+            if (Array.isArray(recs)) for (const l of recs) _eachBlob(s, l, (b) => { if (_isBlobRef(s, b)) used.add(b.ref); });
         }
         for (const h of [...map.keys()]) if (!used.has(h)) map.delete(h);
     }

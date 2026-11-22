@@ -12,7 +12,8 @@
  * its raster pixel (c, r) has its centre at u = -w/2 + (c + 0.5) w / cols, v = -h/2 + (r + 0.5) h / rows -- row 0 is the
  * patch's BOTTOM edge. A changed `sizeIn` stretches the painting (the raster keeps its pixels, like a placed image).
  */
-import { decodedRaster, ensureRasterDecoded, encodeRaster } from './raster.js';
+import { encodeRaster } from './raster.js';
+import { patchComposite, compositeKey, patchGrid, patchReady, ensurePatchDecoded } from './compose.js';
 
 export const HEIGHT_BLENDS = Object.freeze(['add', 'max']);
 export const HEIGHT_PLACEMENTS = Object.freeze(['withSurface', 'afterBack']); // core/stl/layer.js STL_PLACEMENTS' meanings
@@ -73,7 +74,7 @@ export function boardToPatchPixel(rawRec, X, Y, board = null) {
 export function patchMapper(rawRec, board = null) {
   const rec = normaliseHeightLayer(rawRec);
   const { w, h } = sizeOf(rec, board || { widthIn: 0, heightIn: 0 });
-  const { cols, rows } = rec.raster;
+  const { cols, rows } = patchGrid(rec);
   const a = (rec.rotation * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
   const px = rec.position.x, py = rec.position.y;
   return (X, Y) => {
@@ -107,10 +108,11 @@ function lruSet(key, v) { _sampled.set(key, v); while (_sampled.size > HEIGHT_CA
 function sampled(rec, data, grid) {
   const { nx, nz, widthIn, heightIn } = grid;
   const size = sizeOf(rec, grid);
-  const key = JSON.stringify([rec.raster.h, rec.raster.cols, rec.raster.rows, size.w, size.h, rec.position.x, rec.position.y, rec.rotation, nx, nz, widthIn, heightIn]);
+  const g = patchGrid(rec);
+  const key = JSON.stringify([compositeKey(rec), g.cols, g.rows, size.w, size.h, rec.position.x, rec.position.y, rec.rotation, nx, nz, widthIn, heightIn]);
   const hit = lruGet(key);
   if (hit) return hit;
-  const { cols, rows } = rec.raster;
+  const { cols, rows } = g;
   const body = new Float32Array(nx * nz);
   const covered = new Uint8Array(nx * nz);
   const dx = widthIn / (nx - 1), dy = heightIn / (nz - 1);
@@ -138,8 +140,9 @@ function sampled(rec, data, grid) {
  */
 export function heightPass(rawRec, grid) {
   const rec = normaliseHeightLayer(rawRec);
-  if (rec.enabled === false || !rec.raster || !rec.raster.h) return null;
-  const data = decodedRaster(rec.raster);
+  // a slice-1 record (one raster) or a layered one (core/height/compose.js): the pass reads the patch's COMPOSITE
+  if (rec.enabled === false || !patchGrid(rec) || !compositeKey(rec)) return null;
+  const data = patchComposite(rec);
   if (!data) { recordHeightError(rec.id, 'The height patch is still being read.'); return null; }
   const { body, covered } = sampled(rec, data, grid);
   return {
@@ -182,13 +185,13 @@ export function heightPasses(layers, grid) {
 }
 
 /** True when every enabled record's raster is decoded (the build digests read this, like the photo's readiness). */
-export const heightRastersReady = (layers) => !Array.isArray(layers) || layers.every((l) => !l || l.enabled === false || !l.raster || !l.raster.h || !!decodedRaster(l.raster));
+export const heightRastersReady = (layers) => !Array.isArray(layers) || layers.every((l) => !l || l.enabled === false || !patchGrid(l) || !compositeKey(l) || patchReady(l));
 
 /** Decode every enabled record's raster that is not in the cache yet (the rebuild awaits this before it builds). */
 export async function decodeHeightLayers(layers) {
   if (!Array.isArray(layers)) return;
-  await Promise.all(layers.filter((l) => l && l.enabled !== false && l.raster && l.raster.h && !decodedRaster(l.raster))
-    .map((l) => ensureRasterDecoded(l.raster).catch((e) => recordHeightError(l.id, e))));
+  await Promise.all(layers.filter((l) => l && l.enabled !== false && patchGrid(l) && compositeKey(l) && !patchReady(l))
+    .map((l) => ensurePatchDecoded(l).catch((e) => recordHeightError(l.id, e))));
 }
 
 export function _resetHeightCachesForTests() { _sampled.clear(); _errors.clear(); }
