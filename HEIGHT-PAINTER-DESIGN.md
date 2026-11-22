@@ -115,6 +115,8 @@ Built (tests: `tests/height-*.test.js`, 6 files):
   Height tab, faded 0.4 + under the drawing elsewhere), brush ring, height readout, one commit per stroke.
 - Smoke probe: `tools/repro/height_painter_shots.mjs` (real pointer strokes, desktop and 390 px; no page exceptions).
 
+- Custom falloff (Fred 2026-11-22, worker N): `BRUSH_FALLOFFS.custom` reads the brush's `customCurve` (points [t, value], default [[0,1],[1,0]]) through `curveFromPoints` (monotone cubic Hermite, may rise: a ring); the declared `'curve'` control in `HEIGHT_CONTROLS` (an inline SVG widget: drag, tap to add, double-click / 600 ms long-press to remove, one write per drag end; shown only while Falloff = Custom via the table's generic `showWhen`). Switching to Custom seeds the curve from the previous profile (`alsoSet`). Test: `tests/height-brush-custom-curve.test.js`.
+
 Not done / open (for the advisor):
 - The 3D follows on Apply / the 3D toggle (Fred's "no 3D while editing"), not after each stroke.
 - No `height` rows in `EDITOR_TAB_FOCUS` / `EDITOR_TAB_SELECTABLE` / `IN_EDITOR_3D`: each is pinned by an exact-equality
