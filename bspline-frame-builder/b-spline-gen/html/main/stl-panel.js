@@ -16,8 +16,8 @@ import { setSectionReadOnly } from '../core/ui-utils.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh, indexMesh } from '../core/stl/mesh.js';
-import { soupFromGlbBuffer, soupFromGlbUrls } from '../core/stl/gltf.js';
-import { fetchSmithsonianModelGlbs } from '../core/stl/smithsonian.js';
+import { soupFromGlbBuffer } from '../core/stl/gltf.js';
+import { downloadSmithsonianModelSoup } from '../core/stl/smithsonian.js';
 import { openStlLibrarySheet } from './stl-library-sheet.js';
 import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
@@ -186,11 +186,10 @@ async function soupFromBuffer(buf) {
   return isGlb(buf) ? soupFromGlbBuffer(buf) : parseStl(buf).soup;
 }
 
-/** Download a library model as ONE soup: every Low part of model `modelId` (a bust and its base), or `uri` alone when the
- *  parts lookup fails or there is no model id. */
+/** Download a library model as ONE soup (core/stl/smithsonian.js downloadSmithsonianModelSoup): every part of its Voyager scene,
+ *  upright; without a scene every Low part of model `modelId` (a bust and its base), or `uri` alone when that lookup fails. */
 async function downloadModelSoup(modelId, uri) {
-  const doFetch = (...a) => globalThis.fetch(...a);
-  return soupFromGlbUrls(await fetchSmithsonianModelGlbs(modelId, uri, doFetch), doFetch);
+  return downloadSmithsonianModelSoup({ modelId, glbUri: uri }, (...a) => globalThis.fetch(...a));
 }
 
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */

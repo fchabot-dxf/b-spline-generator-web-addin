@@ -7,10 +7,7 @@
  * editor's full-screen #svgEditorModal); the tile size is the shared PICKER_TILE. Nothing here touches the board: the caller's
  * onPick does the import (main/stl-panel.js).
  */
-import {
-  SMITHSONIAN_SOURCE, fetchSmithsonianPage, fetchSmithsonianThumbGlb, fetchSmithsonianModelGlbs,
-} from '../core/stl/smithsonian.js';
-import { soupFromGlbUrls } from '../core/stl/gltf.js';
+import { SMITHSONIAN_SOURCE, fetchSmithsonianPage, downloadSmithsonianModelSoup } from '../core/stl/smithsonian.js';
 import { PICKER_TILE } from './icon-select.js';
 import { createSoupView } from './stl-preview-3d.js';
 
@@ -149,15 +146,10 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
     turnBtn.disabled = true;
     setPaneNote('Loading the 3D preview…');
     try {
-      const thumb = await fetchSmithsonianThumbGlb(t.id, doFetch, source);
-      if (my !== viewSeq) return;
-      let urls = thumb ? [thumb] : null;
-      if (!urls) {
-        setPaneNote('No small preview for this one: loading the full model (~0.8 MB)…');
-        urls = await fetchSmithsonianModelGlbs(t.id, t.glbUrl, doFetch, source); // every Low part (a bust and its base)
-        if (my !== viewSeq) return;
-      }
-      const soup = await soupFromGlbUrls(urls, doFetch); // each loaded scene is freed once read: the view keeps the soup
+      // the model's small preview GLB(s), upright from its Voyager scene (no scene: the Thumb lookup, then every Low part);
+      // each loaded scene is freed once read: the view keeps the soup
+      const onFullModel = () => { if (my === viewSeq) setPaneNote('No small preview for this one: loading the full model (~0.8 MB)…'); };
+      const soup = await downloadSmithsonianModelSoup({ modelId: t.id, glbUri: t.glbUrl, preview: true, onFullModel }, doFetch, source);
       if (my !== viewSeq) return;
       media.textContent = '';
       view = createSoupView(media, soup);

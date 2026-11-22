@@ -118,9 +118,10 @@ describe('a library model after a reload downloads again to go up', () => {
     expect(s.max).toBe('7200');
     s.value = '4000'; fire(s, 'change');
     await flush();
-    expect(f).toHaveBeenCalledTimes(2); // the parts lookup, then the one part
-    expect(new URL(String(f.mock.calls[0][0])).searchParams.get('model_url')).toBe('3d_package:abc');
-    expect(String(f.mock.calls[1][0])).toBe(URI);
+    expect(f).toHaveBeenCalledTimes(3); // the Voyager scene (not a scene here: the fallback), the parts lookup, then the one part
+    expect(String(f.mock.calls[0][0])).toBe(`${URI.slice(0, URI.lastIndexOf('/'))}/scene.svx.json`);
+    expect(new URL(String(f.mock.calls[1][0])).searchParams.get('model_url')).toBe('3d_package:abc');
+    expect(String(f.mock.calls[2][0])).toBe(URI);
     expect(three.parsed).toBe(1);
     const mid = activeStlLayer();
     expect(mid.storedDetail).toBe(4000);
@@ -130,7 +131,7 @@ describe('a library model after a reload downloads again to go up', () => {
     expect($('stlStored').textContent).toMatch(/the detail can go up or down/);
     s.value = '6000'; fire(s, 'change');
     await flush();
-    expect(f).toHaveBeenCalledTimes(2);
+    expect(f).toHaveBeenCalledTimes(3);
     expect(activeStlLayer().storedTris).toBeGreaterThan(mid.storedTris);
   });
   it('a failed download: the record is unchanged and the status line says so', async () => {
