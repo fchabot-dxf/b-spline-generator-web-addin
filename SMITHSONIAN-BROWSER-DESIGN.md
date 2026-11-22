@@ -28,6 +28,17 @@ Kenney / Quaternius / Three D Scans later (they have no search API: a mirrored c
 - **The model file:** `model_url=<id>&file_type=glb&file_quality=Low` gives one GLB: ~150k triangles, Draco-compressed,
   1024 px texture, **~0.8 MB** (Hayes bust: 815,012 bytes). Thumb GLB: 20k triangles, ~150 KB. Every Web3D GLB measured is
   Draco-compressed (18,887 of 21,457 GLBs), so a Draco decoder is needed.
+- **The raw GLBs are NOT upright** (advisor, measured 2026-11-22): the Hayes bust's Low GLB has no node transform and its
+  longest side is X (281 x 211 x 148 mm), so it inserted lying sideways. The upright pose lives in the model's **Voyager scene**,
+  `<the GLB's folder>/scene.svx.json` (~9 KB, CORS *; recorded: `tests/fixtures/smithsonian/scene-hayes.svx.json`, 9,477 bytes):
+  `models: [{ units, translation [x,y,z], rotation [qx,qy,qz,qw], boundingBox, derivatives: [{ usage: 'Web3D', quality: 'Thumb' |
+  'Low' | 'Medium' | ..., assets: [{ uri (relative to the folder), byteSize, numFaces }] }] }]` (translation / rotation may be
+  absent = identity). One entry per PART of the model, each with its own pose. Rotating, then translating a part's points
+  stands it upright (+Y up) facing the Voyager camera (+Z); the recorded Hayes pose turns its raw box (longest X) into a box
+  tallest along Y, centred near the origin.
+- **The textures are half of each GLB** (measured): images = Low 407,029 of 815,012 bytes, Thumb 76,025 of 156,668. Fred: "I
+  don't want the texture". The file server answers byte ranges (206 + `Access-Control-Allow-Origin: *`, also from Fusion's
+  palette), so only the geometry's bytes are downloaded.
 - **Licence:** the 3D site's licence pages refuse automated reads (403), so not quoted here. Evidence: the CC0 listing shows
   ~3,400-3,580 models and the API serves the Open Access files. Fred does not sell his carvings, and the app downloads a model
   into HIS browser on demand (nothing is re-hosted). **To confirm in a browser before merge:** 3d.si.edu/cc0 wording.
@@ -36,13 +47,31 @@ Kenney / Quaternius / Three D Scans later (they have no search API: a mirrored c
 
 ```
 STL panel  "Browse Smithsonian"  -> search box + thumbnail grid (one tile per model, paged)
-   tap a tile -> loading card 'stl' -> fetch the Low GLB -> GLTFLoader + DRACOLoader (Three r128) -> triangle soup
-   -> the existing import path (createStlLayer: weld, store at Stored detail, health, fit) -> a new STL layer, active
+   tap a tile -> Insert -> loading card 'stl' -> scene.svx.json (every part + its pose)
+   -> each part's Low GLB, GEOMETRY ONLY (byte ranges) -> GLTFLoader + DRACOLoader (Three r128) -> soup -> its pose
+   -> the parts joined -> the existing import path (createStlLayer: weld, store at Stored detail, health, fit) -> a new STL layer
 ```
+
+- **One download for every path** (`core/stl/smithsonian.js downloadSmithsonianModelSoup`): Insert, the Stored-detail
+  re-download and Turn in 3D. FIRST the model's Voyager scene (`sceneUrlOf`, `parseVoyagerScene`, `fetchVoyagerScene`): each
+  model entry's Web3D Low GLB (Turn in 3D: its Web3D Thumb; an entry without one: its Low, "loading the full model"), read,
+  put in its pose (`core/stl/gltf.js transformSoup`: the quaternion, then the translation), the parts concatenated. The scene
+  REPLACES the parts lookup as the primary path. A scene that is missing, unreadable or lists no part: the parts lookup and
+  the tile's GLB as before (below), with no pose.
+- **Geometry only, no texture is ever decoded:** `stripGlbTextures(buf)` rebuilds a GLB whose JSON has no images / textures /
+  samplers / materials (primitives lose `material`; the texture / material extensions leave `extensionsUsed` /
+  `extensionsRequired`, declared `GLB_TEXTURE_EXTENSIONS`) and whose BIN chunk holds ONLY the bufferViews still referenced
+  (accessors, sparse accessors, `KHR_draco_mesh_compression`), their bytes unchanged, re-packed (each at its original offset
+  modulo 4) with the offsets and indices rewritten. `loadGlbScene` strips EVERY GLB before `loader.parse` (a local .glb file
+  too). `fetchGlbGeometry(url)` downloads only those bytes: `Range: bytes=0-19` (the header + the JSON chunk's length), the
+  JSON chunk (+ the BIN chunk's header), then the kept bufferViews' ranges (merged when closer than 64 KB,
+  `GLB_RANGE_MERGE_GAP`), assembled into the same stripped GLB. A 200 answer (no range support): that full answer is stripped.
+  Any other answer or anything inconsistent (a wrong length, a wrong Content-Range when readable, a view past the BIN chunk):
+  a full download + `stripGlbTextures`. Every Smithsonian GLB download goes through it.
 
 - **Search:** `q` + `owning_unit` (optional) + `file_type=glb&file_quality=Low&rows=24&start=k`. Tiles show the thumbnail
   (`scene-image-thumb.jpg` beside the GLB; on a load error the tile shows the title alone), the title as name.
-- **Pick:** every Low GLB of the model: one lookup `model_url=<id>&file_type=glb&file_quality=Low&rows=50` (a bust and its base
+- **Pick, the FALLBACK when there is no scene:** every Low GLB of the model: one lookup `model_url=<id>&file_type=glb&file_quality=Low&rows=50` (a bust and its base
   are two rows of ONE model; the grid keeps one tile per model), each part downloaded and read, the soups joined into ONE layer.
   A failed lookup falls back to the row's own GLB uri. The 'Turn in 3D' fallback and the Stored-detail re-download do the same.
 - **GLB to soup** (new, `core/stl/gltf.js`): walk every mesh in the scene, apply its world matrix, append its triangles
