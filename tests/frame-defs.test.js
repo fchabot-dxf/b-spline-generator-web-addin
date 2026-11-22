@@ -72,7 +72,10 @@ describe('frame-defs (generated) — schema', () => {
       sandTimer: ['bulgeFrac', 'pinchHeightFrac', 'pinchReachFrac', 'topWidth'],
       // F31 item 2b: the frame-only flask preset's own model -- same plain hw/hh-linear convention
       // (fb_engine/frame_shape_fit.py's own _flask), no base template either.
-      flask: ['domeFullnessFrac', 'neckHeightFrac', 'topWidth'] };
+      flask: ['domeFullnessFrac', 'neckHeightFrac', 'topWidth'],
+      // T20 TRAPEZOID: the frame-only trapezoid preset's own model -- each narrow end's inset (frame_shape_fit.py's
+      // own _trapezoid / provisional_trapezoid_model), no base template either.
+      trapezoid: ['leftInset', 'rightInset'] };
     // T3 TAPERED HOURGLASS: a narrow-top hourglass model also carries topInset (and, once fitted from its own
     // goldens, the two corners separately) -- the only extras paramsFromShapeModel reads.
     // T4 OFFSET HOURGLASS: an offset-waist model also carries the left pinch (waistCyLeft, notchLeft, depthLeft).
@@ -87,7 +90,7 @@ describe('frame-defs (generated) — schema', () => {
     // H23 item 78c (Template 18 only): `waistOpeningFtIn`, a scale-invariant `const` feature arming the
     // size-aware waist-opening clamp (editor-shape-lattice-generator.js's own paramsFromShapeModel) --
     // every other hourglass-preset template's own model omits it.
-    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle', 'waistOpeningFtIn'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [], sandTimer: [], flask: [] };
+    const EXTRA = { hourglass: ['cornerRBottom', 'cornerRTop', 'topInset', 'depthLeft', 'notchLeft', 'waistCyLeft', 'topDipDepth', 'topDipHalfWidth', 'archRise', 'taperAngle', 'waistOpeningFtIn'], bottle: ['taperAngle'], tabTop: [], dippedLeftWave: ['waveCornerR', 'waveNotch', 'waveR'], iShape: [], diamondTopHourglass: [], diamondTopHourglassPinch: [], archedFunnel: [], tulip: [], sandTimer: [], flask: [], trapezoid: [] };
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
