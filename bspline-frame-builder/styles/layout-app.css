@@ -1104,3 +1104,7 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-legend { display: flex; flex-direction: column; gap: 3px; font-size: 10px; margin: 2px 0 8px; }
 .stl-legend-item { display: flex; align-items: center; gap: 6px; }
 .stl-legend-item i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; flex: 0 0 auto; }
+@media (pointer: coarse) {
+  .stl-row input { min-width: 28px; min-height: 28px; }
+  .stl-row-name, .stl-add-row .cad-btn, #stlRemove { min-height: 32px; }
+}

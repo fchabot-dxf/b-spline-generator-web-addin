@@ -5,7 +5,9 @@
  * STL_LAYER_DEFAULTS), and reads none of the other stamp / brick / photo keys.
  *
  * Nothing here rewrites a loaded board: a control writes only when the user moves it (AGENTS.md rule 3); a record's absent field
- * reads as its declared default (normaliseStlLayer). The STL file itself is STORED in the project (a compact, capped copy:
+ * reads as its declared default (normaliseStlLayer). COPY-ON-WRITE: P.stlLayers starts as the SAME array as DEFAULT.stlLayers and
+ * a history snapshot restores keys by reference, so a write NEVER mutates the list or a record: it builds a new array holding a
+ * new record (nested position / rotation copied) and assigns it to P.stlLayers. The STL file itself is STORED in the project (a compact, capped copy:
  * "Stored detail"); the original stays in memory this session so the detail can go up as well as down.
  */
 import { P, scheduleSessionSave } from '../core/state.js';
@@ -14,8 +16,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh } from '../core/stl/mesh.js';
 import {
-  createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris,
-  STL_LAYER_DEFAULTS, STL_WARN_TOTAL_TRIS, STL_STORED_DETAIL_DEFAULT,
+  createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
 } from '../core/stl/layer.js';
 import { ghostState, STL_GHOST_COLOURS } from '../core/stl/ghost.js';
 
@@ -29,7 +30,8 @@ export const STL_GROUPS = Object.freeze([
 
 /**
  * Every setting of the ACTIVE STL, once. kind: 'slider' (a range + number pair) or 'choice' (a segmented pair of buttons).
- * `path` is where it lives in the record. `range(P)` lets a limit follow the board (X / Y reach the board edge).
+ * `path` is where it lives in the record. `range(P)` is only the slider's travel (X / Y reach the board edge): it is NOT a rule, a typed
+ * value outside it is stored as typed (owner: floating Z allowed, no clamp).
  */
 export const STL_CONTROLS = Object.freeze([
   { id: 'posX', group: 'place', kind: 'slider', path: ['position', 'x'], label: 'X', step: 0.05, range: (p) => [-p.widthIn, p.widthIn] },
@@ -54,19 +56,23 @@ export const STL_CONTROLS = Object.freeze([
 let _active = null;                 // the active record's id
 const _originals = new Map();       // record id -> the full welded mesh, this session only (Stored detail can go back up)
 let _hooks = { onChange: () => {}, refreshGhosts: () => {} };
-const _health = new Map();          // `${id}:${mesh.h}` -> health report
 
 const list = () => (Array.isArray(P.stlLayers) ? P.stlLayers : []);
 const find = (id) => list().find((l) => l && l.id === id) || null;
 export function activeStlLayer() { return find(_active) || list()[0] || null; }
 const byId = (id) => document.getElementById(id);
 const getPath = (obj, path) => path.reduce((o, k) => (o == null ? o : o[k]), obj);
-function setPath(rec, path, v) {
-  let o = rec;
-  for (let i = 0; i < path.length - 1; i++) { if (o[path[i]] == null || typeof o[path[i]] !== 'object') o[path[i]] = {}; else o[path[i]] = { ...o[path[i]] }; o = o[path[i]]; }
-  o[path[path.length - 1]] = v;
+/** A NEW record with `path` set to `v` (every object on the way is copied; `rec` is never touched). */
+function withPath(rec, path, v) {
+  const [k, ...rest] = path;
+  if (!rest.length) return { ...rec, [k]: v };
+  const inner = rec[k] != null && typeof rec[k] === 'object' ? rec[k] : {};
+  return { ...rec, [k]: withPath(inner, rest, v) };
 }
-const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
+/** Copy-on-write: replace the record `id` by `change(record)` (a NEW record) in a NEW list. */
+function updateRecord(id, change) {
+  P.stlLayers = list().map((r) => (r && r.id === id ? change(r) : r));
+}
 
 function commit(what) {
   scheduleSessionSave();
@@ -80,10 +86,10 @@ export function setStlField(controlId, value) {
   const rec = activeStlLayer();
   if (!c || !rec) return false;
   let v = value;
-  if (c.kind === 'slider') { v = parseFloat(value); if (!Number.isFinite(v)) return false; v = clamp(v, c.range(P)); }
+  if (c.kind === 'slider') { v = parseFloat(value); if (!Number.isFinite(v)) return false; }
   if (c.kind === 'choice') v = c.options.find(([k]) => String(k) === String(value))?.[0];
   if (v === undefined) return false;
-  setPath(rec, c.path, v);
+  updateRecord(rec.id, (r) => withPath(r, c.path, v));
   commit(c.id);
   return true;
 }
@@ -103,57 +109,60 @@ const fileBase = (name) => String(name || 'STL').replace(/\.[^.]+$/, '').slice(0
 export function addStlFromBuffer(buf, name) {
   const parsed = parseStl(buf);
   const { record, original } = createStlLayer({ soup: parsed.soup, name: fileBase(name), board: board() });
-  if (!Array.isArray(P.stlLayers)) P.stlLayers = [];
-  P.stlLayers.push(record);
+  P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
   _active = record.id;
   commit('add');
-  sync();
+  syncStlPanel();
   return record;
 }
 
-/** Replace the active layer's mesh from a file (more detail after a reload): its place / size / settings are kept. */
-export function reimportStlBuffer(buf, name) {
-  const rec = activeStlLayer();
-  if (!rec) return null;
+/** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
+export function reimportStlBuffer(buf, name, id = activeStlLayer()?.id) {
+  const rec = find(id);
+  if (!rec) { status('That STL layer is gone, nothing was replaced.', true); return null; }
   const parsed = parseStl(buf);
   const fresh = createStlLayer({ soup: parsed.soup, name: rec.name, board: board(), storedDetail: normaliseStlLayer(rec).storedDetail });
-  Object.assign(rec, { mesh: fresh.record.mesh, origTris: fresh.record.origTris, storedTris: fresh.record.storedTris, unitIn: rec.unitIn });
+  const { mesh, origTris, storedTris, health } = fresh.record;
+  updateRecord(rec.id, (r) => ({ ...r, mesh, origTris, storedTris, health }));
   _originals.set(rec.id, fresh.original);
   commit('reimport');
-  sync();
-  return rec;
+  syncStlPanel();
+  return find(rec.id);
 }
 
 export function removeStlLayer(id) {
-  const i = list().findIndex((l) => l && l.id === id);
-  if (i < 0) return;
-  P.stlLayers.splice(i, 1);
+  if (!find(id)) return;
+  P.stlLayers = list().filter((l) => !(l && l.id === id));
   _originals.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
   commit('remove');
-  sync();
+  syncStlPanel();
 }
 
 export function setStlEnabled(id, on) {
-  const rec = find(id);
-  if (!rec) return;
-  rec.enabled = !!on;
+  if (!find(id)) return;
+  updateRecord(id, (r) => ({ ...r, enabled: !!on }));
   commit('enabled');
-  sync();
+  syncStlPanel();
 }
 
-/** The Stored detail control: re-store the active mesh at `n` triangles (from the original while it is in memory; else the stored copy, lower only). */
+/**
+ * The Stored detail control: re-store the active mesh at `n` triangles (from the original while it is in memory; else the stored
+ * copy, lower only). Not a number >= 1 (an empty box, 0, text): nothing changes and the box shows the record's value again.
+ * Without the original, a request at or above the stored count re-stores nothing (re-quantising the decoded copy drifts).
+ */
 export function setStoredDetail(n) {
   const rec = activeStlLayer();
-  const want = Math.max(100, Math.round(Number(n)));
-  if (!rec || !Number.isFinite(want)) return null;
-  const source = _originals.get(rec.id) || decodeMesh(rec.mesh);
-  const next = restoreAtDetail(rec, source, want);
-  Object.assign(rec, { storedDetail: want, storedTris: next.storedTris, mesh: next.mesh });
+  if (!rec) return null;
+  const want = typeof n === 'string' && n.trim() === '' ? NaN : Math.round(Number(n));
+  const original = _originals.get(rec.id);
+  if (!Number.isFinite(want) || want < 1 || (!original && want >= (rec.storedTris ?? rec.mesh?.nt ?? 0))) { syncStlPanel(); return rec; }
+  const next = restoreAtDetail(rec, original || decodeMesh(rec.mesh), want);
+  updateRecord(rec.id, (r) => ({ ...r, storedDetail: want, storedTris: next.storedTris, mesh: next.mesh }));
   commit('detail');
-  sync();
-  return rec;
+  syncStlPanel();
+  return find(rec.id);
 }
 
 /** Z = 0: the base rests on the surface. */
@@ -163,12 +172,14 @@ export function resetStlRotation() { return ['rotX', 'rotY', 'rotZ'].every((id) 
 
 async function importFile(file, { reimport = false } = {}) {
   if (!file) return;
+  const target = reimport ? activeStlLayer()?.id : undefined; // the layer the user chose, captured BEFORE the file is read
   try {
+    let done = null;
     await withLoadingStage('stl', async () => {
       const buf = await file.arrayBuffer();
-      if (reimport) reimportStlBuffer(buf, file.name); else addStlFromBuffer(buf, file.name);
+      done = reimport ? reimportStlBuffer(buf, file.name, target) : addStlFromBuffer(buf, file.name);
     });
-    status('');
+    if (done) status('');
   } catch (e) {
     status(`Could not read ${file.name || 'that file'}: ${e && e.message ? e.message : e}`, true);
   }
@@ -205,6 +216,7 @@ export function renderStlPanel(body) {
     el('input', { type: 'file', id: 'stlReimportFile', accept: '.stl,model/stl,application/sla,application/octet-stream', style: 'display:none;' }),
   ]));
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
+  body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlList', class: 'stl-list' }));
   const active = el('div', { id: 'stlActive' });
   for (const g of STL_GROUPS) {
@@ -245,13 +257,26 @@ const hex = (c) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
 const LEGEND = Object.freeze([['shows', 'will show in the relief'], ['buried', 'below the surface (hidden with Max)'], ['meets', 'where it meets the surface'], ['overhang', 'faces down (lost from above)'], ['open', 'open edge / hole']]);
 
 function healthText(rec) {
-  const key = `${rec.id}:${rec.mesh?.h}`;
-  let h = _health.get(key);
-  if (!h) { try { h = stlHealth(rec); } catch (_) { return 'The stored mesh cannot be read.'; } _health.set(key, h); }
+  let h;
+  try { h = stlHealth(rec); } catch (e) { return `The stored mesh cannot be read: ${e && e.message ? e.message : e}`; } // shown, not swallowed
   const bits = [h.openEdges === 0 ? 'closed mesh' : `${h.openEdges} open edges in ${h.boundaryLoops} outline${h.boundaryLoops === 1 ? '' : 's'}`];
   if (h.components > 1) bits.push(`${h.components} separate pieces`);
   if (h.nonManifoldEdges) bits.push(`${h.nonManifoldEdges} edges shared by 3+ faces`);
   return `Mesh: ${bits.join(', ')} (reported only; nothing is repaired)`;
+}
+
+/** One line per layer the last build could not use (getStlErrors), for the layers still in the project. */
+function showStlErrors(recs) {
+  const box = byId('stlErrors');
+  if (!box) return;
+  const lines = [];
+  for (const [key, msg] of Object.entries(getStlErrors())) {
+    const r = key.startsWith('#') ? recs[Number(key.slice(1))] : recs.find((x) => x && String(x.id) === key);
+    if (r) lines.push(`${r.name || 'STL'}: ${msg}`);
+  }
+  box.textContent = '';
+  for (const l of lines) box.appendChild(el('div', { text: l }));
+  box.hidden = !lines.length;
 }
 
 /** Reflect the state on the whole panel. Safe to call any time (a load, an undo, a rebuild). */
@@ -293,6 +318,7 @@ export function syncStlPanel() {
     const h = byId('stlHealth'); if (h) h.textContent = healthText(rec);
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
+  showStlErrors(recs);
   const g = byId('stlGhost'); if (g) g.checked = ghostState.visible;
   const legend = byId('stlLegend');
   if (legend && !legend.childElementCount) {
@@ -317,14 +343,14 @@ export function bindStlPanel(hooks = {}) {
   byId('stlReimport')?.addEventListener('click', () => byId('stlReimportFile')?.click());
   byId('stlReimportFile')?.addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; importFile(f, { reimport: true }); });
   byId('stlRemove')?.addEventListener('click', () => { const r = activeStlLayer(); if (r) removeStlLayer(r.id); });
-  byId('stlSnap')?.addEventListener('click', () => { snapStlBase(); sync(); });
-  byId('stlCentre')?.addEventListener('click', () => { centreStl(); sync(); });
-  byId('stlRotReset')?.addEventListener('click', () => { resetStlRotation(); sync(); });
+  byId('stlSnap')?.addEventListener('click', () => { snapStlBase(); syncStlPanel(); });
+  byId('stlCentre')?.addEventListener('click', () => { centreStl(); syncStlPanel(); });
+  byId('stlRotReset')?.addEventListener('click', () => { resetStlRotation(); syncStlPanel(); });
   byId('stlDetail')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');
-    if (pick) { _active = pick.getAttribute('data-stl-pick'); sync(); _hooks.refreshGhosts(); }
+    if (pick) { _active = pick.getAttribute('data-stl-pick'); syncStlPanel(); _hooks.refreshGhosts(); }
   });
   byId('stlList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-stl-enable]');
@@ -334,18 +360,15 @@ export function bindStlPanel(hooks = {}) {
     if (c.kind === 'slider') {
       const s = byId(`stl_${c.id}Slider`), n = byId(`stl_${c.id}`);
       s?.addEventListener('input', (e) => { if (n) n.value = e.target.value; setStlField(c.id, e.target.value); });
-      n?.addEventListener('change', (e) => { setStlField(c.id, e.target.value); if (s) s.value = e.target.value; });
+      n?.addEventListener('change', (e) => { setStlField(c.id, e.target.value); syncStlPanel(); }); // the box then shows what the record holds
     } else {
       for (const b of document.querySelectorAll(`#stl_${c.id} [data-stl-choice]`)) {
-        b.addEventListener('click', () => { setStlField(c.id, b.getAttribute('data-stl-choice').split(':')[1]); sync(); });
+        b.addEventListener('click', () => { setStlField(c.id, b.getAttribute('data-stl-choice').split(':')[1]); syncStlPanel(); });
       }
     }
   }
-  sync();
+  syncStlPanel();
 }
 
-function sync() { syncStlPanel(); }
-
 /** Test / host hook. */
-export function _resetStlPanelForTests() { _active = null; _originals.clear(); _health.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }
-export { STL_LAYER_DEFAULTS, STL_STORED_DETAIL_DEFAULT };
+export function _resetStlPanelForTests() { _active = null; _originals.clear(); _hooks = { onChange: () => {}, refreshGhosts: () => {} }; }

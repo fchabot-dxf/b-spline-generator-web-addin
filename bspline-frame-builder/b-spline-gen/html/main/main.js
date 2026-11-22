@@ -39,7 +39,7 @@ import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '../core/state.js';
 import { renderStlPanel, bindStlPanel } from './stl-panel.js';
-import { updateStlGhosts } from '../core/stl/ghost.js';
+import { updateStlGhosts, ghostSurface } from '../core/stl/ghost.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // the ghost toggle / a different STL picked: redraw the ghosts from the heights already built (no rebuild)
         refreshGhosts: () => {
             const r = lastResult;
-            if (r && r.heights) updateStlGhosts(preview, P.stlLayers, r.heights, { nx: r.nx, nz: r.nz, widthIn: P.widthIn, heightIn: P.heightIn });
+            if (r && ghostSurface(r)) updateStlGhosts(preview, P.stlLayers, ghostSurface(r), { nx: r.nx, nz: r.nz, widthIn: P.widthIn, heightIn: P.heightIn });
         },
     });
     syncPhotoPanel();

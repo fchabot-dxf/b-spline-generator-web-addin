@@ -136,7 +136,7 @@ describe('importing', () => {
 });
 
 describe('the controls write the active record, only when the user moves them', () => {
-  it('a slider writes its path, clamps to its range, and asks for a rebuild each time', () => {
+  it('a slider writes its path and asks for a rebuild each time; typing past the slider travel is stored as typed (no clamp)', () => {
     const hooks = setup();
     addStlFromBuffer(binaryStl(pyramidSoup()), 'p.stl');
     hooks.onChange.mockClear();
@@ -146,10 +146,15 @@ describe('the controls write the active record, only when the user moves them', 
     expect($('stl_posX').value).toBe('2.5');
     expect(hooks.onChange).toHaveBeenCalledTimes(1);
     const n = $('stl_posY');
-    n.value = '99'; fire(n, 'change'); // past the board: clamps to its declared range (the board's height)
-    expect(activeStlLayer().position.y).toBe(9);
+    n.value = '99'; fire(n, 'change'); // past the board: the range is only the slider's travel, not a rule
+    expect(activeStlLayer().position.y).toBe(99);
+    expect($('stl_posY').value).toBe('99'); // the box shows what the record holds
+    const z = $('stl_posZ');
+    z.value = '5'; fire(z, 'change'); // floating Z: no clamp
+    expect(activeStlLayer().position.z).toBe(5);
     n.value = 'abc'; fire(n, 'change');
-    expect(activeStlLayer().position.y).toBe(9); // garbage writes nothing
+    expect(activeStlLayer().position.y).toBe(99); // a non-number is not a value: writes nothing
+    expect($('stl_posY').value).toBe('99');
     setStlField('rotZ', 45); setStlField('scale', 1.5); setStlField('compress', 0.5);
     expect(activeStlLayer()).toMatchObject({ scale: 1.5, compress: 0.5, rotation: { x: 0, y: 0, z: 45 } });
   });
@@ -176,7 +181,7 @@ describe('the controls write the active record, only when the user moves them', 
     const rec = addStlFromBuffer(binaryStl(pyramidSoup()), 'p.stl');
     const box = document.querySelector(`[data-stl-enable="${rec.id}"]`);
     box.checked = false; fire(box, 'change');
-    expect(rec.enabled).toBe(false);
+    expect(activeStlLayer().enabled).toBe(false);
     expect(stlPasses(P.stlLayers, { nx: 15, nz: 19, widthIn: 7, heightIn: 9 })).toEqual([]);
     hooks.refreshGhosts.mockClear();
     const g = $('stlGhost');
@@ -237,8 +242,9 @@ describe('a loaded board is never rewritten (AGENTS.md rule 3)', () => {
   });
   it('save and load: the record survives the project JSON round trip and stamps the same pass', () => {
     setup();
-    const rec = addStlFromBuffer(binaryStl(pyramidSoup()), 'p.stl');
+    addStlFromBuffer(binaryStl(pyramidSoup()), 'p.stl');
     setStlField('posX', 1.25); setStlField('scale', 1.2);
+    const rec = activeStlLayer();
     const grid = { nx: 15, nz: 19, widthIn: 7, heightIn: 9 };
     const direct = stlPass(rec, grid);
     const loaded = JSON.parse(JSON.stringify(persistableP(P))).stlLayers[0];
