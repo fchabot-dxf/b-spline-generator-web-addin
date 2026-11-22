@@ -242,10 +242,15 @@ snapshotOnLock, its marks are never shown).
 **Still not built:** opacity/blend on the other layers and a Layers-panel row for STLs (both outside Fred's "STL stamp only"
 scope, section 11.1 / 11.6).
 
-**Gizmo decisions for Fred (left as they are, nothing added; being asked one at a time):** no tap slop (a 1 px jitter on a tap commits a tiny move; a
-threshold would be a new guard); a drag that starts ON the ghost moves it instead of orbiting (orbit by starting off the ghost,
-or hide / lock it); rotation is not wrapped to +-180 (the box shows the true value); the ghost moves rigidly during a drag and
-re-seats on the surface after the rebuild (a small hop on a curved board).
+**Gizmo decisions, answered by Fred 2026-11-22 (one question at a time):**
+1. Tiny wobbles: **ignored** -- a press that stays within STL_GIZMO.slopPx (3 px mouse, 8 px touch / coarse) moves and commits
+   nothing; past it the drag counts from the press point. BUILT.
+2. A drag that starts ON the ghost **moves it** (orbit = start off the ghost): kept as built.
+3. The ring's commit **wraps rotZ to [-180, 180)** (same orientation). BUILT. A typed value is still stored as typed; a saved
+   board is never rewritten.
+4. The ghost **slides flat during a drag** and settles on release: kept as built.
+Gate: full vitest 546 files / 7533 tests green; real Chrome: a 2 px wobble writes nothing, a 60 px drag moves it, a ring turn
+from 170 lands at -158.34 (wrapped) and 138.34, no console errors.
 
 **Known limits:** undo history holds a copy
 of each mesh (about 0.6 MB per STL at the default detail, 40 steps); records saved before the hash fix keep the old (collision

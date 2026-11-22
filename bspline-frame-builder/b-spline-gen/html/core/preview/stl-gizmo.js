@@ -9,7 +9,7 @@
  * A link of the preview's ONE pointer chain (core/preview/index.js _bindEvents): sculpt first, then this, then orbit. Every
  * tryHandle* returns true when it consumed the event. During a drag only the THREE objects move (nothing is written, no
  * rebuild per tick); the release commits ONCE through the host's handler (main/stl-panel.js applyStlTransform: one write, one
- * undo step, one rebuild). No movement = no commit. Escape, a lost pointer (window blur, touchcancel) or a second finger cancel:
+ * undo step, one rebuild). No movement, or a wobble within STL_GIZMO.slopPx, = no commit; a turn commits rotZ wrapped to [-180, 180). Escape, a lost pointer (window blur, touchcancel) or a second finger cancel:
  * the ghost goes back, nothing is written. Locked (the job timeline holds the STL section), ghosts hidden, no handlers, or the
  * sculpt tool on: no handles are drawn and no event is consumed (orbit works as before).
  *
@@ -27,6 +27,9 @@ import { STL_GHOST_COLOURS, ghostState } from '../stl/ghost.js';
 /** Every size, colour and tolerance of the gizmo, once. Sizes in CSS px (converted with the view's world-per-pixel). */
 export const STL_GIZMO = Object.freeze({
   pickPx: Object.freeze({ fine: 8, coarse: 18 }), // half-width of a handle's grab band; coarse (and every touch) = 36 px wide
+  // Fred 2026-11-22 ("Ignore tiny wobbles"): a press whose pointer stays within this many CSS px of where it went down moves
+  // nothing and commits nothing; past it the drag counts from the press point. Coarse = every touch and a coarse mouse.
+  slopPx: Object.freeze({ fine: 3, coarse: 8 }),
   arrowGapPx: 12,          // between the ghost's top and the arrow's foot
   arrowShaftPx: 40,
   arrowHeadPx: 18,
@@ -166,7 +169,8 @@ export function previewTransform(kind, delta, pivot) {
 export function commitValues(kind, place, delta) {
   if (kind === 'body') return delta && (delta.dx !== 0 || delta.dy !== 0) ? { x: place.x + delta.dx, y: place.y + delta.dy } : null;
   if (kind === 'z') return delta ? { z: place.z + delta } : null;
-  if (kind === 'ring') return delta ? { rotZ: place.rotZ + delta } : null;
+  // Fred 2026-11-22 ("Wrap to -180..180"): the same orientation, the number kept in the Rotate slider's range
+  if (kind === 'ring') return delta ? { rotZ: wrapDeg(place.rotZ + delta) } : null;
   return null;
 }
 
@@ -317,7 +321,8 @@ export class StlGizmoController {
     const ray = this._ray(cx, cy);
     if (!ray) return false;
     const pivot = [g.place.x, g.place.y];
-    const d = { kind: hit.kind, id: g.id, src, start: g.place, pivot, ray0: ray, delta: null, xf: null };
+    const d = { kind: hit.kind, id: g.id, src, start: g.place, pivot, ray0: ray, delta: null, xf: null,
+      x0: cx, y0: cy, slop: STL_GIZMO.slopPx[tolKind], armed: false };
     if (hit.kind === 'body') {
       d.grabZ = hit.point ? hit.point[2] : g.place.baseZ;
       if (!xyDelta(ray, ray, d.grabZ)) return false;
@@ -338,6 +343,10 @@ export class StlGizmoController {
   _move(cx, cy) {
     const d = this._drag;
     if (!d) return false;
+    if (!d.armed) { // a wobble inside slopPx: still this drag's event (no orbit), but nothing moves
+      if (Math.hypot(cx - d.x0, cy - d.y0) < d.slop) return true;
+      d.armed = true;
+    }
     const ray = this._ray(cx, cy);
     if (!ray) return true;
     let delta = null;

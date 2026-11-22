@@ -267,6 +267,55 @@ describe('StlGizmoController: the pointer chain link', () => {
     ctrl.handleWindowMouseup();
     expect(handlers.commit).not.toHaveBeenCalled();
   });
+
+  // Fred 2026-11-22 (question 1 of 4): "Ignore tiny wobbles" -- a press that moves less than STL_GIZMO.slopPx does nothing
+  it('a wobble inside STL_GIZMO.slopPx neither moves the ghost nor commits; past it the drag follows from the PRESS point', () => {
+    expect(STL_GIZMO.slopPx.fine).toBeGreaterThan(0);
+    expect(STL_GIZMO.slopPx.coarse).toBeGreaterThan(STL_GIZMO.slopPx.fine); // a finger wobbles more than a mouse
+    const { ctrl, view, state, handlers } = rig();
+    state.hit = { kind: 'body', id: 'a', point: [10, -10, 0] };
+    const w = STL_GIZMO.slopPx.fine - 0.5;
+    ctrl.tryHandleCanvasMousedown(mouse(100, 100));
+    expect(ctrl.tryHandleWindowMousemove(mouse(100 + w, 100))).toBe(true); // still the gizmo's event (no orbit)
+    expect(view.previews).toHaveLength(0);
+    expect(ctrl.handleWindowMouseup()).toBe(true);
+    expect(handlers.commit).not.toHaveBeenCalled();
+    // a real drag after an early wobble: measured from the press, not from where the wobble ended
+    ctrl.tryHandleCanvasMousedown(mouse(100, 100));
+    ctrl.tryHandleWindowMousemove(mouse(100 + w, 100));
+    ctrl.tryHandleWindowMousemove(mouse(130, 60));
+    ctrl.handleWindowMouseup();
+    expect(handlers.commit).toHaveBeenCalledTimes(1);
+    expect(handlers.commit.mock.calls[0][1].x).toBeCloseTo(1 + 3, 9);
+    expect(handlers.commit.mock.calls[0][1].y).toBeCloseTo(2 + 4, 9);
+  });
+
+  it('touch uses the coarse wobble allowance: a finger wobble under it on the ring or the body commits nothing', () => {
+    const { ctrl, state, handlers } = rig();
+    const w = STL_GIZMO.slopPx.coarse - 0.5;
+    state.hit = { kind: 'ring', id: 'a' };
+    ctrl.tryHandleTouchstart({ clientX: 30, clientY: -20 });
+    ctrl.tryHandleTouchmove({ clientX: 30, clientY: -20 - w });
+    ctrl.handleTouchend();
+    state.hit = { kind: 'body', id: 'a', point: [10, -10, 0] };
+    ctrl.tryHandleTouchstart({ clientX: 100, clientY: 100 });
+    ctrl.tryHandleTouchmove({ clientX: 100 + w, clientY: 100 });
+    ctrl.handleTouchend();
+    expect(handlers.commit).not.toHaveBeenCalled();
+  });
+
+  // Fred 2026-11-22 (question 3 of 4): "Wrap to -180..180" -- the ring's commit, same orientation, the number in range
+  it('a turn past half a turn commits rotZ wrapped to [-180, 180)', () => {
+    expect(commitValues('ring', { rotZ: 170 }, 20)).toEqual({ rotZ: -170 });
+    expect(commitValues('ring', { rotZ: -170 }, -400)).toEqual({ rotZ: 150 });
+    const { ctrl, state, handlers } = rig();
+    state.hit = { kind: 'ring', id: 'a' };
+    const at = (deg) => { const r = deg * Math.PI / 180; return mouse((1 + 2 * Math.cos(r)) * 10, -(2 + 2 * Math.sin(r)) * 10); };
+    ctrl.tryHandleCanvasMousedown(at(0));
+    for (const d of [60, 120, 180, 240]) ctrl.tryHandleWindowMousemove(at(d)); // +240 from rotZ 10 = 250 = -110
+    ctrl.handleWindowMouseup();
+    expect(handlers.commit.mock.calls[0][1].rotZ).toBeCloseTo(-110, 6);
+  });
 });
 
 // ── the intersection line ──────────────────────────────────────────────────────────────────────────────────────────
