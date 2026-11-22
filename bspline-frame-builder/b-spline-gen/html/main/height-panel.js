@@ -24,6 +24,7 @@ import {
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny } from '../core/height/selection.js';
 import { getLayerSvg } from '../editor/editor-io.js';
+import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -37,7 +38,7 @@ export const HEIGHT_VIEW = Object.freeze({
 });
 
 export const HEIGHT_GROUPS = Object.freeze([
-  Object.freeze({ id: 'brush', label: 'Brush' }),
+  Object.freeze({ id: 'brush', label: 'Brush', showWhen: (ctx) => !ctx || ctx.tool === 'brush' }),
   Object.freeze({ id: 'patch', label: 'Patch', note: 'inches from the board centre; +Y is up the screen' }),
   Object.freeze({ id: 'stamp', label: 'Stamp' }),
 ]);
@@ -100,20 +101,37 @@ export const HEIGHT_TOOLS = Object.freeze([
   Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it' }),
   Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
+  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)' }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
   select: Object.freeze({ featherIn: 0.05 }),
+  gradient: GRADIENT_DEFAULTS,
 });
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
+  Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
 ]);
 const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
 export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'layerOpacity', group: 'layers', target: 'layer', kind: 'slider', path: ['opacity'], label: 'Layer opacity', step: 0.01, range: () => [0, 1] },
   { id: 'layerBlend', group: 'layers', target: 'layer', kind: 'choice', path: ['blend'], label: 'Layer blend',
     options: PATCH_LAYER_BLENDS.map((b) => [b, BLEND_LABELS[b][0], BLEND_LABELS[b][1]]) },
+  { id: 'gradType', group: 'gradient', target: 'gradient', kind: 'choice', path: ['type'], label: 'Gradient',
+    options: [['linear', 'Linear', 'Along the drag'], ['radial', 'Radial', 'Round the start point; the drag length is the radius']] },
+  { id: 'gradStartIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['startIn'], label: 'Start height (in)', step: 0.001, range: () => [-1, 1.5],
+    note: 'exact at the start point; type any value' },
+  { id: 'gradEndIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['endIn'], label: 'End height (in)', step: 0.001, range: () => [-1, 1.5] },
+  { id: 'gradFalloff', group: 'gradient', target: 'gradient', kind: 'choice', path: ['falloff'], label: 'Curve',
+    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title]),
+    alsoSet: (prev, next, st) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(st.customCurve, BRUSH_DEFAULTS.customCurve)
+      ? { customCurve: curvePointsFromProfile(prev, 6) } : null) },
+  { id: 'gradCurve', group: 'gradient', target: 'gradient', kind: 'curve', path: ['customCurve'], label: 'Custom curve (start -> end)',
+    showWhen: (b, p, ctx) => !!ctx && ctx.tools.gradient.falloff === 'custom' },
+  { id: 'gradOpacity', group: 'gradient', target: 'gradient', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
+  { id: 'gradMode', group: 'gradient', target: 'gradient', kind: 'choice', path: ['mode'], label: 'Mode',
+    options: [['normal', 'Normal', 'The gradient covers what is there by the opacity'], ['add', 'Add', 'Adds the gradient'], ['max', 'Max', 'Only where the gradient is higher']] },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
 ]);
@@ -299,6 +317,7 @@ const GESTURES = {
   selectRect: selectGesture('rect'),
   selectEllipse: selectGesture('ellipse'),
   selectLasso: selectGesture('lasso'),
+  gradient: { start: (pt) => beginGradient(pt), move: (pt) => moveGradient(pt), end: () => endGradient(), cancel: () => cancelGradient() },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
 /** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. */
@@ -469,6 +488,83 @@ function drawSelection(node, rec, p, show) {
   if (path !== node.lastChild) node.appendChild(path);
 }
 
+// ── the gradient tool (slice 2; core/height/gradient.js): drag the start -> end stops, applied ONCE on release ─────────
+let _grad = null; // { id, start: [c, r], end: [c, r], base: the layer's heights before the drag, frame }
+/** A tool's settings now (a copy). */
+export const heightToolSettings = (id) => (_tools[id] ? JSON.parse(JSON.stringify(_tools[id])) : null);
+function densityOf(rec) { const size = placed(rec).sizeIn, g = patchGrid(rec); return { pxPerInX: g.cols / size.w, pxPerInY: g.rows / size.h }; }
+const gradMoved = (g) => Math.hypot(g.end[0] - g.start[0], g.end[1] - g.start[1]) >= 1;
+/** The working layer = its heights before the drag + the gradient to the current end point. */
+function gradientOnto(g) {
+  const rec = find(g.id);
+  if (!rec || !_work || _work.id !== g.id) return;
+  _work.data.set(g.base);
+  if (gradMoved(g)) applyGradient(_work.data, _work.cols, _work.rows, _tools.gradient, { start: g.start, end: g.end, ...densityOf(rec), mask: maskOf(rec) });
+}
+function beginGradient(pt) {
+  cancelGradient();
+  const rec = activeHeightLayer();
+  const work = paintableCopy(rec);
+  if (!work) return false;
+  const q = pixelOf(rec, pt);
+  _grad = { id: rec.id, start: [q.c, q.r], end: [q.c, q.r], base: Float32Array.from(work.data), frame: 0 };
+  syncHeightOverlay();
+  return true;
+}
+function moveGradient(pt) {
+  _hover = pt;
+  const g = _grad;
+  const rec = g && find(g.id);
+  if (!rec) return;
+  const q = pixelOf(rec, pt);
+  g.end = [q.c, q.r];
+  if (g.frame) return; // one preview per animation frame
+  const run = () => { if (_grad !== g) return; g.frame = 0; gradientOnto(g); liveRedraw(); syncHeightOverlay(); };
+  if (typeof requestAnimationFrame === 'function') g.frame = requestAnimationFrame(run); else run();
+}
+/** Release: the gradient to the release point, ONE commit (nothing when the drag did not move). */
+function endGradient() {
+  const g = _grad;
+  _grad = null;
+  if (!g) return _chain;
+  if (g.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(g.frame);
+  if (!gradMoved(g)) { if (_work && _work.id === g.id) _work.data.set(g.base); syncHeightOverlay(); return _chain; }
+  gradientOnto(g);
+  return commitWorking(g.id, 'gradient');
+}
+function cancelGradient() {
+  const g = _grad;
+  if (!g) return;
+  _grad = null;
+  if (g.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(g.frame);
+  if (_work && _work.id === g.id) _work.data.set(g.base);
+  syncHeightOverlay();
+}
+/** A whole gradient through the same path as the pointer: board inches (+Y up) start -> end, `over` = settings for this one.
+ *  Resolves when it is stored. (Tests, probes.) */
+export function applyHeightGradient(p0, p1, over = {}) {
+  const was = _tools.gradient;
+  _tools.gradient = { ...was, ...over };
+  try {
+    const pt = ([X, Y]) => ({ x: X + P.widthIn / 2, y: P.heightIn / 2 - Y });
+    if (!beginGradient(pt(p0))) return _chain;
+    const rec = find(_grad.id), q = pixelOf(rec, pt(p1));
+    _grad.end = [q.c, q.r];
+    return endGradient();
+  } finally { _tools.gradient = was; }
+}
+/** The gradient's start -> end line on patch node `node` while dragging. */
+function drawGradientLine(node, rec, p) {
+  let line = node.querySelector('.height-gradient-line');
+  if (!_grad || _grad.id !== rec.id) { if (line) line.remove(); return; }
+  const g = patchGrid(rec);
+  if (!line) line = svgEl('line', { class: 'height-gradient-line', 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.outline, 'stroke-width': 2 }, node);
+  const [x1, y1, x2, y2] = [_grad.start[0] + 0.5, g.rows - _grad.start[1] - 0.5, _grad.end[0] + 0.5, g.rows - _grad.end[1] - 0.5];
+  for (const [k, v] of [['x1', x1], ['y1', y1], ['x2', x2], ['y2', y2]]) line.setAttribute(k, fmt(v));
+  line.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})`);
+  if (line !== node.lastChild) node.appendChild(line);
+}
+
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
 export async function newHeightPatch() {
@@ -596,7 +692,12 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   }
   if (v === undefined) return false;
   if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; drawCursor(); return true; }
-  if (_tools[c.target]) { _tools[c.target] = withPath(_tools[c.target], c.path, v); syncHeightOverlay(); return true; } // a tool's UI state
+  if (_tools[c.target]) { // a tool's UI state
+    const st = _tools[c.target];
+    _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
+    syncHeightOverlay();
+    return true;
+  }
   const rec = activeHeightLayer();
   if (!rec) return false;
   if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
@@ -657,7 +758,7 @@ function liveComposite(rec) {
   if (!_work || _work.id !== rec.id) return patchComposite(rec) || null;
   if (_work.kind === 'image') return patchComposite(rec) || null; // an image layer's working values are grey, not heights
   const wl = patchLayers(rec).find((l) => l.id === _work.layerId);
-  const stored = !_stroke && _pending === 0 && wl && wl.raster && wl.raster.h === _work.h;
+  const stored = !_stroke && !_grad && _pending === 0 && wl && wl.raster && wl.raster.h === _work.h;
   if (stored) { const c = patchComposite(rec); if (c) return c; } // nothing in flight: the cached composite
   return patchComposite(rec, { layerId: _work.layerId, data: _work.data }) || _work.data;
 }
@@ -718,7 +819,7 @@ export function syncHeightOverlay() {
     const img = node.querySelector('image');
     for (const [k, v] of [['x', -p.sizeIn.w / 2], ['y', -p.sizeIn.h / 2], ['width', p.sizeIn.w], ['height', p.sizeIn.h]]) img.setAttribute(k, fmt(v));
     const wl = _work && _work.id === rec.id ? patchLayers(rec).find((l) => l.id === _work.layerId) : null;
-    const live = !!wl && (_stroke || _pending > 0 || _work.h !== (wl.raster && wl.raster.h));
+    const live = !!wl && (_stroke || _grad || _pending > 0 || _work.h !== (wl.raster && wl.raster.h));
     const url = live ? null : stillImageOf(rec);
     if (url) img.setAttribute('href', url);
     else if (live) liveRedraw();
@@ -729,6 +830,7 @@ export function syncHeightOverlay() {
     box.setAttribute('stroke-dasharray', `${fmt(4 * px)} ${fmt(3 * px)}`);
     box.style.display = inTab && active && rec.id === active.id ? '' : 'none';
     drawSelection(node, rec, p, inTab && active && rec.id === active.id);
+    drawGradientLine(node, rec, p);
   }
   drawCursor();
 }
@@ -785,7 +887,7 @@ const curveX = (t) => CURVE_BOX.x0 + t * (CURVE_BOX.x1 - CURVE_BOX.x0);
 const curveY = (v) => CURVE_BOX.yZero - (v / CURVE_BOX.vMax) * (CURVE_BOX.yZero - CURVE_BOX.yTop);
 const curveT = (x) => (x - CURVE_BOX.x0) / (CURVE_BOX.x1 - CURVE_BOX.x0);
 const curveV = (y) => Math.min(CURVE_BOX.vMax, Math.max(0, ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * CURVE_BOX.vMax)); // Fred: the box's 0..1
-let _curveLive = null; // the points being dragged (drawn live; written once on release)
+let _curveLive = null; // { id, pts }: the points of curve control `id` being dragged (drawn live; written once on release)
 
 function paintCurve(svg, pts) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -807,8 +909,13 @@ function paintCurve(svg, pts) {
   });
 }
 
-const curvePointsNow = () => _curveLive || (Array.isArray(_brush.customCurve) ? _brush.customCurve : BRUSH_DEFAULTS.customCurve);
-function drawCurveControl(c) { const s = byId(`height_${c.id}`)?.querySelector('svg'); if (s) paintCurve(s, curvePointsNow()); }
+/** A 'curve' control's points now: the ones being dragged, else its target's stored ones (the default line when none). */
+const curvePointsNow = (c) => {
+  if (_curveLive && _curveLive.id === c.id) return _curveLive.pts;
+  const v = getPath(controlSource(c, activeHeightLayer()) || {}, c.path);
+  return Array.isArray(v) ? v : BRUSH_DEFAULTS.customCurve;
+};
+function drawCurveControl(c) { const s = byId(`height_${c.id}`)?.querySelector('svg'); if (s) paintCurve(s, curvePointsNow(c)); }
 
 function wireCurve(c) {
   const box = byId(`height_${c.id}`), svg = box && box.querySelector('svg');
@@ -819,9 +926,9 @@ function wireCurve(c) {
   let drag = null;
   const clearTimer = () => { if (drag && drag.timer) { clearTimeout(drag.timer); drag.timer = null; } };
   const idxOf = (e) => { const h = e.target.closest && e.target.closest('[data-curve-handle]'); return h ? Number(h.getAttribute('data-curve-handle')) : -1; };
-  const removeAt = (i) => { const pts = curvePointsNow(); if (i > 0 && i < pts.length - 1) write(pts.filter((_, k) => k !== i)); };
+  const removeAt = (i) => { const pts = curvePointsNow(c); if (i > 0 && i < pts.length - 1) write(pts.filter((_, k) => k !== i)); };
   svg.addEventListener('pointerdown', (e) => {
-    const [x, y] = vb(e), i = idxOf(e), pts = curvePointsNow().map((p) => [p[0], p[1]]);
+    const [x, y] = vb(e), i = idxOf(e), pts = curvePointsNow(c).map((p) => [p[0], p[1]]);
     if (typeof svg.setPointerCapture === 'function' && e.pointerId != null) { try { svg.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ } }
     drag = { i, x, y, pts, moved: false, timer: null };
     if (i > 0 && i < pts.length - 1 && e.pointerType === 'touch') {
@@ -838,17 +945,17 @@ function wireCurve(c) {
     let t = pts[i][0];
     if (i > 0 && i < last) t = Math.min(pts[i + 1][0] - B.tGap, Math.max(pts[i - 1][0] + B.tGap, curveT(x))); // keeps the curve a function
     pts[i] = [t, curveV(y)];
-    _curveLive = pts;
+    _curveLive = { id: c.id, pts };
     paintCurve(svg, pts);
   });
   const end = (e, cancelled) => {
     if (!drag) return;
     clearTimer();
     const d = drag; drag = null;
-    if (cancelled) { _curveLive = null; paintCurve(svg, curvePointsNow()); return; }
-    if (d.i >= 0) { if (d.moved && _curveLive) write(_curveLive); else _curveLive = null; return; }
+    if (cancelled) { _curveLive = null; paintCurve(svg, curvePointsNow(c)); return; }
+    if (d.i >= 0) { if (d.moved && _curveLive) write(_curveLive.pts); else _curveLive = null; return; }
     if (d.moved) return; // a swipe over the empty area is not a tap
-    const t = curveT(d.x), pts = curvePointsNow();
+    const t = curveT(d.x), pts = curvePointsNow(c);
     if (!(t > 0 && t < 1) || pts.some((p) => Math.abs(p[0] - t) < B.minGap)) return;
     write([...pts, [t, curveV(d.y)]]);
   };
@@ -863,7 +970,7 @@ function renderControl(c) {
     svg.setAttribute('viewBox', `0 0 ${CURVE_BOX.w} ${CURVE_BOX.h}`);
     svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Falloff curve: drag a point, tap to add one, double-click to remove one');
     svg.style.cssText = 'width:100%; height:auto; display:block; touch-action:none; user-select:none; margin-bottom:10px;';
-    paintCurve(svg, curvePointsNow());
+    paintCurve(svg, curvePointsNow(c));
     const box = el('div', { id: `height_${c.id}` }, [cad(c.label)]);
     box.appendChild(svg);
     return box;
@@ -1132,7 +1239,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;
