@@ -207,8 +207,7 @@ the slice-1 HEIGHT_CONTROLS id list is pinned by tests/height-tab):
   dab at the set angle via `finish()`).
 - Falloff / hardness run on the tip's own distance: square + Linear = a crisp chamfer, square + Plateau = a flat-topped
   square. The touched box covers the turned footprint (a square's corners reach R x sqrt 2).
-- **Bevel** quick preset (`BRUSH_QUICK_PRESETS.bevel`, a button above the tip controls): square tip, Linear falloff,
-  hardness 0.3. (Fred's "bevel brush" may mean something else: open question.)
+- **Bevel**: square tip, Linear falloff, hardness 0.3 -- now a tile of the brush picker (12b).
 - Picking the chisel while the roundness is still 1 starts it at 0.25 (the tip's declared `seedRoundness`, the custom
   curve's alsoSet precedent; a UI seed, never a rule).
 - The on-canvas cursor (`#heightBrushRing`, now a path) is the tip's real footprint: an ellipse or a rectangle, turned by
@@ -221,5 +220,48 @@ the slice-1 HEIGHT_CONTROLS id list is pinned by tests/height-tab):
 - The editor's own Apply drops a floating piece and its Cancel throws it away (`MOVE_SETTLE_BUTTONS`, on pointerdown so it
   runs before their click handlers).
 
-Open (for the advisor / Fred): what "bevel brush" means; Move has no scale / rotate (section 4's Transform, slice 4); the
-Move tool has no keyboard shortcut letter.
+Open (for the advisor / Fred): Move has no scale / rotate (section 4's Transform, slice 4); the Move tool has no keyboard
+shortcut letter.
+
+### 12b. The brush picker and the Eraser (slice 3b)
+
+Fred 2026-11-22: "I was more expecting a simple brush tool with the different brushes inside of it in the right panel, with
+the falloff and the different chisel and bevel tools or profiles" (by "bevel" he first meant the chisel tip; the Bevel
+square stays its own profile), and "In the height map tab, we need an eraser too". Tests: `tests/height-brush-picker.test.js`;
+probe `tools/repro/height_painter3b_shots.mjs`.
+
+- **One Brush tool** on the rail (`HEIGHT_TOOLS`): the per-mode rail buttons are gone; the modes are the `mode` row at the
+  top of the panel's Brush section (raise / lower / set / smooth). **Alt** while painting with the Brush flips raise <->
+  lower for that stroke (`BRUSH_ALT_MODE`; set / smooth unchanged); the section's one-line note says so.
+- **Eraser**: its own `HEIGHT_TOOLS` row next to the Brush, `brush: { mode: 'erase' }` -- the SAME brush (picker and
+  settings; one `_brush`, never a copy) with the erase math (toward transparent 0). The Brush section shows for both
+  (`usesBrush`), without the mode / amount / target rows for the Eraser (their declared showWhen).
+- **Brush picker** (`BRUSH_PRESETS` in core/height/brush.js, one table): the tiles are the app's one picker
+  (main/icon-select.js `mountIconGrid`, PICKER_TILE size; icons only, the name on the chip and as the tooltip), at the top
+  of the Brush section. Each tile's icon is drawn from its own preset: the tip's footprint (an arrow when it turns with the
+  stroke) over the falloff profile. A preset sets tip, roundness, angle, followStroke, falloff, hardness and buildUp; the
+  size, opacity, flow, spacing, amount and target stay. Custom keeps the brush's own curve (edited below).
+- **Modified**: an edit after a pick leaves NO tile highlighted and the note under the picker reads "Modified (from
+  <last pick>)"; picking a tile again restores it (`brushPresetOf`: the preset whose every key the brush matches).
+- **Tip settings** (tip, roundness, angle, turn with the stroke) show only for a non-round tip (the `tip` group's declared
+  showWhen); a non-round tip comes from the picker.
+- **buildUp** (a new brush key; absent = true = slice 1): with build-up each dab adds to the stroke's coverage, so along a
+  stroke any falloff saturates toward the opacity (measured: a chisel stroke's sides read as high as its middle); off, a
+  pixel keeps the HIGHEST single dab's coverage, so the stroke's cross-section is the brush profile. The two plain rounds
+  keep build-up (they paint as before; the session's first brush, BRUSH_DEFAULTS, is Soft round); every profile preset
+  turns it off. A 'Build up' check in the Brush section.
+
+| Preset | tip | roundness | angle | turn with stroke | falloff | hardness | buildUp |
+|---|---|---|---|---|---|---|---|
+| Soft round | round | 1 | 0 | no | smooth | 0.5 | on |
+| Hard round | round | 1 | 0 | no | smooth | 0.9 | on |
+| Dome | round | 1 | 0 | no | dome | 0 | off |
+| Spike | round | 1 | 0 | no | spike | 0 | off |
+| Plateau | round | 1 | 0 | no | plateau | 0.2 | off |
+| Square | square | 1 | 0 | no | plateau | 0.5 | off |
+| Bevel | square | 1 | 0 | no | linear | 0.3 | off |
+| Chisel | chisel | 0.25 | 0 | yes | linear | 0 | off |
+| Custom | round | 1 | 0 | no | custom (its own curve) | 0 | off |
+
+The Chisel is a flat blade ALONG the stroke with straight (linear) sides: Raise draws a crisp V ridge, Lower (or Alt) a V
+groove.
