@@ -23,6 +23,8 @@ export const SMITHSONIAN_SOURCE = Object.freeze({
   sceneModel: Object.freeze({ usage: 'Web3D', quality: 'Low' }),     // the scene derivative Insert downloads
   scenePreview: Object.freeze({ usage: 'Web3D', quality: 'Thumb' }), // the scene derivative Turn in 3D downloads
   credit: 'Smithsonian Open Access (CC0). Models load from 3d-api.si.edu.',
+  // the mirrored catalog (core/stl/catalog.js format; tools/build_stl_catalog.py), relative to the app root: the Shape filter's data
+  catalogPath: 'data/stl-catalog-smithsonian.json',
   // every owning_unit with Low GLBs (design section 2 counts; FSG has none and is left out), with a readable name
   museums: Object.freeze([
     ['NMNHMAMMALS', 'Natural History: Mammals'],
@@ -58,6 +60,15 @@ export function smithsonianSearchUrl({ q = '', unit = '', page = 0 } = {}, sourc
 
 const folderOf = (uri) => uri.slice(0, uri.lastIndexOf('/'));
 
+/**
+ * THE tile of one model (the API search and the mirrored catalog, core/stl/catalog.js, both build it here):
+ * { id, title, glbUrl, thumbUrl, previewUrl }, the pictures beside the GLB.
+ */
+export function tileFromGlb({ id, title, uri }, source = SMITHSONIAN_SOURCE) {
+  const folder = folderOf(uri);
+  return { id, title: String(title || ''), glbUrl: uri, thumbUrl: `${folder}/${source.thumbName}`, previewUrl: `${folder}/${source.previewName}` };
+}
+
 /** The API's answer -> { total, tiles }: one tile per model (a model listed twice keeps its first row), rows without a uri skipped. */
 export function parseSmithsonianSearch(json, source = SMITHSONIAN_SOURCE) {
   const tiles = [];
@@ -68,8 +79,7 @@ export function parseSmithsonianSearch(json, source = SMITHSONIAN_SOURCE) {
     const id = c.model_url || c.uri;
     if (seen.has(id)) continue;
     seen.add(id);
-    const folder = folderOf(c.uri);
-    tiles.push({ id, title: String(row.title || ''), glbUrl: c.uri, thumbUrl: `${folder}/${source.thumbName}`, previewUrl: `${folder}/${source.previewName}` });
+    tiles.push(tileFromGlb({ id, title: row.title, uri: c.uri }, source));
   }
   return { total: Number(json && json.rowCount) || 0, tiles };
 }

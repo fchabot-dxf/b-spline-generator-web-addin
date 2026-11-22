@@ -6,8 +6,12 @@
  * Built on the app's own dialog classes (cad-modal-overlay / -window / -header / -body / -footer, as pull-changelist.js and the
  * editor's full-screen #svgEditorModal); the tile size is the shared PICKER_TILE. Nothing here touches the board: the caller's
  * onPick does the import (main/stl-panel.js).
+ * The SHAPE filter (design section 8, Fred 2026-11-22): a native <select> (Any shape / Flat / Rod / Flat or rod) and, when it is
+ * not Any, a ratio slider + number. Any = the live API exactly as before; otherwise the source's mirrored catalog
+ * (core/stl/catalog.js), fetched once on first use and filtered here with the words + museum, giving the SAME tiles.
  */
 import { SMITHSONIAN_SOURCE, fetchSmithsonianPage, downloadSmithsonianModelSoup } from '../core/stl/smithsonian.js';
+import { CATALOG_FILTER, CATALOG_SHAPES, filterCatalog, catalogTiles, fetchCatalog } from '../core/stl/catalog.js';
 import { PICKER_TILE } from './icon-select.js';
 import { createSoupView } from './stl-preview-3d.js';
 
@@ -40,6 +44,18 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
   const query = el('input', { type: 'search', id: 'stlLibQuery', class: 'stl-lib-query', placeholder: 'Search the collection', 'aria-label': 'Search' });
   const museum = el('select', { id: 'stlLibMuseum', class: 'stl-lib-museum', 'aria-label': 'Museum' },
     [el('option', { value: '', text: 'All museums' }), ...source.museums.map(([code, name]) => el('option', { value: code, text: name }))]);
+  // the Shape filter (Fred 2026-11-22): a native select; not Any = the mirrored catalog (core/stl/catalog.js), with the ratio
+  const shapeSel = el('select', { id: 'stlLibShape', class: 'stl-lib-shape', 'aria-label': 'Shape' },
+    CATALOG_SHAPES.map(([id, label]) => el('option', { value: id, text: label })));
+  shapeSel.value = CATALOG_FILTER.shape;
+  const ratioAttrs = { min: String(CATALOG_FILTER.ratioMin), max: String(CATALOG_FILTER.ratioMax), step: String(CATALOG_FILTER.ratioStep) };
+  const ratioSlider = el('input', { type: 'range', id: 'stlLibRatio', class: 'stl-lib-ratio-slider', 'aria-label': 'Ratio', ...ratioAttrs });
+  const ratioNum = el('input', { type: 'number', id: 'stlLibRatioNum', class: 'stl-lib-ratio-num', 'aria-label': 'Ratio', ...ratioAttrs });
+  ratioSlider.value = ratioNum.value = String(CATALOG_FILTER.ratio);
+  const ratioRow = el('div', { id: 'stlLibRatioRow', class: 'slider-row stl-lib-ratio',
+    title: 'Flat: thickness / width at most this. Rod: width / length at most this.' },
+  [el('label', { for: 'stlLibRatio', text: 'Ratio' }), ratioSlider, ratioNum]);
+  ratioRow.hidden = shapeSel.value === 'any';
   const searchBtn = el('button', { type: 'button', id: 'stlLibSearch', class: 'cad-btn cad-btn-primary', text: 'Search' });
   const statusEl = el('div', { id: 'stlLibStatus', class: 'photo-layer-note stl-lib-status', role: 'status' });
   const grid = el('div', { id: 'stlLibGrid', class: 'stl-lib-grid', style: `grid-template-columns: repeat(auto-fill, minmax(${PICKER_TILE.tilePx}px, 1fr));` });
@@ -59,7 +75,8 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
 
   const results = el('div', { class: 'stl-lib-results' }, [statusEl, grid, more]);
   const body = el('div', { class: 'cad-modal-body stl-lib-body' }, [
-    el('div', { class: 'stl-lib-search' }, [query, museum, searchBtn]),
+    el('div', { class: 'stl-lib-search' }, [query, museum, shapeSel, searchBtn]),
+    ratioRow,
     el('div', { class: 'stl-lib-main' }, [results, pane]),
   ]);
   const footer = el('div', { class: 'cad-modal-footer stl-lib-credit', text: source.credit });
@@ -68,8 +85,21 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
   document.body.appendChild(overlay);
 
   // ── paging ──
-  const st = { q: '', unit: '', page: 0, total: 0, seq: 0, shown: new Set() };
+  const st = { q: '', unit: '', page: 0, total: 0, seq: 0, shown: new Set(),
+    shape: shapeSel.value, ratio: CATALOG_FILTER.ratio, catalogLoad: null, list: [] }; // list: the catalog's filtered models
   const setStatus = (text, isError = false) => { statusEl.textContent = text; statusEl.classList.toggle('stl-error', !!isError); };
+  // what is SHOWN: the API's rowCount counts FILES (a bust and its base are two rows of one model), not models
+  const showCount = () => {
+    const n = st.shown.size;
+    setStatus(st.total > 0 ? `${fmt(n)} model${n === 1 ? '' : 's'} shown${more.hidden ? '' : ' · more available'}` : 'No models found');
+  };
+  const appendTiles = (list) => {
+    for (const t of list) {
+      if (st.shown.has(t.id)) continue; // a model whose GLB rows straddle two pages shows once
+      st.shown.add(t.id);
+      grid.appendChild(tileEl(t));
+    }
+  };
 
   function tileEl(t) {
     const b = el('button', { type: 'button', class: 'stl-lib-tile', 'data-model-id': t.id, title: t.title });
@@ -81,6 +111,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
   }
 
   async function load(reset) {
+    if (st.shape !== 'any') return loadCatalog(reset);
     const my = ++st.seq;
     const page = reset ? 0 : st.page + 1;
     if (reset) { grid.textContent = ''; st.shown.clear(); st.total = 0; }
@@ -91,23 +122,56 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
       if (closed || my !== st.seq) return; // a newer search (or the close) won
       st.page = page;
       st.total = res.total;
-      for (const t of res.tiles) {
-        if (st.shown.has(t.id)) continue; // a model whose GLB rows straddle two pages shows once
-        st.shown.add(t.id);
-        grid.appendChild(tileEl(t));
-      }
+      appendTiles(res.tiles);
       const end = Math.min((page + 1) * source.pageSize, st.total);
       more.hidden = end >= st.total;
-      // what is SHOWN: the API's rowCount counts FILES (a bust and its base are two rows of one model), not models
-      const n = st.shown.size;
-      setStatus(st.total > 0 ? `${fmt(n)} model${n === 1 ? '' : 's'} shown${more.hidden ? '' : ' · more available'}` : 'No models found');
+      showCount();
     } catch (e) {
       if (closed || my !== st.seq) return;
       setStatus(msgOf(e), true);
       more.hidden = reset || !st.total; // a failed "More" can be tried again
     }
   }
+
+  /**
+   * Shape not Any: the source's mirrored catalog, fetched once on first use (a failed fetch is tried again next time), filtered
+   * by the words + museum + shape + ratio, paged like the API (pageSize, More results). No network after the first load.
+   */
+  async function loadCatalog(reset) {
+    const my = ++st.seq;
+    const page = reset ? 0 : st.page + 1;
+    if (reset) { grid.textContent = ''; st.shown.clear(); st.total = 0; }
+    more.hidden = true;
+    if (!st.catalogLoad) {
+      setStatus('Loading the catalog…');
+      st.catalogLoad = fetchCatalog(doFetch, source);
+    }
+    try {
+      const cat = await st.catalogLoad;
+      if (closed || my !== st.seq) return;
+      if (reset) st.list = filterCatalog(cat, { q: st.q, unit: st.unit, shape: st.shape, ratio: st.ratio });
+      st.page = page;
+      st.total = st.list.length;
+      const end = Math.min((page + 1) * source.pageSize, st.total);
+      appendTiles(catalogTiles(cat, st.list.slice(page * source.pageSize, end), source));
+      more.hidden = end >= st.total;
+      showCount();
+    } catch (e) {
+      st.catalogLoad = null;
+      if (closed || my !== st.seq) return;
+      setStatus(msgOf(e), true);
+    }
+  }
   const search = () => { st.q = query.value.trim(); st.unit = museum.value; return load(true); };
+
+  // the ratio re-filters live (debounced, no network); the slider and the number box show the same value
+  let ratioTimer = 0;
+  const onRatio = (from, to) => {
+    to.value = from.value;
+    clearTimeout(ratioTimer);
+    ratioTimer = setTimeout(() => { st.ratio = Number(from.value); if (!closed && st.shape !== 'any') load(true); }, CATALOG_FILTER.debounceMs);
+  };
+  const onShape = () => { st.shape = shapeSel.value; ratioRow.hidden = st.shape === 'any'; search(); };
 
   // ── the preview ──
   let selected = null;     // { tile, button }
@@ -172,6 +236,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
   function close() {
     if (closed) return;
     closed = true;
+    clearTimeout(ratioTimer);
     viewSeq++;
     disposeView();
     document.removeEventListener('keydown', onKey);
@@ -181,6 +246,9 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, fetchImpl, on
   searchBtn.addEventListener('click', search);
   query.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
   more.addEventListener('click', () => load(false));
+  shapeSel.addEventListener('change', onShape);
+  ratioSlider.addEventListener('input', () => onRatio(ratioSlider, ratioNum));
+  ratioNum.addEventListener('input', () => onRatio(ratioNum, ratioSlider));
   turnBtn.addEventListener('click', turnIn3d);
   insertBtn.addEventListener('click', insert);
   document.addEventListener('keydown', onKey);
