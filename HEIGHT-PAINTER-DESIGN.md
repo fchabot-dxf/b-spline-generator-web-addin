@@ -117,7 +117,48 @@ Built (tests: `tests/height-*.test.js`, 6 files):
 
 - Custom falloff (Fred 2026-11-22, worker N): `BRUSH_FALLOFFS.custom` reads the brush's `customCurve` (points [t, value], default [[0,1],[1,0]]) through `curveFromPoints` (monotone cubic Hermite, may rise: a ring); the declared `'curve'` control in `HEIGHT_CONTROLS` (an inline SVG widget: drag, tap to add, double-click / 600 ms long-press to remove, one write per drag end; shown only while Falloff = Custom via the table's generic `showWhen`). Switching to Custom seeds the curve from the previous profile (`alsoSet`). Test: `tests/height-brush-custom-curve.test.js`.
 
+Slice 2 (precision tools), branch `height-painter-2`, worker S. Tests: `tests/height-{patch-layers,selection,gradient,fill,
+import,export}.test.js` (+ helper `tests/height-png16.js`); probe `tools/repro/height_painter2_shots.mjs`.
+- **Layers** (`core/height/compose.js`): a patch may hold `layers`, BOTTOM first, each `{ id, name, kind: 'paint'|'image',
+  visible, opacity, blend: normal|add|max|min|subtract, raster, mapping? }`, all on the patch's pixel grid; the composite
+  (pass + shaded view) is bottom-up, a layer's 0 pixel transparent. A slice-1 record (one `raster`) reads as ONE paint layer
+  (id 'base', normal, opacity 1) without being rewritten; its composite IS its decoded raster (pinned to goldens measured on
+  main @ 18af1d97: raster h `14ie5wjnld2`, decoded `3492ef1f64ccf34c`, pass `53f34cf095f48f75`). Painting a slice-1
+  record's one layer keeps its slice-1 shape; any layer action (add, opacity, blend, ...) makes it layered. Undo:
+  `UNDO_BLOB_STORES` heightLayers gains `inner: 'layers'` (each layer raster kept once by hash, the same store).
+- **Selections** (`core/height/selection.js`): a per-patch Float32 mask (session state; never saved, not in undo):
+  rectangle / ellipse (pixel centres in the box), lasso (even-odd), from a Draw-tab layer (getLayerSvg + the layer's own
+  transform, FILLED, rendered by `core/stamp/render-svg.js` into the patch's pixel frame through the patch's inverse
+  placement matrix; the anti-aliased alpha is the mask -- `computeSDF` thresholds alpha, so it is not used), feather (a
+  separable Gaussian, inches -> pixels per axis), invert, clear; marching-ants outline (marching squares at 0.5). Brush,
+  gradient and fill multiply their effect by it (a pixel at 0 is never written).
+- **Gradient** (`core/height/gradient.js`): linear / radial, typed exact stops, height = end + (start - end) x curve(t),
+  curve = a BRUSH_FALLOFFS profile or the custom curve (the curve widget now serves any 'curve' control); past the stops they
+  hold; opacity; normal / add / max; previewed per frame, ONE commit on release.
+- **Fill** (`core/height/fill.js`): the selection (or the layer) toward an exact height by the opacity; a tap or the button.
+- **Import** (`core/height/import.js`): 8-bit PNG / JPG / WebP via createImageBitmap (no colour conversion); 16-bit PNG via
+  fast-png **6.2.0** (`https://cdn.jsdelivr.net/npm/fast-png@6.2.0/+esm`, MIT; its deps pinned by jsDelivr: iobuffer 5.3.2,
+  pako 2.1.0); EXR via three **r128** EXRLoader + fflate (`.../three@0.128.0/examples/js/loaders/EXRLoader.js`,
+  `.../libs/fflate.min.js`), R channel normalised (lo = min(0, min)). All loaded on first use only. An image layer stores the
+  grey as **`u16-deflate-b64`** (q / 65535: a 16-bit file's levels kept exactly; Float16 would round them to 1/2048 near
+  white) resampled to the patch grid (area mean down, linear up; stretched to the patch, or a new patch sized to the image's
+  aspect, the largest that fits the board). Live mapping `{ zero: black|mid, whiteIn, darkIn }` (default black, 0.25 in);
+  an exported name (`name_<lo>-<hi>in.png`) sets it.
+- **Export** (`core/height/export.js`): the composite as a 16-bit grey PNG (fast-png encode), range always holding 0 and
+  widened outward to 4 decimals; lo = 0 -> black = 0, else mid-grey = 0 (a 0 pixel then reads back as +1 level, not
+  transparent). Export -> import is within one 16-bit level.
+- Panel: `HEIGHT_TOOLS` (brush, rect / ellipse / lasso select, gradient, fill: the rail's `data-height-tool` buttons, one
+  'heightBrush' gesture mode dispatching to `GESTURES[tool]`), `HEIGHT_TOOL_CONTROLS` + `HEIGHT_TOOL_GROUPS` (same shape and
+  renderer / setter as HEIGHT_CONTROLS, kept separate because the slice-1 table's id list is pinned by tests/height-tab),
+  `GROUP_HEADS` (the layer list, the selection buttons, Fill, Import / Export). Loading cards: `heightImport`,
+  `heightExport` (core/loading-signal.js).
+- Measured in Chrome (probe above): a `.cad-select` without its wrap covers the whole editor canvas (it is `position:
+  absolute` 100%); a browser `File` has its own `.bytes()` METHOD (read files through `arrayBuffer`).
+
 Not done / open (for the advisor):
+- Slice 2: layer opacity / blend / mapping sliders commit one step per release, not per drag tick (as the patch sliders);
+  a layer has no rename UI yet; a selection is not part of undo (session state, as briefed); the image layer is stretched
+  to an existing patch (no crop / fit option); phone (390 px) not re-shot for slice 2.
 - The 3D follows on Apply / the 3D toggle (Fred's "no 3D while editing"), not after each stroke.
 - No `height` rows in `EDITOR_TAB_FOCUS` / `EDITOR_TAB_SELECTABLE` / `IN_EDITOR_3D`: each is pinned by an exact-equality
   main test; adding the rows means updating those pins (advisor's call). The other tabs' content is therefore not dimmed in
