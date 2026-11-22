@@ -42,6 +42,8 @@ export const STL_CONTROLS = Object.freeze([
   { id: 'posY', group: 'place', kind: 'slider', path: ['position', 'y'], label: 'Y', step: 0.05, range: (p) => [-p.heightIn, p.heightIn] },
   { id: 'posZ', group: 'place', kind: 'slider', path: ['position', 'z'], label: 'Z (height above the surface)', step: 0.01, range: () => [-3, 3],
     note: 'below 0 it sinks into the surface; above 0 it floats' },
+  { id: 'surface', group: 'place', kind: 'choice', path: ['surface'], label: 'On the terrain',
+    options: [['follow', 'Follow the terrain', 'Each point of the STL sits on the terrain under it (bends over hills)'], ['level', 'Level', 'One rigid object at the terrain height under its centre (+ Z): the terrain is filled or cut to it']] },
   { id: 'scale', group: 'size', kind: 'slider', path: ['scale'], label: 'Size', step: 0.01, range: () => [0.05, 4] },
   { id: 'zScale', group: 'size', kind: 'slider', path: ['zScale'], label: 'Depth (relief height)', step: 0.01, range: () => [0.05, 4] },
   { id: 'rotX', group: 'rotate', kind: 'slider', path: ['rotation', 'x'], label: 'Around X', step: 1, range: () => [-180, 180] },

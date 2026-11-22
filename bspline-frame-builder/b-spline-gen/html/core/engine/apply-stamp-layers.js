@@ -23,6 +23,7 @@
 import { gaussianSmooth } from '../gaussian.js';
 import { dbg } from '../debug.js';
 import { fitPlane } from '../bricks/plane-fit.js';
+import { sampleGridAt } from '../stl/ghost.js';
 
 /**
  * F35 item 18 (1), brick top FLAT: per grid point, the height of the plane its brick sits on --
@@ -126,6 +127,11 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     const isArt = layer.kind !== STAMP_PASS_KIND.bricks;
     // STL-RELIEF: Carved (read only by the two STL branches below); a pass without the flag falls back to its depth's sign
     const stlCarves = layer.carve === true || (layer.carve === undefined && layerDepth < 0);
+    // STL-RELIEF 'Level' (Fred 2026-11-22, core/stl/layer.js STL_SURFACES): ONE rigid object whose base is the clean terrain
+    // under its pivot (bilinear, fractional grid coordinates from stlPass). Only this pass kind with surface 'level' reads it;
+    // every other pass, and every follow STL, takes the branches below exactly as before.
+    const stlLevel = layer.kind === STAMP_PASS_KIND.stl && layer.surface === 'level';
+    const levelBase = stlLevel ? sampleGridAt(cleanHeights, nx, nz, layer.pivot[0], layer.pivot[1]) : 0;
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
@@ -144,7 +150,16 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
         stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
                           + (smoothedTerrain[k] * suppressStrength);
       }
-      if (layer.blend === 'max') {
+      if (stlLevel) {
+        // Level, over the points it covers: the object's top (Raised) or bottom (Carved) at base +/- (Z offset + its height).
+        // Max: it only fills up to it (Raised) / only cuts down to it (Carved); Add: the terrain BECOMES it (filled and cut).
+        if (stamped) {
+          const objectH = (layer.zOffset || 0) + bodyVal * Math.abs(layerDepth);
+          const target = stlCarves ? levelBase - objectH : levelBase + objectH;
+          if (layer.blend === 'max') stampedHeights[k] = stlCarves ? Math.min(stampedHeights[k], target) : Math.max(stampedHeights[k], target);
+          else stampedHeights[k] = target;
+        }
+      } else if (layer.blend === 'max') {
         // STL-RELIEF: the object only shows where it stands ABOVE the surface (zOffset < 0 sinks it in). Only covered points
         // (isStamped) count; a carve is the same shape as a hollow. A pass with no `blend` takes the add below. The carve
         // is the pass's own `carve` flag (core/stl/layer.js stlPass): a FLAT mesh has depth -0, whose sign cannot say it.

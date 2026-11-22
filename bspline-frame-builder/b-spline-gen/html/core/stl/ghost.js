@@ -12,6 +12,8 @@
  * The ghost is a RIGID copy placed on the surface height under its centre (the surface BEFORE the stamps, ghostSurface: never
  * on top of its own relief); the stamp itself is relative per point (the object
  * follows the surface), so on a strongly curved board the ghost is the honest first look, the Stamp result is the truth.
+ * A 'Level' STL (record.surface, Fred 2026-11-22) IS rigid at that height: its colours (and meet line) read each vertex against
+ * the LOCAL terrain under it, rel = (baseZ + Z offset + its height) - surfaceAt(x, y), so a part over a rise reads buried.
  */
 import { decodeMesh } from './mesh.js';
 import { placeMesh } from './raster.js';
@@ -33,8 +35,17 @@ export const STL_OVERHANG_NZ = -0.05; // a face normal pointing this far down is
  */
 export function surfaceAt(heights, grid, x, y) {
   const { nx, nz, widthIn, heightIn } = grid;
-  const fi = Math.min(nx - 1, Math.max(0, ((x + widthIn / 2) / widthIn) * (nx - 1)));
-  const fj = Math.min(nz - 1, Math.max(0, ((y + heightIn / 2) / heightIn) * (nz - 1)));
+  return sampleGridAt(heights, nx, nz, ((x + widthIn / 2) / widthIn) * (nx - 1), ((y + heightIn / 2) / heightIn) * (nz - 1));
+}
+
+/**
+ * A height grid (row-major, nx columns, nz rows) sampled bilinearly at FRACTIONAL grid coordinates (fi, fj). The indices are kept
+ * inside the grid (array bounds, not a rule): a point past the edge reads the edge. surfaceAt's sampler, and the one the 'Level'
+ * STL pass reads its base from (core/engine/apply-stamp-layers.js).
+ */
+export function sampleGridAt(heights, nx, nz, fi0, fj0) {
+  const fi = Math.min(nx - 1, Math.max(0, fi0));
+  const fj = Math.min(nz - 1, Math.max(0, fj0));
   const i0 = Math.floor(fi), j0 = Math.floor(fj), i1 = Math.min(nx - 1, i0 + 1), j1 = Math.min(nz - 1, j0 + 1);
   const ti = fi - i0, tj = fj - j0;
   const h = (i, j) => heights[j * nx + i];
@@ -104,6 +115,7 @@ export function ghostGeometry(rawRec, heights, grid) {
   const nv = xyz.length / 3;
   const baseZ = heights ? surfaceAt(heights, grid, rec.position.x, rec.position.y) : 0;
   const zOff = rec.position.z;
+  const level = rec.surface === 'level' && !!heights; // without heights there is no local terrain to read: as follow
   // per-vertex normals (area-weighted face normals, outward by the STL's own winding), in the PLACED frame
   const nrm = new Float64Array(nv * 3);
   const idx = mesh.indices;
@@ -121,9 +133,12 @@ export function ghostGeometry(rawRec, heights, grid) {
   const C = STL_GHOST_COLOURS;
   const rels = new Float64Array(nv);
   for (let v = 0; v < nv; v++) {
-    const rel = zOff + xyz[v * 3 + 2]; // above (+) or below (-) the surface it is stamped into
+    const placed = zOff + xyz[v * 3 + 2];
+    positions[v * 3] = xyz[v * 3]; positions[v * 3 + 1] = xyz[v * 3 + 1]; positions[v * 3 + 2] = baseZ + placed;
+    // above (+) or below (-) the surface it is stamped into: follow = relative to the terrain it rides; Level = the rigid
+    // object against the terrain under THIS vertex
+    const rel = level ? baseZ + placed - surfaceAt(heights, grid, xyz[v * 3], xyz[v * 3 + 1]) : placed;
     rels[v] = rel;
-    positions[v * 3] = xyz[v * 3]; positions[v * 3 + 1] = xyz[v * 3 + 1]; positions[v * 3 + 2] = baseZ + rel;
     let kind = rel > 0 ? 'shows' : 'buried';
     if (Math.abs(rel) <= STL_MEET_BAND_IN) kind = 'meets';
     const len = Math.hypot(nrm[v * 3], nrm[v * 3 + 1], nrm[v * 3 + 2]);

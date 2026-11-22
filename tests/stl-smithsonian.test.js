@@ -302,7 +302,7 @@ describe('d. GLB scene -> triangle soup', () => {
 
 describe('e. one import path: addStlFromSoup', () => {
   const RECORD_KEYS = ['v', 'enabled', 'name', 'position', 'rotation', 'scale', 'zScale', 'unitIn', 'compress', 'blend', 'raise', 'softness',
-    'placement', 'storedDetail', 'id', 'origTris', 'storedTris', 'health', 'mesh'].sort();
+    'placement', 'surface', 'storedDetail', 'id', 'origTris', 'storedTris', 'health', 'mesh'].sort(); // surface: Fred 2026-11-22 (Level)
   const tri = (a, b, c) => [...a, ...b, ...c];
   const pyramid = () => { const A = [-5, -5, 0], B = [5, -5, 0], C = [5, 5, 0], D = [-5, 5, 0], T = [0, 0, 4];
     return Float32Array.from([tri(A, B, T), tri(B, C, T), tri(C, D, T), tri(D, A, T), tri(A, C, B), tri(A, D, C)].flat()); };

@@ -14,6 +14,10 @@ export const STL_BLENDS = Object.freeze(['max', 'add']);
 /** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
  *  heights without it (core/engine/rebuild.js buildHeights backBase -> build-thicken-data.js backFrom). */
 export const STL_PLACEMENTS = Object.freeze(['withSurface', 'afterBack']);
+/** Fred 2026-11-22, "On the terrain": 'follow' (the default = the stamp as it always was: each point of the STL sits on the terrain
+ *  under it) or 'level' (ONE rigid object at the terrain height under its centre + Z: the terrain is filled or cut to it;
+ *  core/engine/apply-stamp-layers.js, the one 'level' branch). */
+export const STL_SURFACES = Object.freeze(['follow', 'level']);
 /** Triangles a stored mesh is capped at when imported (a size WARNING shows past STL_WARN_TOTAL_TRIS; no hard stop). */
 export const STL_STORED_DETAIL_DEFAULT = 50000;
 export const STL_WARN_TOTAL_TRIS = 150000;
@@ -33,6 +37,7 @@ export const STL_LAYER_DEFAULTS = Object.freeze({
   raise: true,     // false = carve (the STL's shape as a hollow)
   softness: 0,     // inches of edge blur
   placement: 'withSurface',
+  surface: 'follow', // absent = follow = the stamp as before 'level' existed
   storedDetail: STL_STORED_DETAIL_DEFAULT,
 });
 
@@ -46,6 +51,7 @@ export function normaliseStlLayer(rec) {
     rotation: { ...d.rotation, ...(r.rotation || {}) },
     blend: STL_BLENDS.includes(r.blend) ? r.blend : d.blend,
     placement: STL_PLACEMENTS.includes(r.placement) ? r.placement : d.placement,
+    surface: STL_SURFACES.includes(r.surface) ? r.surface : d.surface,
   };
 }
 
@@ -113,7 +119,7 @@ export const totalStoredTris = (layers) => (layers || []).reduce((n, l) => n + (
 //   raster (mesh, unit, scale, zScale, position x/y, rotation, grid) -> renderDepth's { height, covered, hMax }
 //   body   raster key + compress + softness -> the FINAL { body, covered, hMax } a pass carries (the softness blur is the
 //          costly step: ~1e9 multiply-adds on a 1000 x 1000 grid at 2 in)
-// position.z, raise and blend are applied at pass time / in applyStampLayers, so they never rebuild a raster or a body.
+// position.z, raise, blend and surface are applied at pass time / in applyStampLayers, so they never rebuild a raster or a body.
 export const STL_CACHE_CAPS = Object.freeze({ mesh: 8, raster: 16, body: 16 });
 const _meshCache = new Map();
 const _rasterCache = new Map();
@@ -175,6 +181,13 @@ export function stlPass(rawRec, grid) {
     carve: !rec.raise,
     blend: rec.blend,
     placement: rec.placement, // 'afterBack': stamped on the top only (core/engine/rebuild.js buildHeights backBase)
+    surface: rec.surface,     // 'level': one rigid object at the terrain under `pivot` (core/engine/apply-stamp-layers.js)
+    // the record's position in FRACTIONAL grid coordinates of this build's grid (column i at x = -W/2 + i*dx, row j at
+    // y = -H/2 + j*dy: a LARGER row = up, buildHeightField's frame)
+    ...(rec.surface === 'level' ? { pivot: [
+      (rec.position.x + grid.widthIn / 2) / (grid.widthIn / (grid.nx - 1)),
+      (rec.position.y + grid.heightIn / 2) / (grid.heightIn / (grid.nz - 1)),
+    ] } : {}),
     zOffset: rec.position.z,
     profile: 'flat',
     suppression: 0,
