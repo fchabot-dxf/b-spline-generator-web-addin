@@ -749,31 +749,96 @@
         </div>
       </div>
 
-      <!-- 3. Skeleton (filter-independent host pipeline) -->
+      <!-- 3. TERRAIN SHAPE (was Skeleton; the section id stays 'skeleton' -- panel-skeleton, the job timeline's 'skeleton'
+           step, saved state). TERRAIN-FLAT (Fred 2026-11-22, TERRAIN-FLAT-DESIGN.md): the big forms, in Fred's order. A control
+           moved in from the old Filter panel keeps the job-timeline step that locked it there: Region Scale + Map Zoom sit in
+           their own data-job-lock="filter" scope, Pan X / Y in the Seed step's own (core/ui-utils.js setSectionReadOnly: the
+           NEAREST [data-job-lock] wins; tests/terrain-flat.test.js compares every control's lock with main's markup). The rows
+           the Flat switch no longer reads grey while it is on (data-shape-flat-row, main/terrain-shape-flat.js). -->
       <div class="panel panel-skeleton">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🦴 SKELETON</div>
+        <div class="panel-header collapsed" onclick="togglePanel(this)">⛰ TERRAIN SHAPE</div>
         <div class="panel-body hidden" data-job-lock="skeleton">
-          <label class="cad-label cad-label-inline">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="peakShapeSlider" class="cad-slider" min="0.3" max="5" step="0.05" value="2.2">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="peakShape" value="2.2" step="0.05">
+          <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:8px; margin:0 0 2px;">
+            <input type="checkbox" id="shapeFlat" style="width:auto; margin:0; flex:0 0 auto;">
+            <span>Flat (no hills)</span>
+          </label>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 12px;">A flat board at the surface height, the texture on top.</div>
+
+          <!-- the surface height (P.surfaceHeightIn, inches): the slider travels 0 .. carve depth (main/terrain-shape-flat.js);
+               the typed field has no min / max -- a typed value is kept as typed -->
+          <div data-shape-flat-row="surfaceHeight">
+            <label class="cad-label">Surface height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="surfaceHeightInSlider" class="cad-slider" min="0" max="1.5" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="surfaceHeightIn" value="0" step="0.01">
+              </div>
             </div>
           </div>
 
-          <label class="cad-label cad-label-inline">Density <span style="font-size:10px; opacity:0.6; font-weight:400;">(sparse ↔ dense)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="densitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="density" value="1" step="0.01">
+          <!-- H16 item 5: Region Scale (P.macroScale), moved here from the Filter's "Map" group -- Filter's lock -->
+          <div data-job-lock="filter" data-shape-flat-row="regionScale">
+            <label class="cad-label">Region Scale</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="macroScale" value="0.65">
+              </div>
             </div>
           </div>
 
-          <label class="cad-label cad-label-inline">Clustering <span style="font-size:10px; opacity:0.6; font-weight:400;">(even ↔ clumped)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="clusteringSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="clustering" value="0" step="0.01">
+          <div data-shape-flat-row="peaks">
+            <label class="cad-label cad-label-inline">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="peakShapeSlider" class="cad-slider" min="0.3" max="5" step="0.05" value="2.2">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="peakShape" value="2.2" step="0.05">
+              </div>
+            </div>
+
+            <label class="cad-label cad-label-inline">Density <span style="font-size:10px; opacity:0.6; font-weight:400;">(sparse ↔ dense)</span></label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="densitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="density" value="1" step="0.01">
+              </div>
+            </div>
+
+            <label class="cad-label cad-label-inline">Clustering <span style="font-size:10px; opacity:0.6; font-weight:400;">(even ↔ clumped)</span></label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="clusteringSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="clustering" value="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <!-- the Map window, moved here from the Filter: H17 item 1's Map Zoom (P.mapZoom: a drawing-style zoom of the whole
+               generated terrain about the board centre -- Filter's lock) and H16 item 4 / H19 item 1's pan steppers
+               (P.seedOffsetX / Y, "screens" = board-widths at the current zoom; relabelled Pan X / Y -- the Seed step's lock) -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Map</label>
+          <div data-job-lock="filter">
+            <label class="cad-label">Map Zoom</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="mapZoomSlider" class="cad-slider" min="0.25" max="4" step="0.05" value="1">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="mapZoom" value="1">
+              </div>
+            </div>
+          </div>
+
+          <div class="cad-paired-steppers" data-job-lock="seed" style="display:flex; gap:8px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Pan X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetX" value="0" step="0.05">
+              </div>
+            </div>
+            <div style="flex:1;">
+              <label class="cad-label cad-label-inline">Pan Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
+              <div class="cad-stepper">
+                <input type="number" id="seedOffsetY" value="0" step="0.05">
+              </div>
             </div>
           </div>
 
@@ -787,8 +852,7 @@
             </select>
           </div>
 
-          <!-- H14: a declared "feel" pair -- see the Seed panel's Offset
-               X/Y above for the full rationale. "(panel-width/height
+          <!-- H14: a declared "feel" pair. "(panel-width/height
                fraction)" shortened to "(fraction)" (X/Y already implies
                the axis) to fit the halved column. "Symmetry Offset X/Y"
                also shortened to "Offset X/Y" -- "Symmetry" was wrapping
@@ -844,83 +908,23 @@
         </div>
       </div>
 
-      <!-- 4. Filter (noise type + per-filter tweaks) -->
+      <!-- 4. TERRAIN TEXTURE (was Filter; the section id stays 'filter'): the grain only -- noise type + per-filter tweaks -->
       <div class="panel panel-filter">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 FILTER</div>
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 TERRAIN TEXTURE</div>
         <div class="panel-body hidden" data-job-lock="filter">
-          <label class="cad-label">Noise Type</label>
-          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-            <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
-              <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
-            </select>
-          </div>
-          <!-- BRICK audit A8 + A10: "Hide filter texture" moved here from BRICK (a surface setting: it changes the filter's
-               texture over the whole terrain, no brick); a checkbox-and-text row (the box beside its text, not above) -->
+          <!-- BRICK audit A8 + A10: a surface setting (it changes the texture over the whole terrain, no brick); a
+               checkbox-and-text row. TERRAIN-FLAT: the texture's own Flat switch (P.isolateSkeleton, unchanged), at the top -->
           <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:8px; margin:0 0 2px;">
             <input type="checkbox" id="isolateSkeleton" style="width:auto; margin:0; flex:0 0 auto;">
             <span>Hide filter texture</span>
           </label>
           <div style="font-size:10px; opacity:0.65; margin:0 0 12px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
 
-          <!-- H16 item 5 (Fred: "yes"): a "Map" group at the top of Filter
-               holding Region Scale + the item-4 Offset X/Y pair together --
-               the H15-removed Seed panel's own macroScale control, back
-               exactly as it was (slider + stepper, not a value-readout
-               "feel" pair, since it's a single knob not a pair). Bound to
-               the SAME P key (macroScale) H15 explicitly kept -- no new
-               params, saved values already show correctly. -->
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Map</label>
-          <label class="cad-label">Region Scale</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="macroScale" value="0.65">
-            </div>
-          </div>
-
-          <!-- H17 item 1 (Fred: "add it in filters, not replace region"): a
-               NEW slider, distinct from Region Scale above -- a drawing-
-               style zoom of the WHOLE generated terrain about the board
-               centre (bigger value = bigger features), implemented once at
-               terrain.js's (u,v) sampler entry so coarse shapes, fine
-               texture and detail/cluster masks all scale together. Does
-               NOT affect stamps/sculpt/frame/edge fade/the board. New P key
-               mapZoom, default 1 = today's terrain exactly. -->
-          <label class="cad-label">Map Zoom</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="mapZoomSlider" class="cad-slider" min="0.25" max="4" step="0.05" value="1">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="mapZoom" value="1">
-            </div>
-          </div>
-
-          <!-- H16 item 4 (Fred: "the seed offset could be surfaced in
-               skeleton if it was removed" -> correction: "sorry, it
-               should go in filter"): the H15-removed Seed panel's Offset
-               X/Y pair, back as a control, but here rather than Skeleton
-               per that correction. Bound to the SAME P keys
-               (seedOffsetX/seedOffsetY) H15 explicitly kept -- no new
-               params, a saved project's offsets already show correctly.
-               H19 item 1 (Fred: "these offset I want in steppers"): the
-               H14 slider+readout "feel" pair is gone -- two plain -/+
-               steppers side by side, same component + layout as Width/
-               Height in Stock Dimensions (.cad-paired-steppers wrapping
-               two .cad-stepper columns). No slider, no range clamp beyond
-               what already existed (the stepper input itself never had a
-               min/max; only the removed slider did). -->
-          <div class="cad-paired-steppers" data-job-lock="seed" style="display:flex; gap:8px; margin-bottom:12px;">
-            <div style="flex:1;">
-              <label class="cad-label cad-label-inline">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
-              <div class="cad-stepper">
-                <input type="number" id="seedOffsetX" value="0" step="0.05">
-              </div>
-            </div>
-            <div style="flex:1;">
-              <label class="cad-label cad-label-inline">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(screens)</span></label>
-              <div class="cad-stepper">
-                <input type="number" id="seedOffsetY" value="0" step="0.05">
-              </div>
-            </div>
+          <label class="cad-label">Noise Type</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
+              <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
+            </select>
           </div>
 
           <label class="cad-label">Fine Scale</label>
