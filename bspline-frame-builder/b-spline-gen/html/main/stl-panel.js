@@ -12,6 +12,7 @@
  */
 import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
+import { setSectionReadOnly } from '../core/ui-utils.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh } from '../core/stl/mesh.js';
@@ -105,6 +106,13 @@ const status = (text, isError = false) => {
 };
 const fileBase = (name) => String(name || 'STL').replace(/\.[^.]+$/, '').slice(0, 40) || 'STL';
 
+/** The STL list gained or lost a layer: the job-timeline strip declares this event (the 'stl' step exists only with a layer). */
+const announceStlLayersChanged = () => { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stlLayersChanged')); };
+
+/** A project load replaced the board (main/snapshot-manager.js applySnapshot): an STL file still being read must not join it. */
+let _projectEpoch = 0;
+export function noteStlProjectReplaced() { _projectEpoch++; }
+
 /** Add an STL (an ArrayBuffer of its bytes) as a new layer, placed at the board centre, fitted to half the board. */
 export function addStlFromBuffer(buf, name) {
   const parsed = parseStl(buf);
@@ -114,6 +122,7 @@ export function addStlFromBuffer(buf, name) {
   _active = record.id;
   commit('add');
   syncStlPanel();
+  announceStlLayersChanged();
   return record;
 }
 
@@ -138,6 +147,7 @@ export function removeStlLayer(id) {
   if (_active === id) _active = list()[0]?.id ?? null;
   commit('remove');
   syncStlPanel();
+  announceStlLayersChanged();
 }
 
 export function setStlEnabled(id, on) {
@@ -173,13 +183,17 @@ export function resetStlRotation() { return ['rotX', 'rotY', 'rotZ'].every((id) 
 async function importFile(file, { reimport = false } = {}) {
   if (!file) return;
   const target = reimport ? activeStlLayer()?.id : undefined; // the layer the user chose, captured BEFORE the file is read
+  const epoch = _projectEpoch; // a project load during the read bumps it (noteStlProjectReplaced)
   try {
     let done = null;
+    let stale = false;
     await withLoadingStage('stl', async () => {
       const buf = await file.arrayBuffer();
+      if (epoch !== _projectEpoch) { stale = true; return; }
       done = reimport ? reimportStlBuffer(buf, file.name, target) : addStlFromBuffer(buf, file.name);
     });
-    if (done) status('');
+    if (stale) status('The project changed while the STL was being read: add it again.', true);
+    else if (done) status('');
   } catch (e) {
     status(`Could not read ${file.name || 'that file'}: ${e && e.message ? e.message : e}`, true);
   }
@@ -279,6 +293,9 @@ function showStlErrors(recs) {
   box.hidden = !lines.length;
 }
 
+/** True while the job timeline holds the STL section read-only (the class core/ui-utils.js setSectionReadOnly wrote). */
+export function isStlLocked() { return !!byId('stlLayerBody')?.classList.contains('job-readonly'); }
+
 /** Reflect the state on the whole panel. Safe to call any time (a load, an undo, a rebuild). */
 export function syncStlPanel() {
   const listEl = byId('stlList');
@@ -319,6 +336,7 @@ export function syncStlPanel() {
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
   showStlErrors(recs);
+  if (isStlLocked()) setSectionReadOnly('stl', true); // the rows were rebuilt enabled: put the job-timeline lock back (the one mechanism)
   const g = byId('stlGhost'); if (g) g.checked = ghostState.visible;
   const legend = byId('stlLegend');
   if (legend && !legend.childElementCount) {

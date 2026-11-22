@@ -13,7 +13,7 @@ import { runMigrations, editorRestoreSvg, refreshDrape, announceBrickSettingsRes
 import { syncFramePanel } from './frame-panel.js';
 import { adoptStoredPhoto } from './photo-panel.js';
 import { syncPhotoLayerSection } from './photo-layer-section.js';
-import { syncStlPanel } from './stl-panel.js';
+import { syncStlPanel, noteStlProjectReplaced } from './stl-panel.js';
 import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
 
@@ -73,6 +73,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   syncFramePanel();
   adoptStoredPhoto(); // item 74a: a loaded / undone photo is decoded (and a full-size one downscaled)
   syncPhotoLayerSection(); // Surface > Photo: the restored tweaks / layer switch (its rows re-render; greyed when off)
+  if (source === 'load') noteStlProjectReplaced(); // an STL still being read belongs to the OLD project
   syncStlPanel(); // Surface > STL stamp: a loaded / undone project brings its own STL records
   announceBrickSettingsRestored(); // audit v2 N2: a load / global undo replaced P.brickSettings
   setUndoRestoring(false);

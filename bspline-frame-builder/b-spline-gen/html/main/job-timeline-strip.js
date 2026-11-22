@@ -426,6 +426,6 @@ export function openJobStep(step) {
 export function initJobTimelineStrip({ opener } = {}) {
   if (typeof document === 'undefined') return;
   _state.opener = opener || null;
-  for (const ev of ['editorLayersChanged', 'frameRecordChanged', 'brickSettingsRestored', 'editorTabChanged']) document.addEventListener(ev, () => renderJobStrips());
+  for (const ev of ['editorLayersChanged', 'frameRecordChanged', 'brickSettingsRestored', 'editorTabChanged', 'stlLayersChanged']) document.addEventListener(ev, () => renderJobStrips());
   renderJobStrips();
 }

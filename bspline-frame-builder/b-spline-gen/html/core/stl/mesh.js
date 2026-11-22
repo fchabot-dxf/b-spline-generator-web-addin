@@ -223,6 +223,11 @@ export function decodeMesh(rec) {
     for (let a = 0; a < 3; a++) positions[i + a] = rec.min[a] + (q[i + a] / 65535) * rec.size[a];
   }
   const raw = fromB64(rec.idx, rec.idxBits === 16 ? Uint16Array : Uint32Array);
+  // A cut-short base64 string can decode to SHORTER arrays without throwing; the raster would read undefined -> NaN and drop
+  // triangles silently. Owner-approved integrity check: say what is wrong (it reaches the panel through getStlErrors()).
+  if (q.length !== rec.nv * 3) throw new Error(`The stored STL mesh is incomplete: ${q.length} of ${rec.nv * 3} position values.`);
+  if (raw.length !== rec.nt * 3) throw new Error(`The stored STL mesh is incomplete: ${raw.length} of ${rec.nt * 3} index values.`);
+  for (let i = 0; i < raw.length; i++) if (!(raw[i] < rec.nv)) throw new Error(`The stored STL mesh is damaged: index ${i} points past the ${rec.nv} vertices.`);
   return { positions, indices: Uint32Array.from(raw) };
 }
 

@@ -50,7 +50,7 @@ export function normaliseStlLayer(rec) {
 
 /** The bas-relief tone map on a 0..1 value: 0 = linear, towards 1 = the low parts lifted (the tall parts compressed). */
 export function compressRelief(body, c) {
-  if (!(c > 0)) return body;
+  if (!(c > 1e-6)) return body; // numerics, not a user clamp: below ~1e-16 a = 1 + 30c rounds to 1 and 0/0 is NaN; this tiny is linear anyway
   const a = 1 + 30 * Math.min(1, c);
   return Math.log(1 + (a - 1) * body) / Math.log(a);
 }
