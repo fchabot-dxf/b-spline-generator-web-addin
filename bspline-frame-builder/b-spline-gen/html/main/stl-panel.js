@@ -32,7 +32,7 @@ import { meshBounds, meshHealth } from '../core/stl/mesh.js';
 import { rotationMatrix } from '../core/stl/raster.js';
 import { cropMesh, isFullCropBox, normaliseCropBox, cropBoxIn, cropBoxOf, STL_CROP_EDGES, STL_CROP_FALLOFF_DEFAULTS } from '../core/stl/crop.js';
 import { pushRecent, recentEntryOf, noteLocalModel, forgetLocalModel, LOCAL_LIBRARY, _resetLocalModelsForTests } from '../core/stl/recent.js';
-import { BRUSH_FALLOFFS } from '../core/height/brush.js';
+import { BRUSH_FALLOFFS } from '../core/falloff.js';
 import { renderCropSliders, openLoopsNote } from './stl-crop-controls.js';
 
 /** The controls' groups, in order: each one FOLDS inside the open STL's card (the app's .panel-sub collapse); `open` = its
@@ -89,7 +89,7 @@ export const STL_CONTROLS = Object.freeze([
     note: '0 = true heights; more lifts the low parts and flattens the tall ones' },
   { id: 'softness', group: 'stamp', kind: 'slider', path: ['softness'], label: 'Edge softness (in)', step: 0.05, range: () => [0, 2] },
   // the crop-edge FALLOFF (Fred 2026-11-22): a live stamp setting, record.cropFalloff (core/stl/crop.js; absent = off). `dflt` =
-  // what an absent field shows (STL_CROP_FALLOFF_DEFAULTS). The profiles are the height brush's own (core/height/brush.js);
+  // what an absent field shows (STL_CROP_FALLOFF_DEFAULTS). The profiles are the height brush's own (core/falloff.js);
   // 'custom' waits for the shared curve widget (the height panel's is not exported yet).
   { id: 'cropFalloffWidth', group: 'crop', kind: 'slider', path: ['cropFalloff', 'widthIn'], label: 'Falloff width (in)', step: 0.05, range: () => [0, 3],
     dflt: STL_CROP_FALLOFF_DEFAULTS.widthIn, note: '0 = off. The stamp fades in over this distance from the edges ticked below.' },

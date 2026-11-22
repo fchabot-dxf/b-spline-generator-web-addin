@@ -21,7 +21,7 @@
 import { meshBounds } from './mesh.js';
 import { placeMesh } from './raster.js';
 import { earClip, pointInPolygon } from '../polygon.js'; // the shared ones (core/preview/frame-mesh.js re-exports them)
-import { BRUSH_FALLOFFS, brushFalloff, curveFromPoints } from '../height/brush.js';
+import { BRUSH_FALLOFFS, brushFalloff, curveFromPoints } from '../falloff.js';
 
 export const CROP_AXES = Object.freeze(['x', 'y', 'z']);
 /** How a crop PREVIEW draws (the library's 3D view and the STL ghost): the cut-away part faint, the box's edges accent blue. */
@@ -291,7 +291,7 @@ export const STL_CROP_EDGES = Object.freeze([
 /** The record field `cropFalloff`'s declared defaults (an absent field reads as these; width 0 = off). */
 export const STL_CROP_FALLOFF_DEFAULTS = Object.freeze({
   widthIn: 0,
-  profile: 'smooth', // a BRUSH_FALLOFFS key (core/height/brush.js)
+  profile: 'smooth', // a BRUSH_FALLOFFS key (core/falloff.js)
   customCurve: null, // [[t, value], ...] for 'custom' (null = the brush's default curve)
   edges: Object.freeze({ left: true, right: true, front: true, back: true, bottom: true }),
 });
@@ -323,7 +323,7 @@ export function placedFootprint(mesh, rec) {
 
 /**
  * Fade `body` (written in place) by falloff `fo` (cropFalloffOf's shape). For each enabled side edge of the footprint `foot`,
- * the weight is the brush's falloff curve (core/height/brush.js brushFalloff, hardness 0) at t = 1 - (distance inside that edge /
+ * the weight is the brush's falloff curve (core/falloff.js brushFalloff, hardness 0) at t = 1 - (distance inside that edge /
  * widthIn), t kept in 0..1 (t = 0: full, t = 1: zero); 'bottom' uses the point's height above the model's lowest point
  * (`height`, renderDepth's inches) as the distance. The weights multiply. Only covered points change.
  * Grid: column i at x = -W/2 + i*dx, row j at y = -H/2 + j*dy (buildHeightField's frame).

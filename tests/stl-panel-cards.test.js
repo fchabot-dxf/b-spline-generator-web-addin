@@ -104,11 +104,12 @@ describe('every control exists once, inside the OPEN card', () => {
 });
 
 describe('the settings fold in the declared groups', () => {
-  it('the declared order is Place, Size, Rotate, Stamp, Detail; Place is open by default, the rest closed', () => {
-    expect(STL_GROUPS.map((g) => g.id)).toEqual(['place', 'size', 'rotate', 'stamp', 'detail']);
+  // Crop joined after Detail with Fred's crop + edge-falloff feature (2026-11-22)
+  it('the declared order is Place, Size, Rotate, Stamp, Detail, Crop; Place is open by default, the rest closed', () => {
+    expect(STL_GROUPS.map((g) => g.id)).toEqual(['place', 'size', 'rotate', 'stamp', 'detail', 'crop']);
     two();
     expect(group('place').classList.contains('collapsed')).toBe(false);
-    for (const g of ['size', 'rotate', 'stamp', 'detail']) expect(group(g).classList.contains('collapsed'), g).toBe(true);
+    for (const g of ['size', 'rotate', 'stamp', 'detail', 'crop']) expect(group(g).classList.contains('collapsed'), g).toBe(true);
     expect(group('rotate').contains($('stlRotReset'))).toBe(true);
     expect(group('detail').contains($('stlDetailSlider'))).toBe(true);
     expect(group('size').contains($('stlStock'))).toBe(true);
