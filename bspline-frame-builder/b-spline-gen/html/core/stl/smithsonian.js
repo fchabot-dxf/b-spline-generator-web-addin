@@ -23,6 +23,14 @@ export const SMITHSONIAN_SOURCE = Object.freeze({
   sceneModel: Object.freeze({ usage: 'Web3D', quality: 'Low' }),     // the scene derivative Insert downloads
   scenePreview: Object.freeze({ usage: 'Web3D', quality: 'Thumb' }), // the scene derivative Turn in 3D downloads
   credit: 'Smithsonian Open Access (CC0). Models load from 3d-api.si.edu.',
+  // SMK-LIBRARY (core/stl/libraries.js): what the multi-library sheet and the panel read of every library
+  short: 'Smithsonian',                  // the tile badge
+  host: '3d-api.si.edu',
+  format: 'glb',                         // its tiles download a GLB (tile.glbUrl)
+  licence: 'CC0 (Smithsonian Open Access)',
+  sourceNote: 'From the Smithsonian (CC0)',
+  orient: 'voyager',                     // the upright pose comes from its Voyager scene; nothing more at Insert
+  shape: true,                           // the Shape filter (its mirrored catalog, core/stl/catalog.js)
   // the mirrored catalog (core/stl/catalog.js format; tools/build_stl_catalog.py), relative to the app root: the Shape filter's data
   catalogPath: 'data/stl-catalog-smithsonian.json',
   // every owning_unit with Low GLBs (design section 2 counts; FSG has none and is left out), with a readable name
