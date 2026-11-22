@@ -1053,7 +1053,7 @@
                layers or disagree on visibility. Eye = shown on the canvas
                only (audit B6: a hidden layer still carves and exports, by its
                own carve toggle); tapping a row makes it
-               active, which the Plunge Depth / Tool Profile / V-Bit Angle
+               active, which the Relief / Height / Tool Profile / V-Bit Angle
                controls below keep editing (main/stamp/layer.js). T29:
                moved above those tool settings (was below SVG Blueprint's
                spot) since the settings apply to whichever layer is
@@ -1068,10 +1068,25 @@
           <div class="cad-status-divider" style="margin:4px 0 6px 0;"></div>
           <div class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Settings below apply to the selected layer.</div>
 
-          <label class="cad-label">Plunge Depth</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampDepthSlider" class="cad-slider" min="-2" max="2" step="0.005" value="0.25">
-            <div class="cad-stepper" style="width:75px;">
+          <!-- LABELS T: the layer's ONE signed `depth` (+ raised, - carved; P.stampDepth mirrors it) shown as a Relief
+               Raised | Carved toggle + a magnitude ("Height (in)"). main/stamp/depth.js writes the signed value into the
+               hidden #stampDepth pair below, which the generic binder (ui-bindings.js) already sends through applyParam,
+               so the stored key, value, range and rebuild path are exactly what "Plunge Depth" wrote. -->
+          <label class="cad-label">Relief</label>
+          <div class="relief-toggle" id="stampReliefToggle" style="margin-bottom:8px;">
+            <button type="button" class="relief-toggle-btn active" id="stampBtnReliefRaised" title="The artwork stands proud of the terrain"><span>Raised</span></button>
+            <button type="button" class="relief-toggle-btn" id="stampBtnReliefCarved" title="The artwork is carved into the terrain"><span>Carved</span></button>
+          </div>
+          <div>
+            <label class="cad-label">Height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="stampHeightSlider" class="cad-slider" min="0" max="2" step="0.005" value="0.25">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="stampHeight" value="0.25" step="0.05">
+              </div>
+            </div>
+            <div hidden>
+              <input type="range" id="stampDepthSlider" min="-2" max="2" step="0.005" value="0.25">
               <input type="number" id="stampDepth" value="0.25" step="0.05">
             </div>
           </div>
@@ -1141,7 +1156,7 @@
               </div>
             </div>
             <div id="vBitAngleContainer" style="flex:1; min-width:75px; display:none;">
-              <label class="cad-label">V-Bit Angle</label>
+              <label class="cad-label">V-Bit Angle (°)</label>
               <div class="cad-nested-input" style="width:100%;">
                 <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
               </div>
@@ -1221,7 +1236,7 @@
             </div>
           </details>
 
-          <label class="cad-label">Blur Radius</label>
+          <label class="cad-label">Blur (grid cells)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="10" step="1" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -1229,7 +1244,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Smoothing</label>
+          <label class="cad-label">Smoothing radius (grid cells)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="30" step="1" value="15">
             <div class="cad-stepper" style="width:75px;">
@@ -1237,7 +1252,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Texture Suppression</label>
+          <label class="cad-label">Smooth the terrain under it (0–1)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampTextureSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.15">
             <div class="cad-stepper" style="width:75px;">
@@ -1245,7 +1260,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Edge Fillet</label>
+          <label class="cad-label">Edge Fillet (in)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
@@ -1297,7 +1312,7 @@
             <span>Erase / Restore Sculpt</span>
           </button>
 
-          <label class="cad-label">Brush Size</label>
+          <label class="cad-label">Brush Size (in)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptTopRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
@@ -1340,7 +1355,7 @@
           </label>
 
           <div id="thickenOptions" style="flex-direction:column;">
-            <label class="cad-label">Offset (Thickness)</label>
+            <label class="cad-label">Offset (Thickness, in)</label>
             <div class="cad-slider-row" style="margin-bottom:12px;">
               <input type="range" id="thickenOffsetSlider" class="cad-slider" min="0.01" max="5" step="0.005" value="0.2">
               <div class="cad-stepper" style="width:75px;">
@@ -1383,7 +1398,7 @@
             <span>Erase / Restore Sculpt</span>
           </button>
 
-          <label class="cad-label">Brush Size</label>
+          <label class="cad-label">Brush Size (in)</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptBotRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
@@ -3072,7 +3087,7 @@
             </div>
 
             <div id="photoToolSection_blur" style="display:none;">
-              <label class="cad-label">Blur</label>
+              <label class="cad-label">Blur (image px)</label>
               <div class="cad-slider-row" style="margin-bottom:14px;">
                 <input type="range" id="photoBlurSlider" class="cad-slider" min="0" max="8" step="1" value="0">
                 <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBlur" value="0"></div>
@@ -3335,7 +3350,8 @@
               <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:6px; margin-bottom:4px;">
                 <input type="checkbox" id="brickSuppressFrame" style="width:auto; margin:0;"> Crumble frame too
               </label>
-              <div class="cad-slider-row" id="brickFrameSuppressionRow" style="margin-bottom:12px;">
+              <label class="cad-label" id="brickFrameSuppressionLabel" style="margin-bottom:4px;">Crumble (fraction)</label>
+              <div class="cad-slider-row" id="brickFrameSuppressionRow"style="margin-bottom:12px;">
                 <input type="range" id="brickFrameSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.3" title="How much of the frame crumbles away">
                 <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickFrameSuppression" value="0.3" min="0" max="1" step="0.01"></div>
               </div>
@@ -3426,7 +3442,7 @@
             <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
 
             <div id="brickSuppressionRow">
-            <label class="cad-label">Suppression</label>
+            <label class="cad-label">Remove bricks (fraction)</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSuppression" value="0"></div>
