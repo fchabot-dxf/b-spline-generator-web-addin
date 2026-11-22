@@ -82,9 +82,10 @@ Purely additive: a new record list (absent = off), a new pass kind, no default c
 3. **Shape presets**: dome, pillow, chamfer plaque, rings, flutes, then the botanical three; Flatten.
 4. **Polish**: levels / curves, brush presets + user presets, texture strokes, transform.
 
-## 10. Questions for Fred (one at a time)
+## 10. Fred's answers (2026-11-22, one at a time)
 
-1. Resolution: how many pixels per inch (precision vs project size)?
-2. Does a height document cover the whole board, or is it a placeable patch (like an STL: moved, sized, reused)?
-3. Sculpt top: keep as it is, or does the painter replace it?
-4. Is slice 1 the right first build?
+1. **Resolution: 100 px/in** (0.01 in per pixel).
+2. **A placeable patch**, like an STL: each height document is its own rectangle (default: the whole board), moved, sized,
+   turned and reusable; several per board.
+3. **Sculpt top stays** as it is (the quick in-3D tweak); the painter is for designed pieces. Saved boards untouched.
+4. **Slice 1 first** (section 9: the paint core), then precision tools, shape presets, polish.
