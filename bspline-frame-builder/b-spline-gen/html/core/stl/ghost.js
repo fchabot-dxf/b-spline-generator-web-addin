@@ -134,7 +134,10 @@ export function ghostGeometry(rawRec, heights, grid) {
   const rels = new Float64Array(nv);
   for (let v = 0; v < nv; v++) {
     const placed = zOff + xyz[v * 3 + 2];
-    positions[v * 3] = xyz[v * 3]; positions[v * 3 + 1] = xyz[v * 3 + 1]; positions[v * 3 + 2] = baseZ + placed;
+    // Fred 2026-11-22 ("ghost yes"): FOLLOW drapes -- each vertex rides the terrain under IT, as the stamp does; LEVEL stays one
+    // rigid object at the terrain under its centre (baseZ), as its stamp does
+    const under = level || !heights ? baseZ : surfaceAt(heights, grid, xyz[v * 3], xyz[v * 3 + 1]);
+    positions[v * 3] = xyz[v * 3]; positions[v * 3 + 1] = xyz[v * 3 + 1]; positions[v * 3 + 2] = under + placed;
     // above (+) or below (-) the surface it is stamped into: follow = relative to the terrain it rides; Level = the rigid
     // object against the terrain under THIS vertex
     const rel = level ? baseZ + placed - surfaceAt(heights, grid, xyz[v * 3], xyz[v * 3 + 1]) : placed;

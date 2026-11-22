@@ -119,14 +119,23 @@ describe('A1: the stamp lands where the ghost is (buildHeightField\'s frame), no
     expect(Math.abs(field.pos[top * 3 + 1] - gy)).toBeLessThanOrEqual(0.5); // (the old raster put it at y = -5)
     expect(field.pos[top * 3 + 2]).toBeCloseTo(1 + 4, 2);
   });
-  it('the ghost\'s base height follows the same frame: sampled at its centre on a surface that rises UP the view', () => {
+  // Fred 2026-11-22 ("ghost yes"): the follow ghost DRAPES (each vertex on the terrain under it), so the frame is checked per
+  // vertex instead of at the centre: the base still rests on the surface buildHeightField draws, in ITS frame (LARGER row = up)
+  it('the ghost rests on the same frame: on a surface that rises UP the view, every base vertex sits on the field under it', () => {
     const rising = Float32Array.from({ length: N }, (_, k) => Math.floor(k / GRID.nx) * 0.1); // row j at y = -10 + j*0.5
     const field = buildHeightField(rising, GRID.nx, GRID.nz, GRID.widthIn, GRID.heightIn);
-    const g = ghostGeometry(rec(pyramid(), { position: { x: 0, y: 6, z: 0 } }), rising, GRID);
-    const lowest = vertexAt(g.positions, (a, b) => a < b);
     const k = Math.round((6 + 10) / 0.5) * GRID.nx + 20; // the field vertex at scene (0, 6)
     expect(field.pos[k * 3 + 1]).toBeCloseTo(6, 6);
-    expect(g.positions[lowest * 3 + 2]).toBeCloseTo(field.pos[k * 3 + 2], 4); // 3.2 (the old surfaceAt read y = -6: 0.8)
+    const fieldZ = (y) => ((y + 10) / 0.5) * 0.1;        // the field's own z at scene y (linear: row j at y = -10 + j*0.5)
+    expect(fieldZ(6)).toBeCloseTo(field.pos[k * 3 + 2], 4);
+    const g = ghostGeometry(rec(pyramid(), { position: { x: 0, y: 6, z: 0 } }), rising, GRID);
+    let minAbove = Infinity;
+    // vertices over the board only (the pyramid spans y 1..11 on a board ending at y = 10, where the field stops rising)
+    for (let v = 0; v < g.positions.length / 3; v++) {
+      if (Math.abs(g.positions[v * 3 + 1]) <= 10) minAbove = Math.min(minAbove, g.positions[v * 3 + 2] - fieldZ(g.positions[v * 3 + 1]));
+    }
+    expect(Number.isFinite(minAbove)).toBe(true);
+    expect(minAbove).toBeCloseTo(0, 4); // the base on the field (a frame read at y = -6 would put it 2.4 in below)
   });
 });
 
@@ -517,10 +526,21 @@ describe('A11: the ghost sits on the surface BEFORE the stamps, not on its own r
       const grid = { nx, nz, widthIn: 5, heightIn: 6 };
       expect(preview.ghosts).toHaveLength(1);
       const g = preview.ghosts[0];
-      const lowZ = g.positions[vertexAt(g.positions, (a, b) => a < b) * 3 + 2];
       const onClean = surfaceAt(cleanHeights, grid, 0, 0), onStamped = surfaceAt(heights, grid, 0, 0);
       expect(onStamped - onClean).toBeGreaterThan(0.5); // the stamp is there
-      expect(lowZ).toBeCloseTo(onClean, 4);             // the old rebuild sat it on `heights` (onStamped)
+      // the draped ghost (Fred 2026-11-22): its base rests on cleanHeights under each vertex -- on `heights` (the old bug) the
+      // centre vertex alone would sit the stamp's height (> 0.5 in) higher
+      let minOnClean = Infinity, maxOnClean = -Infinity;
+      for (let v = 0; v < g.positions.length / 3; v++) {
+        const [x, y, z] = [g.positions[v * 3], g.positions[v * 3 + 1], g.positions[v * 3 + 2]];
+        minOnClean = Math.min(minOnClean, z - surfaceAt(cleanHeights, grid, x, y));
+        maxOnClean = Math.max(maxOnClean, z - surfaceAt(cleanHeights, grid, x, y));
+      }
+      expect(minOnClean).toBeCloseTo(0, 4);
+      // the apex stands the STL's own height (0.8 in, the stamp's) above the clean surface; built on `heights` it would stand
+      // on the stamp itself, about twice that
+      expect(maxOnClean).toBeCloseTo(0.8, 1);
+      expect(maxOnClean).toBeLessThan((onStamped - onClean) + 0.1);
     } finally {
       for (const k of keys) { if (before[k] === undefined) delete P[k]; else P[k] = before[k]; }
       _forgetHeights();

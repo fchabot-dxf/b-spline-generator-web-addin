@@ -72,7 +72,7 @@ export function createSoupView(container, soup, { sizePx = 300 } = {}) {
   const onDown = (e) => { drag = { x: e.clientX, y: e.clientY }; try { canvas.setPointerCapture?.(e.pointerId); } catch (_) { /* not capturable */ } };
   const onMove = (e) => {
     if (!drag) return;
-    model.rotation.z += (e.clientX - drag.x) * 0.01;
+    model.rotation.y += (e.clientX - drag.x) * 0.01; // a turntable about the model's up (+Y in this front view)
     model.rotation.x += (e.clientY - drag.y) * 0.01;
     drag = { x: e.clientX, y: e.clientY };
     draw();
