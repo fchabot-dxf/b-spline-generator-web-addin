@@ -17,7 +17,8 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
 import { decodeMesh, indexMesh } from '../core/stl/mesh.js';
 import { soupFromGlbBuffer } from '../core/stl/gltf.js';
-import { downloadSmithsonianModelSoup } from '../core/stl/smithsonian.js';
+import { SMITHSONIAN_SOURCE } from '../core/stl/smithsonian.js';
+import { STL_LIBRARIES, opsOf, downloadLibrarySoup, libraryOfRecordSource, mbNumber } from '../core/stl/libraries.js';
 import { openStlLibrarySheet } from './stl-library-sheet.js';
 import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
@@ -175,12 +176,14 @@ export function noteStlProjectReplaced() { _projectEpoch++; }
 /**
  * THE import path (an STL file, a GLB file, a library model all end here): a triangle soup (core/stl/parse.js parseStl's `.soup`
  * shape) becomes a new layer, placed at the board centre, fitted to half the board. `name` is shown as given (file callers pass
- * fileBase(file name)). `extra.source` ({ provider, modelUrl, title, uri }: where a library model came from) is stored on the
- * record when given; a record without it has no `source` key at all.
+ * fileBase(file name)). `extra.source` ({ provider, modelUrl | id, title, uri }: where a library model came from) is stored on the
+ * record when given; a record without it has no `source` key at all. `extra.orient` = the library's orientation rule at insert:
+ * 'layFlat' (SMK: its STLs stand Z-up) sets the Lay flat rotation in this same write / undo step; anything else, nothing.
  */
 export function addStlFromSoup(soup, name, extra = {}) {
   const { record: made, original } = createStlLayer({ soup, name: name || 'STL', board: board() });
   let record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
+  if (extra && extra.orient === 'layFlat') record = { ...record, rotation: layFlatRotationOf(record) };
   // Fred 2026-11-22: fitting at insert is an OPTION (P.stlFitOnInsert, default off) -- fitted once, in this same write / undo
   // step, on the surface already built (the clean terrain an STL is stamped on does not depend on the STL); none built yet:
   // after the next build (onStlStockChanged)
@@ -212,11 +215,13 @@ async function soupFromBuffer(buf) {
   return isGlb(buf) ? soupFromGlbBuffer(buf) : parseStl(buf).soup;
 }
 
-/** Download a library model as ONE soup (core/stl/smithsonian.js downloadSmithsonianModelSoup): every part of its Voyager scene,
- *  upright; without a scene every Low part of model `modelId` (a bust and its base), or `uri` alone when that lookup fails. */
-async function downloadModelSoup(modelId, uri) {
-  return downloadSmithsonianModelSoup({ modelId, glbUri: uri }, (...a) => globalThis.fetch(...a));
+/** Download a library model as ONE soup (core/stl/libraries.js downloadLibrarySoup): the Smithsonian's every part of its Voyager
+ *  scene, upright (no scene: every Low part, or `ref.uri` alone); SMK's STL as stored. `opts.onProgress(bytes, total)` while it streams. */
+async function downloadModelSoup(lib, ref, opts = {}) {
+  return downloadLibrarySoup(lib, ref, (...a) => globalThis.fetch(...a), opts);
 }
+/** The panel status line while a model downloads: 'Downloading <name>: 4.2 of 15 MB...'. */
+const downloadProgress = (name) => (got, total) => status(`Downloading ${name || 'the model'}: ${mbNumber(got)}${total ? ` of ${mbNumber(total)}` : ''} MB…`);
 
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
 export function reimportStlBuffer(buf, name, id = activeStlLayer()?.id) {
@@ -278,13 +283,17 @@ function restoreDetail(id, source, want) {
   syncStlPanel();
 }
 
-/** Download layer `id`'s model again (all its parts; its source.uri if the lookup fails), keep it as the in-memory original, then re-store at `want`. */
+/** Download layer `id`'s model again from its library (Smithsonian: all its parts, its source.uri if the lookup fails; SMK: its
+ *  STL), keep it as the in-memory original, then re-store at `want`. */
 async function redownloadAndRestore(id, want) {
   const rec = find(id);
   const epoch = _projectEpoch;
   let original = null;
   try {
-    await withLoadingStage('stl', async () => { original = indexMesh(await downloadModelSoup(rec.source.modelUrl, rec.source.uri)); });
+    const lib = libraryOfRecordSource(rec.source);
+    await withLoadingStage('stl', async () => {
+      original = indexMesh(await downloadModelSoup(lib, opsOf(lib).refOf(rec.source), { onProgress: downloadProgress(rec.name) }));
+    });
   } catch (e) {
     status(`Could not download ${rec.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
     syncStlPanel();
@@ -348,15 +357,22 @@ export function fitStlToCarveDepth(id = activeStlLayer()?.id) {
 /** Layers added with P.stlFitOnInsert on before any surface was built: fitted once, after the next build (onStlStockChanged). */
 const _fitAfterBuild = new Set();
 
-/** 'Lay flat': the active STL's rotation REPLACED by the one that puts its thinnest side up (core/stl/orient.js layFlatFrame on
- *  the decoded stored mesh). One write, one undo step; nothing else changes. */
+/** The Lay flat rotation of record `rec` (core/stl/orient.js layFlatFrame on its decoded stored mesh, from its rotation now),
+ *  written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0.
+ *  The ONE rule: the Lay flat button and a library's 'layFlat' insert both use it. Throws when the stored mesh cannot be read. */
+function layFlatRotationOf(rec) {
+  const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
+  const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation;
+  return { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) };
+}
+
+/** 'Lay flat': the active STL's rotation REPLACED by the one that puts its thinnest side up (layFlatRotationOf). One write, one
+ *  undo step; nothing else changes. */
 export function layFlatStl() {
   const rec = activeStlLayer();
   if (!rec) return false;
   let rotation;
-  // written to 0.1 degree (the boxes showed 7.4001 / -2.97684...; 0.05 degree is far below what a relief shows), wrapped, no -0
-  const tenth = (v) => wrapDeg(Math.round(v * 10) / 10) + 0;
-  try { const r = layFlatFrame(decodeMesh(rec.mesh), normaliseStlLayer(rec).rotation).rotation; rotation = { x: tenth(r.x), y: tenth(r.y), z: tenth(r.z) }; } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
+  try { rotation = layFlatRotationOf(rec); } catch (e) { status(`Could not read the stored mesh: ${e && e.message ? e.message : e}`, true); return false; }
   updateRecord(rec.id, (r) => ({ ...r, rotation }));
   commit('layFlat');
   syncStlPanel();
@@ -412,16 +428,20 @@ async function importFile(file, { reimport = false } = {}) {
 }
 const STALE_IMPORT = 'The project changed while the STL was being read: add it again.';
 
-/** The library sheet's Insert: download the model (all its parts) and add it through the one import path, with where it came from. */
-export async function addStlFromLibrary(tile) {
+/**
+ * The library sheet's Insert: download the model from its library (`lib`, core/stl/libraries.js; the Smithsonian when not given)
+ * and add it through the one import path, with where it came from and the library's orientation rule (SMK: laid flat).
+ */
+export async function addStlFromLibrary(tile, lib = SMITHSONIAN_SOURCE) {
   const epoch = _projectEpoch; // a project load during the download drops it (as importFile)
+  const ops = opsOf(lib);
   try {
     let done = null;
     let stale = false;
     await withLoadingStage('stl', async () => {
-      const soup = await downloadModelSoup(tile.id, tile.glbUrl);
+      const soup = await downloadModelSoup(lib, { id: tile.id, uri: ops.fileUrl(tile) }, { onProgress: downloadProgress(tile.title) });
       if (epoch !== _projectEpoch) { stale = true; return; }
-      done = addStlFromSoup(soup, tile.title, { source: { provider: 'smithsonian', modelUrl: tile.id, title: tile.title, uri: tile.glbUrl } });
+      done = addStlFromSoup(soup, tile.title, { source: ops.sourceRecord(tile), orient: lib.orient });
     });
     if (stale) status(STALE_IMPORT, true);
     else if (done) status('');
@@ -467,7 +487,7 @@ export function renderStlPanel(body) {
   body.innerHTML = '';
   body.appendChild(el('div', { class: 'stl-add-row' }, [
     el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add STL…' }),
-    el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse Smithsonian…', title: 'Pick a model from the Smithsonian\'s open 3D collection' }),
+    el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse 3D libraries…', title: `Pick a model from the open 3D collections: ${STL_LIBRARIES.map((l) => l.label).join(', ')}` }),
     el('input', { type: 'file', id: 'stlFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
     el('input', { type: 'file', id: 'stlReimportFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
   ]));
@@ -602,7 +622,7 @@ export function syncStlPanel() {
     const refetch = !can && !!(rec.source && rec.source.uri);
     if (stored) stored.textContent = `Stored ${(rec.storedTris ?? rec.mesh?.nt ?? 0).toLocaleString()} of ${(rec.origTris ?? rec.mesh?.nt ?? 0).toLocaleString()} triangles, about ${mb(sizeOf(rec))} MB. ${can ? 'The original is loaded: the detail can go up or down.' : refetch ? 'After a reload, more detail downloads the model again.' : 'After a reload the detail can only go down; re-import the file for more.'}`;
     const src = byId('stlSource');
-    if (src) { src.hidden = !rec.source; src.textContent = rec.source ? `From the Smithsonian (CC0): ${rec.source.title || rec.name || ''}` : ''; }
+    if (src) { src.hidden = !rec.source; src.textContent = rec.source ? `${libraryOfRecordSource(rec.source).sourceNote}: ${rec.source.title || rec.name || ''}` : ''; }
     const h = byId('stlHealth'); if (h) h.textContent = healthText(rec);
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
@@ -641,7 +661,7 @@ export function bindStlPanel(hooks = {}) {
   // the slider: the box follows live while dragging; the re-store (a decimate, ~100 ms+) runs on release only
   byId('stlDetailSlider')?.addEventListener('input', (e) => { const b = byId('stlDetail'); if (b) b.value = e.target.value; });
   byId('stlDetailSlider')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
-  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ onPick: (tile) => addStlFromLibrary(tile) }));
+  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib) => addStlFromLibrary(tile, lib) }));
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');

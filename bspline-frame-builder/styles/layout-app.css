@@ -1140,6 +1140,20 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-lib-pane-buttons { display: flex; gap: 8px; }
 .stl-lib-pane-buttons .cad-btn { flex: 1; min-height: 32px; }
 .stl-lib-credit { justify-content: flex-start; font-size: 11px; opacity: 0.85; }
+/* SMK-LIBRARY (design section 9): the Library picker heads the row, SMK's Type beside it; a library's own filter is hidden while
+   another (or All) is picked; each tile's library badge + listed size; the pane's library / licence / size / credit lines */
+.stl-lib-library { flex: 1 1 130px; min-width: 0; min-height: 32px; font: inherit; font-weight: 600; }
+.stl-lib-type { flex: 1 1 110px; min-width: 0; min-height: 32px; font: inherit; }
+.stl-lib-search [hidden] { display: none; }
+.stl-lib-notes { margin: 0 0 6px; }
+.stl-lib-notes[hidden] { display: none; }
+.stl-lib-meta { display: flex; flex-wrap: wrap; gap: 3px; font-size: 10px; line-height: 1.2; }
+.stl-lib-badge { padding: 0 4px; border-radius: 3px; background: #e7eefc; color: #1f3f7a; font-weight: 600; }
+.stl-lib-tile[data-library="smk"] .stl-lib-badge { background: #f6e9dc; color: #6b3a12; }
+.stl-lib-size, .stl-lib-shape-word { color: #555; }
+.stl-lib-pane-info { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.stl-lib-pane-info[hidden] { display: none; }
+.stl-lib-pane-credit { font-size: 11px; opacity: 0.85; }
 @media (max-width: 600px) {
   .stl-lib-main { flex-direction: column; align-items: stretch; }
   .stl-lib-pane { order: -1; flex: none; position: static; }
@@ -1149,7 +1163,7 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
   .stl-row input { min-width: 28px; min-height: 28px; }
   .stl-row-name, .stl-add-row .cad-btn, #stlRemove { min-height: 32px; }
   .stl-lib-tile { min-height: 32px; }
-  .stl-lib-close, .stl-lib-query, .stl-lib-museum, .stl-lib-shape, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
+  .stl-lib-close, .stl-lib-query, .stl-lib-library, .stl-lib-museum, .stl-lib-type, .stl-lib-shape, .stl-lib-search .cad-btn, .stl-lib-more, .stl-lib-pane-buttons .cad-btn { min-height: 36px; }
   .stl-lib-ratio input { min-height: 36px; }
   .stl-lib-close { min-width: 36px; }
 }
