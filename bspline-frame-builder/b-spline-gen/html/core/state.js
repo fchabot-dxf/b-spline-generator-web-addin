@@ -2,6 +2,7 @@ import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
 import { fusDebug } from './fusion-log.js';
+import { stampTarget } from './stamp/target.js'; // a cycle by design: both only call each other at run time
 
 // Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
 // default used to repeat it with a different grout (0.06 vs the set's 0.034, its 17% joint rule), so
@@ -673,11 +674,11 @@ export function updateP(key, value) {
     // already-correct pattern (main/stamp/_dom-binders.js), which never had
     // this gate and already writes past layer 3. Position-based mapping
     // until each stamp pass formally points at an editor layer id.
+    // DRAW-STAMP U: through the ONE stamp target (core/stamp/target.js) -- the selected editor layer, as before
     if (layerSpecific[key]) {
         try {
-            const editorLayer = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
-                ? window.svgEditor._layers[P.activeLayerIdx] : null;
-            if (editorLayer) { editorLayer[layerSpecific[key]] = P[key]; layerToolingChanged(); }
+            const target = stampTarget();
+            if (target.editorLayer) target.set(layerSpecific[key], P[key]);
         } catch (_) { /* defensive: state.js must not crash on editor access */ }
     }
 

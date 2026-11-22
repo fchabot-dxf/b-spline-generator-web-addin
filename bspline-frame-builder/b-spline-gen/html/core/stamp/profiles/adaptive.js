@@ -14,6 +14,7 @@ const ADAPT_ANGLE_RAD = 75 * Math.PI / 180;
 export const adaptive = {
   id: 'adaptive',
   label: 'Adaptive (Fine Detail)',
+  summary: 'Adaptive', // the sidebar's one-line layer summary (core/stamp/target.js stampSummaryText)
 
   Zp(ctx) {
     if (ctx.distIn >= 0) return ctx.maxDepth;

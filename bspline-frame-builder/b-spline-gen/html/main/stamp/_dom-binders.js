@@ -23,12 +23,14 @@
  */
 import { scheduleUndoSnapshot } from '../../core/history.js';
 import { attachFormula } from '../../core/formula-field.js';
-import { layerToolingChanged } from '../../core/state.js';
+import { layerStampTarget } from '../../core/stamp/target.js';
 
-export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask }) {
-  // Defensive default so older callers that don't supply activeEditorLayer
-  // still work (returns null = "no editor layer to mirror into").
-  const _editorLayer = typeof activeEditorLayer === 'function' ? activeEditorLayer : () => null;
+/** DRAW-STAMP U (advisor 2026-11-22): every layer-only write below goes through ONE stamp target -- `target()`
+ *  (core/stamp/target.js stampTarget, what createStampCtx passes); a caller with its own accessors (`activeLayer`,
+ *  optional `activeEditorLayer` = "no editor layer to mirror into" when absent) gets the same write rule. */
+export function createDomBinders({ target, activeLayer, activeEditorLayer, requestRemask }) {
+  const _target = typeof target === 'function' ? target
+    : () => layerStampTarget(activeLayer ? activeLayer() : null, typeof activeEditorLayer === 'function' ? activeEditorLayer() : null);
   return {
     bindNumberSlider(inputId, sliderId, layerField) {
       const num = document.getElementById(inputId);
@@ -66,14 +68,10 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
       const sld = sliderId ? document.getElementById(sliderId) : null;
       const triggerRemask = opts.triggerRemask !== false;
       const writeAndRefresh = (v) => {
-        const layer = activeLayer();
         const value = Number.isFinite(v) ? v : 0;
-        if (layer) layer[layerField] = value;
-        // Mirror to the matching editor layer so the rasterizer/compositor
-        // see the change immediately when they read from editor._layers
-        // (Step 2 of stamp-layer → editor-layer unification).
-        const eLayer = _editorLayer();
-        if (eLayer) { eLayer[layerField] = value; layerToolingChanged(); }
+        // the target's record + the editor layer it mirrors into, so the rasterizer/compositor see the change
+        // immediately when they read from editor._layers (Step 2 of stamp-layer → editor-layer unification)
+        _target().set(layerField, value);
         if (triggerRemask) requestRemask();
       };
       if (num) {
@@ -115,10 +113,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
         }
       };
       const writeAndRefresh = (value) => {
-        const layer = activeLayer();
-        if (layer) layer[layerField] = value;
-        const eLayer = _editorLayer();
-        if (eLayer) { eLayer[layerField] = value; layerToolingChanged(); }
+        _target().set(layerField, value);
         setActive(value);
         if (triggerRemask) requestRemask();
         scheduleUndoSnapshot(layerField, opts.undoLabel);
@@ -137,11 +132,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
       const triggerRemask = opts.triggerRemask !== false;
       if (cb) {
         cb.addEventListener('change', () => {
-          const layer = activeLayer();
-          if (layer) layer[layerField] = cb.checked;
-          // Mirror to editor layer (Step 2 unification).
-          const eLayer = _editorLayer();
-          if (eLayer) { eLayer[layerField] = cb.checked; layerToolingChanged(); }
+          _target().set(layerField, cb.checked); // + the editor-layer mirror (Step 2 unification)
           if (triggerRemask) requestRemask();
           scheduleUndoSnapshot(checkboxId);
         });

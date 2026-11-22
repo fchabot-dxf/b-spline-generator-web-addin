@@ -15,6 +15,7 @@ import { powerStep } from '../sdf.js';
 export const ballnose = {
   id: 'ballnose',
   label: 'Ballnose (Round)',
+  summary: 'Ballnose', // the sidebar's one-line layer summary (core/stamp/target.js stampSummaryText)
 
   Zp(ctx) {
     if (ctx.distIn <= 0) return 0;

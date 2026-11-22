@@ -12,6 +12,7 @@ import { powerStep } from '../sdf.js';
 export const flat = {
   id: 'flat',
   label: 'Flat Endmill (Hard)',
+  summary: 'Flat endmill', // the sidebar's one-line layer summary (core/stamp/target.js stampSummaryText)
 
   Zp(ctx) {
     return ctx.distIn > 0 ? ctx.maxDepth : 0;
