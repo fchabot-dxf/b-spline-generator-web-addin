@@ -7,7 +7,7 @@
  * chisel = across the blade only (square ends). The round byte-identity pin is tests/height-brush-tip-pin.test.js.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createStroke, BRUSH_DEFAULTS, BRUSH_TIPS, BRUSH_QUICK_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/height/brush.js';
+import { createStroke, BRUSH_DEFAULTS, BRUSH_TIPS, BRUSH_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/height/brush.js';
 import { f16Round, decodedRaster } from '../bspline-frame-builder/b-spline-gen/html/core/height/raster.js';
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
@@ -127,15 +127,15 @@ describe('the panel', () => {
 
   it('the tip controls are declared (brush target, in the slice-2 tool table) and render', () => {
     const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.target === 'brush').map((c) => c.id);
-    expect(ids).toEqual(['tip', 'roundness', 'angle', 'followStroke']);
+    expect(ids).toEqual(['buildUp', 'tip', 'roundness', 'angle', 'followStroke']); // + buildUp (slice 3b)
     expect(HEIGHT_CONTROLS.some((c) => c.id === 'tip')).toBe(false); // the pinned slice-1 table is unchanged
     for (const id of ['roundness', 'angle', 'followStroke']) expect(document.getElementById(`height_${id}`), id).toBeTruthy();
     expect(document.querySelectorAll('[data-height-choice^="tip:"]').length).toBe(3);
     setHeightField('tip', 'square'); setHeightField('roundness', 0.4); setHeightField('angle', 30); setHeightField('followStroke', true);
     expect(heightBrush()).toMatchObject({ tip: 'square', roundness: 0.4, angle: 30, followStroke: true });
   });
-  it('the Bevel quick preset: square tip, linear falloff, hardness 0.3; a dab of it is a chamfer in the stored raster', async () => {
-    expect(BRUSH_QUICK_PRESETS.bevel.brush).toEqual({ tip: 'square', falloff: 'linear', hardness: 0.3 });
+  it('the Bevel preset (a picker tile): square tip, linear falloff, hardness 0.3; a dab of it is a chamfer in the stored raster', async () => {
+    expect(BRUSH_PRESETS.bevel.brush).toMatchObject({ tip: 'square', falloff: 'linear', hardness: 0.3 }); // slice 3b: the picker's table (Fred 2026-11-22)
     document.getElementById('heightBrushPreset_bevel').click();
     expect(heightBrush()).toMatchObject({ tip: 'square', falloff: 'linear', hardness: 0.3 });
     await newHeightPatch(); // 200 x 200

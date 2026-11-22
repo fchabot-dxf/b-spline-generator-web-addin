@@ -16,7 +16,7 @@ import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
-import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, BRUSH_TIPS, BRUSH_QUICK_PRESETS, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
+import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, BRUSH_TIPS, BRUSH_PRESETS, BRUSH_ALT_MODE, brushPresetOf, brushFalloff, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
 import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
 import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
@@ -35,6 +35,7 @@ import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
+import { mountIconGrid } from './icon-select.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -43,7 +44,8 @@ export const HEIGHT_VIEW = Object.freeze({
 });
 
 export const HEIGHT_GROUPS = Object.freeze([
-  Object.freeze({ id: 'brush', label: 'Brush', showWhen: (ctx) => !ctx || ctx.tool === 'brush' }),
+  // the Brush AND the Eraser (HEIGHT_TOOLS rows with rush) share this section: the picker + the brush settings (slice 3b)
+  Object.freeze({ id: 'brush', label: 'Brush', note: 'pick a brush, then paint; Alt while painting: Raise <-> Lower', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
   Object.freeze({ id: 'patch', label: 'Patch', note: 'inches from the board centre; +Y is up the screen' }),
   Object.freeze({ id: 'stamp', label: 'Stamp' }),
 ]);
@@ -58,8 +60,9 @@ const MODE_LABELS = Object.freeze({ raise: ['▲', 'Raise', 'Add height'], lower
 const sameCurve = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
 
 export const HEIGHT_CONTROLS = Object.freeze([
-  { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', rail: true,
-    options: BRUSH_MODES.map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
+  // Fred 2026-11-22 (slice 3b): ONE Brush tool on the rail; its modes are this row in the panel, and erase is the Eraser tool
+  { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
+    options: BRUSH_MODES.filter((m) => m !== 'erase').map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   // Fred 2026-11-22: the shape of the roll-off outside the hard core (core/height/brush.js BRUSH_FALLOFFS)
@@ -73,8 +76,8 @@ export const HEIGHT_CONTROLS = Object.freeze([
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
   { id: 'flow', group: 'brush', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },
-  { id: 'amountIn', group: 'brush', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1] },
-  { id: 'targetIn', group: 'brush', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5],
+  { id: 'amountIn', group: 'brush', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser' },
+  { id: 'targetIn', group: 'brush', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     note: '0 = transparent (no effect on the board)' },
   { id: 'pressureSize', group: 'brush', target: 'brush', kind: 'check', path: ['pressureSize'], label: 'Pen pressure → size' },
   { id: 'pressureOpacity', group: 'brush', target: 'brush', kind: 'check', path: ['pressureOpacity'], label: 'Pen pressure → opacity' },
@@ -102,7 +105,9 @@ export const HEIGHT_CONTROLS = Object.freeze([
  */
 /** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below. */
 export const HEIGHT_TOOLS = Object.freeze([
-  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights (the modes below)' }),
+  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null } }),
+  // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
+  Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' } }),
   Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it' }),
   Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
@@ -123,7 +128,8 @@ export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
   Object.freeze({ id: 'move', label: 'Move', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the marquee only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
-  Object.freeze({ id: 'tip', label: 'Brush tip', note: 'square + Linear falloff = a bevel', showWhen: (ctx) => ctx.tool === 'brush', follows: 'brush' }),
+  // the tip settings show only for a non-round tip (a round brush is set by its falloff); a preset picks the tip (slice 3b)
+  Object.freeze({ id: 'tip', label: 'Tip shape', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
@@ -162,6 +168,8 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'importAsNew', group: 'file', target: 'file', kind: 'check', path: ['asNewPatch'], label: 'Import as a new patch (sized to the image)' },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
+  // slice 3b: build-up on (slice 1: each dab adds to the stroke) / off (the stroke keeps the tip's profile); a preset sets it
+  { id: 'buildUp', group: 'brush', target: 'brush', kind: 'check', path: ['buildUp'], label: 'Build up (off: a stroke keeps the brush profile)' },
   // slice 3: the brush TIP (core/height/brush.js BRUSH_TIPS; brush UI state like the slice-1 brush controls)
   { id: 'tip', group: 'tip', target: 'brush', kind: 'choice', path: ['tip'], label: 'Tip',
     options: Object.entries(BRUSH_TIPS).map(([k, t]) => [k, t.label, t.title]),
@@ -287,14 +295,24 @@ function cancelStroke() {
   _stroke = null;
   syncHeightOverlay();
 }
-function beginStroke(pt, pressure) {
+/** True for a HEIGHT_TOOLS row that paints with the brush (the Brush, the Eraser): they share its picker and settings. */
+function usesBrush(toolId) { const t = HEIGHT_TOOLS.find((x) => x.id === toolId); return !!(t && t.brush); }
+/** The brush a stroke of tool `toolId` paints with: the shared brush, the tool's own mode (the Eraser's 'erase'), and with
+ *  Alt held the Brush's BRUSH_ALT_MODE flip (raise <-> lower; set / smooth unchanged). */
+function strokeBrush(toolId, e) {
+  const t = HEIGHT_TOOLS.find((x) => x.id === toolId);
+  const mode = (t && t.brush && t.brush.mode) || _brush.mode;
+  const flipped = e && e.altKey && !(t && t.brush && t.brush.mode) ? BRUSH_ALT_MODE[mode] : null;
+  return mode === _brush.mode && !flipped ? _brush : { ..._brush, mode: flipped || mode };
+}
+function beginStroke(pt, pressure, brush = _brush) {
   cancelStroke(); // a stroke the editor abandoned (a pinch, a tool switch) is put back, never half-committed
   const rec = activeHeightLayer();
   const work = paintableCopy(rec);
   if (!work) return false;
   const pr = placed(rec), size = pr.sizeIn;
   // rotationDeg: the tip's angle is on the BOARD, the raster turns with the patch
-  const s = createStroke(work, _brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h, mask: maskOf(rec), rotationDeg: pr.rotation });
+  const s = createStroke(work, brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h, mask: maskOf(rec), rotationDeg: pr.rotation });
   _stroke = { s, id: rec.id };
   const q = pixelOf(rec, pt);
   s.addPoint(q.c, q.r, pressure);
@@ -367,7 +385,8 @@ function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) 
 /** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
 const selectGesture = (kind) => ({ start: (pt) => beginSelect(kind, pt), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
 const GESTURES = {
-  brush: { start: (pt, e) => beginStroke(pt, pressureOf(e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+  brush: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('brush', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+  eraser: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('eraser', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
   selectRect: selectGesture('rect'),
   selectEllipse: selectGesture('ellipse'),
   selectLasso: selectGesture('lasso'),
@@ -1023,7 +1042,7 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
     v = ok ? value.map((p) => [p[0], p[1]]).sort((a, b) => a[0] - b[0]) : undefined;
   }
   if (v === undefined) return false;
-  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; drawCursor(); return true; }
+  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncBrushPicker(); drawCursor(); return true; }
   if (_tools[c.target]) { // a tool's UI state
     const st = _tools[c.target];
     _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
@@ -1041,14 +1060,28 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   return true;
 }
 export const heightBrush = () => ({ ..._brush });
-/** A BRUSH_QUICK_PRESETS entry over the current brush (UI state; the brush tool is kept). */
+let _lastPreset = 'softRound'; // the preset last picked (the "Modified (from ...)" note)
+/** A BRUSH_PRESETS entry over the current brush: its tip and profile; the size, opacity, flow and amount stay. */
 export function applyHeightBrushPreset(id) {
-  const p = BRUSH_QUICK_PRESETS[id];
+  const p = BRUSH_PRESETS[id];
   if (!p) return false;
   _brush = { ..._brush, ...p.brush };
+  _lastPreset = id;
   syncHeightPanel();
   drawCursor();
   return true;
+}
+/** The picker follows the brush: the preset it matches is the active tile; none (an edit after a pick) = no tile and the
+ *  note "Modified (from <last pick>)". The tip group follows the tip (its declared showWhen). */
+function syncBrushPicker() {
+  if (typeof document === 'undefined') return;
+  const cur = brushPresetOf(_brush);
+  if (cur) _lastPreset = cur;
+  for (const b of document.querySelectorAll('[data-height-brush-preset]')) b.classList.toggle('active', b.getAttribute('data-height-brush-preset') === cur);
+  const note = byId('heightBrushPresetNote');
+  if (note) { note.textContent = cur ? '' : `Modified (from ${BRUSH_PRESETS[_lastPreset] ? BRUSH_PRESETS[_lastPreset].label : 'a preset'})`; note.hidden = !!cur; }
+  const tipBox = byId('heightGroup_tip'), g = HEIGHT_TOOL_GROUPS.find((x) => x.id === 'tip');
+  if (tipBox && g) tipBox.hidden = !g.showWhen(panelCtx());
 }
 
 // ── the canvas overlay (the shared editor canvas) ───────────────────────────────────────────────────────────────────
@@ -1356,12 +1389,32 @@ function controlSource(c, rec) {
   if (!rec) return null;
   return c.target === 'layer' ? layerOf(rec) : placed(rec);
 }
+/** A brush preset's tile icon (64 x 64): its FOOTPRINT on top (the tip's BRUSH_TIPS box, squashed by its roundness; a
+ *  stroke arrow when it turns with the stroke) and its PROFILE below (the falloff across the tip, hardness included). */
+function brushPresetIcon(b) {
+  const tip = BRUSH_TIPS[b.tip] || BRUSH_TIPS.round, k = Number.isFinite(b.roundness) ? b.roundness : 1;
+  const ink = HEIGHT_VIEW.outline, R = 13, ry = Math.max(1.5, R * k);
+  const foot = tip.box === 'rect'
+    ? `<rect x="${32 - R}" y="${(19 - ry).toFixed(1)}" width="${2 * R}" height="${(2 * ry).toFixed(1)}" fill="${ink}" fill-opacity="0.25" stroke="${ink}" stroke-width="1.5"/>`
+    : `<ellipse cx="32" cy="19" rx="${R}" ry="${ry.toFixed(1)}" fill="${ink}" fill-opacity="0.25" stroke="${ink}" stroke-width="1.5"/>`;
+  const arrow = b.followStroke ? `<path d="M8 19H56M50 14L56 19L50 24" fill="none" stroke="${ink}" stroke-width="1.2" stroke-opacity="0.6"/>` : '';
+  const pts = [];
+  for (let i = 0; i <= 40; i++) { const t = i / 20 - 1; pts.push(`${(32 + 26 * t).toFixed(1)} ${(60 - 22 * brushFalloff(Math.abs(t), 1, b.hardness, b.falloff)).toFixed(1)}`); }
+  const prof = `<path d="M6 60L${pts.join('L')}L58 60Z" fill="${ink}" fill-opacity="0.55" stroke="${ink}" stroke-width="1"/>`;
+  return `<svg xmlns="${NS}" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true">${arrow}${foot}<line x1="4" y1="60" x2="60" y2="60" stroke="currentColor" stroke-opacity="0.35"/>${prof}</svg>`;
+}
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
-  // slice 3: the one-tap brush settings (core/height/brush.js BRUSH_QUICK_PRESETS), above the tip controls
-  tip: () => el('div', { class: 'photo-layer-buttons' }, Object.entries(BRUSH_QUICK_PRESETS).map(([id, p]) => el('button', {
-    type: 'button', id: `heightBrushPreset_${id}`, class: 'cad-btn cad-btn-secondary', 'data-height-brush-preset': id, text: p.label, title: p.title,
-  }))),
+  // slice 3b: the BRUSH PICKER (core/height/brush.js BRUSH_PRESETS) -- its tiles, turned into the app's one picker by
+  // main/icon-select.js mountIconGrid once the panel is on the page (renderHeightPanel)
+  brush: () => el('div', { id: 'heightBrushPicker', style: 'margin-bottom:10px;' }, [
+    el('div', { id: 'heightBrushPresets' }, Object.entries(BRUSH_PRESETS).map(([id, p]) => {
+      const b = el('button', { type: 'button', id: `heightBrushPreset_${id}`, class: 'cad-btn icon-select-option', 'data-height-brush-preset': id, title: `${p.label}: ${p.title}`, 'aria-label': p.label });
+      b.innerHTML = brushPresetIcon(p.brush);
+      return b;
+    })),
+    el('div', { id: 'heightBrushPresetNote', class: 'photo-layer-note', hidden: '' }),
+  ]),
   file: () => el('div', { class: 'photo-layer-buttons' }, [
     el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
     el('button', { type: 'button', id: 'heightImportBtn', class: 'cad-btn cad-btn-secondary', text: 'Import heightmap…', title: 'A grey picture as an image layer (its grey values kept; the mapping stays live)' }),
@@ -1424,6 +1477,9 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
     body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
+  // the brush picker: its tiles become the app's one picker (AGENTS.md rule 2: never a hand-built popover)
+  mountIconGrid(byId('heightBrushPresets'), { label: 'Brush', optionSelector: '[data-height-brush-preset]', ids: { wrap: 'heightBrushPickerWrap', chip: 'heightBrushChip', name: 'heightBrushName' } });
+  syncBrushPicker();
 }
 
 /** The active patch's layers, TOP first: visible, name (select), up / down, delete. */
@@ -1507,6 +1563,7 @@ export function syncHeightPanel() {
   const hasSel = !!heightSelection();
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
+  syncBrushPicker();
   const stored = byId('heightStored');
   if (stored) {
     const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);
@@ -1629,7 +1686,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _float = null; _marq = null; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _float = null; _marq = null; _lastPreset = 'softRound'; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;
