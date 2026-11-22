@@ -15,7 +15,9 @@ import { scheduleUndoSnapshot } from '../core/history.js';
 import { setSectionReadOnly } from '../core/ui-utils.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { parseStl } from '../core/stl/parse.js';
-import { decodeMesh } from '../core/stl/mesh.js';
+import { decodeMesh, indexMesh } from '../core/stl/mesh.js';
+import { soupFromGltfScene, loadGlbScene, disposeGltfScene } from '../core/stl/gltf.js';
+import { openStlLibrarySheet } from './stl-library-sheet.js';
 import {
   createStlLayer, restoreAtDetail, normaliseStlLayer, stlHealth, totalStoredTris, getStlErrors, STL_WARN_TOTAL_TRIS,
 } from '../core/stl/layer.js';
@@ -147,10 +149,15 @@ const announceStlLayersChanged = () => { if (typeof document !== 'undefined') do
 let _projectEpoch = 0;
 export function noteStlProjectReplaced() { _projectEpoch++; }
 
-/** Add an STL (an ArrayBuffer of its bytes) as a new layer, placed at the board centre, fitted to half the board. */
-export function addStlFromBuffer(buf, name) {
-  const parsed = parseStl(buf);
-  const { record, original } = createStlLayer({ soup: parsed.soup, name: fileBase(name), board: board() });
+/**
+ * THE import path (an STL file, a GLB file, a library model all end here): a triangle soup (core/stl/parse.js parseStl's `.soup`
+ * shape) becomes a new layer, placed at the board centre, fitted to half the board. `name` is shown as given (file callers pass
+ * fileBase(file name)). `extra.source` ({ provider, modelUrl, title, uri }: where a library model came from) is stored on the
+ * record when given; a record without it has no `source` key at all.
+ */
+export function addStlFromSoup(soup, name, extra = {}) {
+  const { record: made, original } = createStlLayer({ soup, name: name || 'STL', board: board() });
+  const record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
   P.stlLayers = [...list(), record];
   _originals.set(record.id, original);
   _active = record.id;
@@ -160,12 +167,45 @@ export function addStlFromBuffer(buf, name) {
   return record;
 }
 
+/** Add an STL (an ArrayBuffer of its bytes) as a new layer. */
+export function addStlFromBuffer(buf, name) {
+  return addStlFromSoup(parseStl(buf).soup, fileBase(name));
+}
+
+/** A GLB file starts with the 4 bytes 'glTF'. */
+const isGlb = (buf) => {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return u8.byteLength >= 4 && u8[0] === 0x67 && u8[1] === 0x6c && u8[2] === 0x54 && u8[3] === 0x46;
+};
+
+/** A GLB's bytes -> its soup (the loaded scene freed once read). */
+async function soupFromGlb(buf) {
+  const scene = await loadGlbScene(buf);
+  try { return soupFromGltfScene(scene); } finally { disposeGltfScene(scene); }
+}
+
+/** A file's bytes -> its triangle soup: a GLB through the glTF loader, anything else as an STL. */
+async function soupFromBuffer(buf) {
+  return isGlb(buf) ? soupFromGlb(buf) : parseStl(buf).soup;
+}
+
+/** Download a library model's GLB and read it as a soup. */
+async function downloadGlbSoup(uri) {
+  const res = await fetch(uri);
+  if (!res || !res.ok) throw new Error(`the download answered ${res ? res.status : '?'}${res && res.statusText ? ` ${res.statusText}` : ''}`);
+  return soupFromGlb(await res.arrayBuffer());
+}
+
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
 export function reimportStlBuffer(buf, name, id = activeStlLayer()?.id) {
+  if (!find(id)) { status('That STL layer is gone, nothing was replaced.', true); return null; }
+  return reimportStlSoup(parseStl(buf).soup, name, id);
+}
+
+function reimportStlSoup(soup, name, id) {
   const rec = find(id);
   if (!rec) { status('That STL layer is gone, nothing was replaced.', true); return null; }
-  const parsed = parseStl(buf);
-  const fresh = createStlLayer({ soup: parsed.soup, name: rec.name, board: board(), storedDetail: normaliseStlLayer(rec).storedDetail });
+  const fresh = createStlLayer({ soup, name: rec.name, board: board(), storedDetail: normaliseStlLayer(rec).storedDetail });
   const { mesh, origTris, storedTris, health } = fresh.record;
   updateRecord(rec.id, (r) => ({ ...r, mesh, origTris, storedTris, health }));
   _originals.set(rec.id, fresh.original);
@@ -201,12 +241,38 @@ export function setStoredDetail(n) {
   if (!rec) return null;
   const want = typeof n === 'string' && n.trim() === '' ? NaN : Math.round(Number(n));
   const original = _originals.get(rec.id);
-  if (!Number.isFinite(want) || want < 1 || (!original && want >= (rec.storedTris ?? rec.mesh?.nt ?? 0))) { syncStlPanel(); return rec; }
-  const next = restoreAtDetail(rec, original || decodeMesh(rec.mesh), want);
-  updateRecord(rec.id, (r) => ({ ...r, storedDetail: want, storedTris: next.storedTris, mesh: next.mesh }));
+  const storedNow = rec.storedTris ?? rec.mesh?.nt ?? 0;
+  // a library model (source.uri) after a reload: going UP downloads it again (async; resolves to the record)
+  if (Number.isFinite(want) && want > storedNow && !original && rec.source && rec.source.uri) return redownloadAndRestore(rec.id, want);
+  if (!Number.isFinite(want) || want < 1 || (!original && want >= storedNow)) { syncStlPanel(); return rec; }
+  restoreDetail(rec.id, original || decodeMesh(rec.mesh), want);
+  return find(rec.id);
+}
+
+function restoreDetail(id, source, want) {
+  const next = restoreAtDetail(find(id), source, want);
+  updateRecord(id, (r) => ({ ...r, storedDetail: want, storedTris: next.storedTris, mesh: next.mesh }));
   commit('detail');
   syncStlPanel();
-  return find(rec.id);
+}
+
+/** Download layer `id`'s model again (its source.uri), keep it as the in-memory original, then re-store at `want`. */
+async function redownloadAndRestore(id, want) {
+  const rec = find(id);
+  const epoch = _projectEpoch;
+  let original = null;
+  try {
+    await withLoadingStage('stl', async () => { original = indexMesh(await downloadGlbSoup(rec.source.uri)); });
+  } catch (e) {
+    status(`Could not download ${rec.name || 'the model'} again: ${e && e.message ? e.message : e}`, true);
+    syncStlPanel();
+    return find(id);
+  }
+  if (epoch !== _projectEpoch || !find(id)) { status('The project changed while the model was downloading: nothing changed.', true); syncStlPanel(); return find(id); }
+  _originals.set(id, original);
+  status('');
+  restoreDetail(id, original, want);
+  return find(id);
 }
 
 /** Z = 0: the base rests on the surface. */
@@ -224,12 +290,36 @@ async function importFile(file, { reimport = false } = {}) {
     await withLoadingStage('stl', async () => {
       const buf = await file.arrayBuffer();
       if (epoch !== _projectEpoch) { stale = true; return; }
-      done = reimport ? reimportStlBuffer(buf, file.name, target) : addStlFromBuffer(buf, file.name);
+      if (reimport && !find(target)) { status('That STL layer is gone, nothing was replaced.', true); return; }
+      const soup = await soupFromBuffer(buf);
+      if (epoch !== _projectEpoch) { stale = true; return; } // a GLB decode is async too
+      done = reimport ? reimportStlSoup(soup, file.name, target) : addStlFromSoup(soup, fileBase(file.name));
     });
-    if (stale) status('The project changed while the STL was being read: add it again.', true);
+    if (stale) status(STALE_IMPORT, true);
     else if (done) status('');
   } catch (e) {
     status(`Could not read ${file.name || 'that file'}: ${e && e.message ? e.message : e}`, true);
+  }
+}
+const STALE_IMPORT = 'The project changed while the STL was being read: add it again.';
+
+/** The library sheet's Insert: download the model's GLB and add it through the one import path, with where it came from. */
+export async function addStlFromLibrary(tile) {
+  const epoch = _projectEpoch; // a project load during the download drops it (as importFile)
+  try {
+    let done = null;
+    let stale = false;
+    await withLoadingStage('stl', async () => {
+      const soup = await downloadGlbSoup(tile.glbUrl);
+      if (epoch !== _projectEpoch) { stale = true; return; }
+      done = addStlFromSoup(soup, tile.title, { source: { provider: 'smithsonian', modelUrl: tile.id, title: tile.title, uri: tile.glbUrl } });
+    });
+    if (stale) status(STALE_IMPORT, true);
+    else if (done) status('');
+    return done;
+  } catch (e) {
+    status(`Could not load ${tile.title || 'that model'}: ${e && e.message ? e.message : e}`, true);
+    return null;
   }
 }
 
@@ -241,6 +331,10 @@ const el = (tag, attrs = {}, kids = []) => {
   return e;
 };
 const cad = (text) => el('label', { class: 'cad-label', text });
+/** What the two file buttons take: STL, and GLB (the glTF loader is there for the library anyway). */
+const STL_FILE_ACCEPT = '.stl,model/stl,application/sla,application/octet-stream,.glb,model/gltf-binary';
+/** The Stored detail slider's travel (min / max attributes only, NOT a rule: a typed value is taken as setStoredDetail takes it). */
+const DETAIL_SLIDER = Object.freeze({ min: 500, step: 500 });
 
 function renderControl(c) {
   if (c.kind === 'choice') {
@@ -260,8 +354,9 @@ export function renderStlPanel(body) {
   body.innerHTML = '';
   body.appendChild(el('div', { class: 'stl-add-row' }, [
     el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add STL…' }),
-    el('input', { type: 'file', id: 'stlFile', accept: '.stl,model/stl,application/sla,application/octet-stream', style: 'display:none;' }),
-    el('input', { type: 'file', id: 'stlReimportFile', accept: '.stl,model/stl,application/sla,application/octet-stream', style: 'display:none;' }),
+    el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse Smithsonian…', title: 'Pick a model from the Smithsonian\'s open 3D collection' }),
+    el('input', { type: 'file', id: 'stlFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
+    el('input', { type: 'file', id: 'stlReimportFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
   ]));
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
@@ -284,9 +379,11 @@ export function renderStlPanel(body) {
   // stored detail + health + the ghost
   active.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: 'Stored in the project' })]));
   active.appendChild(el('div', { class: 'cad-slider-row', style: 'margin-bottom:6px;' }, [
+    el('input', { type: 'range', id: 'stlDetailSlider', class: 'cad-slider', min: String(DETAIL_SLIDER.min), max: String(DETAIL_SLIDER.min), step: String(DETAIL_SLIDER.step) }),
     el('div', { class: 'cad-stepper cad-stepper-wide' }, [el('input', { type: 'number', id: 'stlDetail', min: '100', max: '400000', step: '1000' })]),
     el('span', { class: 'stl-unit', text: 'triangles' })]));
   active.appendChild(el('div', { id: 'stlStored', class: 'photo-layer-note' }));
+  active.appendChild(el('div', { id: 'stlSource', class: 'photo-layer-note', hidden: '' }));
   active.appendChild(el('div', { id: 'stlHealth', class: 'photo-layer-note' }));
   active.appendChild(el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'stlReimport', class: 'cad-btn cad-btn-secondary', text: '⟳ Re-import for more detail…' }),
@@ -330,6 +427,14 @@ function showStlErrors(recs) {
 /** True while the job timeline holds the STL section read-only (the class core/ui-utils.js setSectionReadOnly wrote). */
 export function isStlLocked() { return !!byId('stlLayerBody')?.classList.contains('job-readonly'); }
 
+/** The slider's top: the in-memory original's count; else a library model's origTris (it can be downloaded again); else the stored count (down only). */
+function detailSliderMax(rec) {
+  const original = _originals.get(rec.id);
+  if (original && original.indices) return original.indices.length / 3;
+  if (rec.source && rec.source.uri && rec.origTris) return rec.origTris;
+  return rec.storedTris ?? rec.mesh?.nt ?? 0;
+}
+
 /** Reflect the state on the whole panel. Safe to call any time (a load, an undo, a rebuild). */
 export function syncStlPanel() {
   const listEl = byId('stlList');
@@ -363,9 +468,19 @@ export function syncStlPanel() {
       }
     }
     const detail = byId('stlDetail'); if (detail) detail.value = String(n.storedDetail);
+    const slider = byId('stlDetailSlider');
+    if (slider) {
+      const max = detailSliderMax(rec);
+      slider.min = String(Math.min(DETAIL_SLIDER.min, max)); // a mesh under 500 triangles still gets a usable travel
+      slider.max = String(max);
+      slider.value = String(n.storedDetail);
+    }
     const stored = byId('stlStored');
     const can = _originals.has(rec.id);
-    if (stored) stored.textContent = `Stored ${(rec.storedTris ?? rec.mesh?.nt ?? 0).toLocaleString()} of ${(rec.origTris ?? rec.mesh?.nt ?? 0).toLocaleString()} triangles, about ${mb(sizeOf(rec))} MB. ${can ? 'The original is loaded: the detail can go up or down.' : 'After a reload the detail can only go down; re-import the file for more.'}`;
+    const refetch = !can && !!(rec.source && rec.source.uri);
+    if (stored) stored.textContent = `Stored ${(rec.storedTris ?? rec.mesh?.nt ?? 0).toLocaleString()} of ${(rec.origTris ?? rec.mesh?.nt ?? 0).toLocaleString()} triangles, about ${mb(sizeOf(rec))} MB. ${can ? 'The original is loaded: the detail can go up or down.' : refetch ? 'After a reload, more detail downloads the model again.' : 'After a reload the detail can only go down; re-import the file for more.'}`;
+    const src = byId('stlSource');
+    if (src) { src.hidden = !rec.source; src.textContent = rec.source ? `From the Smithsonian (CC0): ${rec.source.title || rec.name || ''}` : ''; }
     const h = byId('stlHealth'); if (h) h.textContent = healthText(rec);
     const re = byId('stlReimport'); if (re) re.hidden = can;
   }
@@ -399,6 +514,10 @@ export function bindStlPanel(hooks = {}) {
   byId('stlCentre')?.addEventListener('click', () => { centreStl(); syncStlPanel(); });
   byId('stlRotReset')?.addEventListener('click', () => { resetStlRotation(); syncStlPanel(); });
   byId('stlDetail')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
+  // the slider: the box follows live while dragging; the re-store (a decimate, ~100 ms+) runs on release only
+  byId('stlDetailSlider')?.addEventListener('input', (e) => { const b = byId('stlDetail'); if (b) b.value = e.target.value; });
+  byId('stlDetailSlider')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
+  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ onPick: (tile) => addStlFromLibrary(tile) }));
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
   byId('stlList')?.addEventListener('click', (e) => {
     const pick = e.target.closest('[data-stl-pick]');
