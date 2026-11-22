@@ -752,7 +752,7 @@ const KIB = 1024;
 const sizeOf = (rec) => ((rec.mesh?.pos?.length || 0) + (rec.mesh?.idx?.length || 0));
 const mb = (bytes) => (bytes / (KIB * KIB)).toFixed(bytes < KIB * KIB ? 2 : 1);
 const hex = (c) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
-const LEGEND = Object.freeze([['shows', 'will show in the relief'], ['buried', 'below the surface (hidden with Max)'], ['meets', 'where it meets the surface'], ['overhang', 'faces down (lost from above)'], ['open', 'open edge / hole']]);
+const LEGEND = Object.freeze([['open', 'open edge above the surface: a hole there can carve a pit']]); // Fred 2026-11-22: only red is coloured
 
 function healthText(rec) {
   let h;

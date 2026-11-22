@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { indexMesh, encodeMesh } from '../bspline-frame-builder/b-spline-gen/html/core/stl/mesh.js';
 import { normaliseStlLayer } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import {
-  ghostGeometry, updateStlGhosts, ghostState, meetLine, STL_GHOST_COLOURS,
+  ghostGeometry, updateStlGhosts, ghostState, meetLine,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import {
   STL_GIZMO, StlGizmoController, wrapDeg, rayPlane, xyDelta, zDelta, ringAngle, pickHandle, previewTransform, commitValues,
@@ -398,27 +398,24 @@ describe('TerrainPreview.setStlGhosts (the real method, a minimal THREE)', () =>
       _renderer: { setSize() {}, render: () => seen.push([...scene.objs].map((o) => o.visible)), domElement: { toDataURL: () => 'data:x' } },
     };
   };
-  it('each ghost mesh carries its layer id; a ghost that meets the surface gets its line in the declared meets colour', () => {
+  // Fred 2026-11-22 ("only keep red"): the meet line is no longer drawn (ghost.js meetLine stays computed)
+  it('each ghost mesh carries its layer id; no meet line is drawn', () => {
     const h = host();
     const sunk = ghostGeometry(rec({ id: 'sunk', position: { x: 0, y: 0, z: -2 } }), FLAT(0), GRID);
     const floating = ghostGeometry(rec({ id: 'up', position: { x: 0, y: 0, z: 1 } }), FLAT(0), GRID);
     TerrainPreview.prototype.setStlGhosts.call(h, [sunk, floating]);
     expect(h._stlGhosts.map((m) => m.userData.stlId)).toEqual(['sunk', 'up']);
-    expect(h._stlMeetLines).toHaveLength(1);
-    const line = h._stlMeetLines[0];
-    expect(line).toBeInstanceOf(h._THREE.LineSegments);
-    expect(line.userData.stlId).toBe('sunk');
-    expect(line.geometry.position.array).toBe(sunk.meetLine);
-    expect([line.material.color.r, line.material.color.g, line.material.color.b]).toEqual(STL_GHOST_COLOURS.meets);
-    expect(h._scene.objs.size).toBe(3);
+    expect(sunk.meetLine.length).toBeGreaterThan(0);
+    expect(h._stlMeetLines).toHaveLength(0);
+    expect(h._scene.objs.size).toBe(2);
     TerrainPreview.prototype.setStlGhosts.call(h, []);
     expect(h._scene.objs.size).toBe(0); // the old ghosts AND lines are removed
   });
-  it('getSnapshot hides the ghosts and the meet line for the picture and shows them again after', () => {
+  it('getSnapshot hides the ghost for the picture and shows it again after (no meet line since Fred 2026-11-22)', () => {
     const h = host();
     TerrainPreview.prototype.setStlGhosts.call(h, [ghostGeometry(rec({ id: 's', position: { x: 0, y: 0, z: -2 } }), FLAT(0), GRID)]);
     TerrainPreview.prototype.getSnapshot.call(h, 20, 20);
-    expect(h.seen[0]).toEqual([false, false]);
-    expect([...h._scene.objs].map((o) => o.visible)).toEqual([true, true]);
+    expect(h.seen[0]).toEqual([false]);
+    expect([...h._scene.objs].map((o) => o.visible)).toEqual([true]);
   });
 });

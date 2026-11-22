@@ -193,8 +193,9 @@ describe('the controls write the active record, only when the user moves them', 
     setup();
     addStlFromBuffer(binaryStl(pyramidSoup()), 'p.stl');
     const legend = $('stlLegend');
-    expect(legend.querySelectorAll('.stl-legend-item')).toHaveLength(5);
-    const [r, g, b] = STL_GHOST_COLOURS.shows.map((x) => Math.round(x * 255));
+    // Fred 2026-11-22 ("only keep red"): the legend names the one coloured kind, the open edge
+    expect(legend.querySelectorAll('.stl-legend-item')).toHaveLength(1);
+    const [r, g, b] = STL_GHOST_COLOURS.open.map((x) => Math.round(x * 255));
     expect(legend.querySelector('i').style.background).toContain(`${r}, ${g}, ${b}`);
   });
 });

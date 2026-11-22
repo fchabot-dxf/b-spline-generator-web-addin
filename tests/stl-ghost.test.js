@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { indexMesh, encodeMesh } from '../bspline-frame-builder/b-spline-gen/html/core/stl/mesh.js';
 import { normaliseStlLayer } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import {
-  ghostGeometry, surfaceAt, openEdgeVertices, updateStlGhosts, ghostState, STL_GHOST_COLOURS,
+  ghostGeometry, surfaceAt, openEdgeVertices, updateStlGhosts, ghostState, STL_GHOST_COLOURS, STL_GHOST_KINDS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 
 const tri = (a, b, c) => [...a, ...b, ...c];
@@ -20,6 +20,7 @@ const FLAT = (z) => new Float32Array(GRID.nx * GRID.nz).fill(z);
 const rec = (extra = {}, soup = pyramid()) => ({ ...normaliseStlLayer({ id: 'g', unitIn: 1, mesh: encodeMesh(indexMesh(soup)) }), ...extra });
 const colourOf = (g, v) => Array.from(g.colours.slice(v * 3, v * 3 + 3)).map((x) => +x.toFixed(3));
 const same = (c) => c.map((x) => +x.toFixed(3));
+const kindOf = (g, v) => STL_GHOST_KINDS[g.kinds[v]];
 /** the vertex index at the highest z (the apex) / the lowest */
 const vertexAt = (g, pick) => { let best = 0; for (let v = 1; v < g.positions.length / 3; v++) if (pick(g.positions[v * 3 + 2], g.positions[best * 3 + 2])) best = v; return best; };
 const apexOf = (g) => vertexAt(g, (a, b) => a > b);
@@ -48,17 +49,20 @@ describe('ghostGeometry', () => {
     const sunk = ghostGeometry(rec({ position: { x: 0, y: 0, z: -2 } }), FLAT(3), GRID);
     expect(sunk.positions[apexOf(sunk) * 3 + 2]).toBeCloseTo(3 + 4 - 2, 3);
   });
-  it('colours: above the surface = shows, below = buried, at it = meets (the intersection band)', () => {
+  it('kinds: above the surface = shows, below = buried, at it = meets (the intersection band)', () => {
     const sunk = ghostGeometry(rec({ position: { x: 0, y: 0, z: -2 } }), FLAT(0), GRID);
-    expect(colourOf(sunk, apexOf(sunk))).toEqual(same(STL_GHOST_COLOURS.shows));
-    expect(colourOf(sunk, vertexAt(sunk, (a, b) => a < b))).toEqual(same(STL_GHOST_COLOURS.buried));
+    expect(kindOf(sunk, apexOf(sunk))).toBe('shows');
+    expect(kindOf(sunk, vertexAt(sunk, (a, b) => a < b))).toBe('buried');
     const flush = ghostGeometry(rec(), FLAT(0), GRID);
-    expect(colourOf(flush, vertexAt(flush, (a, b) => a < b))).toEqual(same(STL_GHOST_COLOURS.meets)); // the base rests ON the surface
+    expect(kindOf(flush, vertexAt(flush, (a, b) => a < b))).toBe('meets'); // the base rests ON the surface
     expect(sunk.counts.shows + sunk.counts.buried + sunk.counts.meets + sunk.counts.overhang + sunk.counts.open).toBe(5);
   });
-  it('an open edge is marked open (a hole); a closed mesh has none', () => {
-    const open = ghostGeometry(rec({}, pyramid({ base: false })), FLAT(0), GRID);
-    expect(open.counts.open).toBe(4); // the four base corners: the open outline
+  // Fred 2026-11-22 ("only keep red"): an open edge counts only ABOVE the surface -- an open back resting on it never shows
+  it('an open edge ABOVE the surface is marked open (a hole); one resting on the surface is not; a closed mesh has none', () => {
+    const resting = ghostGeometry(rec({}, pyramid({ base: false })), FLAT(0), GRID);
+    expect(resting.counts.open).toBe(0); // the open base outline lies ON the surface
+    const open = ghostGeometry(rec({ position: { x: 0, y: 0, z: 0.5 } }, pyramid({ base: false })), FLAT(0), GRID);
+    expect(open.counts.open).toBe(4); // floated: the four base corners are an open outline above the surface
     expect(ghostGeometry(rec(), FLAT(0), GRID).counts.open).toBe(0);
     expect(Array.from(openEdgeVertices(indexMesh(pyramid({ base: false }))))).toContain(1);
   });
@@ -72,6 +76,20 @@ describe('ghostGeometry', () => {
     expect(closedOnSurface.counts.overhang).toBe(0);     // the closed base rests on the surface: not an overhang
     const closedFloating = ghostGeometry(rec({ position: { x: 0, y: 0, z: 0.5 } }), FLAT(0), GRID);
     expect(closedFloating.counts.overhang).toBeGreaterThan(0); // floated above it, its underside does look down
+  });
+  it('the look (Fred 2026-11-22 "only keep red"): one plain stone colour for every kind, red only on an open edge', () => {
+    const open = ghostGeometry(rec({ position: { x: 0, y: 0, z: -2 } }, pyramid({ base: false })), FLAT(0), GRID);
+    const floated = ghostGeometry(rec({ position: { x: 0, y: 0, z: 0.5 } }, pyramid({ base: false })), FLAT(0), GRID);
+    const flush = ghostGeometry(rec(), FLAT(0), GRID);
+    const stone = colourOf(open, apexOf(open));
+    for (const g of [open, floated, flush]) {
+      for (let v = 0; v < g.kinds.length; v++) {
+        if (kindOf(g, v) === 'open') expect(colourOf(g, v)).toEqual([0.9, 0.2, 0.2]);
+        else expect(colourOf(g, v), kindOf(g, v)).toEqual(stone);
+      }
+    }
+    expect(stone).toEqual([0.78, 0.72, 0.63]);
+    expect(floated.counts.open).toBeGreaterThan(0);
   });
   it('without heights it sits on z = 0 and still renders', () => {
     const g = ghostGeometry(rec(), null, GRID);

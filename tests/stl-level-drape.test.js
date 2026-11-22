@@ -11,7 +11,7 @@ import {
   createStlLayer, stlPass, normaliseStlLayer, STL_LAYER_DEFAULTS, STL_SURFACES, _resetStlCachesForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import { indexMesh, encodeMesh } from '../bspline-frame-builder/b-spline-gen/html/core/stl/mesh.js';
-import { ghostGeometry, surfaceAt, STL_GHOST_COLOURS } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
+import { ghostGeometry, surfaceAt, STL_GHOST_KINDS } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import { applyStampLayers } from '../bspline-frame-builder/b-spline-gen/html/core/engine/apply-stamp-layers.js';
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
@@ -165,8 +165,7 @@ describe('the ghost of a Level STL', () => {
     }
     return best;
   };
-  const colourOf = (g, v) => Array.from(g.colours.slice(v * 3, v * 3 + 3)).map((c) => +c.toFixed(3));
-  const same = (c) => c.map((x) => +x.toFixed(3));
+  const kindOf = (g, v) => STL_GHOST_KINDS[g.kinds[v]];
   it('rigid on the slope: vertices with the same mesh z sit at the same height (the terrain under the pivot + Z)', () => {
     const clean = SLOPE();
     const g = ghostGeometry(ghostRec({ position: { x: 1.3, y: -2.1, z: 0 } }), clean, GRID);
@@ -184,12 +183,12 @@ describe('the ghost of a Level STL', () => {
     const lvl = ghostGeometry(ghostRec(at), bumped, GRID);
     const v = cornerAt(lvl, -3.7, -7.1);
     expect(lvl.positions[v * 3 + 2]).toBeCloseTo(0, 5); // rigid at the pivot's terrain
-    expect(colourOf(lvl, v)).toEqual(same(STL_GHOST_COLOURS.buried)); // rel = 0 + 0 + 0 - 1 = -1
+    expect(kindOf(lvl, v)).toBe('buried'); // rel = 0 + 0 + 0 - 1 = -1
     const fol = ghostGeometry({ ...ghostRec(at), surface: 'follow' }, bumped, GRID);
-    expect(colourOf(fol, cornerAt(fol, -3.7, -7.1))).toEqual(same(STL_GHOST_COLOURS.meets)); // follow: rel = Z + mesh z = 0
+    expect(kindOf(fol, cornerAt(fol, -3.7, -7.1))).toBe('meets'); // follow: rel = Z + mesh z = 0
     // a far corner on flat terrain reads as follow does
     const w = cornerAt(lvl, 6.3, 2.9);
-    expect(colourOf(lvl, w)).toEqual(same(STL_GHOST_COLOURS.meets));
+    expect(kindOf(lvl, w)).toBe('meets');
   });
 });
 

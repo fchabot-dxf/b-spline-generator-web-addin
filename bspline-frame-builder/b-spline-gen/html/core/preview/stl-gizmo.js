@@ -22,7 +22,7 @@
  * body is picked by a THREE.Raycaster hit on the ghost mesh itself (the ghost is fitted to half the board at import, far larger
  * than any tolerance).
  */
-import { STL_GHOST_COLOURS, ghostState } from '../stl/ghost.js';
+import { ghostState } from '../stl/ghost.js';
 
 /** Every size, colour and tolerance of the gizmo, once. Sizes in CSS px (converted with the view's world-per-pixel). */
 export const STL_GIZMO = Object.freeze({
@@ -43,7 +43,7 @@ export const STL_GIZMO = Object.freeze({
   colours: Object.freeze({
     z: Object.freeze([0.15, 0.45, 0.95]),
     ring: Object.freeze([0.95, 0.5, 0.1]),
-    drag: STL_GHOST_COLOURS.meets, // the handle being dragged
+    drag: Object.freeze([1.0, 0.9, 0.2]), // the handle being dragged (the old meet-line yellow)
   }),
 });
 

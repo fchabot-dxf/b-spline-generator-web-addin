@@ -43,7 +43,6 @@ import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
 import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { StlGizmoController, StlGizmoThreeView } from './stl-gizmo.js';
-import { STL_GHOST_COLOURS } from '../stl/ghost.js';
 import { CROP_PREVIEW_LOOK } from '../stl/crop.js';
 import {
   buildHeightField,
@@ -580,17 +579,7 @@ export class TerrainPreview {
       }
       this._scene.add(mesh);
       this._stlGhosts.push(mesh);
-      // the intersection LINE (ghost.js meetLine): where the STL meets the surface, drawn over it (no depth test: it lies ON it)
-      if (g.meetLine && g.meetLine.length) {
-        const lg = new THREE.BufferGeometry();
-        lg.setAttribute('position', new THREE.BufferAttribute(g.meetLine, 3));
-        const c = STL_GHOST_COLOURS.meets;
-        const line = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: new THREE.Color(c[0], c[1], c[2]), depthTest: false }));
-        line.renderOrder = 6;
-        line.userData.stlId = g.id;
-        this._scene.add(line);
-        this._stlMeetLines.push(line);
-      }
+      // no meet line is drawn (Fred 2026-11-22: "only keep red"; ghost.js meetLine stays computed)
     }
     this._stlGizmo?.setGhosts(list || [], { meshes: this._stlGhosts, lines: this._stlMeetLines });
     this._needsRender = true;

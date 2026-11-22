@@ -2,12 +2,15 @@
  * stl/ghost.js -- STL-RELIEF (STL-RELIEF-DESIGN.md, slice 2): the STL as a GHOST on the board in the 3D view, colour coded by how it
  * sits in the surface. Pure array math (the THREE mesh is built in core/preview/index.js setStlGhosts from what this returns).
  *
- * Colour per vertex (one declared table, STL_GHOST_COLOURS -- change a colour in ONE place):
+ * Each vertex is classified (`kinds[v]` = an index into STL_GHOST_KINDS; `counts` per kind):
  *   shows       the object stands above the surface here (Z offset + its height > 0): this part will be in the relief
  *   buried      below the surface: with Max blend it vanishes (with Add it digs a pit)
  *   meets       within STL_MEET_BAND_IN of the surface: the band where the STL meets the surface (the intersection)
  *   overhang    above the surface, the face looks DOWN: a top-down stamp loses it
- *   open        an open edge of the mesh (a hole): shows as a pit in the relief
+ *   open        an open edge of the mesh ABOVE the surface (a hole there can carve a pit; an open back resting on or in the
+ *               terrain never shows, so it keeps its other kind)
+ * What it SHOWS (STL_GHOST_COLOURS, one declared table; Fred 2026-11-22 "only keep red"): a plain stone ghost, red only on
+ * an `open` vertex. No meet line is drawn (the classification and meetLine stay: the counts and the gizmo read them).
  *
  * The ghost is a RIGID copy placed on the surface height under its centre (the surface BEFORE the stamps, ghostSurface: never
  * on top of its own relief); the stamp itself is relative per point (the object
@@ -20,12 +23,14 @@ import { cropBoxIn, isFullCropBox } from './crop.js';
 import { placeMesh } from './raster.js';
 import { normaliseStlLayer, recordStlError, stlErrorId } from './layer.js';
 
+export const STL_GHOST_KINDS = Object.freeze(['shows', 'buried', 'meets', 'overhang', 'open']);
+const STL_GHOST_STONE = Object.freeze([0.78, 0.72, 0.63]); // the library preview's stone (main/stl-preview-3d.js 0xc8b8a0)
 export const STL_GHOST_COLOURS = Object.freeze({
-  shows: [0.25, 0.75, 0.35],
-  buried: [0.3, 0.45, 0.85],
-  meets: [1.0, 0.9, 0.2],
-  overhang: [0.95, 0.6, 0.15],
-  open: [0.9, 0.2, 0.2],
+  shows: STL_GHOST_STONE,
+  buried: STL_GHOST_STONE,
+  meets: STL_GHOST_STONE,
+  overhang: STL_GHOST_STONE,
+  open: Object.freeze([0.9, 0.2, 0.2]),
 });
 export const STL_MEET_BAND_IN = 0.03;
 export const STL_OVERHANG_NZ = -0.05; // a face normal pointing this far down is an overhang
@@ -105,7 +110,7 @@ export function meetLine(positions, rel, indices) {
  * @param rec     an STL layer record
  * @param heights the surface it sits on: the board's heights BEFORE the stamps (ghostSurface), or null (it then sits on z = 0)
  * @param grid    { nx, nz, widthIn, heightIn }
- * @returns {{ id, positions: Float32Array, indices: Uint32Array, colours: Float32Array, counts: {shows, buried, meets, overhang, open},
+ * @returns {{ id, positions: Float32Array, indices: Uint32Array, colours: Float32Array, kinds: Uint8Array, counts: {shows, buried, meets, overhang, open},
  *   meetLine: Float32Array, place: { x, y, z, rotZ, baseZ } }}  id = the record's id (the placement gizmo picks a ghost by it);
  *   place = the record's position / rotation.z and the surface height under its centre (the gizmo's pivot and start values)
  */
@@ -134,6 +139,7 @@ export function ghostGeometry(rawRec, heights, grid, { cropBox = null } = {}) {
   const open = openEdgeVertices(full);
   const positions = new Float32Array(nv * 3);
   const colours = new Float32Array(nv * 3);
+  const kinds = new Uint8Array(nv);
   const counts = { shows: 0, buried: 0, meets: 0, overhang: 0, open: 0 };
   const C = STL_GHOST_COLOURS;
   const rels = new Float64Array(nv);
@@ -151,12 +157,13 @@ export function ghostGeometry(rawRec, heights, grid, { cropBox = null } = {}) {
     if (Math.abs(rel) <= STL_MEET_BAND_IN) kind = 'meets';
     const len = Math.hypot(nrm[v * 3], nrm[v * 3 + 1], nrm[v * 3 + 2]);
     if (len > 0 && nrm[v * 3 + 2] / len < STL_OVERHANG_NZ && kind === 'shows') kind = 'overhang'; // only ABOVE the surface: an underside on / in it is just the base
-    if (open[v]) kind = 'open';
+    if (open[v] && rel > STL_MEET_BAND_IN) kind = 'open'; // only a hole ABOVE the surface can show
     counts[kind]++;
+    kinds[v] = STL_GHOST_KINDS.indexOf(kind);
     colours[v * 3] = C[kind][0]; colours[v * 3 + 1] = C[kind][1]; colours[v * 3 + 2] = C[kind][2];
   }
   return {
-    id: rec.id, positions, indices: mesh.indices, colours, counts,
+    id: rec.id, positions, indices: mesh.indices, colours, kinds, counts,
     meetLine: meetLine(positions, rels, mesh.indices),
     place: { x: rec.position.x, y: rec.position.y, z: zOff, rotZ: rec.rotation.z, baseZ },
     ...(split ? { cutIndices: split.cut } : {}),
