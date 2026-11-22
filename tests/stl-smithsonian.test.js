@@ -622,7 +622,9 @@ describe('g. the panel', () => {
     const b = $('stlBrowseSi');
     expect(b).toBeTruthy();
     expect(b.parentElement.classList.contains('stl-add-row')).toBe(true);
-    expect(b.textContent).toBe('🏛 Browse Smithsonian…');
+    // Fred 2026-11-22 ("searching searches all libs at once"; asked and approved updating this test): the button browses
+    // every library (Smithsonian + SMK), so its text names libraries, not one source
+    expect(b.textContent).toBe('🏛 Browse 3D libraries…');
     for (const id of ['stlFile', 'stlReimportFile']) {
       expect($(id).getAttribute('accept')).toContain('.glb');
       expect($(id).getAttribute('accept')).toContain('model/gltf-binary');
@@ -632,7 +634,11 @@ describe('g. the panel', () => {
     b.click();
     expect(document.querySelector('.cad-modal-overlay .cad-modal-window')).toBeTruthy();
     await flush();
-    expect(f).toHaveBeenCalledTimes(1);
+    // one search per library, all at once (was: one Smithsonian search)
+    const urls = f.mock.calls.map(([u]) => String(u));
+    expect(urls).toHaveLength(2);
+    expect(urls.filter((u) => u.startsWith('https://3d-api.si.edu/'))).toHaveLength(1);
+    expect(urls.filter((u) => u.startsWith('https://api.smk.dk/'))).toHaveLength(1);
     expect(document.querySelectorAll('.stl-lib-tile')).toHaveLength(2);
   });
   const insertFirst = async () => {
