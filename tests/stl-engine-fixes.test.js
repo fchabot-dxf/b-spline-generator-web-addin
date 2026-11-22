@@ -371,6 +371,31 @@ const triKeys = (m) => {
   }
   return s;
 };
+/** the old decimate (string-keyed clustering + de-dup), verbatim around oldCluster: the A13 oracle */
+function oldDecimate(mesh, target) {
+  const nt = mesh.indices.length / 3;
+  if (!(target >= 1) || nt <= target) return mesh;
+  const { min, max } = meshBounds(mesh.positions);
+  const extent = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
+  let lo = extent / 4096, hi = extent;
+  let best = oldCluster(mesh, hi, min);
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    const m = oldCluster(mesh, mid, min);
+    if (m.indices.length / 3 <= target) { best = m; hi = mid; } else lo = mid;
+  }
+  return best;
+}
+/** how many triangles repeat an earlier one's sorted vertex triple (either winding) */
+const dupTriples = (m) => {
+  const s = new Set();
+  let d = 0;
+  for (let t = 0; t < m.indices.length; t += 3) {
+    const k = [m.indices[t], m.indices[t + 1], m.indices[t + 2]].sort((x, y) => x - y).join(',');
+    if (s.has(k)) d++; else s.add(k);
+  }
+  return d;
+};
 const unreferenced = (m) => { const used = new Uint8Array(m.positions.length / 3); for (const i of m.indices) used[i] = 1; return used.length - used.reduce((n, u) => n + u, 0); };
 
 describe('A9: integer-keyed weld and clustering equal the string-keyed ones', () => {
@@ -394,7 +419,8 @@ describe('A9: integer-keyed weld and clustering equal the string-keyed ones', ()
       for (const size of sizes) {
         const a = clusterMesh(m, size, min), b = oldCluster(m, size, min);
         expect(triKeys(a)).toEqual(triKeys(b));
-        expect(a.indices.length).toBeGreaterThanOrEqual(b.indices.length); // duplicates are no longer dropped
+        expect(a.indices.length).toBe(b.indices.length); // A13: duplicates are dropped again, as the old pass did
+        expect(dupTriples(a)).toBe(0);
         expect(unreferenced(a)).toBe(0);
         oldOrphans += unreferenced(b);
         const used = new Set(); for (const i of b.indices) used.add(Array.from(b.positions.slice(i * 3, i * 3 + 3)).join(','));
@@ -415,6 +441,31 @@ describe('A9: integer-keyed weld and clustering equal the string-keyed ones', ()
       expect(unreferenced(d)).toBe(0);
       const b = meshBounds(d.positions);
       for (let a = 0; a < 3; a++) { expect(b.min[a]).toBeGreaterThanOrEqual(ob.min[a] - 1e-5); expect(b.max[a]).toBeLessThanOrEqual(ob.max[a] + 1e-5); }
+    }
+  });
+});
+
+// ── A13 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('A13: decimate keeps each clustered triangle once (the stored budget is not spent on copies)', () => {
+  it('the closed 40 x 40 x 0.3 slab at targets 1000 and 300: no repeated triple, and at least the old unique count', () => {
+    const m = indexMesh(slab(40, 0.3));
+    for (const target of [1000, 300]) {
+      const d = decimate(m, target), old = oldDecimate(m, target);
+      expect(d.indices.length / 3).toBeLessThanOrEqual(target);
+      expect(dupTriples(d)).toBe(0); // measured before A13: 900 triangles at 1000, many of them the top folded onto the bottom
+      const unique = d.indices.length / 3 - dupTriples(d), oldUnique = old.indices.length / 3 - dupTriples(old);
+      expect(unique).toBeGreaterThanOrEqual(oldUnique); // the old (string-key) decimate: 968 at 1000, 288 at 300
+      expect(unreferenced(d)).toBe(0);
+    }
+  });
+  it('decimate equals the old string-key decimate on the 3 seeded random soups (the same triangles by coordinates)', () => {
+    for (const seed of [1, 7, 42]) {
+      const m = indexMesh(randomSoup(seed));
+      const d = decimate(m, 1000), old = oldDecimate(m, 1000);
+      expect(d.indices.length).toBe(old.indices.length);
+      expect(triKeys(d)).toEqual(triKeys(old));
+      expect(dupTriples(d)).toBe(0);
+      expect(unreferenced(d)).toBe(0);
     }
   });
 });

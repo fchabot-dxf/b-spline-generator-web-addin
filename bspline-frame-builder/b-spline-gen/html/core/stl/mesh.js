@@ -83,7 +83,7 @@ export function meshBounds(positions) {
  * One vertex-clustering pass at cell `size`: every vertex moves to the mean of its cell, triangles that collapse are dropped,
  * and the result is COMPACT (a cluster no remaining triangle uses is not kept: it would shift the bounding box and inflate the
  * stored size). Cells are keyed by the integer cx + n*(cy + n*cz), n = cells per axis (<= 4097 at decimate's finest size).
- * Two triangles that clustering makes identical are both kept (harmless to the z-buffer and the ghost).
+ * Two triangles that clustering makes identical are kept once (see below); decimate's target check counts what is kept.
  * `scratch` (optional) holds typed arrays reused across the passes of one decimate.
  */
 export function clusterMesh(mesh, size, min, scratch) {
@@ -116,13 +116,25 @@ export function clusterMesh(mesh, size, min, scratch) {
     remap[v] = id;
     sum[id * 4] += positions[v * 3]; sum[id * 4 + 1] += positions[v * 3 + 1]; sum[id * 4 + 2] += positions[v * 3 + 2]; sum[id * 4 + 3] += 1;
   }
-  // the triangles that survive, and which clusters they use
+  // the triangles that survive, and which clusters they use. Two triangles clustering made identical (the same three
+  // clusters, either winding: a thin part folds its top onto its bottom) are kept ONCE, so the target is spent on unique
+  // triangles. The key is the sorted triple as one number, (lo * M + mid) * M + hi, M = nc rounded up to a power of two;
+  // exact while M^3 <= 2^53 (M <= 2^17). Past that the de-dup is skipped (such a mesh is far above any stored target).
   used.fill(0, 0, nc);
   const tri = new Uint32Array(indices.length);
+  let M = 1;
+  while (M < nc) M *= 2;
+  const seen = M <= 131072 ? new Set() : null;
   let nt = 0;
   for (let t = 0; t < indices.length; t += 3) {
     const a = remap[indices[t]], b = remap[indices[t + 1]], c = remap[indices[t + 2]];
     if (a === b || b === c || a === c) continue;
+    if (seen) {
+      const lo = a < b ? (a < c ? a : c) : (b < c ? b : c), hi = a > b ? (a > c ? a : c) : (b > c ? b : c), mid = a + b + c - lo - hi;
+      const k = (lo * M + mid) * M + hi;
+      if (seen.has(k)) continue;
+      seen.add(k);
+    }
     tri[nt++] = a; tri[nt++] = b; tri[nt++] = c;
     used[a] = 1; used[b] = 1; used[c] = 1;
   }
