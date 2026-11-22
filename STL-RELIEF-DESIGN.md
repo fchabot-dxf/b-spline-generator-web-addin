@@ -242,7 +242,7 @@ snapshotOnLock, its marks are never shown).
 **Still not built:** opacity/blend on the other layers and a Layers-panel row for STLs (both outside Fred's "STL stamp only"
 scope, section 11.1 / 11.6).
 
-**Gizmo decisions for Fred (left as they are, nothing added):** no tap slop (a 1 px jitter on a tap commits a tiny move; a
+**Gizmo behaviour, settled as built (Fred 2026-11-22: "these aren't questions"):** no tap slop (a 1 px jitter on a tap commits a tiny move; a
 threshold would be a new guard); a drag that starts ON the ghost moves it instead of orbiting (orbit by starting off the ghost,
 or hide / lock it); rotation is not wrapped to +-180 (the box shows the true value); the ghost moves rigidly during a drag and
 re-seats on the surface after the rebuild (a small hop on a curved board).
