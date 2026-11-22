@@ -239,6 +239,24 @@ files / 7530 tests green; real Chrome: After thicken leaves the back equal to th
 the top carries the STL; Before thicken moves the back; no console errors. The Back step's `dependsOn: 'stl'` stays (Back is
 snapshotOnLock, its marks are never shown).
 
+**Built since (2026-11-22, Fred: "Follow the terrain" or "Level", branch smithsonian-browser, worker H):** a per-STL option,
+Place > "On the terrain": record field `surface: 'follow' | 'level'` (core/stl/layer.js STL_SURFACES, default 'follow'; absent =
+follow = the stamp byte-identical to before, hash pins in tests/stl-level-drape.test.js measured before the change). stlPass adds
+`surface` and, for Level, `pivot` = the record's position in fractional grid coordinates (fi = (x + W/2) / dx, fj = (y + H/2) / dy,
+a larger row = up). applyStampLayers has ONE new branch, for an STL pass with surface 'level' only: base = the bilinear clean
+terrain at the pivot, objectH = zOffset + body * |depth| over the covered points:
+- Raised + Max: h = max(h, base + objectH)
+- Raised + Add: h = base + objectH
+- Carved + Max: h = min(h, base - objectH)
+- Carved + Add: h = base - objectH
+
+The Level ghost stays rigid at the terrain under its pivot (as every ghost was), and its colours and meet line read each vertex
+against the LOCAL terrain: rel = (baseZ + Z + mesh z) - surfaceAt(x, y), so a part over a rise reads buried.
+**The draped FOLLOW ghost (each vertex at surfaceAt(x, y) + rel) is NOT built:** it moves two tests on main that pin the rigid
+ghost on a non-flat surface (tests/stl-engine-fixes.test.js A1 "the ghost's base height follows the same frame: sampled at its
+centre on a surface that rises UP the view" and A11 "a real rebuild hands the preview ghosts sitting on its cleanHeights",
+measured by an A/B on 2026-11-22). Waiting on the advisor / Fred: changing those expectations is their call.
+
 **Still not built:** opacity/blend on the other layers and a Layers-panel row for STLs (both outside Fred's "STL stamp only"
 scope, section 11.1 / 11.6).
 
