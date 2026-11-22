@@ -199,3 +199,36 @@ Fred: the earlier "still open" items are not decisions, they are settings the us
 
 The defaults are constants in one declared table; changing one later does not touch saved boards, because a saved layer
 stores its own value (an absent field reads as the declared default).
+
+## 13. Build status (2026-11-21, branch stl-relief-design, nothing pushed)
+
+Commits: 0f528275 (pin) .. 2e6e8c69. Gate on the final tree: full vitest 541 files / 7469 tests green; real headless Chrome (desktop
+and 390 px) imports an asymmetric STL through the panel's own file input; the highest cell of the real surface and the ghost's
+apex are at the same scene (x, y); sinking, Carved and restoring Z behave; the record survives a reload; no console errors.
+Tier for the handoff: **tier: full** (applyStampLayers changed; every *_FULL sweep applies).
+
+**Built:** P.stlLayers (declared, absent = off, golden hash pinned); STL parse (binary incl. padded, ASCII); welded, versioned,
+quantised stored mesh with adjustable Stored detail (down and up while the original is loaded); mesh health measured on the
+original (reported only); CPU z-buffer in the scene frame (row j at y = -H/2 + j*dy: LARGER row = up, buildHeightField's own);
+the stamp pass (Max / Add, Raised / Carved, Z offset, compress, edge softness) and the one blend/Z branch in applyStampLayers;
+the panel (declared in SIDEBAR_TABS, SECTION_THEMES, loading stage 'stl'; copy-on-write; no clamps); the ghost with colour coding
+on the pre-stamp surface; a stored mesh in the digests by its content hash.
+
+**Decisions made by the advisor while reviewing (tell Fred):**
+- "Depth" (zScale) multiplies the board-vertical height AFTER the rotation, so it stretches what stands up out of the board.
+- Carved + Add: -(zOffset + height); Raised unchanged.
+- Triangle de-duplication kept in decimate (numeric keys), skipped above 131072 clusters.
+- The Stored-detail box ignores a value that is not a number >= 1 (no floor, no clamp).
+
+**Not built (declared in this doc, deferred):** the in-viewport move/rotate/scale gizmo (sliders are the placement control); a
+distinct intersection LINE (the colour band where the STL meets the surface is shown); placement `afterBack` (field declared,
+`withSurface` only); the job-timeline step kind for STL layers; opacity/blend on the other layers; the Layers-panel row.
+
+**Needs Fred's yes:** a length check in decodeMesh. A truncated stored mesh can decode to a shorter array and silently drop
+triangles (only some truncations throw and are reported). Rejecting it is a new validation rule.
+
+**Known limits:** an import that finishes while a whole project load lands goes into the loaded board; undo history holds a copy
+of each mesh (about 0.6 MB per STL at the default detail, 40 steps); records saved before the hash fix keep the old (collision
+prone) hash; core/preview/terrain-mesh.js buildLiveBrushColours uses y = H/2 - j*dy, the opposite of buildHeightField in the same
+file (not touched; worth a look as a possibly mirrored sculpt-brush highlight).
+
