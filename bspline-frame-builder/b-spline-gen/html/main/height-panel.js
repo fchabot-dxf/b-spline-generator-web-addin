@@ -499,13 +499,14 @@ function drawSelection(node, rec, p, show) {
     d = sel.path;
   }
   if (!d) { if (path) path.remove(); return; }
-  if (!path) {
-    path = svgEl('path', { class: 'height-selection', fill: 'none', 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.outline, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, node);
-    const ants = svgEl('animate', { attributeName: 'stroke-dashoffset', from: '0', to: '9', dur: '0.6s', repeatCount: 'indefinite' }, path);
-    ants.setAttribute('data-ants', '');
+  if (!path) { // marching ants: a white line under a dashed one, readable on any shade
+    path = svgEl('g', { class: 'height-selection', fill: 'none' }, node);
+    svgEl('path', { 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.halo, 'stroke-width': 2.5 }, path);
+    const ants = svgEl('path', { 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.outline, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, path);
+    svgEl('animate', { attributeName: 'stroke-dashoffset', from: '0', to: '9', dur: '0.6s', repeatCount: 'indefinite' }, ants);
   }
   path.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})`);
-  path.setAttribute('d', d);
+  for (const q of path.querySelectorAll('path')) q.setAttribute('d', d);
   if (path !== node.lastChild) node.appendChild(path);
 }
 
@@ -613,7 +614,8 @@ export async function importHeightmap(file, { asNewPatch = _tools.file.asNewPatc
   let made = null, info = null;
   try {
     await withLoadingStage('heightImport', async () => {
-      const bytes = file.bytes || new Uint8Array(await file.arrayBuffer());
+      // a File / Blob (its own .bytes is a METHOD in current browsers), or { name, bytes } (tests, probes)
+      const bytes = typeof Blob !== 'undefined' && file instanceof Blob ? new Uint8Array(await file.arrayBuffer()) : file.bytes;
       const img = await decodeHeightmap(name, bytes, loaders);
       info = img;
       const mapping = mappingFromName(name) || { ...IMAGE_MAPPING_DEFAULTS };
@@ -1132,14 +1134,15 @@ const GROUP_HEADS = Object.freeze({
     el('button', { type: 'button', id: 'heightFillApply', class: 'cad-btn cad-btn-secondary', text: '▣ Fill', title: 'The selection (or the whole layer) to the fill height' }),
   ]),
   select: () => el('div', {}, [
-    el('div', { class: 'photo-layer-buttons' }, [
+    el('div', { class: 'photo-layer-buttons', style: 'flex-wrap:wrap;' }, [
       el('button', { type: 'button', id: 'heightSelFeather', class: 'cad-btn cad-btn-secondary', text: 'Feather', title: 'Soften the selection edge by the Feather amount' }),
       el('button', { type: 'button', id: 'heightSelInvert', class: 'cad-btn cad-btn-secondary', text: 'Invert' }),
       el('button', { type: 'button', id: 'heightSelClear', class: 'cad-btn cad-btn-secondary', text: 'Clear', title: 'No selection: the tools work everywhere' }),
     ]),
     el('label', { class: 'cad-label', text: 'From a Draw-tab shape' }),
     el('div', { class: 'photo-layer-buttons' }, [
-      el('select', { id: 'heightSelSource', class: 'cad-select', title: 'The Draw-tab layer whose shapes become the selection' }),
+      // a plain select in the row (the app's .cad-select is an overlay for a .cad-select-wrap: it would cover the canvas)
+      el('select', { id: 'heightSelSource', title: 'The Draw-tab layer whose shapes become the selection', style: 'flex:1 1 110px; min-width:0; min-height:32px; font-size:11px;' }),
       el('button', { type: 'button', id: 'heightSelFromShape', class: 'cad-btn cad-btn-secondary', text: 'Select shape' }),
     ]),
   ]),
@@ -1195,12 +1198,13 @@ function syncLayerList(rec) {
   const act = rec ? layerOf(rec) : null;
   for (const l of [...ls].reverse()) {
     const i = ls.indexOf(l);
-    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id }, [
+    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id, style: 'gap:2px;' }, [
       el('input', { type: 'checkbox', 'data-patch-layer-visible': l.id, title: 'Show this layer (it counts in the patch)' }),
-      el('button', { type: 'button', class: 'stl-row-name', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
-      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
-      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
-      el('button', { type: 'button', class: 'tool-btn', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
+      // not .stl-row-name: its open / closed arrow belongs to a card, and a layer row needs the room for its name
+      el('button', { type: 'button', class: 'height-layer-name', style: 'flex:1 1 auto; min-width:0; min-height:32px; text-align:left; background:none; border:0; font:inherit; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
+      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
+      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
+      el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
     ]);
     row.querySelector('input').checked = l.visible !== false;
     row.querySelector(`[data-patch-layer-move="${l.id}:1"]`).disabled = i === ls.length - 1;

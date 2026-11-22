@@ -139,6 +139,14 @@ describe('the panel: Import heightmap', () => {
     expect(rec.layers.map((l) => l.kind)).toEqual(['paint', 'image']);
     expect(Array.from(decodedRaster(rec.layers[1].raster))).toEqual([204, 255, 0, 255, 0, 51, 102, 153].map((g) => Math.fround(g / 255)));
   });
+  it('a real File is read through arrayBuffer (a browser File\'s own .bytes is a METHOD: measured in Chrome, the import failed)', async () => {
+    const f = new File([png16Bytes(2, 2, [0, 65535, 0, 65535])], 'two.png', { type: 'image/png' });
+    if (typeof f.bytes !== 'function') f.bytes = async () => new Uint8Array(await f.arrayBuffer()); // Chrome's Blob.prototype.bytes
+    const layer = await importHeightmap(f, { asNewPatch: true, loaders });
+    expect(layer).toBeTruthy();
+    const v = decodedRaster(layer.raster), c = layer.raster.cols; // 2 x 2 px fitted to the 2.56 in wide board: 256 px
+    expect([v[0], v[c - 1], v[v.length - c], v[v.length - 1]]).toEqual([0, 1, 0, 1]);
+  });
   it('a file name with an export range sets the mapping', async () => {
     await importHeightmap({ name: 'rose_0-0.5in.png', bytes: png16Bytes(2, 2, [0, 65535, 0, 65535]) }, { asNewPatch: true, loaders });
     expect(activePatchLayer().mapping).toEqual({ zero: 'black', whiteIn: 0.5, darkIn: 0.5 });
