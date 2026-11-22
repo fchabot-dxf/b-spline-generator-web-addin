@@ -16,7 +16,7 @@ const immediateRebuildParams = [
   'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
   'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile',
-  'isolateSkeleton'
+  'isolateSkeleton', 'shapeFlat', 'surfaceHeightIn'
 ];
 
 // Params that change the rasterized mask itself (require re-rasterize).
