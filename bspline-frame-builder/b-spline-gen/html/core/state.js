@@ -367,6 +367,9 @@ export const DEFAULT = {
     // the JOB TIMELINE (Fred 2026-10-14, core/job-timeline.js): the order the job's steps are cut / poured in (step ids)
     // and the playhead. null = not decided yet: the 'job-timeline' migration (main/app-init.js) gives the default order.
     jobTimeline: null,
+    // the STL STAMPS (STL-RELIEF-DESIGN.md): one self-contained record per STL (core/stl/layer.js STL_LAYER_DEFAULTS), saved with
+    // the project. [] = none = the board lays exactly as before (tests/stl-layers-absent.test.js).
+    stlLayers: [],
 };
 
 export let P = { ...DEFAULT };
