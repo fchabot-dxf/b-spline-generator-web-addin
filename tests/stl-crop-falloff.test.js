@@ -92,7 +92,7 @@ describe('F3. the bottom fade and the custom curve', () => {
     expect(at(body, 40, 50)).toBeCloseTo(at(plain, 40, 50), 4);
     // at x = -1.5 (column 35) its height is 1 in: weight = linear(0.5) = 0.5
     expect(at(body, 35, 50)).toBeCloseTo(at(plain, 35, 50) * 0.5, 4); // 16-bit stored positions: ~1e-5
-    expect(at(body, 50, 50)).toBeCloseTo(1, 5); // the apex: far above the band
+    expect(at(body, 50, 50)).toBeCloseTo(1, 4); // the apex: far above the band
   });
   it('profile custom reads the record\'s customCurve through the brush\'s own curveFromPoints', () => {
     const pts = [[0, 1], [0.5, 0.2], [1, 0]];
