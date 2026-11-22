@@ -40,6 +40,8 @@ import { AppState } from './app-state.js';
 import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '../core/state.js';
 import { renderStlPanel, bindStlPanel, applyStlTransform, pickStlLayer, isStlLocked, activeStlLayer } from './stl-panel.js';
 import { updateStlGhosts, ghostSurface } from '../core/stl/ghost.js';
+import { initHeightPanel } from './height-panel.js';
+import { isEditorOpen } from '../core/history.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -170,6 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     syncPhotoPanel();
     initPhotoFootprint({ commit: commitPhotoPlacement }); // the photo's footprint on the board, on the Photo tab
+    // HEIGHT-PAINTER slice 1: the editor's Height tab. Its changes are made in the editor, where Fred's "no 3D while
+    // editing" holds (core/in-editor-3d.js): the 3D is built by Apply / the 3D toggle (app-init.js editorSessionFingerprint
+    // sees the patches); a change with the editor closed (a project's own restore) rebuilds as any other.
+    initHeightPanel({
+        onChange: () => { if (!isEditorOpen()) scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0); },
+    });
 
     // F35 item 1: the Brick tab (set picker + declared tool list + common
     // controls). Output lands on the editor's own layers -- rebuilds happen

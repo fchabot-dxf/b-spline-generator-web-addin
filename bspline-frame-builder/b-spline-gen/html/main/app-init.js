@@ -57,6 +57,8 @@ export function editorSessionFingerprint() {
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
     photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
     relief: P.carveZ ?? null, // in-editor-3d.js 'relief': its slider builds no 3D in the editor, so [3D] must see it
+    // HEIGHT-PAINTER: the Height tab's patches (their rasters by content hash: the text is never re-read here)
+    heights: Array.isArray(P.heightLayers) ? P.heightLayers.map((l) => (l && l.raster ? { ...l, raster: l.raster.h } : l)) : null,
   });
 }
 

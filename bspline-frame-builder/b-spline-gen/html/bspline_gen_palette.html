@@ -1899,6 +1899,8 @@
             <button type="button" id="editorTabLattice" role="tab" data-editor-tab="lattice" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Lattice</button>
             <button type="button" id="editorTabPhoto" role="tab" data-editor-tab="photo" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Photo</button>
             <button type="button" id="editorTabBrick" role="tab" data-editor-tab="brick" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Brick</button>
+            <!-- HEIGHT-PAINTER slice 1: paint height patches on the board (main/height-panel.js) -->
+            <button type="button" id="editorTabHeight" role="tab" data-editor-tab="height" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Height</button>
           </div>
         </div>
         <div class="editor-header-actions" style="display:flex; gap:8px; align-items:center;">
@@ -2092,6 +2094,8 @@
           <div id="editorToolbarPhoto" style="display:none; flex-direction:column; align-items:center; gap:8px;">
             <!-- Populated at runtime by main/photo-panel.js's declared PHOTO_TOOLS. -->
           </div>
+          <!-- HEIGHT-PAINTER: the Height tab's rail -- the brush modes, rendered from main/height-panel.js HEIGHT_CONTROLS -->
+          <div id="editorToolbarHeight" style="display:none; flex-direction:column; align-items:center; gap:8px;"></div>
           <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
                list, moved here from the old sidebar's horizontal row (renderToolList's own target
                container, same function, same click behaviour -- only the container moved). -->
@@ -3107,6 +3111,13 @@
                  user's own upload (main/photo-panel.js's syncSaveButtonState). -->
             <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
           </div>
+        </aside>
+
+        <!-- HEIGHT-PAINTER slice 1: the Height tab's right panel -- the patches, the brush and the active patch's place /
+             stamp options, rendered from main/height-panel.js HEIGHT_CONTROLS. The painting itself is on the shared canvas. -->
+        <aside class="editor-layers-panel" id="editorHeightPanel" style="display:none;">
+          <div class="layers-header"><span>Height</span></div>
+          <div id="heightPanelBody" style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;"></div>
         </aside>
 
         <!-- F35 item 10: the Brick tab's own right panel (moved from the sidebar's panel-brick) --

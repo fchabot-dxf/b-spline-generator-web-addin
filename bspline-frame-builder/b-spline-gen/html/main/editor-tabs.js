@@ -82,6 +82,10 @@ export const EDITOR_TABS = [
       { content: 'brickStartHint', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
       { content: 'editorLayersList', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
     ] },
+  // HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md slice 1): paint height patches ON the shared canvas (main/height-panel.js);
+  // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js), its rail the brush modes
+  { id: 'height', label: 'Height', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight',
+    modes: ['select', 'heightBrush'] },
 ];
 
 /** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;
@@ -130,6 +134,7 @@ const TOOLBAR_TOP_GROUPS_BY_TAB = {
   brick: ['editorGridGroup'],
   photo: [],
   frame: [],
+  height: [], // HEIGHT-PAINTER: none of the drawing's top-bar groups
 };
 
 export function setEditorTab(tab) {

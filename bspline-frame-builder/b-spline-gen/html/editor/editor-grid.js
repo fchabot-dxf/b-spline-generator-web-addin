@@ -120,6 +120,8 @@ export const SNAP_POLICY = {
   cut: 'none',
   // F27 item 3: the stripe tool places its cuts itself (equal division of the tapped line), never at the pointer.
   stripe: 'none',
+  // HEIGHT-PAINTER: the Height tab's brush is freehand -- a dab lands under the pointer, never on the grid
+  heightBrush: 'none',
 };
 
 /**

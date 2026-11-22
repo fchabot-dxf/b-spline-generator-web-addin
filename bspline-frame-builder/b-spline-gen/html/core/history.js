@@ -139,41 +139,66 @@ const _restoreSide = (restore, side) => (restore ? Object.fromEntries(Object.ent
 // A mesh without `h` (an old record) stays inline, as before. An `h` that names DIFFERENT text (the collision-prone hash of
 // records saved before the hash fix) stays inline too, never swapped for the other mesh. Entries no snapshot references any
 // more are dropped whenever the history drops snapshots (_pruneMeshStore).
-const _meshStore = new Map();
+// HEIGHT-PAINTER: the same store for a height patch's raster (P.heightLayers[i].raster, core/height/raster.js) -- the
+// stored blobs are DECLARED here, one entry each (the P list, the record field holding the blob, how to recognise a stored
+// one, when two with the same h are the same content), each with its own h -> blob map; one mechanism reads them all.
 const _isStoredMesh = (m) => !!(m && typeof m === 'object' && typeof m.h === 'string' && m.h && typeof m.pos === 'string' && typeof m.idx === 'string');
-const _isMeshRef = (m) => !!(m && typeof m === 'object' && typeof m.ref === 'string' && !('pos' in m));
-/** `mesh` kept once under its h; false when the store holds DIFFERENT content under that h (then it stays inline). */
-function _keepMesh(mesh) {
-    const had = _meshStore.get(mesh.h);
-    if (had === undefined) { _meshStore.set(mesh.h, mesh); return true; }
-    return had === mesh || (had.pos === mesh.pos && had.idx === mesh.idx && had.nv === mesh.nv && had.nt === mesh.nt);
+const _isStoredRaster = (m) => !!(m && typeof m === 'object' && typeof m.h === 'string' && m.h && typeof m.data === 'string' && typeof m.enc === 'string');
+export const UNDO_BLOB_STORES = Object.freeze([
+    Object.freeze({ list: 'stlLayers', field: 'mesh', isStored: _isStoredMesh,
+        same: (a, b) => a.pos === b.pos && a.idx === b.idx && a.nv === b.nv && a.nt === b.nt }),
+    Object.freeze({ list: 'heightLayers', field: 'raster', isStored: _isStoredRaster,
+        same: (a, b) => a.data === b.data && a.enc === b.enc && a.cols === b.cols && a.rows === b.rows }),
+]);
+const _blobMaps = new Map(UNDO_BLOB_STORES.map((s) => [s.list, new Map()]));
+const _isBlobRef = (s, m) => !!(m && typeof m === 'object' && typeof m.ref === 'string' && !s.isStored(m) && !('pos' in m) && !('data' in m));
+/** `blob` kept once under its h; false when the store holds DIFFERENT content under that h (then it stays inline). */
+function _keepBlob(s, blob) {
+    const map = _blobMaps.get(s.list);
+    const had = map.get(blob.h);
+    if (had === undefined) { map.set(blob.h, blob); return true; }
+    return had === blob || s.same(had, blob);
 }
-/** A snapshot's deep copy of persistableP() with each stored mesh as `{ ref: h }`. */
+/** A snapshot's deep copy of persistableP() with each stored blob as `{ ref: h }`. */
 function _snapshotP() {
     const p = persistableP();
-    if (!Array.isArray(p.stlLayers) || !p.stlLayers.some((l) => l && _isStoredMesh(l.mesh))) return JSON.parse(JSON.stringify(p));
-    const stlLayers = p.stlLayers.map((l) => (l && _isStoredMesh(l.mesh) && _keepMesh(l.mesh) ? { ...l, mesh: { ref: l.mesh.h } } : l));
-    return JSON.parse(JSON.stringify({ ...p, stlLayers }));
-}
-/** The snapshot as the restore must see it: every `{ ref }` back to its stored mesh object (the snapshot itself is untouched). */
-function _rehydrated(snap) {
-    const layers = snap && snap.P && snap.P.stlLayers;
-    if (!Array.isArray(layers) || !layers.some((l) => l && _isMeshRef(l.mesh))) return snap;
-    const stlLayers = layers.map((l) => (l && _isMeshRef(l.mesh) && _meshStore.has(l.mesh.ref) ? { ...l, mesh: _meshStore.get(l.mesh.ref) } : l));
-    return { ...snap, P: { ...snap.P, stlLayers } };
-}
-/** Drop the meshes no snapshot (undo or redo) references any more. */
-function _pruneMeshStore() {
-    if (!_meshStore.size) return;
-    const used = new Set();
-    for (const s of [...globalHistoryLog, ...globalRedoLog]) {
-        const layers = s && s.P && s.P.stlLayers;
-        if (Array.isArray(layers)) for (const l of layers) if (l && _isMeshRef(l.mesh)) used.add(l.mesh.ref);
+    const swapped = {};
+    for (const s of UNDO_BLOB_STORES) {
+        const recs = p[s.list];
+        if (!Array.isArray(recs) || !recs.some((l) => l && s.isStored(l[s.field]))) continue;
+        swapped[s.list] = recs.map((l) => (l && s.isStored(l[s.field]) && _keepBlob(s, l[s.field]) ? { ...l, [s.field]: { ref: l[s.field].h } } : l));
     }
-    for (const h of [..._meshStore.keys()]) if (!used.has(h)) _meshStore.delete(h);
+    return JSON.parse(JSON.stringify(Object.keys(swapped).length ? { ...p, ...swapped } : p));
 }
-/** How many meshes the undo store holds (tests / diagnostics). */
-export function historyMeshStoreSize() { return _meshStore.size; }
+/** The snapshot as the restore must see it: every `{ ref }` back to its stored blob object (the snapshot itself is untouched). */
+function _rehydrated(snap) {
+    if (!snap || !snap.P) return snap;
+    const back = {};
+    for (const s of UNDO_BLOB_STORES) {
+        const recs = snap.P[s.list];
+        if (!Array.isArray(recs) || !recs.some((l) => l && _isBlobRef(s, l[s.field]))) continue;
+        const map = _blobMaps.get(s.list);
+        back[s.list] = recs.map((l) => (l && _isBlobRef(s, l[s.field]) && map.has(l[s.field].ref) ? { ...l, [s.field]: map.get(l[s.field].ref) } : l));
+    }
+    return Object.keys(back).length ? { ...snap, P: { ...snap.P, ...back } } : snap;
+}
+/** Drop the blobs no snapshot (undo or redo) references any more. */
+function _pruneMeshStore() {
+    for (const s of UNDO_BLOB_STORES) {
+        const map = _blobMaps.get(s.list);
+        if (!map.size) continue;
+        const used = new Set();
+        for (const snap of [...globalHistoryLog, ...globalRedoLog]) {
+            const recs = snap && snap.P && snap.P[s.list];
+            if (Array.isArray(recs)) for (const l of recs) if (l && _isBlobRef(s, l[s.field])) used.add(l[s.field].ref);
+        }
+        for (const h of [...map.keys()]) if (!used.has(h)) map.delete(h);
+    }
+}
+/** How many blobs the undo store of P list `list` holds (tests / diagnostics). */
+export function historyBlobStoreSize(list) { return _blobMaps.get(list)?.size ?? 0; }
+/** How many STL meshes the undo store holds (tests / diagnostics). */
+export function historyMeshStoreSize() { return historyBlobStoreSize('stlLayers'); }
 
 export function takeSnapshot(label = "Action", extra = {}) {
     // Capture state into a single object
@@ -206,9 +231,10 @@ export function takeSnapshot(label = "Action", extra = {}) {
  *  brick re-lay rewriting editorSvg -- the only difference -- so the next change recorded a baseline whose undo changed
  *  nothing on screen. */
 export const UNDO_KEEPS = Object.freeze(['editorSvg', 'frame']);
-// a stored STL mesh compares by its content hash, never by its text (a snapshot holds `{ ref: h }`, the live P the mesh)
+// a stored STL mesh / height raster compares by its content hash, never by its text (a snapshot holds `{ ref: h }`, the
+// live P the blob)
 const _undoComparable = (p) => JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => !UNDO_KEEPS.includes(k))),
-    (k, v) => (_isStoredMesh(v) ? { ref: v.h } : v));
+    (k, v) => (UNDO_BLOB_STORES.some((s) => s.isStored(v)) ? { ref: v.h } : v));
 
 export function ensureUndoBaseline(label = 'Before change') {
     const top = globalHistoryLog[globalHistoryLog.length - 1];
