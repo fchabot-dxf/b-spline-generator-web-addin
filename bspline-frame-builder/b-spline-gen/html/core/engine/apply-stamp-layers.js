@@ -55,7 +55,12 @@ export function flatBrickPlaneHeights(heights, brickOf, count, nx) {
 
 /** F35 item 44: what a stamp pass IS (rebuild.js _collectStampPasses tags each): a layer's ART, or a layer's BRICKS.
  *  A pass without a kind is art (every pre-item-22 caller). */
-export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks', stl: 'stl' }); // 'stl': core/stl/layer.js (STL-RELIEF)
+export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks', stl: 'stl', height: 'height' }); // 'stl': core/stl/layer.js (STL-RELIEF); 'height': core/height/layer.js (HEIGHT-PAINTER)
+/** HEIGHT-PAINTER: the pass kinds made from a self-contained RECORD with the STL stamp options (Max / Add, Raised / Carved,
+ *  Z offset, before / after thicken) -- read by the STL Max / Add branches below and by rebuild.js's 'afterBack' split.
+ *  A height pass carries its signed painted height as the body with depth +/-1, so those branches are exact for it. Level
+ *  (one rigid object) stays the STL's alone: a height patch always follows the terrain, like an SVG layer (Fred 2026-11-22). */
+export const RECORD_PASS_KINDS = Object.freeze([STAMP_PASS_KIND.stl, STAMP_PASS_KIND.height]);
 
 export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const { stampDepth = 0, stampEdgeFilletRadius = 0 } = defaults;
@@ -130,7 +135,8 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     // STL-RELIEF 'Level' (Fred 2026-11-22, core/stl/layer.js STL_SURFACES): ONE rigid object whose base is the clean terrain
     // under its pivot (bilinear, fractional grid coordinates from stlPass). Only this pass kind with surface 'level' reads it;
     // every other pass, and every follow STL, takes the branches below exactly as before.
-    const stlLevel = layer.kind === STAMP_PASS_KIND.stl && layer.surface === 'level';
+    const stlLevel = layer.kind === STAMP_PASS_KIND.stl && layer.surface === 'level'; // STL only: a height patch always follows (Fred: "No rigid")
+    const fromRecord = RECORD_PASS_KINDS.includes(layer.kind);
     const levelBase = stlLevel ? sampleGridAt(cleanHeights, nx, nz, layer.pivot[0], layer.pivot[1]) : 0;
 
     for (let k = 0; k < nx * nz; k++) {
@@ -167,7 +173,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
           const lift = Math.max(0, (layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
           stampedHeights[k] += stlCarves ? -lift : lift;
         }
-      } else if (layer.kind === STAMP_PASS_KIND.stl) {
+      } else if (fromRecord) {
         // STL, Add: the object's height plus its Z offset over the points it covers (a sunk object digs a pit); a carve is
         // the same signed the other way (into the surface)
         if (stamped) stampedHeights[k] += (stlCarves ? -1 : 1) * ((layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));

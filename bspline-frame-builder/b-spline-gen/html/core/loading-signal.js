@@ -37,6 +37,8 @@ export const LOADING_STAGES = {
   frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
   photo: { group: 'computing', label: 'loading the photo', surface: 'pill' },
   stl: { group: 'computing', label: 'reading the STL', surface: 'card' }, // STL-RELIEF: parse + weld + store a mesh (main/stl-panel.js)
+  // HEIGHT-PAINTER: a height patch encoded (a stroke's commit, a new patch) or decoded (a loaded project's, before the build)
+  heightPatch: { group: 'computing', label: 'storing the height patch', surface: 'pill' },
   // seat A's re-time 2026-10-09 (phone, CPU x4): the Art tab's Undo / Redo and a lattice Generate froze 0.56-0.9 s with
   // nothing on screen
   undo: { group: 'refreshing', label: 'undoing', surface: 'pill' },

@@ -25,8 +25,10 @@ import { sendFusionMeshPreview } from '../fusion-bridge.js';
 import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
-import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
+import { applyStampLayers, STAMP_PASS_KIND, RECORD_PASS_KINDS } from './apply-stamp-layers.js';
 import { stlPasses } from '../stl/layer.js';
+import { heightPasses, heightRastersReady, decodeHeightLayers } from '../height/layer.js';
+import { isStoredRaster } from '../height/raster.js';
 import { stlStockReport, setStlStockReport } from '../stl/stock.js';
 import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
@@ -69,13 +71,18 @@ function _fnvArray(h, a) { if (!a) return _fnv(h, '-'); h = _fnv(h, String(a.len
  * value is itself.
  */
 const _digestValue = (v) => ((v && typeof v === 'object' && typeof v.pos === 'string' && typeof v.idx === 'string' && v.h)
-    ? { h: v.h, nv: v.nv, nt: v.nt } : v);
+    ? { h: v.h, nv: v.nv, nt: v.nt }
+    // HEIGHT-PAINTER: a stored height raster (core/height/raster.js) likewise, by its content hash and its shape
+    : isStoredRaster(v) ? { h: v.h, cols: v.cols, rows: v.rows } : v);
+/** HEIGHT-PAINTER: the one async input of the height patches -- their rasters decoded (core/height/raster.js); a board
+ *  without a patch adds nothing to the digests. */
+const _heightReadyTerm = () => (Array.isArray(P.heightLayers) && P.heightLayers.length ? `|hp:${heightRastersReady(P.heightLayers)}` : '');
 /** The declared build inputs as one digest, or null when they cannot be read (then the build always runs). */
 export function rebuildInputDigest(preview, nx, nz) {
     try {
         let h = 2166136261;
         // + the one async input outside P: the Photo filter's decoded image (core/photo/state.js) lands after its URL
-        h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}|${isPhotoReady(P.photoImageDataUrl)}`);
+        h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}|${isPhotoReady(P.photoImageDataUrl)}${_heightReadyTerm()}`);
         h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta); h = _fnvArray(h, postDelta); h = _fnvArray(h, extraThickenThinMask);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
@@ -109,7 +116,7 @@ export const HEIGHTS_INERT_KEYS = new Set([
 export function heightsInputDigest(nx, nz) {
     try {
         let h = 2166136261;
-        h = _fnv(h, `${nx}x${nz}|${isPhotoReady(P.photoImageDataUrl)}`);
+        h = _fnv(h, `${nx}x${nz}|${isPhotoReady(P.photoImageDataUrl)}${_heightReadyTerm()}`);
         h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
@@ -166,6 +173,9 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
             return;
         }
 
+        // HEIGHT-PAINTER: a height patch whose raster is not decoded yet (a loaded project) is decoded before the build
+        // reads it -- a board without patches never enters here
+        if (!heightRastersReady(P.heightLayers)) await withLoadingStage('heightPatch', () => decodeHeightLayers(P.heightLayers));
         const digest = rebuildInputDigest(preview, nx, nz);
         if (digest !== null && digest === _lastBuiltDigest && lastResult) {
             if (preview) updatePreviewSculptMode(preview, scheduleRebuild); // the cheap interaction sync still runs
@@ -321,7 +331,7 @@ function buildHeights(nx, nz) {
     const passes = _collectStampPasses(nx, nz);
     // STL-RELIEF placement 'afterBack' ("After thicken"): those STL passes are stamped LAST, on the top only; the back is
     // thickened from the heights without them (backBase -> buildThickenData backFrom). None = today's one call, same arguments.
-    const late = passes.filter((p) => p.kind === 'stl' && p.placement === 'afterBack');
+    const late = passes.filter((p) => RECORD_PASS_KINDS.includes(p.kind) && p.placement === 'afterBack'); // STL and height patches
     const early = late.length ? passes.filter((p) => !late.includes(p)) : passes;
     const defaults = {
         stampDepth:            P.stampDepth,
@@ -413,6 +423,9 @@ export function _collectStampPasses(nx, nz) {
     // stlPasses runs for an absent / empty list too: it returns [] and clears the STL error map (a removed layer's error goes).
     if (nx > 1 && nz > 1) {
         passes.push(...stlPasses(P.stlLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
+        // HEIGHT-PAINTER: the painted height patches (P.heightLayers), AFTER the STL passes. None = no pass
+        // (tests/height-layers-absent.test.js); heightPasses clears its error map for an absent / empty list too.
+        passes.push(...heightPasses(P.heightLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
     }
 
     return passes;

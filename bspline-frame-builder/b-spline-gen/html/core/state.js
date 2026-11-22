@@ -373,6 +373,10 @@ export const DEFAULT = {
     // Fred 2026-11-22: fit a NEWLY added STL's Depth to the carve depth (main/stl-panel.js addStlFromSoup). An option, off by
     // default; absent on a saved board = off. Never read by a build (core/engine/rebuild.js REBUILD_INERT_KEYS).
     stlFitOnInsert: false,
+    // the HEIGHT PATCHES (HEIGHT-PAINTER-DESIGN.md): one self-contained record per painted patch (core/height/layer.js
+    // HEIGHT_LAYER_DEFAULTS), its raster stored encoded, saved with the project. [] = none = the board lays exactly as
+    // before (tests/height-layers-absent.test.js).
+    heightLayers: [],
 };
 
 export let P = { ...DEFAULT };
