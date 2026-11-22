@@ -16,7 +16,7 @@ import { P, scheduleSessionSave } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded } from '../core/height/raster.js';
-import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke } from '../core/height/brush.js';
+import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
 import { newHeightLayer, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -40,9 +40,11 @@ const MODE_LABELS = Object.freeze({ raise: ['▲', 'Raise', 'Add height'], lower
 
 /**
  * Every control, once. target 'brush' = the brush (UI state, key `path[0]`), 'patch' = the ACTIVE patch's record (`path`).
- * kind 'slider' (range + number), 'choice' (segmented buttons) or 'check'. `range(P)` is only the slider's travel, NOT a
+ * kind 'slider' (range + number), 'choice' (segmented buttons), 'check' or 'curve' (the falloff curve widget). An entry's optional\n * showWhen(brush, patch) hides its control while false; lsoSet(prev, next, brush) (choice) returns extra brush keys to write with it. `range(P)` is only the slider's travel, NOT a
  * rule: a typed value outside it is stored as typed (no clamp; AGENTS.md "ask before any clamp").
  */
+const sameCurve = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
+
 export const HEIGHT_CONTROLS = Object.freeze([
   { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', rail: true,
     options: BRUSH_MODES.map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
@@ -50,7 +52,12 @@ export const HEIGHT_CONTROLS = Object.freeze([
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   // Fred 2026-11-22: the shape of the roll-off outside the hard core (core/height/brush.js BRUSH_FALLOFFS)
   { id: 'falloff', group: 'brush', target: 'brush', kind: 'choice', path: ['falloff'], label: 'Falloff',
-    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title]) },
+    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title]),
+    // Custom starts from the shape the brush had: while the curve is still the default, seed it from the previous profile
+    alsoSet: (prev, next, brush) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(brush.customCurve, BRUSH_DEFAULTS.customCurve)
+      ? { customCurve: curvePointsFromProfile(prev, 6) } : null) },
+  // Fred 2026-11-22: a small widget to design a custom falloff (points [t, value]; t 0 = the hardness edge, 1 = the rim)
+  { id: 'customCurve', group: 'brush', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', showWhen: (brush) => brush.falloff === 'custom' },
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
   { id: 'flow', group: 'brush', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },
@@ -261,8 +268,12 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   if (c.kind === 'slider') { v = parseFloat(value); if (!Number.isFinite(v)) return false; }
   if (c.kind === 'choice') v = c.options.find(([k]) => String(k) === String(value))?.[0];
   if (c.kind === 'check') v = !!value;
+  if (c.kind === 'curve') {
+    const ok = Array.isArray(value) && value.length >= 2 && value.every((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    v = ok ? value.map((p) => [p[0], p[1]]).sort((a, b) => a[0] - b[0]) : undefined;
+  }
   if (v === undefined) return false;
-  if (c.target === 'brush') { _brush = { ..._brush, [c.path[0]]: v }; drawCursor(); return true; }
+  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; drawCursor(); return true; }
   const rec = activeHeightLayer();
   if (!rec) return false;
   if (c.path[0] === 'sizeIn' && !rec.sizeIn) updateRecord(rec.id, (r) => ({ ...r, sizeIn: placed(r).sizeIn }));
@@ -426,7 +437,98 @@ const el = (tag, attrs = {}, kids = []) => {
   return e;
 };
 const cad = (text) => el('label', { class: 'cad-label', text });
+
+// ── the 'curve' control: the custom falloff widget (an inline SVG, Pointer Events) ─────────────────────────────────────
+// viewBox 160 x 100 (scales uniformly to the panel width). t 0..1 maps to x CURVE_BOX.x0..x1; the visible value range is
+// 0..CURVE_BOX.vMax (a view only: a point may be put anywhere the box shows, nothing is clamped).
+const CURVE_BOX = Object.freeze({ w: 160, h: 100, x0: 14, x1: 150, yZero: 84, yTop: 8, vMax: 1.2, hitR: 14, dotR: 5, tGap: 0.005, minGap: 0.01, longPressMs: 600, moveSlop: 4 });
+const curveX = (t) => CURVE_BOX.x0 + t * (CURVE_BOX.x1 - CURVE_BOX.x0);
+const curveY = (v) => CURVE_BOX.yZero - (v / CURVE_BOX.vMax) * (CURVE_BOX.yZero - CURVE_BOX.yTop);
+const curveT = (x) => (x - CURVE_BOX.x0) / (CURVE_BOX.x1 - CURVE_BOX.x0);
+const curveV = (y) => ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * CURVE_BOX.vMax;
+let _curveLive = null; // the points being dragged (drawn live; written once on release)
+
+function paintCurve(svg, pts) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const B = CURVE_BOX, ink = HEIGHT_VIEW.outline;
+  const line = (x1, y1, x2, y2, extra = {}) => svgEl('line', { x1, y1, x2, y2, stroke: 'currentColor', 'stroke-opacity': 0.25, 'stroke-width': 1, ...extra }, svg);
+  line(B.x0, B.yTop, B.x0, B.yZero); line(B.x1, B.yTop, B.x1, B.yZero);
+  line(B.x0, B.yZero, B.x1, B.yZero); line(B.x0, curveY(1), B.x1, curveY(1), { 'stroke-dasharray': '3 3' });
+  for (const [x, anchor, text] of [[B.x0, 'start', 'hard core'], [B.x1, 'end', 'rim']]) {
+    const t = svgEl('text', { x, y: B.h - 3, 'text-anchor': anchor, 'font-size': 8, fill: 'currentColor', 'fill-opacity': 0.6 }, svg);
+    t.textContent = text;
+  }
+  const f = curveFromPoints(pts), N = 48, d = [];
+  for (let i = 0; i <= N; i++) { const t = i / N; d.push(`${i ? 'L' : 'M'}${curveX(t).toFixed(2)} ${curveY(f(t)).toFixed(2)}`); }
+  svgEl('path', { d: d.join(' '), fill: 'none', stroke: ink, 'stroke-width': 2 }, svg);
+  pts.forEach(([t, v], i) => {
+    const g = svgEl('g', { 'data-curve-handle': i, style: 'cursor:grab' }, svg);
+    svgEl('circle', { 'data-curve-hit': '', cx: curveX(t), cy: curveY(v), r: B.hitR, fill: 'transparent' }, g); // the touch target: 28 px across
+    svgEl('circle', { cx: curveX(t), cy: curveY(v), r: B.dotR, fill: '#fff', stroke: ink, 'stroke-width': 2 }, g);
+  });
+}
+
+const curvePointsNow = () => _curveLive || (Array.isArray(_brush.customCurve) ? _brush.customCurve : BRUSH_DEFAULTS.customCurve);
+function drawCurveControl(c) { const s = byId(`height_${c.id}`)?.querySelector('svg'); if (s) paintCurve(s, curvePointsNow()); }
+
+function wireCurve(c) {
+  const box = byId(`height_${c.id}`), svg = box && box.querySelector('svg');
+  if (!svg) return;
+  const B = CURVE_BOX;
+  const vb = (e) => { const r = svg.getBoundingClientRect(); const k = B.w / (r.width || B.w); return [(e.clientX - r.left) * k, (e.clientY - r.top) * (B.h / (r.height || B.h))]; };
+  const write = (pts) => { _curveLive = null; setHeightField(c.id, pts); syncHeightPanel(); };
+  let drag = null;
+  const clearTimer = () => { if (drag && drag.timer) { clearTimeout(drag.timer); drag.timer = null; } };
+  const idxOf = (e) => { const h = e.target.closest && e.target.closest('[data-curve-handle]'); return h ? Number(h.getAttribute('data-curve-handle')) : -1; };
+  const removeAt = (i) => { const pts = curvePointsNow(); if (i > 0 && i < pts.length - 1) write(pts.filter((_, k) => k !== i)); };
+  svg.addEventListener('pointerdown', (e) => {
+    const [x, y] = vb(e), i = idxOf(e), pts = curvePointsNow().map((p) => [p[0], p[1]]);
+    if (typeof svg.setPointerCapture === 'function' && e.pointerId != null) { try { svg.setPointerCapture(e.pointerId); } catch (_) { /* not capturable */ } }
+    drag = { i, x, y, pts, moved: false, timer: null };
+    if (i > 0 && i < pts.length - 1 && e.pointerType === 'touch') {
+      drag.timer = setTimeout(() => { drag.timer = null; const k = drag.i; drag = null; _curveLive = null; removeAt(k); }, B.longPressMs); // long-press = remove
+    }
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const [x, y] = vb(e);
+    if (!drag.moved && Math.hypot(x - drag.x, y - drag.y) < B.moveSlop) return;
+    drag.moved = true; clearTimer();
+    if (drag.i < 0) return;
+    const i = drag.i, pts = drag.pts, last = pts.length - 1;
+    let t = pts[i][0];
+    if (i > 0 && i < last) t = Math.min(pts[i + 1][0] - B.tGap, Math.max(pts[i - 1][0] + B.tGap, curveT(x))); // keeps the curve a function
+    pts[i] = [t, curveV(y)];
+    _curveLive = pts;
+    paintCurve(svg, pts);
+  });
+  const end = (e, cancelled) => {
+    if (!drag) return;
+    clearTimer();
+    const d = drag; drag = null;
+    if (cancelled) { _curveLive = null; paintCurve(svg, curvePointsNow()); return; }
+    if (d.i >= 0) { if (d.moved && _curveLive) write(_curveLive); else _curveLive = null; return; }
+    if (d.moved) return; // a swipe over the empty area is not a tap
+    const t = curveT(d.x), pts = curvePointsNow();
+    if (!(t > 0 && t < 1) || pts.some((p) => Math.abs(p[0] - t) < B.minGap)) return;
+    write([...pts, [t, curveV(d.y)]]);
+  };
+  svg.addEventListener('pointerup', (e) => end(e, false));
+  svg.addEventListener('pointercancel', (e) => end(e, true));
+  svg.addEventListener('dblclick', (e) => { const i = idxOf(e); if (i >= 0) removeAt(i); });
+}
+
 function renderControl(c) {
+  if (c.kind === 'curve') {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${CURVE_BOX.w} ${CURVE_BOX.h}`);
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Falloff curve: drag a point, tap to add one, double-click to remove one');
+    svg.style.cssText = 'width:100%; height:auto; display:block; touch-action:none; user-select:none; margin-bottom:10px;';
+    paintCurve(svg, curvePointsNow());
+    const box = el('div', { id: `height_${c.id}` }, [cad(c.label)]);
+    box.appendChild(svg);
+    return box;
+  }
   if (c.kind === 'choice') {
     return el('div', {}, [cad(c.label), el('div', { class: 'relief-toggle', id: `height_${c.id}`, style: 'margin-bottom:10px; flex-wrap:wrap;' },
       c.options.map(([key, text, title]) => el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text })))]);
@@ -462,7 +564,11 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   for (const g of HEIGHT_GROUPS) {
     const box = el('div', { id: `heightGroup_${g.id}` });
     box.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
-    for (const c of HEIGHT_CONTROLS.filter((x) => x.group === g.id)) box.appendChild(renderControl(c));
+    for (const c of HEIGHT_CONTROLS.filter((x) => x.group === g.id)) {
+      const w = el('div', { 'data-height-control': c.id }, [renderControl(c)]);
+      if (c.showWhen) w.hidden = !c.showWhen(_brush, null);
+      box.appendChild(w);
+    }
     body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
@@ -497,9 +603,14 @@ export function syncHeightPanel() {
       for (const id of [`height_${c.id}Slider`, `height_${c.id}`]) { const x = byId(id); if (x) { x.min = String(min); x.max = String(max); if (v !== undefined) x.value = String(v); x.disabled = !src; } }
     } else if (c.kind === 'check') {
       const x = byId(`height_${c.id}`); if (x) x.checked = !!v;
+    } else if (c.kind === 'curve') {
+      drawCurveControl(c);
     } else if (typeof document !== 'undefined') {
       for (const b of document.querySelectorAll(`[data-height-choice^="${c.id}:"]`)) b.classList.toggle('active', b.getAttribute('data-height-choice') === `${c.id}:${v}`);
     }
+  }
+  if (typeof document !== 'undefined') {
+    for (const c of HEIGHT_CONTROLS) if (c.showWhen) { const w = document.querySelector(`[data-height-control="${c.id}"]`); if (w) w.hidden = !c.showWhen(_brush, n); }
   }
   for (const g of ['patch', 'stamp']) { const box = byId(`heightGroup_${g}`); if (box) box.hidden = !rec; }
   const rm = byId('heightRemove'); if (rm) rm.disabled = !rec;
@@ -548,6 +659,8 @@ export function initHeightPanel(hooks = {}) {
       s?.addEventListener('input', (e) => { if (n) n.value = e.target.value; setHeightField(c.id, e.target.value, { commit: false }); });
       s?.addEventListener('change', (e) => { setHeightField(c.id, e.target.value); syncHeightPanel(); });
       n?.addEventListener('change', (e) => { setHeightField(c.id, e.target.value); syncHeightPanel(); });
+    } else if (c.kind === 'curve') {
+      wireCurve(c);
     } else if (c.kind === 'check') {
       byId(`height_${c.id}`)?.addEventListener('change', (e) => setHeightField(c.id, e.target.checked));
     } else if (typeof document !== 'undefined') {
@@ -583,7 +696,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;

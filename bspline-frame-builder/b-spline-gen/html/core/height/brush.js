@@ -31,6 +31,7 @@ export const BRUSH_DEFAULTS = Object.freeze({
   targetIn: 0.1,     // set: the height it moves toward
   pressureSize: false,
   pressureOpacity: false,
+  customCurve: Object.freeze([Object.freeze([0, 1]), Object.freeze([1, 0])]), // the 'custom' falloff's points [t, value]: t 0 = hardness edge, 1 = rim
 });
 
 /** The smooth mode's box half-width, as a fraction of the dab radius (at least one pixel). */
@@ -48,14 +49,63 @@ export const BRUSH_FALLOFFS = Object.freeze({
   soft: Object.freeze({ label: 'Soft', title: 'A long gaussian-like tail', curve: (t) => Math.exp(-4.5 * t * t) * Math.pow(1 - t, 0.25) }),
   spike: Object.freeze({ label: 'Spike', title: 'Drops fast, a point at the centre', curve: (t) => (1 - t) ** 3 }),
   plateau: Object.freeze({ label: 'Plateau', title: 'A flat top and a steep rim', curve: (t) => 1 - t ** 6 }),
+  // no `curve` here: it is evaluated from the brush's own customCurve (curveFromPoints) -- a ring / crater may rise
+  custom: Object.freeze({ label: 'Custom', title: 'Your own curve (edit it below)', custom: true }),
 });
 
-/** The falloff at distance `r` from a dab of radius `R`, `hardness` (0..1) and profile `falloff` (a BRUSH_FALLOFFS key). */
-export function brushFalloff(r, R, hardness, falloff = 'smooth') {
+/**
+ * A curve through `points` ([[t, value], ...]; sorted by t, a repeated t keeps the last): a MONOTONE cubic Hermite
+ * (Fritsch-Carlson), so between two points the value never leaves [min, max] of those two (no overshoot). Across points it may
+ * rise or fall freely (a ring). Before the first / after the last point the end value holds. Returns `(t) => value`.
+ */
+export function curveFromPoints(points) {
+  const byT = new Map();
+  for (const p of Array.isArray(points) ? points : []) if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) byT.set(p[0], p[1]);
+  const xs = [...byT.keys()].sort((a, b) => a - b), ys = xs.map((x) => byT.get(x));
+  const n = xs.length;
+  if (n === 0) return () => 0;
+  if (n === 1) return () => ys[0];
+  const d = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  const m = new Array(n);
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * d[i]; m[i + 1] = k * b * d[i]; }
+  }
+  return (t) => {
+    if (!(t > xs[0])) return ys[0];
+    if (!(t < xs[n - 1])) return ys[n - 1];
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] <= t) lo = mid; else hi = mid; }
+    const h = xs[hi] - xs[lo], u = (t - xs[lo]) / h, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * ys[lo] + (u3 - 2 * u2 + u) * h * m[lo] + (-2 * u3 + 3 * u2) * ys[hi] + (u3 - u2) * h * m[hi];
+  };
+}
+
+const DEFAULT_CUSTOM_CURVE_FN = curveFromPoints(BRUSH_DEFAULTS.customCurve);
+
+/** Control points sampled from a built-in profile at `n` evenly spaced t (the custom curve's "start from"). */
+export function curvePointsFromProfile(key, n = 6) {
+  const p = BRUSH_FALLOFFS[key];
+  if (!p || !p.curve) return BRUSH_DEFAULTS.customCurve.map((q) => [...q]);
+  const out = [];
+  for (let i = 0; i < n; i++) { const t = n > 1 ? i / (n - 1) : 0; out.push([t, p.curve(t)]); }
+  return out;
+}
+
+/**
+ * The falloff at distance `r` from a dab of radius `R`, `hardness` (0..1) and profile `falloff` (a BRUSH_FALLOFFS key).
+ * 'custom' reads `customFn` (curveFromPoints of the brush's customCurve; the default curve when absent).
+ */
+export function brushFalloff(r, R, hardness, falloff = 'smooth', customFn = null) {
   const core = hardness * R;
   if (r <= core) return 1;
   if (r >= R) return 0;
   const t = (r - core) / (R - core);
+  if (falloff === 'custom') return (customFn || DEFAULT_CUSTOM_CURVE_FN)(t);
   return (BRUSH_FALLOFFS[falloff] || BRUSH_FALLOFFS.smooth).curve(t);
 }
 
@@ -82,6 +132,7 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY }) {
   const R0 = b.sizeIn / 2;
   const step = b.spacing * b.sizeIn;
   const mode = b.mode;
+  const customFn = b.falloff === 'custom' ? curveFromPoints(b.customCurve || BRUSH_DEFAULTS.customCurve) : null; // once per stroke
   let sat = null, kSmooth = 0;
   let last = null;       // { x, y, p }
   let toNext = 0;        // inches still to go along the path before the next dab
@@ -106,7 +157,7 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY }) {
     let touched = false;
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
-        const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness, b.falloff);
+        const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness, b.falloff, customFn);
         if (!(f > 0)) continue;
         const k = r * cols + c;
         const a0 = cov[k];

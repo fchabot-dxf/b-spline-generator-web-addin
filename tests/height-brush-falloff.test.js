@@ -12,7 +12,7 @@ const at = (profile, t) => brushFalloff(HARD * R + t * (R - HARD * R), R, HARD, 
 
 describe('BRUSH_FALLOFFS: the declared profiles', () => {
   it('declares smooth (the default), linear, dome, soft, spike and plateau, each with a label', () => {
-    expect(Object.keys(BRUSH_FALLOFFS)).toEqual(['smooth', 'linear', 'dome', 'soft', 'spike', 'plateau']);
+    expect(Object.keys(BRUSH_FALLOFFS)).toEqual(['smooth', 'linear', 'dome', 'soft', 'spike', 'plateau', 'custom']); // + 'custom' (tests/height-brush-custom-curve.test.js)
     for (const p of Object.values(BRUSH_FALLOFFS)) expect(typeof p.label).toBe('string');
     expect(BRUSH_DEFAULTS.falloff).toBe('smooth');
   });
