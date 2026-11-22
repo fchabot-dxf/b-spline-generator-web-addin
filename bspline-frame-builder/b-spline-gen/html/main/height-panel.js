@@ -22,6 +22,9 @@ import {
   PATCH_LAYER_BLENDS, BASE_LAYER_ID, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
 } from '../core/height/compose.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
+import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny } from '../core/height/selection.js';
+import { getLayerSvg } from '../editor/editor-io.js';
+import { applyLayerTransform } from '../core/stamp/transform.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
@@ -94,17 +97,25 @@ export const HEIGHT_CONTROLS = Object.freeze([
 /** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below. */
 export const HEIGHT_TOOLS = Object.freeze([
   Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights (the modes below)' }),
+  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it' }),
+  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it' }),
+  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it' }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
-export const TOOL_DEFAULTS = Object.freeze({});
+export const TOOL_DEFAULTS = Object.freeze({
+  select: Object.freeze({ featherIn: 0.05 }),
+});
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
+  Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
 ]);
 const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
 export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'layerOpacity', group: 'layers', target: 'layer', kind: 'slider', path: ['opacity'], label: 'Layer opacity', step: 0.01, range: () => [0, 1] },
   { id: 'layerBlend', group: 'layers', target: 'layer', kind: 'choice', path: ['blend'], label: 'Layer blend',
     options: PATCH_LAYER_BLENDS.map((b) => [b, BLEND_LABELS[b][0], BLEND_LABELS[b][1]]) },
+  { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
+    note: 'Feather softens the selection edge by this much' },
 ]);
 /** Both tables, the one list the renderer and the setter read. */
 const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
@@ -124,6 +135,8 @@ const _activeLayer = new Map(); // patch id -> the id of the layer the tools edi
 const freshTools = () => Object.fromEntries(Object.entries(TOOL_DEFAULTS).map(([k, v]) => [k, JSON.parse(JSON.stringify(v))]));
 let _tools = freshTools();
 let _tool = 'brush';         // the HEIGHT_TOOLS entry the canvas gesture runs
+const _selections = new Map(); // patch id -> { cols, rows, mask, path } (session UI state: never saved, never in undo)
+let _drag = null;            // a selection being dragged: { kind, id, pts: [[c, r], ...] }
 
 const list = () => (Array.isArray(P.heightLayers) ? P.heightLayers : []);
 const find = (id) => list().find((l) => l && l.id === id) || null;
@@ -220,7 +233,7 @@ function beginStroke(pt, pressure) {
   const work = paintableCopy(rec);
   if (!work) return false;
   const size = placed(rec).sizeIn;
-  const s = createStroke(work, _brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h });
+  const s = createStroke(work, _brush, { pxPerInX: work.cols / size.w, pxPerInY: work.rows / size.h, mask: maskOf(rec) });
   _stroke = { s, id: rec.id };
   const q = pixelOf(rec, pt);
   s.addPoint(q.c, q.r, pressure);
@@ -280,8 +293,12 @@ const TOOL = Object.freeze({
 function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) ed._heightTool = TOOL; }
 
 /** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
+const selectGesture = (kind) => ({ start: (pt) => beginSelect(kind, pt), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
 const GESTURES = {
   brush: { start: (pt, e) => beginStroke(pt, pressureOf(e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
+  selectRect: selectGesture('rect'),
+  selectEllipse: selectGesture('ellipse'),
+  selectLasso: selectGesture('lasso'),
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
 /** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. */
@@ -310,6 +327,148 @@ export function paintHeightStroke(points, brush = {}) {
   } finally { _brush = was; }
 }
 
+// ── the selection (slice 2; core/height/selection.js): per patch, session UI state ─────────────────────────────────
+/** The active patch's selection { cols, rows, mask } (its grid), or null = none (the tools work everywhere). */
+export function heightSelection() {
+  const rec = activeHeightLayer();
+  const sel = rec ? _selections.get(rec.id) : null;
+  const g = rec ? patchGrid(rec) : null;
+  return sel && g && sel.cols === g.cols && sel.rows === g.rows ? sel : null;
+}
+/** The mask a tool multiplies by on patch `rec` (null = everywhere). */
+function maskOf(rec) {
+  const sel = rec ? _selections.get(rec.id) : null;
+  const g = rec ? patchGrid(rec) : null;
+  return sel && g && sel.cols === g.cols && sel.rows === g.rows ? sel.mask : null;
+}
+/** Set the active patch's selection mask (null / nothing selected = clear), redraw its outline. */
+function setSelection(mask) {
+  const rec = activeHeightLayer();
+  if (!rec) return false;
+  const g = patchGrid(rec);
+  if (!mask || !maskAny(mask)) _selections.delete(rec.id);
+  else _selections.set(rec.id, { cols: g.cols, rows: g.rows, mask, path: null });
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
+}
+/** Board inches (+Y up) -> the active patch's raster pixel [c, r]. */
+function patchPx(rec, [X, Y]) { const q = boardToPatchPixel(placed(rec), X, Y); return [q.c, q.r]; }
+const shapeMask = (rec, kind, pts) => {
+  const { cols, rows } = patchGrid(rec);
+  if (kind === 'lasso') return lassoMask(cols, rows, pts);
+  const [[c0, r0], [c1, r1]] = [pts[0], pts[pts.length - 1]];
+  return (kind === 'ellipse' ? ellipseMask : rectMask)(cols, rows, c0, r0, c1, r1);
+};
+/** A rectangle / ellipse between two board points, or a lasso through board points ([X, Y], inches, +Y up): the new selection. */
+export function selectHeightRect(p0, p1) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'rect', [patchPx(rec, p0), patchPx(rec, p1)])); }
+export function selectHeightEllipse(p0, p1) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'ellipse', [patchPx(rec, p0), patchPx(rec, p1)])); }
+export function selectHeightLasso(points) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'lasso', points.map((q) => patchPx(rec, q)))); }
+export function invertHeightSelection() { const s = heightSelection(); return !!s && setSelection(invertMask(s.mask)); }
+export function clearHeightSelection() { return setSelection(null); }
+/** Soften the selection edge by `inches` (a blur; a stretched patch blurs by its own pixels per inch on each axis). */
+export function featherHeightSelection(inches) {
+  const s = heightSelection();
+  const rec = activeHeightLayer();
+  if (!s || !(inches > 0)) return false;
+  const size = placed(rec).sizeIn;
+  return setSelection(featherMask(s.mask, s.cols, s.rows, (inches * s.cols) / size.w, (inches * s.rows) / size.h));
+}
+/** An editor SVG's shapes (editor coordinates: a Draw-tab layer) as the selection. `opts.render`: the renderer (tests). */
+export async function selectHeightFromSvg(svgText, opts = {}) {
+  const rec = activeHeightLayer();
+  if (!rec || !svgText) return false;
+  let mask = null;
+  await withLoadingStage('heightPatch', async () => { mask = await maskFromSvg(svgText, placed(rec), board(), opts); });
+  if (activeHeightLayer() !== find(rec.id)) return false;
+  if (!maskAny(mask)) { status('That shape does not reach this patch.'); return false; }
+  return setSelection(mask);
+}
+/** A Draw-tab layer (its art, as its stamp sees it: getLayerSvg + the layer's own transform) as the selection. */
+export function selectHeightFromLayer(layerId) {
+  const ed = editor();
+  const layer = ed && Array.isArray(ed._layers) ? ed._layers.find((l) => l && String(l.id) === String(layerId)) : null;
+  if (!layer) return Promise.resolve(false);
+  const t = { tx: layer.tx ?? 0, ty: layer.ty ?? 0, rotation: layer.rotation ?? 0, scale: layer.scale ?? 1, mirrorX: !!layer.mirrorX, mirrorY: !!layer.mirrorY };
+  const svg = getLayerSvg(ed, layer.id);
+  if (!svg) { status('That layer has no shape to select.'); return Promise.resolve(false); }
+  return selectHeightFromSvg(applyLayerTransform(svg, t, P.widthIn, P.heightIn));
+}
+/** The 'From a Draw-tab shape' list: the editor's layers. */
+function syncSelectionSources() {
+  const sel = byId('heightSelSource');
+  if (!sel) return;
+  const ed = editor();
+  const layers = ed && Array.isArray(ed._layers) ? ed._layers.filter(Boolean) : [];
+  const want = layers.map((l) => `${l.id}|${l.name || `Layer ${l.id}`}`).join('\n');
+  if (sel.getAttribute('data-sources') === want) return;
+  const was = sel.value;
+  sel.innerHTML = '';
+  for (const l of layers) { const o = document.createElement('option'); o.value = String(l.id); o.textContent = l.name || `Layer ${l.id}`; sel.appendChild(o); }
+  if (layers.some((l) => String(l.id) === was)) sel.value = was;
+  sel.setAttribute('data-sources', want);
+  const btn = byId('heightSelFromShape'); if (btn) btn.disabled = !layers.length;
+}
+
+// the selection gestures: drag a rectangle / ellipse, draw a lasso; one selection on release (a tap clears it)
+function beginSelect(kind, pt) {
+  const rec = activeHeightLayer();
+  if (!rec || !patchGrid(rec)) return false;
+  const q = pixelOf(rec, pt);
+  _drag = { kind, id: rec.id, pts: [[q.c, q.r]] };
+  syncHeightOverlay();
+  return true;
+}
+function moveSelect(pt) {
+  _hover = pt;
+  const rec = _drag && find(_drag.id);
+  if (!rec) return;
+  const q = pixelOf(rec, pt);
+  if (_drag.kind === 'lasso') _drag.pts.push([q.c, q.r]); else _drag.pts[1] = [q.c, q.r];
+  syncHeightOverlay();
+}
+function endSelect() {
+  const d = _drag;
+  _drag = null;
+  const rec = d && find(d.id);
+  if (!rec) return Promise.resolve();
+  const moved = d.kind === 'lasso' ? d.pts.length >= 3 : d.pts.length === 2 && Math.hypot(d.pts[1][0] - d.pts[0][0], d.pts[1][1] - d.pts[0][1]) >= 1;
+  if (!moved) { setSelection(null); return Promise.resolve(); }
+  if (activeHeightLayer() === rec) setSelection(shapeMask(rec, d.kind, d.pts));
+  return Promise.resolve();
+}
+function cancelSelect() { if (_drag) { _drag = null; syncHeightOverlay(); } }
+
+/** The selection's outline on patch node `node` (image pixel coordinates -> the patch's own box), marching ants. */
+function drawSelection(node, rec, p, show) {
+  let path = node.querySelector('.height-selection');
+  const sel = show ? _selections.get(rec.id) : null;
+  const g = patchGrid(rec);
+  let d = '';
+  if (show && _drag && _drag.id === rec.id) {
+    const img = ([c, r]) => [c + 0.5, g.rows - r - 0.5];
+    let pts = _drag.pts.map(img);
+    if (_drag.kind !== 'lasso' && pts.length === 2) {
+      const [[x0, y0], [x1, y1]] = pts;
+      if (_drag.kind === 'rect') pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      else { const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, rx = Math.abs(x1 - x0) / 2, ry = Math.abs(y1 - y0) / 2; pts = Array.from({ length: 64 }, (_, i) => [cx + rx * Math.cos((i * Math.PI) / 32), cy + ry * Math.sin((i * Math.PI) / 32)]); }
+    }
+    d = pts.length > 1 ? `M${pts.map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join(' L')} Z` : '';
+  } else if (sel && sel.cols === g.cols && sel.rows === g.rows) {
+    if (sel.path == null) sel.path = maskOutline(sel.mask, sel.cols, sel.rows).map((q) => `M${fmt(q[0])} ${fmt(q[1])}L${fmt(q[2])} ${fmt(q[3])}`).join('');
+    d = sel.path;
+  }
+  if (!d) { if (path) path.remove(); return; }
+  if (!path) {
+    path = svgEl('path', { class: 'height-selection', fill: 'none', 'vector-effect': 'non-scaling-stroke', stroke: HEIGHT_VIEW.outline, 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, node);
+    const ants = svgEl('animate', { attributeName: 'stroke-dashoffset', from: '0', to: '9', dur: '0.6s', repeatCount: 'indefinite' }, path);
+    ants.setAttribute('data-ants', '');
+  }
+  path.setAttribute('transform', `translate(${fmt(-p.sizeIn.w / 2)} ${fmt(-p.sizeIn.h / 2)}) scale(${fmt(p.sizeIn.w / g.cols)} ${fmt(p.sizeIn.h / g.rows)})`);
+  path.setAttribute('d', d);
+  if (path !== node.lastChild) node.appendChild(path);
+}
+
 // ── patches ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 /** 'New height patch': an unpainted patch over the whole board, made active. One step. */
 export async function newHeightPatch() {
@@ -328,6 +487,7 @@ export function removeHeightPatch(id) {
   P.heightLayers = list().filter((l) => !(l && l.id === id));
   if (_work && _work.id === id) _work = null;
   _activeLayer.delete(id);
+  _selections.delete(id);
   if (_active === id) _active = list()[0]?.id ?? null;
   commitStep('remove');
   syncHeightPanel();
@@ -568,6 +728,7 @@ export function syncHeightOverlay() {
     box.setAttribute('stroke-width', fmt(1.5 * px));
     box.setAttribute('stroke-dasharray', `${fmt(4 * px)} ${fmt(3 * px)}`);
     box.style.display = inTab && active && rec.id === active.id ? '' : 'none';
+    drawSelection(node, rec, p, inTab && active && rec.id === active.id);
   }
   drawCursor();
 }
@@ -735,6 +896,18 @@ function controlSource(c, rec) {
 }
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
+  select: () => el('div', {}, [
+    el('div', { class: 'photo-layer-buttons' }, [
+      el('button', { type: 'button', id: 'heightSelFeather', class: 'cad-btn cad-btn-secondary', text: 'Feather', title: 'Soften the selection edge by the Feather amount' }),
+      el('button', { type: 'button', id: 'heightSelInvert', class: 'cad-btn cad-btn-secondary', text: 'Invert' }),
+      el('button', { type: 'button', id: 'heightSelClear', class: 'cad-btn cad-btn-secondary', text: 'Clear', title: 'No selection: the tools work everywhere' }),
+    ]),
+    el('label', { class: 'cad-label', text: 'From a Draw-tab shape' }),
+    el('div', { class: 'photo-layer-buttons' }, [
+      el('select', { id: 'heightSelSource', class: 'cad-select', title: 'The Draw-tab layer whose shapes become the selection' }),
+      el('button', { type: 'button', id: 'heightSelFromShape', class: 'cad-btn cad-btn-secondary', text: 'Select shape' }),
+    ]),
+  ]),
   layers: () => el('div', {}, [
     el('div', { id: 'heightLayerList', class: 'stl-list' }),
     el('div', { class: 'photo-layer-buttons' }, [
@@ -851,6 +1024,9 @@ export function syncHeightPanel() {
   }
   const rm = byId('heightRemove'); if (rm) rm.disabled = !rec;
   const add = byId('heightLayerAdd'); if (add) add.disabled = !rec;
+  const hasSel = !!heightSelection();
+  for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
+  syncSelectionSources();
   const stored = byId('heightStored');
   if (stored) {
     const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);
@@ -890,6 +1066,13 @@ export function initHeightPanel(hooks = {}) {
   byId('heightList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-height-enable]');
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
+  });
+  byId('heightSelFeather')?.addEventListener('click', () => featherHeightSelection(_tools.select.featherIn));
+  byId('heightSelInvert')?.addEventListener('click', () => invertHeightSelection());
+  byId('heightSelClear')?.addEventListener('click', () => clearHeightSelection());
+  byId('heightSelFromShape')?.addEventListener('click', () => {
+    const id = byId('heightSelSource')?.value;
+    if (id) selectHeightFromLayer(id).catch((e) => status(`Could not read the shape: ${e && e.message ? e.message : e}`, true));
   });
   byId('heightLayerAdd')?.addEventListener('click', () => { addPaintLayer().catch((e) => status(`Could not add the layer: ${e && e.message ? e.message : e}`, true)); });
   byId('heightLayerList')?.addEventListener('click', (e) => {
@@ -949,7 +1132,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;

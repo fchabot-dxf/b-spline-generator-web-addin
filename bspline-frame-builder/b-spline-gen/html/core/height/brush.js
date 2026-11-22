@@ -131,8 +131,10 @@ function summedArea(src, cols, rows) {
  * A stroke on `raster` ({ cols, rows, data: Float32Array }, written in place) with brush `b` (BRUSH_DEFAULTS' shape).
  * addPoint(x, y, pressure) lays dabs along the path every spacing x size (the first at the first point); cancel() puts
  * the touched pixels back. `dabs` = how many were laid, `bbox` = { c0, r0, c1, r1 } (inclusive) of the touched pixels or null.
+ * `mask` (slice 2, core/height/selection.js: Float32 0..1 per pixel, or null = everywhere) multiplies the effect: a pixel
+ * the mask leaves at 0 is never written.
  */
-export function createStroke(raster, b, { pxPerInX, pxPerInY }) {
+export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null }) {
   const { cols, rows, data } = raster;
   const base = Float32Array.from(data);
   const cov = new Float64Array(cols * rows);
@@ -167,10 +169,13 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY }) {
         const f = brushFalloff(Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY), R, b.hardness, b.falloff, customFn);
         if (!(f > 0)) continue;
         const k = r * cols + c;
+        const m = mask ? mask[k] : 1;
+        if (!(m > 0)) continue;
         const a0 = cov[k];
         if (!(a0 < cap)) continue;
-        const a = a0 + (cap - a0) * (b.flow * f);
-        cov[k] = a;
+        const a1 = a0 + (cap - a0) * (b.flow * f);
+        cov[k] = a1;
+        const a = mask ? a1 * m : a1; // the selection scales the effect, never the coverage
         const h = base[k];
         if (mode === 'raise') data[k] = h + a * b.amountIn;
         else if (mode === 'lower') data[k] = h - a * b.amountIn;
