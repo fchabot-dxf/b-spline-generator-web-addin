@@ -81,10 +81,12 @@ export const STL_NO_TRIANGLES_MESSAGE = 'The STL has no usable triangles.';
  * The mesh health is measured on the ORIGINAL here and kept in the record (`health`): the decimated copy's vertex
  * clustering makes open / non-manifold edges of its own, so measuring the stored copy would report holes the file has not.
  * A soup with no usable triangle (empty, or every triangle collapsed) throws STL_NO_TRIANGLES_MESSAGE (the panel shows it).
+ * `mesh` (optional, STL-CROP): the welded mesh itself in place of `soup` (a cropped model, core/stl/crop.js cropMesh): it is the
+ * original then; absent = indexMesh(soup), as before.
  * @returns {{ record: object, original: {positions, indices} }}
  */
-export function createStlLayer({ soup, name, board, storedDetail = STL_STORED_DETAIL_DEFAULT }) {
-  const original = indexMesh(soup);
+export function createStlLayer({ soup, mesh = null, name, board, storedDetail = STL_STORED_DETAIL_DEFAULT }) {
+  const original = mesh || indexMesh(soup);
   if (!(original.indices.length > 0)) throw new Error(STL_NO_TRIANGLES_MESSAGE);
   const stored = decimate(original, storedDetail);
   const record = {

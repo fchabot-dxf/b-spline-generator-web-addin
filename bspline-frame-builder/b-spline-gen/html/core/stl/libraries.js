@@ -11,6 +11,8 @@
 import { SMITHSONIAN_SOURCE, fetchSmithsonianPage, downloadSmithsonianModelSoup } from './smithsonian.js';
 import { SMK_SOURCE, fetchSmkPage, smkTypeNames, downloadSmkStlSoup } from './smk.js';
 import { transformSoup } from './gltf.js';
+import { localModel } from './recent.js';
+import { soupOfMesh } from './crop.js';
 
 /** Every library, in the order the sheet lists (and interleaves) them. */
 export const STL_LIBRARIES = Object.freeze([SMITHSONIAN_SOURCE, SMK_SOURCE]);
@@ -54,6 +56,20 @@ export const LIBRARY_OPS = Object.freeze({
     },
     sourceRecord: (tile) => ({ provider: 'smk', id: tile.id, title: tile.title, uri: tile.stlUrl }),
     refOf: (src) => ({ id: src.id, uri: src.uri }),
+  }),
+  // an own STL file in the sheet's Recent list (core/stl/recent.js LOCAL_LIBRARY): its model is the in-memory original, never
+  // searched, never downloaded; the record it makes has no `source` (as a file added with Add STL)
+  local: Object.freeze({
+    queries: () => [],
+    fetchPage: async () => ({ total: 0, tiles: [] }),
+    fileUrl: () => '',
+    download: async (lib, ref) => {
+      const m = localModel(ref.id);
+      if (!m) throw new Error('That file is no longer in memory: add it again.');
+      return soupOfMesh(m.mesh);
+    },
+    sourceRecord: () => null,
+    refOf: (src) => ({ id: src.id, uri: '' }),
   }),
 });
 

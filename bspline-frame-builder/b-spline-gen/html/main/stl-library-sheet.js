@@ -23,9 +23,13 @@
  */
 import { SMITHSONIAN_SOURCE } from '../core/stl/smithsonian.js';
 import { CATALOG_FILTER, CATALOG_SHAPES, filterCatalog, catalogTiles, fetchCatalog, shapeOf } from '../core/stl/catalog.js';
-import { ALL_LIBRARIES, LIBRARY_SHEET_LABEL, opsOf, downloadLibrarySoup, fetchDownloadSize, mbText, mbNumber } from '../core/stl/libraries.js';
+import { ALL_LIBRARIES, LIBRARY_SHEET_LABEL, opsOf, downloadLibrarySoup, fetchDownloadSize, mbText, mbNumber, libraryById } from '../core/stl/libraries.js';
+import { transformSoup } from '../core/stl/gltf.js';
+import { cropBoxIn, isFullCropBox, normaliseCropBox } from '../core/stl/crop.js';
+import { RECENT_LIBRARY, LOCAL_LIBRARY, readRecent, localModels } from '../core/stl/recent.js';
 import { PICKER_TILE } from './icon-select.js';
 import { createSoupView } from './stl-preview-3d.js';
+import { renderCropSliders } from './stl-crop-controls.js';
 
 const el = (tag, attrs = {}, kids = []) => {
   const e = document.createElement(tag);
@@ -37,6 +41,19 @@ const msgOf = (e) => (e && e.message ? e.message : String(e));
 const fmt = (n) => Number(n).toLocaleString('en-US');
 /** The selected tile's size lookup (a 1-byte Range request) waits this long, so tapping through tiles sends nothing. */
 export const SIZE_LOOKUP_DELAY_MS = 400;
+
+/** Box { min, max } turned by the unit quaternion `q` (null = as it is), as the axis-aligned box of its 8 turned corners: exact
+ *  for the quarter turns a library's previewTurn is (core/stl/smk.js). */
+function turnedBox(b, q) {
+  if (!q) return b;
+  const pts = [];
+  for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) pts.push(x, y, z);
+  const t = transformSoup(Float32Array.from(pts), { rotation: q });
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < t.length; i += 3) for (let a = 0; a < 3; a++) { min[a] = Math.min(min[a], t[i + a]); max[a] = Math.max(max[a], t[i + a]); }
+  return { min, max };
+}
+const inverseTurn = (q) => (q ? [-q[0], -q[1], -q[2], q[3]] : null);
 
 /** The word a catalog box gives a tile ('flat', 'rod', 'flat, rod' at the ratio), or ''. */
 const shapeWord = (d, ratio) => { const s = shapeOf(d, ratio); return [s.flat && 'flat', s.rod && 'rod'].filter(Boolean).join(', '); };
@@ -64,8 +81,12 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   const header = el('div', { class: 'cad-modal-header stl-lib-header' }, [el('span', { text: title }), closeBtn]);
 
   // ── the search row ──
+  // 'Recent' (core/stl/recent.js, Fred 2026-11-22) is the FIRST choice, listed when something was inserted lately (or an own
+  // file is in memory); All libraries stays the default
+  const hasRecent = multi && (readRecent().length > 0 || localModels().length > 0);
   const librarySel = el('select', { id: 'stlLibLibrary', class: 'stl-lib-library', 'aria-label': 'Library' },
-    [el('option', { value: ALL_LIBRARIES.id, text: ALL_LIBRARIES.label }), ...libs.map((l) => el('option', { value: l.id, text: l.label }))]);
+    [hasRecent ? el('option', { value: RECENT_LIBRARY.id, text: RECENT_LIBRARY.label }) : null,
+      el('option', { value: ALL_LIBRARIES.id, text: ALL_LIBRARIES.label }), ...libs.map((l) => el('option', { value: l.id, text: l.label }))]);
   librarySel.value = multi ? ALL_LIBRARIES.id : libs[0].id;
   librarySel.hidden = !multi;
   const query = el('input', { type: 'search', id: 'stlLibQuery', class: 'stl-lib-query', placeholder: 'Search the collection', 'aria-label': 'Search' });
@@ -121,7 +142,17 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   const insertBtn = el('button', { type: 'button', id: 'stlLibInsert', class: 'cad-btn cad-btn-primary', text: 'Insert' });
   const paneNote = el('div', { id: 'stlLibPaneNote', class: 'photo-layer-note stl-lib-pane-note', role: 'status' });
   paneNote.hidden = true;
-  pane.append(media, paneTitle, paneInfo, el('div', { class: 'stl-lib-pane-buttons' }, [pill, insertBtn]), paneNote);
+  // CROP mode (STL-CROP, Fred 2026-11-22): the box in the 3D view (kept solid, the cut-away part faint) + the six shared sliders
+  // (% of the model's own box, in the frame of the mesh that is stored); Insert cuts the downloaded model to it before it is stored
+  const cropBtn = el('button', { type: 'button', id: 'stlLibCrop', class: 'cad-btn cad-btn-secondary stl-lib-crop-btn', text: '✂ Crop', 'aria-pressed': 'false',
+    title: 'Cut the model to a box before it is inserted: only the kept part is stored' });
+  const cropHost = el('div', { id: 'stlLibCropBox', class: 'stl-lib-crop' });
+  cropHost.hidden = true;
+  const cropSlidersHost = el('div', { class: 'stl-crop-sliders' });
+  const cropReset = el('button', { type: 'button', id: 'stlLibCropReset', class: 'cad-btn cad-btn-secondary', text: '↺ Reset', title: 'The whole model again' });
+  const cropNote = el('div', { id: 'stlLibCropNote', class: 'photo-layer-note', text: 'In the 3D view: kept = solid, cut away = faint. Insert stores only the kept part.' });
+  cropHost.append(cropSlidersHost, el('div', { class: 'photo-layer-buttons' }, [cropReset]), cropNote);
+  pane.append(media, paneTitle, paneInfo, el('div', { class: 'stl-lib-pane-buttons' }, [pill, cropBtn, insertBtn]), cropHost, paneNote);
 
   const totalsEl = el('div', { id: 'stlLibTotals', class: 'photo-layer-note stl-lib-totals' }); // each library's total, beside the status
   const sentinel = el('div', { id: 'stlLibSentinel', class: 'stl-lib-sentinel', 'aria-hidden': 'true' }); // endless scroll watches this
@@ -139,9 +170,11 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   // ── which libraries, which filters ──
   const st = { q: '', unit: '', type: 'all', seq: 0, shown: new Set(), feeds: [], notes: [],
     shape: shapeSel.value, ratio: CATALOG_FILTER.ratio, catalogLoads: new Map() }; // catalogLoads: library id -> its catalog's promise
-  /** The ONE picked library, or null for All. */
-  const only = () => (librarySel.value === ALL_LIBRARIES.id ? null : libs.find((l) => l.id === librarySel.value) || libs[0]);
-  const activeLibs = () => (only() ? [only()] : libs);
+  const isRecent = () => librarySel.value === RECENT_LIBRARY.id;
+  /** The ONE picked library, or null for All (and for Recent). */
+  const only = () => (librarySel.value === ALL_LIBRARIES.id || isRecent() ? null : libs.find((l) => l.id === librarySel.value) || libs[0]);
+  /** The libraries a search asks: none for Recent (its list is on this device). */
+  const activeLibs = () => (isRecent() ? [] : only() ? [only()] : libs);
   /** Show the filters of what is picked: a library's own only when it is the one; with All the common ones (words, Shape). */
   function refreshFilters() {
     const one = only();
@@ -155,6 +188,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
 
   // ── the feeds: one paged search each (a library, or one object_name of an SMK Type) ──
   function buildFeeds() {
+    if (isRecent()) return { feeds: [{ lib: RECENT_LIBRARY, kind: 'recent', page: -1, total: 0, known: false, done: false }], notes: [] };
     const one = only();
     const shape = shapeSel.hidden ? 'any' : st.shape;
     const filters = { q: st.q, unit: one && one.museums ? st.unit : '', type: one && one.types ? st.type : 'all' };
@@ -176,6 +210,20 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   };
   /** One page of one feed -> { total, items: [{ tile, meta }] }. meta = { size (bytes) | null, shape ('flat' ...) | '' }. */
   async function fetchFeed(f, page) {
+    if (f.kind === 'recent') { // this device's Recent list + the own files still in memory, newest first; the words narrow it
+      const words = st.q.toLowerCase().split(/\s+/).filter(Boolean);
+      const hit = (title) => words.every((w) => String(title || '').toLowerCase().includes(w));
+      const items = [];
+      for (const m of localModels()) {
+        if (hit(m.title)) items.push({ at: m.at, tile: { id: m.id, title: m.title, thumbUrl: '', previewUrl: '' }, lib: LOCAL_LIBRARY, meta: { size: null, shape: '', crop: null } });
+      }
+      for (const e of readRecent()) {
+        const lib = libraryById(e.libraryId);
+        if (lib && hit(e.title)) items.push({ at: e.insertedAt, tile: e.tile, lib, meta: { size: Number.isFinite(e.tile.sizeBytes) ? e.tile.sizeBytes : null, shape: '', crop: e.crop || null } });
+      }
+      items.sort((a, b) => (b.at || 0) - (a.at || 0));
+      return { total: items.length, items };
+    }
     if (f.kind === 'catalog') {
       let cat;
       try { cat = await catalogOf(f.lib); } catch (e) { st.catalogLoads.delete(f.lib.id); throw e; } // a failed load is tried again next time
@@ -263,7 +311,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
       f.total = r.value.total;
       f.known = true;
       f.done = Math.min((f.page + 1) * f.lib.pageSize, f.total) >= f.total;
-      lists.push(r.value.items.map((it) => ({ ...it, lib: f.lib })));
+      lists.push(r.value.items.map((it) => ({ ...it, lib: it.lib || f.lib }))); // a Recent item names its own library
     });
     appendTiles(roundRobin(lists));
     more.hidden = !st.feeds.some((f) => f.known && !f.done); // a failed "More" can be tried again
@@ -301,6 +349,27 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   let pic = null;          // the 2D picture element (detached while the 3D half shows)
   let stay2d = false;      // 2D was pressed while the 3D view was still loading: it loads, but 2D stays
   let lightbox = null;     // the open lightbox: { box, close }
+
+  // ── Crop mode: the box is FRACTIONS of the model's own box in the STORED mesh's frame (core/stl/crop.js). The 3D view shows
+  // the preview soup, which a library may have turned for its camera (lib.previewTurn): the stored frame's box is its box turned
+  // back, and the crop box is drawn turned the same way. ──
+  let cropOn = false;
+  const cropCtl = renderCropSliders(cropSlidersHost, { idPrefix: 'stlLibCrop', onInput: () => showCropInView() });
+  const styleCrop = () => { cropBtn.setAttribute('aria-pressed', String(cropOn)); cropBtn.classList.toggle('active', cropOn); cropHost.hidden = !cropOn; };
+  function showCropInView() {
+    if (!view || typeof view.setCropBox !== 'function') return;
+    if (!cropOn) { view.setCropBox(null); return; }
+    const q = (selected && selected.lib.previewTurn) || null;
+    const stored = turnedBox(view.bounds, inverseTurn(q));
+    view.setCropBox(turnedBox(cropBoxIn(stored, cropCtl.get()), q));
+  }
+  async function toggleCrop() {
+    if (!selected) return;
+    cropOn = !cropOn;
+    styleCrop();
+    if (!cropOn) { showCropInView(); return; }
+    if (view) { setMode('3d'); showCropInView(); setPaneNote('Drag to turn it.'); } else await turnIn3d(); // the view shows the box once loaded
+  }
   /** Show the 2D or the 3D half. The picture is DETACHED while 3D shows (and put back on 2D); the 3D view is only hidden. */
   function setMode(m) {
     mode = m;
@@ -343,6 +412,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
       el('div', { class: 'stl-lib-pane-credit', text: lib.credit }),
     );
     if (meta.size != null) { setSize(meta.size); return; }
+    if (!opsOf(lib).fileUrl(t)) { sizeLine.textContent = 'In memory (this session)'; return; } // an own file (Recent): nothing to ask
     sizeLine.textContent = `${fileWord}: checking the size…`;
     // asked once the tile has stayed selected a moment: tapping through tiles (or Insert straight away) sends nothing
     clearTimeout(sizeTimer);
@@ -373,6 +443,10 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     paneTitle.textContent = t.title;
     setPaneNote(lib.format === 'stl' ? stlTurnNote(meta.size) : '');
     turnBtn.disabled = false;
+    // a Recent model comes back with the crop it was inserted with (Insert re-applies it); any other starts uncropped
+    cropCtl.set(meta.crop || null);
+    cropOn = !!(meta.crop && !isFullCropBox(meta.crop));
+    styleCrop();
     showPicture(t);
     showInfo(t, lib, meta, my);
   }
@@ -396,6 +470,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
       viewHost.hidden = false; // visible while it measures its width
       picHost.textContent = '';
       view = createSoupView(viewHost, soup);
+      showCropInView();
       turnBtn.disabled = false;
       setMode(stay2d ? '2d' : '3d');
       setPaneNote(stay2d ? '' : 'Drag to turn it.');
@@ -512,7 +587,9 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   function insert() {
     if (!selected) return;
     const { tile, lib } = selected;
-    try { if (onPick) onPick(tile, lib); } finally { close(); }
+    // Crop on with a box that cuts: the panel cuts the downloaded model to it BEFORE it is stored (core/stl/crop.js)
+    const crop = cropOn && !cropCtl.isFull() ? normaliseCropBox(cropCtl.get()) : null;
+    try { if (onPick) { if (crop) onPick(tile, lib, { crop }); else onPick(tile, lib); } } finally { close(); }
   }
 
   // ── wiring ──
@@ -541,6 +618,8 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   turnBtn.addEventListener('click', turnIn3d);
   view2dBtn.addEventListener('click', () => { if (turnBtn.disabled) stay2d = true; setMode('2d'); if (view) setPaneNote(''); });
   insertBtn.addEventListener('click', insert);
+  cropBtn.addEventListener('click', toggleCrop);
+  cropReset.addEventListener('click', () => { cropCtl.set(null); showCropInView(); });
   document.addEventListener('keydown', onKey);
 
   load(true); // the whole collection (every library), page 0
