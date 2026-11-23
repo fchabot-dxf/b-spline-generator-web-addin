@@ -825,13 +825,13 @@ describe('A3. a multi-part model (a bust and its base: two Low GLB rows of ONE m
 
 describe('A5. phone: the preview stays small enough for the grid to show below it', () => {
   const CSS = readFileSync('bspline-frame-builder/styles/layout-app.css', 'utf8').replace(/\r\n/g, '\n');
-  it('<= 600 px: the picture AND the 3D canvas max-height 20vh inside the pinned 40vh pane, object-fit contain', () => {
+  it('<= 600 px: the picture AND the 3D canvas max-height 12vh inside the pinned 40vh pane, object-fit contain', () => {
     const at = CSS.indexOf('@media (max-width: 600px) {\n  .stl-lib-main');
     expect(at).toBeGreaterThan(-1);
     const block = CSS.slice(at, CSS.indexOf('\n}', at));
     const decl = (sel) => [...block.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sels]) => sels.split(',').map((x) => x.trim()).includes(sel)).map(([, , d]) => d).join(';');
     for (const sel of ['.stl-lib-preview', '.stl-lib-view']) {
-      expect(decl(sel)).toMatch(/max-height:\s*20vh/);
+      expect(decl(sel)).toMatch(/max-height:\s*12vh/);
       expect(decl(sel)).toMatch(/object-fit:\s*contain/);
     }
   });

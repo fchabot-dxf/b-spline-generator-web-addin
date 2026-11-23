@@ -451,6 +451,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
       else { // the pane is pinned (sticky) at the top of the sheet; if it is not on screen anyway, bring it in
         const r = pane.getBoundingClientRect(), b = body.getBoundingClientRect();
         if (r.height && (r.top < b.top - 1 || r.bottom > b.bottom + 1)) pane.scrollIntoView?.({ block: 'start' });
+        button.scrollIntoView?.({ block: 'nearest' }); // the results scroll in their own box, below the pane
       }
     } catch (_) { /* not scrollable here */ }
     paneTitle.textContent = t.title;

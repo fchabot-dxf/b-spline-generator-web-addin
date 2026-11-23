@@ -1196,12 +1196,15 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 }
 @media (max-width: 600px) {
   .stl-lib-main { flex-direction: column; align-items: stretch; }
-  /* Fred 2026-11-23: the preview (picture / 3D view + its info + the 2D/3D, Crop, Insert row) stays PINNED at the top of the sheet
-     (capped at 40% of its height, scrolling inside itself) while the results scroll beneath it */
-  .stl-lib-pane { order: -1; flex: none; position: sticky; top: -10px; z-index: 3; max-height: 40vh; padding-top: 10px; overflow-y: auto; background: var(--cad-bg-standard, #fff);
-    padding-bottom: 6px; border-bottom: 1px solid #ccc; }
-  .stl-lib-preview, .stl-lib-view { max-height: 20vh; object-fit: contain; } /* the info + buttons fit under it in the pinned area */
-  .stl-lib-preview.stl-lib-nopic { min-height: 60px; max-height: 20vh; }
+  /* Fred 2026-11-23: the preview (picture / 3D view + its info + the 2D/3D, Crop, Insert row + the hint) is PINNED above the
+     results: the sheet body is a column, only the RESULTS scroll (inside their own box), so no tile can slide over the pane */
+  .cad-modal-body.stl-lib-body { display: flex; flex-direction: column; overflow: hidden; }
+  .stl-lib-main { flex: 1 1 auto; min-height: 0; }
+  .stl-lib-results { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .stl-lib-pane { order: -1; flex: 0 0 auto; position: static; max-height: 40vh; overflow-y: auto; background: var(--cad-bg-standard, #fff);
+    padding-bottom: 6px; border-bottom: 1px solid #ccc; box-shadow: 0 3px 4px -2px rgba(0, 0, 0, 0.25); }
+  .stl-lib-preview, .stl-lib-view { max-height: 12vh; object-fit: contain; } /* the info + buttons + hint fit under it, no inner scrollbar */
+  .stl-lib-preview.stl-lib-nopic { min-height: 48px; max-height: 12vh; aspect-ratio: auto; }
 }
 @media (pointer: coarse) {
   .stl-row input { min-width: 28px; min-height: 28px; }

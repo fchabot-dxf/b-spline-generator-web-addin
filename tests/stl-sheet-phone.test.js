@@ -60,11 +60,11 @@ describe('STL-SHEET phone fixes', () => {
     expect(CSS).toMatch(/@media \(max-width: 600px\) \{[^@]*\.stl-lib-pane \{ order: -1/);
     expect(CSS).toMatch(/\.stl-lib-preview\.stl-lib-nopic \{[^}]*min-height: \d+px/);
   });
-  it('phone CSS: the pane is pinned (sticky, top 0, capped at 40vh) while the grid scrolls', () => {
-    const m = CSS.match(/@media \(max-width: 600px\) \{[^@]*?\.stl-lib-pane \{([^}]*)\}/);
-    expect(m[1]).toMatch(/position: sticky/);
-    expect(m[1]).toMatch(/top: -?[0-9]+(px)?;/);
-    expect(m[1]).toMatch(/max-height: 40vh/);
+  it('phone CSS: the pane is pinned above the results, which scroll in their own box (no tile can slide over the pane)', () => {
+    const blk = CSS.match(/@media \(max-width: 600px\) \{([^@]*?)\n\}/)[1];
+    expect(blk).toMatch(/\.cad-modal-body\.stl-lib-body \{[^}]*flex-direction: column;[^}]*overflow: hidden/);
+    expect(blk).toMatch(/\.stl-lib-results \{[^}]*overflow-y: auto/);
+    expect(blk).toMatch(/\.stl-lib-pane \{[^}]*max-height: 40vh[^}]*box-shadow/);
   });
   it('an unknown file size drops its line (no "size unknown" text)', async () => {
     const f = vi.fn(async (url, init) => (init && init.headers && init.headers.Range ? new Response('x', { status: 500 }) : fetchImpl(url, init)));
