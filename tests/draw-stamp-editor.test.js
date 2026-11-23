@@ -250,9 +250,11 @@ describe('saved boards unchanged: the stamp passes pin', () => {
     for (const name of ['Lines', 'Text']) addLayer(direct, { name, skipUndo: true, ...SIDEBAR_WROTE[name] });
     for (const l of direct._layers) l._mask = new Float32Array(4);
     expect(viaEditor).toEqual(passesOf(direct));
+    // Fred 2026-11-23: every pass carries its Thicken placement (core/stamp/placement.js); a layer without the field reads
+    // 'withSurface' = Before thicken, the stamp exactly as before (tests/placement-all-layers.test.js)
     expect(viaEditor).toEqual([
-      { id: lines.id, kind: 'art', name: 'Lines', enabled: true, svg: '1', depth: -0.3, profile: 'vbit', suppression: 0.3, smoothing: 9, edgeFilletRadius: 0.1, filletPower: 3 },
-      { id: text.id, kind: 'art', name: 'Text', enabled: true, svg: '1', depth: 0.2, profile: 'ballnose', suppression: 0.15, smoothing: 15, edgeFilletRadius: 0.05, filletPower: 2.2 },
+      { id: lines.id, kind: 'art', name: 'Lines', enabled: true, svg: '1', depth: -0.3, profile: 'vbit', suppression: 0.3, smoothing: 9, edgeFilletRadius: 0.1, filletPower: 3, placement: 'withSurface' },
+      { id: text.id, kind: 'art', name: 'Text', enabled: true, svg: '1', depth: 0.2, profile: 'ballnose', suppression: 0.15, smoothing: 15, edgeFilletRadius: 0.05, filletPower: 2.2, placement: 'withSurface' },
     ]);
   });
 });
