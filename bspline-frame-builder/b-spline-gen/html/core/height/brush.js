@@ -19,6 +19,7 @@
 // the falloff curves live in core/falloff.js (shared with the STL crop-edge falloff); re-exported so importers are unchanged
 import { DEFAULT_CUSTOM_CURVE, BRUSH_FALLOFFS, curveFromPoints, curvePointsFromProfile, brushFalloff } from '../falloff.js';
 export { BRUSH_FALLOFFS, curveFromPoints, curvePointsFromProfile, brushFalloff };
+import { f16Round } from './raster.js'; // the Eraser's removal on the layer's storage grid (eraseQ below)
 
 export const BRUSH_MODES = Object.freeze(['raise', 'lower', 'set', 'smooth', 'erase']);
 
@@ -109,9 +110,12 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotat
   // the Eraser's SUBTRACT (Fred 2026-11-23, "soft but accurate"): b.eraseIn = Q, the height the brush paints at full
   // coverage (main/height-panel.js ERASE_SCALE: Raise / Lower -> Amount, Set -> |target|, Smooth -> 0). A pixel moves
   // toward 0 by a x max(Q, |v|) (v = its height at the stroke's start), never past 0: the same brush over the same path
-  // removes its own stroke with no rim (to the Float16 storage), and a height above Q (a Fill, an import) goes like a x |v|,
-  // the hard centre to 0 in one pass. Only partly undone: a Set stroke over other paint, a Smooth stroke (the heights before
-  // them aren't stored). Absent (a direct createStroke caller) = the slice-1 multiply, v (1 - a).
+  // removes its own stroke with no rim, and a height above Q (a Fill, an import) goes like a x |v|, the hard centre to 0 in
+  // one pass. The removal is rounded to the STORAGE grid (core/height/raster.js f16Round, Float32 then Float16 -- the same
+  // two roundings a painted a x Q took on its way to the layer), so a stroke painted from 0 and erased with the same brush
+  // lands on exactly 0 (no Float16 leftover: the shaded view draws any nonzero pixel). Only partly undone: a Set stroke
+  // over other paint, a Smooth stroke (the heights before them aren't stored). Absent (a direct createStroke caller) =
+  // the slice-1 multiply, v (1 - a).
   const eraseQ = Number.isFinite(b.eraseIn) ? Math.abs(b.eraseIn) : null;
   const angle0 = (((Number.isFinite(b.angle) ? b.angle : 0) - (follow ? 0 : rotationDeg)) * Math.PI) / 180; // in the raster frame
   let sat = null, kSmooth = 0;
@@ -170,7 +174,7 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotat
         if (mode === 'raise') data[k] = h + a * b.amountIn;           // a < 0: the opposite (a moat)
         else if (mode === 'lower') data[k] = h - a * b.amountIn;
         else if (mode === 'set') data[k] = h * (1 - aa) + b.targetIn * a; // a < 0: toward -|a| T
-        else if (mode === 'erase') data[k] = eraseQ === null ? h * (1 - aa) : Math.sign(h) * Math.max(0, Math.abs(h) - aa * Math.max(eraseQ, Math.abs(h)));
+        else if (mode === 'erase') data[k] = eraseQ === null ? h * (1 - aa) : Math.sign(h) * Math.max(0, Math.abs(h) - f16Round(aa * Math.max(eraseQ, Math.abs(h))));
         else if (mode === 'smooth') data[k] = h * (1 - aa) + blurAt(c, r) * aa;
         touched = true;
       }

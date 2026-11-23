@@ -4,8 +4,8 @@
  * spacing), v = the pixel's height at the erase stroke's start, Q = what the brush paints at full coverage in its current
  * mode (Raise / Lower: its Amount, Set: |its target|) -- and never past 0.
  * Measured before (the multiply v (1 - a)): the same soft brush over the same path left a rim a (1 - a) x Amount, up to
- * 0.0125 in on a 0.05 in stroke. Now the stroke is gone to within half a Float16 step (the layer's storage,
- * core/height/raster.js), a 0.2 in Fill still clears in one hard pass, a half-overlapping soft pass fades with no sign
+ * 0.0125 in on a 0.05 in stroke. Now the stroke is gone to EXACTLY 0 (the removal is rounded on the layer's Float16
+ * storage grid, core/height/raster.js, as the painted value was: no leftover speck), a 0.2 in Fill still clears in one hard pass, a half-overlapping soft pass fades with no sign
  * crossing; the same in both grey systems and on the selected layer of two. Saved boards keep baked rasters only (no
  * stroke is replayed): a stored raster decodes and hashes as before.
  * Every stroke runs the editor's own gesture path (editor/editor-height-tool.js -> main/height-panel.js GESTURES).
@@ -45,21 +45,19 @@ async function drag(tool, y = 1) {
   await whenHeightIdle();
   return Float32Array.from(layer());
 }
-/** Half a Float16 step at |v| (the storage's rounding of a painted value), with a hair for the residue's own rounding. */
-const halfStep = (v) => Math.abs(v) * 2 ** -11 * 1.01 + 1e-12;
-/** Every pixel of `after` is within half a Float16 step of `want`, measured at what was painted (`painted`). */
+/** Every pixel of `after` equals `want` EXACTLY (a nonzero leftover draws as paint): the count of pixels that differ is 0. */
 function expectRemoved(after, want, painted, label) {
-  let worst = 0, at = -1;
-  for (let k = 0; k < after.length; k++) {
-    const over = Math.abs(after[k] - want[k]) - halfStep(painted[k] - want[k]);
-    if (over > worst) { worst = over; at = k; }
-  }
-  expect(worst, `${label}: pixel ${at} off by ${at >= 0 ? Math.abs(after[at] - want[at]) : 0}`).toBe(0);
+  let n = 0, at = -1;
+  for (let k = 0; k < after.length; k++) if (after[k] !== want[k]) { n++; if (at < 0) at = k; }
+  let touched = 0;
+  for (let k = 0; k < painted.length; k++) if (painted[k] !== want[k]) touched++;
+  expect(touched, `${label}: the stroke painted something`).toBeGreaterThan(1000);
+  expect(n, `${label}: ${n} pixels left, the first ${at} at ${at >= 0 ? after[at] : 0}`).toBe(0);
 }
 
 describe('the same brush over the same path removes its stroke (no rim)', () => {
   for (const mode of ['raise', 'lower']) {
-    it(`${mode} 0.05 with the default soft brush, then the Eraser: back to 0 within half a Float16 step`, async () => {
+    it(`${mode} 0.05 with the default soft brush, then the Eraser: back to exactly 0 (no pixel left)`, async () => {
       await newHeightPatch();
       setHeightField('mode', mode); setHeightField('amountIn', 0.05);
       const zero = Float32Array.from(layer());
