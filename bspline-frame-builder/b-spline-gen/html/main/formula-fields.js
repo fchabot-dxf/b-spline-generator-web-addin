@@ -50,11 +50,12 @@ export const FORMULA_SECTIONS = Object.freeze([
   },
   {
     section: 'TERRAIN TEXTURE', // was FILTER (TERRAIN-FLAT, 2026-11-22)
-    ids: ['scale', 'detailDensity', 'detailStrength'],
+    ids: ['scale', 'detailDensity', 'detailStrength', 'textureStrength'],
     names: [
       pname('finescale', 'scale', 'Fine scale'),
       pname('coverage', 'detailDensity', 'Detail coverage'),
       pname('detail', 'detailStrength', 'Empty zone detail'),
+      pname('texture', 'textureStrength', 'Texture strength'),
     ],
   },
   {

@@ -222,6 +222,9 @@ export const DEFAULT = {
     // the smooth patches: 0 = fully smooth, 1 = full detail (cancels the mask).
     // Default 0.25 = subtle residue in empty zones.
     detailStrength: 0.25,
+    // textureStrength (0..1, Fred 2026-11-23): scales the whole fine texture. 1 = today's output exactly (the default; a board
+    // saved before it has no key and reads 1); 0 = the same board as 'Flat (no texture)'.
+    textureStrength: 1,
     detailDensityRespectSymmetry: true,
     smoothRespectSymmetry: true,
     // Skeleton seed-character — shape the coarse Perlin field that drives the
@@ -378,6 +381,7 @@ export const SLIDER_PAIRS = {
     smoothRadius: 'smoothRadiusSlider',
     detailDensity: 'detailDensitySlider',
     detailStrength: 'detailStrengthSlider',
+    textureStrength: 'textureStrengthSlider',
     peakShape: 'peakShapeSlider',
     density: 'densitySlider',
     clustering: 'clusteringSlider',
