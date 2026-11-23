@@ -32,8 +32,11 @@ export const BLIND_BUDGET = {
     { name: 'Board width change (sidebar, editor closed)', sidebar: 'board', act: { set: 'widthIn', value: 7.25 }, fixedBy: '497e30d' },
     // the sidebar phone audit's small ones (advisor: the budget pins them)
     { name: 'Output: Colour edges', sidebar: 'output', act: { tap: 'colourEdges' } },
-    { name: 'Decor: add a stamp layer', sidebar: 'surface', act: { tap: 'stampAddLayer' } },
-    { name: 'Decor: stamp Clear', sidebar: 'surface', act: { tap: 'btnStampClear' } },
+    // the layer stack (Fred 2026-11-23): Vector stamping's '+' moved to the LAYERS stack's '+ Add layer > Draw' (the same add
+    // behind the same 'heightMask' card, main/layer-stack.js); the picker opens first (pre), the Draw tile is the timed tap
+    { name: 'Layers: add a Draw layer', sidebar: 'layers', pre: ['layerStackAddBtn'], act: { tap: 'layerStackAdd_draw' } },
+    // the SVG Blueprint is per layer now: in the open Draw card (the row above left the new Draw layer's card open)
+    { name: 'Layers: Draw card Blueprint Clear', sidebar: 'layers', act: { tap: 'btnStampClear' } },
     // MEASURED: no task at all on one run, one 57 ms task (no rebuild, no card) on another -- the long-task floor, left as
     // the Scissors check's 53 ms was (advisor); pinned here against a real regression
     { name: 'Surface: Reset tweaks', sidebar: 'surface', act: { tap: 'filterTweaksReset' }, budgetMs: 100 },
@@ -55,8 +58,9 @@ export const BLIND_BUDGET = {
     { name: 'Photo: footprint drag release (editor open)', act: { stroke: [[0.5, 0.5], [0.58, 0.55]] } },
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
-    { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'surface', act: { tap: 'brickQuick_set_4' } },
-    { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'surface', act: { tap: 'brickQuick_groutColor_none' } },
+    // the Brick panel's body is the Brick card's now (main/layer-stack.js HOSTED): its card is opened first (pre), then stays open
+    { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'layers', pre: ['layerCardName_bricks'], act: { tap: 'brickQuick_set_4' } },
+    { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'layers', act: { tap: 'brickQuick_groutColor_none' } },
     // seat A's re-time 2026-10-09 (loaded board): the size nudge's apply serialised every carved layer in the tap, 55-85 ms
     // before the 'frame' card -- main/ui-bindings.js PARAM_STAGES
     { name: 'Board width change (bricks laid)', sidebar: 'board', act: { set: 'widthIn', value: 7.5 } },

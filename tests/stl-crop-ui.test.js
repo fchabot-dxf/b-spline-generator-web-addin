@@ -20,8 +20,9 @@ import { ghostState, updateStlGhosts } from '../bspline-frame-builder/b-spline-g
 import {
   renderStlPanel, bindStlPanel, addStlFromSoup, addStlFromBuffer, setStoredDetail, setStlField, applyStlCrop, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 
-vi.mock('../bspline-frame-builder/b-spline-gen/html/core/history.js', () => ({ scheduleUndoSnapshot: vi.fn() }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/history.js', async (orig) => ({ ...(await orig()), scheduleUndoSnapshot: vi.fn() }));
 
 const SMK = (name) => JSON.parse(readFileSync(`tests/fixtures/smk/${name}.json`, 'utf8'));
 const SI = (name) => JSON.parse(readFileSync(`tests/fixtures/smithsonian/${name}.json`, 'utf8'));
@@ -109,7 +110,7 @@ afterEach(() => {
 
 const openSheetFromPanel = async (f) => {
   vi.stubGlobal('fetch', f);
-  renderStlPanel($('stlLayerBody')); bindStlPanel({});
+  renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack();
   $('stlBrowseSi').click();
   await flush();
 };
@@ -236,7 +237,7 @@ describe('C3. Recent: a display list per device', () => {
     stubThree();
     const f = bothFetch();
     vi.stubGlobal('fetch', f);
-    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack();
     addStlFromBuffer(binaryStl(standingSlab()), 'mine.stl');
     expect(readRecent()).toEqual([]); // own files are never persisted
     $('stlBrowseSi').click();
@@ -267,7 +268,7 @@ describe('C3. Recent: a display list per device', () => {
 
 // ── the STL panel ─────────────────────────────────────────────────────────────────────────────────────────────────────
 const group = (g) => document.querySelector(`[data-stl-group="${g}"]`);
-const mount = (hooks = {}) => { renderStlPanel($('stlLayerBody')); bindStlPanel(hooks); };
+const mount = (hooks = {}) => { renderStlPanel($('stlLayerBody')); bindStlPanel(hooks); mountLayerStack(); };
 
 describe('C4. the STL panel: a Crop group in each card', () => {
   it('renders in the open card: six sliders, Apply / Reset (Reset shows once a box cuts), then the Falloff controls', () => {

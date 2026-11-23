@@ -916,7 +916,12 @@ export async function newProject() {
   if (isDirty() && !(await confirmDialog('Start a new project? Your unsaved changes will be lost.',
     { okLabel: 'New project', zIndex: 20000 }))) return false;
   const snapP = JSON.parse(JSON.stringify(persistableP()));
+  // Fred 2026-11-23 (the unified layer stack): a NEW file has NO layers -- no drawing layer (editor-io.js
+  // resetArtworkToFresh makes none now), no STL, no height patch, no stack order; the board settings stay as before
   snapP.editorSvg = null;
+  snapP.stlLayers = [];
+  snapP.heightLayers = [];
+  snapP.layerOrder = null;
   snapP.seed = Math.floor(Math.random() * 99999);
   snapP.boardId = null; // Send targets: a new project gets its own board in Fusion
   await applySnapshot({ P: snapP }, _preview, { source: 'load', historyLabel: 'New project' }); // no deltas in the snapshot: sculpt cleared

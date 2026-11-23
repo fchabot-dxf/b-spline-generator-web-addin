@@ -25,7 +25,9 @@ import { sendFusionMeshPreview } from '../fusion-bridge.js';
 import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
-import { applyStampLayers, STAMP_PASS_KIND, RECORD_PASS_KINDS } from './apply-stamp-layers.js';
+import { applyStampLayers, STAMP_PASS_KIND, PLACEMENT_PASS_KINDS } from './apply-stamp-layers.js';
+import { placementOf } from '../stamp/placement.js';
+import { orderPasses, editorLayerKey, STACK_BRICKS_KEY } from '../stamp/order.js';
 import { stlPasses } from '../stl/layer.js';
 import { heightPasses, heightRastersReady, decodeHeightLayers } from '../height/layer.js';
 import { isStoredRaster } from '../height/raster.js';
@@ -89,7 +91,7 @@ export function rebuildInputDigest(preview, nx, nz) {
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
             h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
-            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}`);
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}`); // bricks After thicken (else as before)
         }
         return (h >>> 0).toString(36);
     } catch (_) { return null; }
@@ -123,7 +125,7 @@ export function heightsInputDigest(nx, nz) {
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
             h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
-            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}`);
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}`); // bricks After thicken (else as before)
         }
         return (h >>> 0).toString(36);
     } catch (_) { return null; }
@@ -331,16 +333,20 @@ function buildHeights(nx, nz) {
 
     // Step 3 unification: build the pass list from editor layers.
     const passes = _collectStampPasses(nx, nz);
-    // STL-RELIEF placement 'afterBack' ("After thicken"): those STL passes are stamped LAST, on the top only; the back is
-    // thickened from the heights without them (backBase -> buildThickenData backFrom). None = today's one call, same arguments.
-    const late = passes.filter((p) => RECORD_PASS_KINDS.includes(p.kind) && p.placement === 'afterBack'); // STL and height patches
+    // Placement 'afterBack' ("After thicken", core/stamp/placement.js): those passes are stamped LAST, on the top only; the back
+    // is thickened from the heights without them (backBase -> buildThickenData backFrom). STL and height patches first; a
+    // vector layer's art and the bricks too since Fred 2026-11-23 (PLACEMENT_PASS_KINDS). None = today's one call, same
+    // arguments. The late call smooths the same clean terrain (reference) and shares the art deltas, so a late layer's
+    // suppression and a late Flat brick read what they would in one call.
+    const late = passes.filter((p) => PLACEMENT_PASS_KINDS.includes(p.kind) && p.placement === 'afterBack');
     const early = late.length ? passes.filter((p) => !late.includes(p)) : passes;
     const defaults = {
         stampDepth:            P.stampDepth,
         stampEdgeFilletRadius: P.stampEdgeFilletRadius,
     };
-    const surfaceHeights = applyStampLayers(cleanHeights, early, nx, nz, defaults);
-    const heights = late.length ? applyStampLayers(surfaceHeights, late, nx, nz, defaults) : surfaceHeights;
+    const artDelta = late.length ? new Float32Array(nx * nz) : null;
+    const surfaceHeights = applyStampLayers(cleanHeights, early, nx, nz, late.length ? { ...defaults, artDelta } : defaults);
+    const heights = late.length ? applyStampLayers(surfaceHeights, late, nx, nz, { ...defaults, reference: cleanHeights, artDelta }) : surfaceHeights;
     const backBase = late.length ? surfaceHeights : null;
     // STL-RELIEF (Fred 2026-11-22): per STL pass, its covered points where these FINAL heights leave the stock (the sculpt
     // check's bounds, core/stl/stock.js). Detection only: one pass over the points per STL, nothing is changed.
@@ -398,6 +404,10 @@ export function _collectStampPasses(nx, nz) {
                 smoothing: layer.smoothing,
                 edgeFilletRadius: 0,
                 filletPower: layer.filletPower,
+                // Fred 2026-11-23: the bricks' Thicken placement, a brick setting like their Relief: P.brickSettings.placement,
+                // read with the brick depth by main/stamp-mask-manager.js (layer._brickPlacement; absent = 'withSurface',
+                // core/stamp/placement.js) -- the heights stage never reads P.brickSettings (HEIGHTS_INERT_KEYS)
+                placement: placementOf(layer._brickPlacement),
             } : null;
             if (!mask) { if (brickPass) passes.push(brickPass); return; }
             // Build a stamp-pass-shape view of the editor layer. We keep
@@ -417,6 +427,7 @@ export function _collectStampPasses(nx, nz) {
                 smoothing: layer.smoothing,
                 edgeFilletRadius: layer.edgeFilletRadius,
                 filletPower: layer.filletPower,
+                placement: placementOf(layer.placement), // Fred 2026-11-23: the layer's own Thicken (absent = 'withSurface')
             });
             if (brickPass) passes.push(brickPass);
         });
@@ -432,7 +443,13 @@ export function _collectStampPasses(nx, nz) {
         passes.push(...heightPasses(P.heightLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
     }
 
-    return passes;
+    // The LAYER STACK (Fred 2026-11-23, core/stamp/order.js): once the user has reordered the stack, P.layerOrder lists its
+    // items and the passes follow it (each pass at its item's rank). Absent / null: no sort -- today's order, untouched.
+    if (!Array.isArray(P.layerOrder)) return passes;
+    const byId = new Map((editorLayers || []).filter(Boolean).map((l) => [String(l.id), l]));
+    return orderPasses(passes, P.layerOrder, (p) => (p.kind === STAMP_PASS_KIND.bricks ? STACK_BRICKS_KEY
+        : p.kind === STAMP_PASS_KIND.art ? (byId.has(String(p.id)) ? editorLayerKey(byId.get(String(p.id))) : `layer:${p.id}`)
+        : p.id)); // an STL / height pass id IS its stack key (stl:<id>, height:<id>)
 }
 
 // ── Phase 6: sculpt notices ─────────────────────────────────────────────────

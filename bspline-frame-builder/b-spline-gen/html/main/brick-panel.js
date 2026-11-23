@@ -1671,6 +1671,8 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   // it now runs inside that lay's stage (after the lay, before the card clears); a press before then flushes it first
   // (flushControlRequires), so no tap lands on a control that should already be greyed.
   if (_relayQueued) _requiresPending = true; else syncControlRequires();
+  // the layer stack's Brick card re-reads its summary (Relief, height) -- the same event the STL / height writes send
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('layerStackStale'));
 }
 
 /** A requires sync deferred into the staged lay (commitBrickSetting): run it now if still pending. Called by the
@@ -1759,7 +1761,8 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement', 'heights'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'placement', 'surfaceStyle', // 'placement': Fred 2026-11-23, Before / After thicken (core/stamp/placement.js)
+   'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement', 'heights'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */

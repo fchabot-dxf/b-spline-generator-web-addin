@@ -10,6 +10,7 @@ import { scheduleUndoSnapshot } from '../bspline-frame-builder/b-spline-gen/html
 import {
   renderStlPanel, bindStlPanel, addStlFromBuffer, activeStlLayer, applyStlTransform, pickStlLayer, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 import { ghostState } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import { _resetStlCachesForTests } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 
@@ -43,7 +44,7 @@ beforeEach(() => {
   ghostState.visible = true;
   hooks = { onChange: vi.fn(), refreshGhosts: vi.fn() };
   renderStlPanel($('stlLayerBody'));
-  bindStlPanel(hooks);
+  bindStlPanel(hooks); mountLayerStack();
 });
 afterEach(() => {
   DEFAULT.stlLayers.length = 0;

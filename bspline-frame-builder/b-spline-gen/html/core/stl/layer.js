@@ -10,11 +10,13 @@ import { indexMesh, decimate, encodeMesh, decodeMesh, meshBounds, meshHealth } f
 import { renderDepth } from './raster.js';
 import { gaussianSmooth } from '../gaussian.js';
 import { cropFalloffOf, applyCropFalloff, placedFootprint } from './crop.js';
+import { STAMP_PLACEMENTS } from '../stamp/placement.js';
 
 export const STL_BLENDS = Object.freeze(['max', 'add']);
 /** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
- *  heights without it (core/engine/rebuild.js buildHeights backBase -> build-thicken-data.js backFrom). */
-export const STL_PLACEMENTS = Object.freeze(['withSurface', 'afterBack']);
+ *  heights without it (core/engine/rebuild.js buildHeights backBase -> build-thicken-data.js backFrom). The one table:
+ *  core/stamp/placement.js (vector layers and bricks read it too). */
+export const STL_PLACEMENTS = STAMP_PLACEMENTS;
 /** Fred 2026-11-22, "On the terrain": 'follow' (the default = the stamp as it always was: each point of the STL sits on the terrain
  *  under it) or 'level' (ONE rigid object at the terrain height under its centre + Z: the terrain is filled or cut to it;
  *  core/engine/apply-stamp-layers.js, the one 'level' branch). */

@@ -57,13 +57,26 @@ export function flatBrickPlaneHeights(heights, brickOf, count, nx) {
  *  A pass without a kind is art (every pre-item-22 caller). */
 export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks', stl: 'stl', height: 'height' }); // 'stl': core/stl/layer.js (STL-RELIEF); 'height': core/height/layer.js (HEIGHT-PAINTER)
 /** HEIGHT-PAINTER: the pass kinds made from a self-contained RECORD with the STL stamp options (Max / Add, Raised / Carved,
- *  Z offset, before / after thicken) -- read by the STL Max / Add branches below and by rebuild.js's 'afterBack' split.
+ *  Z offset, before / after thicken) -- read by the STL Max / Add branches below (rebuild.js's 'afterBack' split reads
+ *  PLACEMENT_PASS_KINDS, below, since every kind carries a placement).
  *  A height pass carries its signed painted height as the body with depth +/-1, so those branches are exact for it. Level
  *  (one rigid object) stays the STL's alone: a height patch always follows the terrain, like an SVG layer (Fred 2026-11-22). */
 export const RECORD_PASS_KINDS = Object.freeze([STAMP_PASS_KIND.stl, STAMP_PASS_KIND.height]);
+/** The pass kinds that carry a `placement` (core/stamp/placement.js: 'withSurface' | 'afterBack') -- read by rebuild.js's ONE
+ *  'afterBack' split. Fred 2026-11-23: every kind now (a vector layer's art and the bricks joined the STL and height patches). */
+export const PLACEMENT_PASS_KINDS = Object.freeze([STAMP_PASS_KIND.art, STAMP_PASS_KIND.bricks, STAMP_PASS_KIND.stl, STAMP_PASS_KIND.height]);
 
+/**
+ * `defaults` also takes, for a stamp split in two calls (rebuild.js: the 'afterBack' passes stamped after the others):
+ *   reference  the terrain the suppression smooths (default: `cleanHeights`) -- the second call passes the FIRST call's clean
+ *              terrain, so a late layer's suppression reads the same terrain it would have in one call;
+ *   artDelta   a Float32Array(nx * nz) the art deltas accumulate into (default: a fresh one) -- shared by both calls, so a
+ *              late Flat brick still fits its plane without the earlier art (F35 item 44).
+ * Neither is passed by a single call: it is exactly as before.
+ */
 export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const { stampDepth = 0, stampEdgeFilletRadius = 0 } = defaults;
+  const reference = defaults.reference && defaults.reference.length === cleanHeights.length ? defaults.reference : cleanHeights;
   const stampedHeights = new Float32Array(cleanHeights);
   if (!Array.isArray(layers)) return stampedHeights;
   // F35 item 44 (Fred: "if there's a carving in art, the bricks don't work"): what the ART passes so far added to each
@@ -71,8 +84,9 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   // back, so a carving under a brick cuts into it as in Organic. Measured before (7x9 T1, a 0.35 in carve across 20 of
   // 140 Flat bricks): 1,752 points of the crossed bricks off the stroke moved (max 0.10 in) -- each brick's plane had
   // been fitted over the groove -- and the plane replaced the groove under it.
-  const artDelta = new Float32Array(nx * nz);
-  let anyArt = false;
+  const shared = defaults.artDelta && defaults.artDelta.length === nx * nz ? defaults.artDelta : null;
+  const artDelta = shared || new Float32Array(nx * nz);
+  let anyArt = shared ? shared.some((v) => v !== 0) : false;
 
   // Step 2 unification: prefer tooling values from the matching editor
   // layer when one exists. Falls through to the stamp layer's own field,
@@ -115,7 +129,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     const suppressStrength = effectiveSuppression;
     const blurRadius = effectiveSmoothing || 0;
     const smoothedTerrain = suppressStrength > 0
-      ? gaussianSmooth(cleanHeights, nx, nz, blurRadius)
+      ? gaussianSmooth(reference, nx, nz, blurRadius)
       : null;
 
     const layerDepth = effectiveDepth;

@@ -410,6 +410,9 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       // every FRAME field, thickness included, lives in the sidebar FRAME section (Fred: they show in the 3D preview)
       // DRAW-STAMP U (location only, Fred 2026-11-22): the VECTOR STAMPING fields are edited in the editor's Draw > Stamp branch
       if (section === 'VECTOR STAMPING') { expect(el.closest('#drawStampBody'), id).not.toBeNull(); continue; }
+      // the layer stack (Fred 2026-11-23): the THICKEN fields are the retired Thicken panel's settings, opened from the Layers
+      // stack's Thicken line (main/layer-stack.js) -- in the LAYERS panel, under the line's own '⛓️ Thicken' header
+      if (section === 'THICKEN') { expect(el.closest('#thickenSettings'), id).not.toBeNull(); expect(el.closest('.panel.panel-layers'), id).not.toBeNull(); continue; }
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
       expect(hdr.toUpperCase(), id).toContain(section); // the panel headers show upper-cased (CSS); FRAME = 'Wood frame' (core/frame-labels.js)
     }

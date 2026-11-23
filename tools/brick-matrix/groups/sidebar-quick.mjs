@@ -17,7 +17,8 @@ export const rows = [
   { name: 'Quick frame bands: 3-band', kind: 'sidebar', do: click('brickQuick_frameBands_three_band'), expect: AUTO },
   { name: 'Quick grout colour: Charcoal (paint only)', kind: 'sidebar', do: click('brickQuick_groutColor_charcoal'), expect: E(false, true, false), introducedBy: '3a10b65' }, // F35 item 55
   // turn 207 (Fred): the BRICK section's "Brick editor" button opens the editor on the Brick tab
-  { name: 'Brick editor button', kind: 'opens', do: click('btnEditBricks'), expect: { tab: 'brick' }, introducedBy: '979ada1' },
+  // the Brick panel's 'Brick editor' retired (Fred 2026-11-23): the layer stack's Brick card door opens the Brick tab
+  { name: 'Brick card: Open in the Brick tab', kind: 'opens', do: click('layerCardDoor_bricks'), expect: { tab: 'brick' }, introducedBy: '979ada1' },
   // F35 item 25: the viewport's [2D] opens the editor on the last-used tab (Brick: the row above left it there),
   // the editor's [3D] closes it again (Apply, or just close when nothing changed)
   { name: 'Viewport 2D / 3D pill', kind: 'opens', do: click('viewMode_2d'), expect: { tab: 'brick' }, closeWith: 'viewMode_3d_editor', introducedBy: '3447e95' },

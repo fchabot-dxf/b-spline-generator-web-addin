@@ -396,6 +396,18 @@ function commitStep(what) {
   else scheduleUndoSnapshot(`height:${what}`, 'Height');
   scheduleSessionSave();
   _hooks.onChange();
+  // the main panel's layer stack (main/layer-stack.js) re-reads the patches: a card's name, its Thicken side
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('layerStackStale'));
+}
+
+/** The layer stack's 'Open in the Height tab': patch `id` becomes the one the tools edit (UI state only, nothing written). */
+export function pickHeightPatch(id) {
+  if (!find(id)) return false;
+  dropHeightMove();
+  _active = id;
+  syncHeightPanel();
+  syncHeightOverlay();
+  return true;
 }
 
 // ── the layers of a patch (slice 2; core/height/compose.js) ─────────────────────────────────────────────────────────
@@ -1286,8 +1298,9 @@ export function setPatchLayerField(layerId, path, value, { commit = true } = {})
 }
 
 /** One control's value: a brush setting (UI state), or the ACTIVE patch's field (`commit` false: a slider's drag tick --
- *  written and drawn, the step comes with its release). */
-export function setHeightField(controlId, value, { commit = true } = {}) {
+ *  written and drawn, the step comes with its release). `id`: patch `id`'s field instead of the active one's (the layer
+ *  stack writes a card's Thicken side when it crosses the line -- the same write as the patch's own Thicken choice). */
+export function setHeightField(controlId, value, { commit = true, id = null } = {}) {
   const c = allControls().find((x) => x.id === controlId);
   if (!c) return false;
   let v = value;
@@ -1307,8 +1320,9 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
     syncHeightBar();
     return true;
   }
-  const rec = activeHeightLayer();
+  const rec = id != null ? find(id) : activeHeightLayer();
   if (!rec) return false;
+  if (id != null && c.target !== 'patch') return false; // only a patch's own field is written by id
   dropHeightMove(); // a patch / layer field is another action
   if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
   if (c.target === 'greyMap') { // slice 5: the patch's grey Range (never a pixel)

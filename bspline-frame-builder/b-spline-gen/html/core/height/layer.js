@@ -14,9 +14,10 @@
  */
 import { encodeRaster } from './raster.js';
 import { patchComposite, compositeKey, patchGrid, patchReady, ensurePatchDecoded } from './compose.js';
+import { STAMP_PLACEMENTS } from '../stamp/placement.js';
 
 export const HEIGHT_BLENDS = Object.freeze(['add', 'max']);
-export const HEIGHT_PLACEMENTS = Object.freeze(['withSurface', 'afterBack']); // core/stl/layer.js STL_PLACEMENTS' meanings
+export const HEIGHT_PLACEMENTS = STAMP_PLACEMENTS; // the one table: core/stamp/placement.js
 // No `surface` / Level: a height patch ALWAYS follows the terrain -- its values are added on the terrain under each point,
 // like an SVG layer's art (Fred 2026-11-22, "No rigid"; HEIGHT-PAINTER-DESIGN.md section 10 answer 5).
 /** Fred's answer 1: 100 pixels per inch (0.01 in a pixel). */

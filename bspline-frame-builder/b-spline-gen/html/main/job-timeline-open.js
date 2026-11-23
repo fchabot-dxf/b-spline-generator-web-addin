@@ -2,6 +2,7 @@
  * main/job-timeline-open.js -- what a click on a job timeline step opens (Fred 2026-10-14), through the app's OWN
  * openers: a step's kind declares `opens` (core/job-timeline.js JOB_STEP_KINDS) and this maps it --
  *   { sidebar: key }            -> the 3D view, its sidebar section revealed (main/sidebar-tabs.js revealSidebarSection);
+ *                                  + `stack`: that layer-stack item opened in it (main/layer-stack.js openLayerStackItem);
  *   { editorTab, layer: true }  -> the 2D editor on that tab, the step's layer made the active one.
  */
 import { isEditorOpen } from '../core/history.js';
@@ -10,12 +11,14 @@ import { openEditorOn } from './frame-panel.js';
 import { setEditorTab } from './editor-tabs.js';
 import { setViewMode } from './view-mode-toggle.js';
 import { setActiveLayer } from '../editor/layers.js';
+import { openLayerStackItem } from './layer-stack.js';
 
 export async function openJobStepTarget(step, opens) {
   if (!step || !opens) return;
   if (opens.sidebar) {
     if (isEditorOpen()) setViewMode('3d'); // the 2D/3D toggle's own way out (keeps the edits, like Apply)
     revealSidebarSection(opens.sidebar);
+    if (opens.stack) openLayerStackItem(opens.stack); // a stack item inside it (the Thicken line)
     return;
   }
   if (opens.editorTab) {

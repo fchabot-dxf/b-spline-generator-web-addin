@@ -120,8 +120,10 @@ async function runCarveUnderFlat() {
   await apply(); await heightsSettled(null);
   await js(`import('./core/state.js').then((m)=>{ window.__carveH0=Float32Array.from(m.lastResult.heights); return 1; })`);
   await openEditorTab('editorTabArtwork');
-  await js(`(()=>{ const ed=window.svgEditor; const lid=ed._layers.find((l)=>!l.brickKind && !l.holdsBricks).id; const s=${JSON.stringify(C.stroke)};
-    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })()`);
+  // a fresh board's drawing has no layer since the layer stack (Fred 2026-11-23: a new file has no layers): the stroke goes on
+  // the first drawing layer, made by the app's own addLayer when there is none (as a drawn stroke's ensureActiveLayer would)
+  await js(`import('./editor/layers.js').then((L)=>{ const ed=window.svgEditor; const lid=(ed._layers.find((l)=>!l.brickKind && !l.holdsBricks) || L.addLayer(ed, { skipUndo: true })).id; const s=${JSON.stringify(C.stroke)};
+    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })`);
   await apply(); await heightsSettled(null);
   const m = await jsJSON(`(async()=>{ const st=await import('./core/state.js'); const A=window.__carveH0, B=st.lastResult.heights; const W=st.P.widthIn, H=st.P.heightIn;
     const nx=Math.round(Math.sqrt(A.length*W/H)), nz=A.length/nx; const s=${JSON.stringify(C.stroke)}, far=s.widthIn/2+${C.farMarginIn};
@@ -145,12 +147,12 @@ async function runLayWarnings() {
   await openEditorTab('editorTabFrame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await apply(); await heightsSettled(null);
-  await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
+  await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
   const size = async (id) => { // the Brick frame's size (the bands fit by it; per element since 2026-10-11), then the sidebar
     await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await setValue('brickSizeSelect', id, 'change'); await sleep(2500);
     await apply(); await heightsSettled(null);
-    await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
+    await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   };
   // 1. bands that cover the board: no wall, both notes say so
   await size(W.tooManySize);

@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { initFramePanel, OPEN_EDITOR_BUTTONS } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { initFramePanel, OPEN_EDITOR_BUTTONS, openEditorOn } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { getEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
@@ -35,14 +35,15 @@ beforeEach(() => {
 afterEach(() => root.remove());
 
 describe('the sidebar open-the-editor buttons', () => {
-  it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab, Layers panel Open Editor -> Artwork', () => {
+  it('declared: Edit frame -> Frame tab (the Brick panel\'s Brick editor retired: the Brick card\'s door calls openEditorOn)', () => {
     // c64a466 (2026-10-14): the main sidebar's permanent Layers panel opens the editor on the Artwork tab
-    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }, { id: 'btnMainLayersOpenEditor', tab: 'artwork' }]);
+    // (the Layers section's Open Editor retired, Fred 2026-11-23: the 2D / 3D toggle opens the editor)
+    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }]);
   });
-  it('Brick editor opens the editor through btnStampEdit, on the Brick tab', async () => {
+  it('openEditorOn(\'brick\') (the layer stack Brick card\'s door) opens the editor through btnStampEdit, on the Brick tab', async () => {
     const open = vi.fn();
     document.getElementById('btnStampEdit').addEventListener('click', open);
-    document.getElementById('btnEditBricks').click();
+    openEditorOn('brick');
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1)); // item 41: its loading stage paints first
     expect(getEditorTab()).toBe('brick');
   });
@@ -51,17 +52,17 @@ describe('the sidebar open-the-editor buttons', () => {
     setPaintScheduler(null); // the real paint step (the suite's is immediate)
     let seen = 'not opened';
     document.getElementById('btnStampEdit').addEventListener('click', () => { seen = currentLoadingStage(); });
-    document.getElementById('btnEditBricks').click();
+    openEditorOn('brick');
     expect(currentLoadingStage()).toEqual({ id: 'openEditor', text: 'Refreshing - opening the editor', surface: 'pill' });
     expect(seen).toBe('not opened');
     await vi.waitFor(() => expect(seen).not.toBe('not opened'));
     expect(seen?.id).toBe('openEditor'); // the stage was on screen while the editor opened
     resetLoadingSignal();
   });
-  it('the button is the first thing in the BRICK section', () => {
+  it('the Brick fields (the old BRICK panel\'s body, hosted by the layer stack\'s Brick card) carry no second Brick-tab button', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
-    const section = html.slice(html.indexOf('<div class="panel panel-brick">'));
-    const body = section.slice(section.indexOf('<div class="panel-body hidden">') + '<div class="panel-body hidden">'.length);
-    expect(body.replace(/<!--[\s\S]*?-->/g, '').trimStart()).toMatch(/^<button type="button" id="btnEditBricks"/);
+    const open = '<div id="brickPanelBody" class="layer-hosted-body">';
+    const body = html.slice(html.indexOf(open) + open.length);
+    expect(body.slice(0, body.indexOf('<div id="stampBlueprint"')).replace(/<!--[\s\S]*?-->/g, '')).not.toMatch(/btnEditBricks|Brick editor/);
   });
 });

@@ -63,10 +63,13 @@ export const JOB_STEP_KINDS = Object.freeze({
   // :296's output; core/engine/build-thicken-data.js:56-57, :63) -- and the board (build-thicken-data.js:50)
   // snapshotOnLock (Fred 2026-10-14): the Back is cut FIRST in his real flow and its lock will be a carve-time snapshot of
   // the underside -- later stamps no longer feed it, so its reads are never marked (detection skips a snapshot kind)
-  back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
+  // opens: the Thicken settings are the LAYERS stack's Thicken line now (Fred 2026-11-23, main/layer-stack.js) -- that
+  // section revealed and the line opened (`stack`: the stack item to open)
+  back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-layers', stack: 'thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
     // 'stl': thicken reads the stamped heights, the STL passes included (they are stamped last, rebuild.js _collectStampPasses);
     // an 'afterBack' ("After thicken") STL is NOT read by the back (rebuild.js buildHeights backBase) -- no data change: Back is
-    // snapshotOnLock, its marks are never shown
+    // snapshotOnLock, its marks are never shown. The same for an 'afterBack' vector layer or brick pattern (Fred 2026-11-23,
+    // core/stamp/placement.js): 'vector' / 'bricks' stay listed (a Before-thicken one is read), nothing else changes.
     dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks', 'stl'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES

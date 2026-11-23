@@ -137,8 +137,9 @@ export function initSvgSource(ctx, layerModule) {
       const modal = document.getElementById('svgEditorModal');
       if (!modal) return;
       modal.style.display = 'flex';
-      const currentLayer = ctx.activeLayer();
-      if (currentLayer) {
+      // the layer stack (Fred 2026-11-23, a new file has no layers): the session's snapshot and its document no longer wait for
+      // a "current layer" -- with none (a new project), Cancel kept the first stroke (measured). The snapshot is the DOCUMENT.
+      {
         // SE3a: snapshot the unified document BEFORE this session, not the
         // active editor layer's own fields (ctx.activeLayer() returns an
         // EDITOR layer here — id/name/tooling, no `.svg` — so capturing
@@ -150,7 +151,7 @@ export function initSvgSource(ctx, layerModule) {
         SvgEditorSnapshot.frame = P.frame ? JSON.parse(JSON.stringify(P.frame)) : null; // audit B9: Cancel restores it
         SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // F35 item 25: [3D] closes unchanged sessions
       }
-      if (window.svgEditor && currentLayer) {
+      if (window.svgEditor) {
         // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:
         // in the unified model ctx.activeLayer() returns an EDITOR layer with no
         // `.svg`, so the old code passed undefined and reopened blank (RO1).

@@ -383,6 +383,10 @@ export const DEFAULT = {
     // HEIGHT_LAYER_DEFAULTS), its raster stored encoded, saved with the project. [] = none = the board lays exactly as
     // before (tests/height-layers-absent.test.js).
     heightLayers: [],
+    // the LAYER STACK's order (Fred 2026-11-23, core/stamp/order.js): null = today's stamp order (every board saved before
+    // the stack, and one never reordered: the passes are not sorted at all). An array of stack keys once the user drags a
+    // layer to a new place in the main panel's stack (main/layer-stack.js). A load of a board without it reads null.
+    layerOrder: null,
 };
 
 export let P = { ...DEFAULT };

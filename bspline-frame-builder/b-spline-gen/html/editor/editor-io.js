@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, stripEditorOnlyBrickAttrs, isBrickToolNode, addLayer, setActiveLayer, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, stripEditorOnlyBrickAttrs, isBrickToolNode, setActiveLayer, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -80,6 +80,7 @@ const _PERSISTED_LAYER_FIELDS = [
     'holdsBricks',
     'brickKind', // F35 item 64: a brick kind's own layer (layers.js BRICK_KIND_LAYERS)
     'userLocked', // the manual layer lock (layers.js isUserLocked); written only when true, absent = unlocked
+    'placement', // Fred 2026-11-23: the layer's Thicken (core/stamp/placement.js); written only once set, absent = 'withSurface'
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
@@ -741,14 +742,13 @@ export function _reconcileLayersFromSvg(editor) {
     const children = editor._sketchLayer.children().toArray();
     _ioLog(`reconcile: childCount=${children.length}`);
     if (children.length === 0) {
-        // No children to reconcile, but still create a Layer 1 so the
-        // layer panel isn't empty when the user opens an SVG that
-        // happens to have no shapes (e.g. just <defs> from font embed).
-        // Matches the BUG-10 fix's auto-create behavior on init.
-        const anchor = applyToolingDefaults({ id: '0', name: 'Layer 1', visible: true });
-        editor._layers = [anchor];
-        editor._nextLayerId = 1;
-        return anchor.id;
+        // Fred 2026-11-23 (the unified layer stack, "a new file has no layers"): an SVG with nothing in it reopens with NO
+        // layer -- the same fresh drawing resetArtworkToFresh makes (a saved, never-drawn new project; an editor Cancel
+        // back to it). It used to get an empty "Layer 1" here; an empty layer stamps nothing, so no board's heights change.
+        // (A document holding only metadata -- a <defs> -- still gets its anchor below, SE8b.)
+        editor._layers = [];
+        editor._nextLayerId = 0;
+        return null;
     }
 
     // Reset the runtime roster — we trust the SVG as the source of truth.
@@ -875,14 +875,10 @@ export function resetArtworkToFresh(editor) {
     // legacy file-level `editor._latticePattern`, which no longer exists),
     // so dropping the array clears pattern state and its layer tags too.
     editor._layers = [];
-    editor._activeLayer = null;
-    // Same auto-create as initLayerControls (BUG-10) so a fresh editor
-    // session always has a Layer 1 ready to go, instead of showing an
-    // empty layers list and the user wondering where to draw. skipUndo so
-    // this doesn't pollute the undo stack — the CALLER's own pushState()
-    // (after this returns) is what makes the whole reset one undo step.
-    const layer = addLayer(editor, { skipUndo: true });
-    setActiveLayer(editor, layer.id);
+    // Fred 2026-11-23 (the unified layer stack): a NEW drawing has NO layer -- the main panel's stack starts empty and the
+    // user adds the layers he wants (+ Add layer). The empty "Layer 1" this used to make is gone; the first stroke / text /
+    // brick / lattice still gets its layer from ensureActiveLayer (layers.js), as on any board whose active layer is gone.
+    setActiveLayer(editor, null);
 }
 
 export function open(editor, svgString, w, h) {

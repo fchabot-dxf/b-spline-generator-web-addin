@@ -13,6 +13,7 @@ import { P, bootRestore } from '../bspline-frame-builder/b-spline-gen/html/core/
 import {
   renderStlPanel, bindStlPanel, syncStlPanel, addStlFromBuffer, removeStlLayer, noteStlProjectReplaced, isStlLocked, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 import { setSectionReadOnly } from '../bspline-frame-builder/b-spline-gen/html/core/ui-utils.js';
 import { initJobTimelineStrip, renderJobStrips } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-strip.js';
 import { setJobTimelineEnabled } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline-enabled.js';
@@ -91,7 +92,7 @@ describe('E2 an import racing a project load', () => {
   const pick = (id, fileObj) => { const inp = $(id); Object.defineProperty(inp, 'files', { value: [fileObj], configurable: true }); inp.dispatchEvent(new Event('change')); };
   const run = async (replace) => {
     document.body.innerHTML = '<div id="stlLayerBody"></div>';
-    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack();
     let release; const gate = new Promise((r) => { release = r; });
     pick('stlFile', { name: 'late.stl', arrayBuffer: async () => { await gate; return binaryStl(pyramidSoup()); } });
     if (replace) noteStlProjectReplaced(); // the project load lands while the file is being read
@@ -112,8 +113,9 @@ describe('E2 an import racing a project load', () => {
 
 describe('E4 the job-timeline lock survives a panel re-render', () => {
   const tag = (HTML.match(/<div[^>]*id="stlLayerBody"[^>]*>/) || [''])[0];
-  beforeEach(() => { document.body.innerHTML = `${tag}</div>`; renderStlPanel($('stlLayerBody')); bindStlPanel({}); });
-  const controls = () => [...document.querySelectorAll('#stlLayerBody input, #stlLayerBody button')];
+  beforeEach(() => { document.body.innerHTML = `${tag}</div>`; renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack(); });
+  // the panel's controls AND its cards in the layer stack (each card carries the same data-job-lock="stl" scope)
+  const controls = () => [...document.querySelectorAll('[data-job-lock="stl"] input, [data-job-lock="stl"] button')];
   it('locked: an added STL and a sync leave every control disabled; unlocked: enabled again', () => {
     expect(isStlLocked()).toBe(false);
     setSectionReadOnly('stl', true);
@@ -134,7 +136,7 @@ describe('E4 the job-timeline lock survives a panel re-render', () => {
 describe('E5 the strip learns when STLs are added or removed', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="previewArea" style="position:relative"></div><div id="editorCanvasContainer" style="position:relative"></div><div id="stlLayerBody"></div>';
-    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack();
     setJobTimelineEnabled(true);
     window.svgEditor = { _layers: [{ id: 'L1', name: 'Red petals' }] };
     P.frame = { templateId: 'template_1' }; P.jobTimeline = null; bootRestore.complete = true;
