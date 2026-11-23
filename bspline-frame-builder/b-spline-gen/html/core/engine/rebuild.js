@@ -27,6 +27,7 @@ import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND, PLACEMENT_PASS_KINDS } from './apply-stamp-layers.js';
 import { placementOf } from '../stamp/placement.js';
+import { orderPasses, editorLayerKey, STACK_BRICKS_KEY } from '../stamp/order.js';
 import { stlPasses } from '../stl/layer.js';
 import { heightPasses, heightRastersReady, decodeHeightLayers } from '../height/layer.js';
 import { isStoredRaster } from '../height/raster.js';
@@ -442,7 +443,13 @@ export function _collectStampPasses(nx, nz) {
         passes.push(...heightPasses(P.heightLayers, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }));
     }
 
-    return passes;
+    // The LAYER STACK (Fred 2026-11-23, core/stamp/order.js): once the user has reordered the stack, P.layerOrder lists its
+    // items and the passes follow it (each pass at its item's rank). Absent / null: no sort -- today's order, untouched.
+    if (!Array.isArray(P.layerOrder)) return passes;
+    const byId = new Map((editorLayers || []).filter(Boolean).map((l) => [String(l.id), l]));
+    return orderPasses(passes, P.layerOrder, (p) => (p.kind === STAMP_PASS_KIND.bricks ? STACK_BRICKS_KEY
+        : p.kind === STAMP_PASS_KIND.art ? (byId.has(String(p.id)) ? editorLayerKey(byId.get(String(p.id))) : `layer:${p.id}`)
+        : p.id)); // an STL / height pass id IS its stack key (stl:<id>, height:<id>)
 }
 
 // ── Phase 6: sculpt notices ─────────────────────────────────────────────────
