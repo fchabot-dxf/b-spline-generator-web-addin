@@ -853,7 +853,12 @@
     #editorSVGContainer {
         width: auto !important;
         max-width: 100%;
-        margin: 0 auto;
+        /* NOT `margin: 0 auto`: in this column flexbox an auto side margin switches off the cross-axis stretch, so the box
+           shrank to its content -- the SVG's own width at the container's HEIGHT x the board's aspect (an SVG sized 100%
+           has no other width to give it). With the drawer opened the canvas height drops, the box narrowed to a centred
+           band (measured: 190 px of 390), and a zoomed-in view was clipped to that band. Stretch fills the row; the
+           viewBox's xMidYMid meet already centres the board inside it. */
+        align-self: stretch;
         flex: 1 1 auto;
         min-height: 0;
         height: auto;
