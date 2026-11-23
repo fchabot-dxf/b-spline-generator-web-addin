@@ -55,8 +55,8 @@ found (install Fusion and start it once), 4 checksum mismatch (try again in a mi
 **Updating.** In Fusion, the **B-Spline Builder** panel's dropdown has **Check for updates**. It compares the installed
 build's stamp (`build-info.json`) with the published `latest.json`; when a newer build exists it asks first, then
 downloads it, verifies the SHA-256, backs up the old folder, swaps the new one in, closes the add-in's windows and tells
-you to restart Fusion (or Stop, then Run, the add-in). It never installs without your Yes, and it refuses to touch an
-add-in that runs from a source checkout.
+you to restart Fusion (or Stop, then Run, the add-in). It never installs without your Yes. It replaces the folder the
+add-in runs from, whatever that folder is called (a source checkout included: use git there instead).
 
 **Releasing (maintainer).** `python release.py --addin` builds the three assets in `release-out/`
 (`bspline-frame-builder.zip` with its `build-info.json` inside, `bspline-frame-builder.zip.sha256`, `latest.json`) and
