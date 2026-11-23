@@ -289,3 +289,29 @@ profile." Branch `height-painter-3c`. Tests: `tests/height-brush-section.test.js
 - A bevel is Square + Linear (hardness about 0.3) by choice; there is no Bevel button.
 - **Build up**: a checkbox, default ON (the slice-1 build-up); only the user switches it (no choice sets it).
 - Unchanged: the Eraser, Alt flips raise <-> lower, the Move tool, the `leads` section order, the round-brush byte pin.
+
+## 13. Slice 4: magic wand, selection modifiers, feather profile, layer rename (branch `height-painter-4`)
+
+Fred said yes 2026-11-23. Tests: `tests/height-wand-select.test.js`, the pin `tests/height-feather-pin.test.js` (measured on
+main @ 73a7e10c before the slice-4 code); probe `tools/repro/height_painter4_shots.mjs`.
+
+- **Magic wand** (`HEIGHT_TOOLS` 'wand', leads its own 'wand' section then Selection; core/height/selection.js `wandMask`):
+  a tap (picked on release) selects the pixels within **Tolerance** (inches) of the tapped height -- **Contiguous** = the
+  4-connected region holding the tap (a flood fill), off = every such pixel of the patch. **Sample**: the active layer (an
+  image layer through its live mapping) or the **whole board**: the board heights as LAST BUILT (core/state.js lastResult:
+  terrain + reliefs + every enabled patch, as of the last 3D build -- strokes since then are not in it until Apply)
+  resampled bilinearly onto the patch's pixel centres through its placement (`boardHeightsOnPatch`). The result is the
+  same mask the marquees make (feather, fill, brush, move all take it).
+- **Selection modifiers** on every selection path (rectangle, ellipse, lasso, wand, a Draw-tab shape): plain = replace,
+  **Shift = add** (max), **Alt = subtract** (a (1 - b)) (`SELECTION_COMBINE`, `combineMasks`); the Selection section's
+  'New selection' row (Replace / Add / Subtract) does the same without a keyboard (a key held wins over the row). A plain
+  tap with a marquee still clears; a Shift / Alt tap changes nothing.
+- **Feather profile** beside Feather: the BRUSH_FALLOFFS profiles (with their icons; Custom opens the curve widget).
+  **Smooth (the default) is the slice-2 feather, byte for byte** (a Gaussian blur across the edge; pinned). Any other
+  profile fades INWARD from the outline: an exact distance transform of the hard selection (>= 0.5; the patch's border
+  counts as outside) gives each pixel its distance to the outline (to the nearest unselected pixel centre, less half a
+  pixel), and the weight is core/falloff.js **`edgeFade`** -- 0 on the outline, full strength at the Feather width inside,
+  the profile between. `edgeFade` is the one edge fade: the STL crop-edge falloff (core/stl/crop.js) now calls it too
+  (same arithmetic). Linear = a bevelled tile, Dome = a pillow, Plateau = a flat top with a steep rim.
+- **Layer rename**: the pencil on each layer row (touch) or a double-click on the name opens an inline text box; Enter or
+  leaving it writes the name through `setPatchLayerField` (one undo step; an unchanged name writes nothing), Esc cancels.
