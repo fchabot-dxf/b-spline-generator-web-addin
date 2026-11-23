@@ -205,6 +205,19 @@ if os.path.isdir(styles_src):
 else:
     print(f"  Warning: styles/ folder not found at {styles_src}")
 
+# The one-click Fusion add-in installers (Fred 2026-11-22) + their Pages _headers, served at the site root
+# (main/addin-download.js links them). They live in the repo's installer/ folder -- outside the add-in folder, so
+# they never ship inside the add-in zip. Copied byte for byte (the .cmd keeps CRLF, the .command LF).
+INSTALLER_SRC = os.path.normpath(os.path.join(workspace_dir, "..", "installer"))
+INSTALLER_PUBLISH = lambda name: name.endswith((".cmd", ".command")) or name == "_headers"
+if os.path.isdir(INSTALLER_SRC):
+    for filename in sorted(os.listdir(INSTALLER_SRC)):
+        if INSTALLER_PUBLISH(filename):
+            shutil.copyfile(os.path.join(INSTALLER_SRC, filename), os.path.join(deploy_dist, filename))
+            print(f"  Copied installer: {filename}")
+else:
+    print(f"  Warning: installer/ folder not found at {INSTALLER_SRC}")
+
 # Rewrite stylesheet hrefs in every deployed HTML so "../../styles/X.css"
 # (which would escape the deploy root) becomes "styles/X.css".
 for html_name in os.listdir(deploy_dist):
