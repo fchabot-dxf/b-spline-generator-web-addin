@@ -1162,11 +1162,6 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
   border-top: 2px solid var(--section-stripe); border-bottom: 2px solid var(--section-stripe); }
 #layerStackThickenBody > #thickenSettings { padding: 0 !important; } /* the retired panel's own body, hosted: one padding */
 .layer-add-option { flex-direction: column; gap: 4px; font-size: 11px; }
-/* the same picker in the editor's tab row (main/layer-stack.js ADD_PICKERS): a compact '+' chip, >= 28 px */
-#editorLayerAdd { flex: 0 0 auto; margin-left: 6px; }
-#editorLayerAdd .icon-select-button { min-width: 32px !important; height: 28px !important; min-height: 28px; padding: 0 8px !important; font-size: 15px !important; font-weight: 700; }
-#editorLayerAdd .icon-select-name { display: none; }
-@media (pointer: coarse) { #editorLayerAdd .icon-select-button { height: 32px !important; min-width: 36px !important; } }
 .layer-add-icon { font-size: 26px; line-height: 1; }
 @media (pointer: coarse) {
   .layer-card > .layer-card-head { min-height: 44px; }

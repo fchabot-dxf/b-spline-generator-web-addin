@@ -495,7 +495,7 @@ export async function addStackLayer(type) {
  *  its picker's ids; `inEditor` = the editor stays open and then shows the new layer's tab. */
 export const ADD_PICKERS = Object.freeze([
   Object.freeze({ grid: 'layerStackAddGrid', prefix: 'layerStackAdd_', label: '＋ Add layer', ids: Object.freeze({ wrap: 'layerStackAdd', chip: 'layerStackAddBtn' }), inEditor: false }),
-  Object.freeze({ grid: 'editorLayerAddGrid', prefix: 'editorLayerAdd_', label: '＋', ids: Object.freeze({ wrap: 'editorLayerAdd', chip: 'editorLayerAddBtn' }), inEditor: true }),
+  // (the editor's own '+' -- an ADD_PICKERS entry with inEditor: true -- is on HOLD: the editor's layer UI is being decided)
 ]);
 
 /** A picker's tile picked: THE add (addStackLayer); from the editor, the editor then shows that type's tab (it stays open;
