@@ -111,3 +111,4 @@ shots/
 # smoke-editor.mjs output (screenshots + Chrome profile)
 smoke-out/
 tools/status_site/out/
+release-out/
