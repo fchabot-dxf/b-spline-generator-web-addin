@@ -44,28 +44,80 @@ describe('the installer for the visitor, declared', () => {
   });
 });
 
-describe('the header button', () => {
-  it('on Windows saves the .cmd (a same-origin download link) instead of leaving for the ZIP', () => {
+describe('the header button opens the modal', () => {
+  const open = (nav) => {
     const clicked = [];
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
-      clicked.push({ href: this.getAttribute('href'), download: this.getAttribute('download') });
-    });
-    const go = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () { clicked.push(this.getAttribute('href')); });
     const btn = document.createElement('button');
     document.body.append(btn);
-    bindAddinDownloadButton(btn, { nav: WIN, go });
+    bindAddinDownloadButton(btn, { nav });
     btn.click();
-    expect(clicked).toEqual([{ href: 'install-bspline-addin.cmd', download: 'install-bspline-addin.cmd' }]);
-    expect(go).not.toHaveBeenCalled();
-    expect(document.querySelectorAll('a[download]').length).toBe(0); // the temporary link is gone again
+    return { clicked, modal: document.querySelector('[data-addin-modal]') };
+  };
+
+  it('on Windows it opens the modal (no direct download): the .cmd link, its note, the exact one-liner, the ZIP', () => {
+    const { clicked, modal } = open(WIN);
+    expect(clicked).toEqual([]);
+    expect(modal).not.toBeNull();
+    const e = byOs('windows');
+    const dl = modal.querySelector('a[download]');
+    expect(dl.getAttribute('href')).toBe(e.file);
+    expect(dl.textContent).toBe('Download installer');
+    expect(modal.querySelector('[data-addin-note]').textContent).toBe(e.note);
+    expect(modal.querySelector('code').textContent).toBe(e.paste.command);
+    expect(modal.textContent).toContain('Then restart Fusion');
+    expect(modal.querySelector('a[data-addin-zip]').getAttribute('href')).toBe(ADDIN_ZIP_URL);
   });
 
-  it('on a machine with no installer it still downloads the plain ZIP', () => {
-    const go = vi.fn();
-    const btn = document.createElement('button');
-    bindAddinDownloadButton(btn, { nav: LINUX, go });
+  it('on a Mac it leads with the .command; the switch shows the other OS', () => {
+    const { modal } = open(MAC);
+    expect(modal.querySelector('a[download]').getAttribute('href')).toBe(byOs('mac').file);
+    modal.querySelector('[data-addin-switch="windows"]').click();
+    expect(modal.querySelector('a[download]').getAttribute('href')).toBe(byOs('windows').file);
+    expect(modal.querySelector('code').textContent).toBe(byOs('windows').paste.command);
+    expect(modal.querySelectorAll('[data-addin-os]').length).toBe(1);
+  });
+
+  it('with no installer for this OS (Linux) it still opens, on the first entry with the switch', () => {
+    expect(open(LINUX).modal.querySelector('a[download]')).not.toBeNull();
+  });
+
+  it('Copy writes the exact one-liner to the clipboard and says Copied', async () => {
+    const writeText = vi.fn().mockResolvedValue();
+    vi.stubGlobal('navigator', { ...WIN, clipboard: { writeText } });
+    const { modal } = open(WIN);
+    const btn = modal.querySelector('[data-addin-copy]');
     btn.click();
-    expect(go).toHaveBeenCalledWith(ADDIN_ZIP_URL);
+    await vi.waitFor(() => expect(btn.textContent).toBe('Copied'));
+    expect(writeText).toHaveBeenCalledWith(byOs('windows').paste.command);
+    vi.unstubAllGlobals();
+  });
+
+  it('Close, Escape and a tap on the backdrop each close it; touch targets are >= 28 px', () => {
+    let { modal } = open(WIN);
+    for (const el of modal.querySelectorAll('button, a')) expect(parseFloat(el.style.minHeight || el.style.lineHeight)).toBeGreaterThanOrEqual(28);
+    modal.querySelector('[data-addin-close]').click();
+    expect(document.querySelector('[data-addin-modal]')).toBeNull();
+    ({ modal } = open(WIN));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('[data-addin-modal]')).toBeNull();
+    ({ modal } = open(WIN));
+    modal.click();
+    expect(document.querySelector('[data-addin-modal]')).toBeNull();
+    ({ modal } = open(WIN));
+    open(WIN);
+    expect(document.querySelectorAll('[data-addin-modal]').length).toBe(1); // opening twice does not stack
+  });
+
+  it('the modal and Settings render the same block (same link, note, one-liner)', () => {
+    const { modal } = open(WIN);
+    const box = document.createElement('div');
+    renderAddinInstallSection(box, WIN);
+    const a = modal.querySelector('[data-addin-os]'), b = box.querySelector('[data-addin-os="windows"]');
+    for (const sel of ['a[download]', '[data-addin-note]', 'code', '[data-addin-copy]']) {
+      expect(a.querySelector(sel).getAttribute('href') ?? a.querySelector(sel).textContent)
+        .toBe(b.querySelector(sel).getAttribute('href') ?? b.querySelector(sel).textContent);
+    }
   });
 
   it('header-controls wires #btnDownloadAddin through this module (its hand-written ZIP link is gone)', () => {
@@ -92,6 +144,7 @@ describe('Settings > Fusion add-in', () => {
     for (const e of ADDIN_INSTALLERS) {
       const row = box.querySelector(`[data-addin-os="${e.os}"]`);
       expect(row.querySelector('a[download]').getAttribute('href')).toBe(e.file);
+      expect(row.querySelector('[data-addin-copy]')).not.toBeNull();
       expect(row.querySelector('code').textContent).toBe(e.paste.command);
     }
     expect(box.querySelector('[data-addin-os="mac"]').textContent).toContain('your computer');
