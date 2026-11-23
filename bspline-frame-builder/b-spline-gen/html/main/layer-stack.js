@@ -303,7 +303,7 @@ function fillBody(item, body) {
   if (text) body.appendChild(el('div', { class: 'layer-card-summary', text }));
   if (T.enabled && !T.enabled.get(item)) body.appendChild(el('div', { class: 'layer-card-note', text: 'Not stamped (its box is off).' }));
   if (T.editorTab) {
-    const b = el('button', { type: 'button', class: 'cad-btn cad-btn-secondary layer-card-door', 'data-stack-door': item.key, text: `Open in the ${T.tabLabel} tab ›` });
+    const b = el('button', { type: 'button', class: 'cad-btn cad-btn-secondary layer-card-door', id: cardNameId(item.key).replace('layerCardName_', 'layerCardDoor_'), 'data-stack-door': item.key, text: `Open in the ${T.tabLabel} tab ›` });
     b.addEventListener('click', () => openItemInEditor(item));
     body.appendChild(b);
   }

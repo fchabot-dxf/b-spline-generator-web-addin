@@ -120,8 +120,10 @@ async function runCarveUnderFlat() {
   await apply(); await heightsSettled(null);
   await js(`import('./core/state.js').then((m)=>{ window.__carveH0=Float32Array.from(m.lastResult.heights); return 1; })`);
   await openEditorTab('editorTabArtwork');
-  await js(`(()=>{ const ed=window.svgEditor; const lid=ed._layers.find((l)=>!l.brickKind && !l.holdsBricks).id; const s=${JSON.stringify(C.stroke)};
-    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })()`);
+  // a fresh board's drawing has no layer since the layer stack (Fred 2026-11-23: a new file has no layers): the stroke goes on
+  // the first drawing layer, made by the app's own addLayer when there is none (as a drawn stroke's ensureActiveLayer would)
+  await js(`import('./editor/layers.js').then((L)=>{ const ed=window.svgEditor; const lid=(ed._layers.find((l)=>!l.brickKind && !l.holdsBricks) || L.addLayer(ed, { skipUndo: true })).id; const s=${JSON.stringify(C.stroke)};
+    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })`);
   await apply(); await heightsSettled(null);
   const m = await jsJSON(`(async()=>{ const st=await import('./core/state.js'); const A=window.__carveH0, B=st.lastResult.heights; const W=st.P.widthIn, H=st.P.heightIn;
     const nx=Math.round(Math.sqrt(A.length*W/H)), nz=A.length/nx; const s=${JSON.stringify(C.stroke)}, far=s.widthIn/2+${C.farMarginIn};

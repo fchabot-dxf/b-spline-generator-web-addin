@@ -33,6 +33,23 @@ describe('opening the editor snapshots the brick settings', () => {
   });
 });
 
+// the layer stack (Fred 2026-11-23: a new file has no layers): opening the editor on a board with NO layer still takes the
+// Cancel snapshot -- it used to be taken only when a "current layer" existed, so Cancel after a first stroke kept the stroke
+// (measured live: a new project, a line drawn, Cancel -> the roster stayed ["Layer 1"])
+describe('opening the editor on a board with no layer still snapshots for Cancel', () => {
+  it('no editor layer, a stale layer index past the legacy list: the snapshot is taken (the drawing as opened)', () => {
+    P.activeLayerIdx = 5;
+    P.editorSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9"></svg>';
+    window.svgEditor = { _layers: [], _activeLayer: null, open() {} };
+    SvgEditorSnapshot.active = false;
+    SvgEditorSnapshot.editorSvg = 'stale';
+    initSvgSource(createStampCtx(null));
+    document.getElementById('btnStampEdit').click();
+    expect(SvgEditorSnapshot.active).toBe(true);
+    expect(SvgEditorSnapshot.editorSvg).toBe(P.editorSvg);
+  });
+});
+
 describe('restoreBrickSettings (the Cancel/Discard path)', () => {
   it('puts the entry settings back in the SAME object and tells the panel', () => {
     const entry = JSON.parse(JSON.stringify(P.brickSettings));

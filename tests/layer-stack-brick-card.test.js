@@ -23,7 +23,7 @@ const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_p
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.lastIndexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '')
   .replace(/^<body[^>]*>/, '').replace(/<\/body>$/, '');
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['btnEditBricks', 'brickQuickSettings', 'brickLayWarnings', 'brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic',
+const FIELDS = ['brickQuickSettings', 'brickLayWarnings', 'brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic',
   'brickBtnTopFlat', 'brickSurfaceStyleToggle', 'brickSurfaceWear', 'brickReliefHeight', 'brickReliefHeightSlider'];
 const card = () => document.querySelector('#layerStackList [data-stack-key="bricks"]');
 let saved;
@@ -52,7 +52,9 @@ describe('the Brick card holds the old Brick panel\'s fields', () => {
   it('open: the summary, the editor door, then every field, each id once', () => {
     openLayerStackItem('bricks');
     expect(card().querySelector('.layer-card-summary')).not.toBeNull();
-    expect(card().querySelector('.layer-card-door').textContent).toBe('Open in the Brick tab ›');
+    expect(card().querySelectorAll('.layer-card-door')).toHaveLength(1); // ONE button opens the Brick tab (Brick editor retired)
+    expect($('layerCardDoor_bricks').textContent).toBe('Open in the Brick tab ›');
+    expect($('btnEditBricks')).toBeNull();
     for (const id of FIELDS) {
       expect(document.querySelectorAll(`[id="${id}"]`), id).toHaveLength(1);
       expect(card().contains($(id)), `${id} in the Brick card`).toBe(true);

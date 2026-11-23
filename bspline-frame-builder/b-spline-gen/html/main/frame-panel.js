@@ -315,7 +315,7 @@ export function openEditorOn(tab) {
 }
 export const OPEN_EDITOR_BUTTONS = Object.freeze([
   { id: 'btnEditFrameShape', tab: 'frame' },
-  { id: 'btnEditBricks', tab: 'brick' },
+  // (the Brick panel's 'Brick editor' retired with that panel: the layer stack's Brick card opens the Brick tab)
   // (the Layers section's 'Open Editor' retired, Fred 2026-11-23: the 2D / 3D toggle opens the editor; each layer card's
   // 'Open in the … tab' opens a tab, main/layer-stack.js)
 ]);
