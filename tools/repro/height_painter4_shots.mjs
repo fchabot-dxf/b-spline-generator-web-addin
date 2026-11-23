@@ -3,7 +3,8 @@
 // off), a Shift-added and an Alt-subtracted rectangle, a Linear-feather fill (a bevelled tile) and a Dome-feather fill (a
 // pillow) with their heights read back from the edge in, and a layer renamed. Prints what it read and every page exception.
 //   (cd bspline-frame-builder && python ../tools/brick-matrix/serve.py 8810)
-//   node tools/repro/height_painter4_shots.mjs <outDir> http://127.0.0.1:8810/b-spline-gen/html/bspline_gen_palette.html [cdpPort] [desktop|phone|both]import { spawn, execFileSync } from 'node:child_process';
+//   node tools/repro/height_painter4_shots.mjs <outDir> http://127.0.0.1:8810/b-spline-gen/html/bspline_gen_palette.html [cdpPort] [desktop|phone|both]
+import { spawn, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const [OUT, URL, PORTARG] = process.argv.slice(2);
