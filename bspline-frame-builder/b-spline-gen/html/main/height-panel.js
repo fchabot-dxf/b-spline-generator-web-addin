@@ -21,9 +21,9 @@ import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
 import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
-  PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, layerHeights, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
+  PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, layerHeights, mapImageValue, heightToGrey, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
 } from '../core/height/compose.js';
-import { shadeRaster, shadeSize } from '../core/height/shade.js';
+import { shadeRaster, shadeSize, HEIGHT_LOOKS } from '../core/height/shade.js';
 import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny, SELECTION_COMBINE, combineMasks, wandMask, boardHeightsOnPatch, profileFeatherMask } from '../core/height/selection.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
@@ -131,14 +131,17 @@ export const HEIGHT_CONTROLS = Object.freeze([
  *  `leads`: the panel groups shown FIRST while the tool is active (advisor 2026-11-22: the active tool's own section
  *  on top, no scrolling past the patch and the layers to reach it); the others keep their declared order after them. */
 export const HEIGHT_TOOLS = Object.freeze([
-  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'tip'] }),
+  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'palette', 'tip'] }),
   // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
   Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
   Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
   // slice 4 (Fred 2026-11-23): the MAGIC WAND -- a tap selects the heights within the tolerance of the tapped one
-  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'select'] }),
+  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'sample', 'select'] }),
+  // slice 5 (Fred 2026-11-23, a classic heightmap editor): the EYEDROPPER -- `key` is its keyboard letter (the rail button's
+  // data-key: the editor's own single-key shortcut mechanism)
+  Object.freeze({ id: 'eyedropper', icon: '💧', key: 'i', label: 'Eyedropper', title: 'Tap a height (I): it becomes the Set target and the Brush comes back in Set mode', leads: ['eyedropper', 'sample', 'palette'] }),
   // slice 3 (Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool")
   Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'select'] }),
   Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
@@ -149,19 +152,28 @@ export const TOOL_DEFAULTS = Object.freeze({
   // slice 4: combine = how a new selection meets the current one (Shift / Alt on a keyboard); featherProfile 'smooth' = the
   // slice-2 Gaussian feather (pinned), any other BRUSH_FALLOFFS profile fades inward from the outline
   select: Object.freeze({ featherIn: 0.05, combine: 'replace', featherProfile: 'smooth', featherCurve: BRUSH_DEFAULTS.customCurve }),
-  wand: Object.freeze({ toleranceIn: 0.01, contiguous: true, sample: 'layer' }),
+  wand: Object.freeze({ toleranceIn: 0.01, contiguous: true }),
+  // slice 5: where the wand and the eyedropper read heights (one setting for both); the canvas look (HEIGHT_LOOKS)
+  sample: Object.freeze({ from: 'layer' }),
+  view: Object.freeze({ look: 'lit' }),
   gradient: GRADIENT_DEFAULTS,
   fill: FILL_DEFAULTS,
   file: Object.freeze({ asNewPatch: false }),
 });
 /** A group's place in the panel: first (default), `after: true` (at the end) or `follows: <group id>` (right after it). */
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
+  // slice 5: how the patches draw on the canvas (Lit | Greyscale)
+  Object.freeze({ id: 'view', label: 'View' }),
   Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
   Object.freeze({ id: 'move', label: 'Move', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the marquee only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
   // the tip extras show only for a square / chisel tip (a round brush is set by its falloff; slice 3b / 3c)
   Object.freeze({ id: 'tip', label: 'Square / chisel tip', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
   Object.freeze({ id: 'wand', label: 'Magic wand', note: 'tap a height on the patch', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' }),
+  // slice 5: the eyedropper's note, the shared Sample choice, and the grey palette (the patch's grey mapping + swatches)
+  Object.freeze({ id: 'eyedropper', label: 'Eyedropper', note: 'tap the patch: its height becomes the Set target', needsPatch: true, showWhen: (ctx) => ctx.tool === 'eyedropper' }),
+  Object.freeze({ id: 'sample', label: 'Sample', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' || ctx.tool === 'eyedropper' }),
+  Object.freeze({ id: 'palette', label: 'Grey palette', note: 'pick a grey: the Set height (mid-grey = no change)', showWhen: (ctx) => ctx.tool === 'brush' || ctx.tool === 'eyedropper' }),
   Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it; Shift adds, Alt subtracts', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
@@ -202,8 +214,18 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'wandToleranceIn', group: 'wand', target: 'wand', kind: 'slider', path: ['toleranceIn'], label: 'Tolerance (in)', step: 0.001, range: () => [0, 0.5],
     note: 'heights within this of the tapped one' },
   { id: 'wandContiguous', group: 'wand', target: 'wand', kind: 'check', path: ['contiguous'], label: 'Contiguous (only the connected area)' },
-  { id: 'wandSample', group: 'wand', target: 'wand', kind: 'choice', path: ['sample'], label: 'Sample',
+  // slice 5: ONE Sample setting for the wand and the eyedropper (was the wand's own 'wandSample' in slice 4)
+  { id: 'sampleFrom', group: 'sample', target: 'sample', kind: 'choice', path: ['from'], label: 'Sample',
     options: [['layer', 'Active layer', 'The heights of the layer the tools edit'], ['board', 'Whole board', 'The board as last built (terrain, reliefs, every layer), on this patch']] },
+  // slice 5: the canvas look (core/height/shade.js HEIGHT_LOOKS)
+  { id: 'viewLook', group: 'view', target: 'view', kind: 'choice', path: ['look'], label: 'Patches',
+    options: Object.entries(HEIGHT_LOOKS).map(([k, l]) => [k, l.label, l.title]) },
+  // slice 5 (Fred 2026-11-23: "black as carve and white as raise"): the palette's grey mapping is FIXED mid-grey = 0 with
+  // ONE Range per patch (record field greyRangeIn, absent = GREY_RANGE_DEFAULT_IN): black = -Range, white = +Range, through
+  // core/height/compose.js mapImageValue / heightToGrey (the slice-2 image-layer mapping, one mechanism). It only says how
+  // greys translate to inches (and the greyscale view); it never changes a pixel. (The heightmap import keeps its options.)
+  { id: 'greyRangeIn', group: 'palette', target: 'greyMap', kind: 'slider', path: ['rangeIn'], label: 'Range (in)', step: 0.005, range: () => [0, 2],
+    note: 'mid-grey = no change; black = -Range (carves), white = +Range (raises)' },
   // slice 4: how a new selection meets the current one -- the touch way to Shift (add) / Alt (subtract)
   { id: 'selCombine', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
     options: Object.entries(SELECTION_COMBINE).map(([k, s]) => [k, s.label, s.title]) },
@@ -440,6 +462,7 @@ const GESTURES = {
   // slice 3: a drag moves the floating piece (lifting it first); its cancel puts back the drag in flight, the piece floats on
   move: { start: (pt, e) => beginMove(pt, e), move: (pt) => moveMove(pt), end: () => endMove(), cancel: () => cancelMoveDrag() },
   // slice 4: the wand picks on release (a tap), at the press point, with the press's Shift / Alt
+  eyedropper: { start: (pt) => { _eyeTap = pt; return true; }, move: () => {}, end: () => { const p = _eyeTap; _eyeTap = null; if (p) eyedropAt(p); return _chain; }, cancel: () => { _eyeTap = null; } },
   wand: { start: (pt, e) => { _wandTap = { pt, combine: combineOf(e) }; return true; }, move: () => {}, end: () => { const t = _wandTap; _wandTap = null; if (t) wandAt(t.pt, t.combine); return _chain; }, cancel: () => { _wandTap = null; } },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
@@ -593,13 +616,14 @@ function endSelect() {
 function cancelSelect() { if (_drag) { _drag = null; syncHeightOverlay(); } }
 
 // ── the magic wand (slice 4, Fred 2026-11-23; core/height/selection.js wandMask) ─────────────────────────────────────
-/** The heights the wand reads on patch `rec`: the active layer's (an image layer's through its live mapping), or the board
- *  as last built (lastResult, resampled onto the patch), or null (not ready: a decoding layer / no build yet). */
-function wandValues(rec) {
-  if (_tools.wand.sample === 'board') {
+/** The heights the wand and the eyedropper read on patch `rec` (Sample, _tools.sample.from): the active layer's (an image
+ *  layer's through its live mapping), or the board as last built (lastResult, resampled onto the patch), or null (not ready:
+ *  a decoding layer). */
+function sampleValues(rec) {
+  if (_tools.sample.from === 'board') {
     const lr = lastResult;
     if (lr && lr.heights && lr.nx > 1 && lr.nz > 1) return boardHeightsOnPatch(lr.heights, lr.nx, lr.nz, board(), placed(rec));
-    status('The board is not built yet: the wand reads the active layer.');
+    status('The board is not built yet: reading the active layer.');
   }
   const work = workingCopy(rec);
   if (!work) return null;
@@ -614,10 +638,60 @@ function wandAt(pt, combine) {
   if (!g) return false;
   const q = pixelOf(rec, pt);
   if (!q.inside) return false;
-  const values = wandValues(rec);
+  const values = sampleValues(rec);
   if (!values) return false;
   const w = _tools.wand;
   return setSelection(wandMask(values, g.cols, g.rows, q.c, q.r, w.toleranceIn, w.contiguous !== false), combine);
+}
+
+// ── the grey palette and the eyedropper (slice 5, Fred 2026-11-23: "I thought I selected the value in a palette") ───────
+/** The palette's Range when a patch has none (Fred 2026-11-23): 0.25 in each way. */
+export const GREY_RANGE_DEFAULT_IN = 0.25;
+/** Patch `rec`'s Range (its greyRangeIn; absent = GREY_RANGE_DEFAULT_IN). */
+const greyRangeOf = (rec) => (rec && Number.isFinite(rec.greyRangeIn) ? rec.greyRangeIn : GREY_RANGE_DEFAULT_IN);
+/** Patch `rec`'s grey mapping: the image-layer mapping fixed at mid-grey = 0, its Range each way. */
+const greyMapOf = (rec) => { const r = greyRangeOf(rec); return { zero: 'mid', whiteIn: r, darkIn: r }; };
+/** The palette's swatches (percent grey). */
+export const GREY_SWATCHES = Object.freeze([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+/** Pick grey `g` (0..1): the Set target = its height through the active patch's mapping, the mode = Set (and the Brush, when
+ *  another tool is armed). */
+export function pickHeightGrey(g) {
+  const targetIn = mapImageValue(g, greyMapOf(activeHeightLayer()));
+  _brush = { ..._brush, targetIn, mode: 'set' };
+  if (!usesBrush(_tool) || _tool === 'eraser') setHeightTool('brush');
+  syncHeightPanel();
+  drawCursor();
+  return targetIn;
+}
+let _eyeTap = null; // the press point, read on the release
+/** An eyedropper read at editor point `pt`: the height there (Sample) becomes the Set target; the Brush comes back in Set. */
+function eyedropAt(pt) {
+  const rec = activeHeightLayer();
+  const g = rec && patchGrid(rec);
+  if (!g) return false;
+  const q = pixelOf(rec, pt);
+  if (!q.inside) return false;
+  const values = sampleValues(rec);
+  if (!values) return false;
+  _brush = { ..._brush, targetIn: sampleRaster(values, g.cols, g.rows, q.c, q.r), mode: 'set' };
+  setHeightTool('brush');
+  return true;
+}
+/** The palette follows the mapping and the target: each swatch's inches (the one at 0 reads "no effect (erases)"), the
+ *  swatch matching the target highlighted, the ramp's marker at the target's grey, the readout. */
+function syncGreyPalette() {
+  if (typeof document === 'undefined') return;
+  const m = greyMapOf(activeHeightLayer()), target = _brush.targetIn, tg = heightToGrey(target, m);
+  for (const b of document.querySelectorAll('[data-height-grey]')) {
+    const pct = Number(b.getAttribute('data-height-grey')), hIn = mapImageValue(pct / 100, m);
+    const lbl = b.querySelector('.height-grey-in');
+    if (lbl) lbl.textContent = Math.abs(hIn) < 1e-9 ? 'no change' : `${hIn.toFixed(3)} in`;
+    b.classList.toggle('active', Math.abs(tg - pct / 100) < 0.005);
+  }
+  const mk = byId('heightGreyMarker');
+  if (mk) mk.style.left = `${(100 * Math.min(1, Math.max(0, tg))).toFixed(2)}%`;
+  const rd = byId('heightGreyReadout');
+  if (rd) rd.textContent = `Set target ${target.toFixed(3)} in = ${Math.round(100 * tg)} % grey${tg < 0 || tg > 1 ? ' (past the mapping)' : ''}`;
 }
 
 /** The selection's outline on patch node `node` (image pixel coordinates -> the patch's own box), marching ants. */
@@ -1138,6 +1212,13 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   if (!rec) return false;
   dropHeightMove(); // a patch / layer field is another action
   if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
+  if (c.target === 'greyMap') { // slice 5: the patch's grey Range (never a pixel)
+    updateRecord(rec.id, (r) => ({ ...r, greyRangeIn: v }));
+    if (commit) commitStep(c.id);
+    syncHeightPanel();
+    syncHeightOverlay();
+    return true;
+  }
   if (c.path[0] === 'sizeIn' && !rec.sizeIn) updateRecord(rec.id, (r) => ({ ...r, sizeIn: placed(r).sizeIn }));
   updateRecord(rec.id, (r) => withPath(r, c.path, v));
   if (commit) commitStep(c.id);
@@ -1190,12 +1271,15 @@ function pictureOf(rec, data, reuse = null) {
   const cv = reuse && reuse.c.width === w && reuse.c.height === h ? reuse : canvas2d(w, h);
   if (!cv) return null;
   const img = cv.ctx.createImageData(w, h);
-  shadeRaster(data, cols, rows, w, h, cols / size.w, rows / size.h, img.data);
+  // slice 5: the View's look (HEIGHT_LOOKS); 'grey' reads the patch's grey mapping
+  shadeRaster(data, cols, rows, w, h, cols / size.w, rows / size.h, img.data, undefined, undefined, undefined, undefined, { look: _tools.view.look, mapping: greyMapOf(rec) });
   cv.ctx.putImageData(img, 0, 0);
   return { url: cv.c.toDataURL('image/png'), cv };
 }
 function stillImageOf(rec) {
-  const h = compositeKey(rec); // a slice-1 patch: its raster's h, as before
+  const ck = compositeKey(rec); // a slice-1 patch: its raster's h, as before
+  // the picture also depends on the View's look (+ the grey mapping when greyscale)
+  const h = ck && (_tools.view.look === 'lit' ? ck : `${ck}|${_tools.view.look}|${JSON.stringify(greyMapOf(rec))}`);
   if (!h) return null;
   if (_images.has(h)) { const u = _images.get(h); _images.delete(h); _images.set(h, u); return u; }
   const d = patchComposite(rec);
@@ -1473,10 +1557,23 @@ function controlSource(c, rec) {
   if (c.target === 'brush') return _brush;
   if (_tools[c.target]) return _tools[c.target];
   if (!rec) return null;
+  if (c.target === 'greyMap') return { rangeIn: greyRangeOf(rec) };
   return c.target === 'layer' ? layerOf(rec) : placed(rec);
 }
 /** A group's own head (above its controls), by group id. */
 const GROUP_HEADS = Object.freeze({
+  // slice 5: the GREY PALETTE -- the swatches (their grey, their height through the mapping) and a ramp to tap anywhere
+  palette: () => {
+    const sw = el('div', { id: 'heightGreySwatches', style: 'display:flex; flex-wrap:wrap; gap:3px; margin-bottom:6px;' }, GREY_SWATCHES.map((pct) => {
+      const g = Math.round(2.55 * pct);
+      return el('button', { type: 'button', class: 'height-grey-swatch', 'data-height-grey': String(pct), title: `${pct} % grey`,
+        style: `flex:1 0 15%; min-height:34px; padding:2px; border:1px solid #888; border-radius:3px; background:rgb(${g}, ${g}, ${g}); color:${pct >= 50 ? '#000' : '#fff'}; font-size:10px; line-height:1.15; cursor:pointer;` },
+      [el('span', { text: `${pct} %`, style: 'display:block; font-weight:600;' }), el('span', { class: 'height-grey-in', style: 'display:block;' })]);
+    }));
+    const ramp = el('div', { id: 'heightGreyRamp', title: 'Tap anywhere: that grey', style: 'position:relative; height:30px; border:1px solid #888; border-radius:3px; background:linear-gradient(to right, #000, #fff); cursor:crosshair; touch-action:none; margin-bottom:4px;' },
+      [el('div', { id: 'heightGreyMarker', style: 'position:absolute; top:-3px; bottom:-3px; width:3px; margin-left:-1.5px; background:#7a4fd6; box-shadow:0 0 0 1px #fff; pointer-events:none;' })]);
+    return el('div', {}, [sw, ramp, el('div', { id: 'heightGreyReadout', class: 'photo-layer-note' })]);
+  },
   file: () => el('div', { class: 'photo-layer-buttons' }, [
     el('input', { type: 'file', id: 'heightImportFile', accept: '.png,.jpg,.jpeg,.webp,.exr,image/png,image/jpeg,image/webp', hidden: '' }),
     el('button', { type: 'button', id: 'heightImportBtn', class: 'cad-btn cad-btn-secondary', text: 'Import heightmap…', title: 'A grey picture as an image layer (its grey values kept; the mapping stays live)' }),
@@ -1510,7 +1607,8 @@ const GROUP_HEADS = Object.freeze({
 export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   if (rail) {
     rail.innerHTML = '';
-    for (const t of HEIGHT_TOOLS) rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}: ${t.title}`, 'aria-label': t.label, text: t.icon }));
+    // a row's `key` = the editor's own single-key shortcut (editor-interaction.js clicks the modal's [data-key] button)
+    for (const t of HEIGHT_TOOLS) rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ''}: ${t.title}`, 'aria-label': t.label, text: t.icon, ...(t.key ? { 'data-key': t.key } : {}) }));
     for (const c of HEIGHT_CONTROLS.filter((x) => x.rail)) {
       for (const [key, text, title] of c.options) {
         rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-choice': `${c.id}:${key}`, title: `${text}: ${title}`, 'aria-label': text, text: MODE_LABELS[key] ? MODE_LABELS[key][0] : text }));
@@ -1652,6 +1750,7 @@ export function syncHeightPanel() {
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
   syncTipGroup();
+  syncGreyPalette();
   orderPanelGroups();
   const stored = byId('heightStored');
   if (stored) {
@@ -1694,6 +1793,9 @@ export function initHeightPanel(hooks = {}) {
     if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
   });
   byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
+  // slice 5: the grey palette's swatches and ramp
+  byId('heightGreySwatches')?.addEventListener('click', (e) => { const b = e.target.closest('[data-height-grey]'); if (b) pickHeightGrey(Number(b.getAttribute('data-height-grey')) / 100); });
+  byId('heightGreyRamp')?.addEventListener('pointerdown', (e) => { const r = e.currentTarget.getBoundingClientRect(); if (r.width > 0) pickHeightGrey(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))); });
   // the editor's own Apply / Cancel settle a floating piece first (pointerdown: before their click handlers run)
   for (const [btnId, how] of Object.entries(MOVE_SETTLE_BUTTONS)) byId(btnId)?.addEventListener('pointerdown', () => (how === 'drop' ? dropHeightMove() : cancelHeightMove()));
   byId('heightImportBtn')?.addEventListener('click', () => byId('heightImportFile')?.click());

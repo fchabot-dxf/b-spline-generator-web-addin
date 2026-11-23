@@ -1,8 +1,8 @@
 /**
  * HEIGHT-PAINTER slice 5: the PINS. (1) The Lit view (core/height/shade.js shadeRaster with no look given) draws byte for
  * byte as before slice 5 -- the hash below was measured on height-painter-4 @ 1763a9a5 BEFORE the slice-5 code (sha256 of
- * the RGBA bytes). (2) A patch record's grey mapping (slice 5, `greyMapping`) never changes how it lays: the pass with and
- * without it is the same (an absent field = today).
+ * the RGBA bytes). (2) A patch record's grey Range (slice 5, `greyRangeIn`; absent = 0.25 in) never changes how it lays: the
+ * pass with and without it is the same (an absent field = today).
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
@@ -32,8 +32,8 @@ describe('the Lit view is unchanged', () => {
   });
 });
 
-describe('a grey mapping on the record never changes the pass', () => {
-  it('the same body and coverage with and without greyMapping', async () => {
+describe('a grey Range on the record never changes the pass', () => {
+  it('the same body and coverage with and without greyRangeIn', async () => {
     const { cols, rows, d } = sample();
     const raster = await encodeRaster(d, cols, rows);
     await ensureRasterDecoded(raster);
@@ -42,7 +42,7 @@ describe('a grey mapping on the record never changes the pass', () => {
     _resetHeightCachesForTests();
     const a = heightPass(rec, grid);
     _resetHeightCachesForTests();
-    const b = heightPass({ ...rec, greyMapping: { zero: 'mid', whiteIn: 0.7, darkIn: 0.1 } }, grid);
+    const b = heightPass({ ...rec, greyRangeIn: 0.7 }, grid);
     expect(sha(new Uint8Array(b.mask.body.buffer))).toBe(sha(new Uint8Array(a.mask.body.buffer)));
     expect(Array.from(b.mask.isStamped)).toEqual(Array.from(a.mask.isStamped));
     expect(a.mask.isStamped.some((v) => v)).toBe(true);
