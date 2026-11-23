@@ -189,6 +189,18 @@ describe('applySnapshot -- save audit #1 / #5', () => {
     expect(P.editorSvg).toBe(null);
     expect(P.frame).toBe(null);
   });
+
+  it("terrain fit (Fred 2026-11-23): a load of a project saved before it never takes the new board's 'fill'", async () => {
+    P.terrainFit = 'fill'; // the board being left is a new one
+    await applySnapshot({ P: { widthIn: 10 } }, null, { source: 'load' });
+    expect('terrainFit' in P).toBe(false); // absent: the real runMigrations ('terrain-fit-legacy', mocked here) writes 'legacy'
+    expect(appInit.runMigrations).toHaveBeenCalled();
+    await applySnapshot({ P: { widthIn: 10, terrainFit: 'fill' } }, null, { source: 'load' });
+    expect(P.terrainFit).toBe('fill'); // a project saved with the key keeps it
+    P.terrainFit = 'legacy';
+    await applySnapshot({ P: { widthIn: 10, terrainFit: 'fill' } }, null, { source: 'undo' });
+    expect(P.terrainFit).toBe('fill'); // an undo restores its own snapshot's value
+  });
 });
 
 describe('audit v2 N2: a load or a global undo announces that P.brickSettings was replaced', () => {

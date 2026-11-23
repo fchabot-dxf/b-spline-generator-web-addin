@@ -35,7 +35,7 @@ describe('creasedNormals: byte-identical to the pre-change code on the real fram
     const got = {};
     for (const [W, H, sp] of [[7, 9, 0.05], [9, 12, 0.1]]) for (const seed of [42, 7]) {
       const { nx, nz } = resolveGrid(W, H, sp);
-      const p = { ...P, widthIn: W, heightIn: H, seed, smoothIntensity: 0.4, thickenEnabled: true };
+      const p = { ...P, widthIn: W, heightIn: H, seed, smoothIntensity: 0.4, thickenEnabled: true, terrainFit: 'legacy' }; // pinned before the terrain fit
       const { heights } = generateHeightmap({ ...p, nx, nz }, { mask: null });
       const field = buildHeightField(heights, nx, nz, W, H);
       const mesh = buildSolidMesh(THREE, field.pos, buildThickenData(heights, nx, nz, p, {}).data.offsetPts, nx, nz, {});
@@ -65,7 +65,7 @@ describe('creasedNormals: byte-identical to the pre-change code on the real fram
     // panelSurface.at itself (the walls' colours read its hits' t / u / v / w too): a lattice over the board
     for (const [W, H, sp] of [[7, 9, 0.05], [9, 12, 0.1]]) {
       const { nx, nz } = resolveGrid(W, H, sp);
-      const p = { ...P, widthIn: W, heightIn: H, seed: 42, smoothIntensity: 0.4, thickenEnabled: true };
+      const p = { ...P, widthIn: W, heightIn: H, seed: 42, smoothIntensity: 0.4, thickenEnabled: true, terrainFit: 'legacy' }; // pinned before the terrain fit
       const { heights } = generateHeightmap({ ...p, nx, nz }, { mask: null });
       const field = buildHeightField(heights, nx, nz, W, H);
       const mesh = buildSolidMesh(THREE, field.pos, buildThickenData(heights, nx, nz, p, {}).data.offsetPts, nx, nz, {});

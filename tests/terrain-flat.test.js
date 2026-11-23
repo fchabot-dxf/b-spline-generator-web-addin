@@ -31,7 +31,8 @@ const flatUi = () => import(/* @vite-ignore */ FLAT_UI);
 const LOW = 0.22; // core/terrain.js: the valley share of the fine value (h = lerp(fine * LOW, ..., coarse))
 
 // ── 1. saved boards: no shapeFlat = byte-identical ─────────────────────────────────────────────────────────────────────
-const GRID = { nx: 61, nz: 81, edgeMargin: 0 };
+// terrainFit 'legacy': what a saved board (one without the key) reads after MIGRATIONS 'terrain-fit-legacy' (tests/terrain-fit.test.js)
+const GRID = { nx: 61, nz: 81, edgeMargin: 0, terrainFit: 'legacy' };
 const SETS = {
   defaults: { ...DEFAULT, ...GRID },
   'defaults, isolateSkeleton': { ...DEFAULT, ...GRID, isolateSkeleton: true },

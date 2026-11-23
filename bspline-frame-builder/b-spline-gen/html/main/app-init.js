@@ -267,6 +267,15 @@ export const MIGRATIONS = [
     apply: () => {},
   },
   {
+    id: 'terrain-fit-legacy',
+    // Fred 2026-11-23 ("carve depth Z ... just lifts the model in the air"; "Relief fills it", new boards only): a NEW board's
+    // terrain spans 0..carveZ (P.terrainFit 'fill', core/terrain.js TERRAIN_FIT_REF). A board saved before has no terrainFit
+    // -- its loaders leave the key absent (core/state.js NEW_BOARD_ONLY_KEYS) -- and keeps the old scale: 'legacy', its
+    // heights bit for bit (tests/terrain-fit.test.js pins framed, no-frame and session-restored boards against main 68937a66).
+    when: (p) => p.terrainFit === undefined,
+    apply: (p) => { p.terrainFit = 'legacy'; },
+  },
+  {
     id: 'removed-noise-type-to-default',
     // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
     // removed after two rejected reworks. A save naming a filter that is no
