@@ -13,7 +13,8 @@ import { frameLoopsWorld, pointInPolygon } from '../bspline-frame-builder/b-spli
 import { TerrainPreview } from '../bspline-frame-builder/b-spline-gen/html/core/preview/index.js';
 import { indexMesh, encodeMesh } from '../bspline-frame-builder/b-spline-gen/html/core/stl/mesh.js';
 import { normaliseStlLayer } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
-import { ghostGeometry, trimGhost } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
+import { ghostGeometry } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
+import { trimGhost } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost-trim.js';
 import { FakeTHREE, carvedPanel } from './helpers/drawn-panel.js';
 
 const W = 7, H = 12, NX = 71, NZ = 121;

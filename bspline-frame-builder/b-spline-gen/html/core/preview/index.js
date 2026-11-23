@@ -44,7 +44,7 @@ import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { StlGizmoController, StlGizmoThreeView } from './stl-gizmo.js';
 import { CROP_PREVIEW_LOOK } from '../stl/crop.js';
-import { trimGhost } from '../stl/ghost.js';
+import { trimGhost } from '../stl/ghost-trim.js';
 import {
   buildHeightField,
   buildLiveBrushColours,
