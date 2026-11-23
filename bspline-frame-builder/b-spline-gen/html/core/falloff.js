@@ -76,7 +76,10 @@ export function curvePointsFromProfile(key, n = 6) {
 export function edgeFade(dist, widthIn, profile, customFn = null) {
   let t = 1 - dist / widthIn;
   if (!(t > 0)) t = 0; else if (t > 1) t = 1;
-  return brushFalloff(t, 1, 0, profile, customFn);
+  // a custom curve may run -1..1 for the BRUSH (slice 5, Fred 2026-11-23); a fade's weight is a mask / a scale, so it is
+  // kept in 0..1 HERE, at this use (the curve itself is never clamped). Every built-in profile is already in 0..1.
+  const v = brushFalloff(t, 1, 0, profile, customFn);
+  return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
 /**

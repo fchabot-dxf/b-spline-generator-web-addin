@@ -56,8 +56,9 @@ describe('the tab is declared', () => {
   });
   it('its controls render from HEIGHT_CONTROLS: one element per entry, the brush mode in the rail too', () => {
     // Fred 2026-11-22: no presets -- the Brush section is Mode, then Tip, then Falloff (+ its curve), then size, hardness, ...
+    // Fred 2026-11-23 (slice 5): Invert, a toggle at the top of the Brush section
     expect(HEIGHT_CONTROLS.map((c) => c.id)).toEqual([
-      'mode', 'tip', 'falloff', 'customCurve', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn', 'pressureSize', 'pressureOpacity',
+      'invert', 'mode', 'tip', 'falloff', 'customCurve', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn', 'pressureSize', 'pressureOpacity',
       'posX', 'posY', 'rotation', 'sizeW', 'sizeH', 'raise', 'blend', 'zOffset', 'placement',
     ]);
     // Fred 2026-11-22 ("No rigid"): a height patch always follows the terrain -- no Level / rigid choice

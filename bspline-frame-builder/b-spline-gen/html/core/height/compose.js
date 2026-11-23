@@ -89,6 +89,14 @@ export function mapImageValue(v, mapping) {
   return v * m.whiteIn;
 }
 
+/** mapImageValue backwards (slice 5, the grey palette and the greyscale view): the grey 0..1 of height `h` (inches) through
+ *  `mapping` -- one mapping mechanism. Not kept in 0..1 (a height past the white end gives > 1): the caller clamps a colour. */
+export function heightToGrey(h, mapping) {
+  const m = normaliseMapping(mapping);
+  if (m.zero === 'mid') return 0.5 + h / (2 * (h >= 0 ? m.whiteIn : m.darkIn));
+  return h / m.whiteIn;
+}
+
 /** A layer's heights from its decoded raster `data`: a paint layer's are its data; an image layer's are mapped. */
 export function layerHeights(layer, data) {
   if (!data) return null;

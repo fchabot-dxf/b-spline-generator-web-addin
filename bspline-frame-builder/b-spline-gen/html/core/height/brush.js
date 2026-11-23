@@ -63,6 +63,8 @@ export const BRUSH_DEFAULTS = Object.freeze({
   // slice 3b: true (absent) = each dab builds on the stroke's coverage (slice 1); false = the stroke keeps the tip's PROFILE
   // (a pixel's coverage is the highest single dab's), so a bevel / chisel / dome stroke has the profile's cross-section
   buildUp: true,
+  // slice 5 (Fred 2026-11-23): paint the opposite -- applied once, at the stroke's setup (main/height-panel.js strokeBrush)
+  invert: false,
 });
 
 /** The smooth mode's box half-width, as a fraction of the dab radius (at least one pixel). */
@@ -136,21 +138,32 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotat
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const f = brushFalloff(plain ? Math.hypot((c - x) / pxPerInX, (r - y) / pxPerInY) : tipDist(c, r), R, b.hardness, b.falloff, customFn);
-        if (!(f > 0)) continue;
+        // slice 5 (Fred 2026-11-23): a custom curve may go below 0 -- the coverage is then SIGNED (it builds toward -cap).
+        // A falloff >= 0 runs the slice-1 arithmetic unchanged (an existing 0..1 curve paints byte for byte).
+        if (!(f > 0) && !(f < 0)) continue;
         const k = r * cols + c;
         const m = mask ? mask[k] : 1;
         if (!(m > 0)) continue;
         const a0 = cov[k];
-        if (!(a0 < cap)) continue;
-        const a1 = buildUp ? a0 + (cap - a0) * (b.flow * f) : Math.max(a0, cap * b.flow * f);
+        let a1;
+        if (f > 0) {
+          if (!(a0 < cap)) continue;
+          // Build up off: the dab with the largest |contribution| wins (with a0 >= 0 that is Math.max, as before)
+          a1 = buildUp ? a0 + (cap - a0) * (b.flow * f) : a0 >= 0 ? Math.max(a0, cap * b.flow * f) : (cap * b.flow * f > -a0 ? cap * b.flow * f : a0);
+        } else {
+          if (!(a0 > -cap)) continue;
+          const d = cap * b.flow * f; // < 0
+          a1 = buildUp ? a0 + (-cap - a0) * (b.flow * -f) : (-d > Math.abs(a0) ? d : a0);
+        }
         cov[k] = a1;
         const a = mask ? a1 * m : a1; // the selection scales the effect, never the coverage
+        const aa = Math.abs(a);       // = a for every falloff >= 0 (the slice-1 numbers)
         const h = base[k];
-        if (mode === 'raise') data[k] = h + a * b.amountIn;
+        if (mode === 'raise') data[k] = h + a * b.amountIn;           // a < 0: the opposite (a moat)
         else if (mode === 'lower') data[k] = h - a * b.amountIn;
-        else if (mode === 'set') data[k] = h * (1 - a) + b.targetIn * a;
-        else if (mode === 'erase') data[k] = h * (1 - a);
-        else if (mode === 'smooth') data[k] = h * (1 - a) + blurAt(c, r) * a;
+        else if (mode === 'set') data[k] = h * (1 - aa) + b.targetIn * a; // a < 0: toward -|a| T
+        else if (mode === 'erase') data[k] = h * (1 - aa);
+        else if (mode === 'smooth') data[k] = h * (1 - aa) + blurAt(c, r) * aa;
         touched = true;
       }
     }

@@ -63,7 +63,9 @@ describe('the Brush section: no presets, Tip and Falloff picked separately', () 
   });
   it('top to bottom: Mode, Tip, Falloff (+ its curve), size, hardness, opacity, flow, spacing, amount / set, ..., Build up', () => {
     const ids = controlsIn('heightGroup_brush');
-    expect(ids.slice(0, 11)).toEqual(['mode', 'tip', 'falloff', 'customCurve', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn']);
+    // Fred 2026-11-23 (slice 5): the Invert toggle heads the section
+    expect(ids[0]).toBe('invert');
+    expect(ids.slice(1, 12)).toEqual(['mode', 'tip', 'falloff', 'customCurve', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn']);
     expect(ids).toContain('buildUp');
     expect(ids.indexOf('buildUp')).toBeGreaterThan(ids.indexOf('targetIn'));
     // the tip extras: their own group right after, only for a square / chisel tip
