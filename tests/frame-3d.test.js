@@ -322,4 +322,37 @@ describe('editor grid is clipped to the outline (AMEND 1)', () => {
     expect(grid.clipped).toBeNull();
     expect(draw.findOne('#' + FRAME_GRID_CLIP_ID)).toBeNull();
   });
+
+  // FIX-X 2026-11-22 (measured, headless Chrome, 'claude 53' template_6): the CLIPPED grid was re-rastered on every repaint
+  // of the editor canvas -- every pointer move (the brush ring, a stroke's picture) cost ~240 ms hovering / ~330 ms painting,
+  // ~25 / ~65 ms without the frame. Its own compositing layer while clipped: rastered once per view.
+  it('while clipped, the grid layer is its own compositing layer (will-change); unclipped, it is not', async () => {
+    const { drawFrameProfile, setFrameProfileProvider, FRAME_GRID_CLIPPED_WILL_CHANGE } = await import(
+      '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js');
+    const node = () => {
+      const n = { kids: [], attrs: {}, id(v) { n.attrs.id = v; return n; }, attr(k, v) { n.attrs[k] = v; return n; },
+        fill() { return n; }, stroke() { return n; }, addClass() { return n; },
+        path(d) { const c = node(); c.attrs.d = d; n.kids.push(c); return c; },
+        group() { const c = node(); c.parent = n; n.kids.push(c); return c; },
+        remove() { if (n.parent) n.parent.kids = n.parent.kids.filter((x) => x !== n); },
+        findOne(sel) { return n.kids.find((c) => '#' + c.attrs.id === sel) || null; } };
+      return n;
+    };
+    const draw = node();
+    draw.clip = () => { const c = node(); c.parent = draw; draw.kids.push(c); return c; };
+    const gridNode = document.createElementNS('http://www.w3.org/2000/svg', 'g'); // the real layer's node (SVG.js .node)
+    const grid = { node: gridNode, clipped: null, clipWith(c) { this.clipped = c; }, unclip() { this.clipped = null; } };
+    const editor = { _bgLayer: node(), _draw: draw, _gridLayer: grid, _mW: 7, _mH: 9 };
+    let record = rec('template_6');
+    setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record }));
+    expect(gridNode.style.willChange).toBe('');
+    drawFrameProfile(editor);
+    expect(grid.clipped).not.toBeNull();
+    expect(gridNode.style.willChange).toBe('transform');
+    expect(FRAME_GRID_CLIPPED_WILL_CHANGE).toBe('transform');
+    record = defaultFrameRecord();
+    drawFrameProfile(editor);
+    expect(grid.clipped).toBeNull();
+    expect(gridNode.style.willChange).toBe('');
+  });
 });

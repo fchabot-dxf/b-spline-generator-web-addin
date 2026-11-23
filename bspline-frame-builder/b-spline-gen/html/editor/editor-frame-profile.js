@@ -30,6 +30,13 @@ export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
  *  the frame darker". Drawn just before the profile group, so it still sits under the frame lines. */
 export const FRAME_CUTAWAY_GROUP_ID = 'frame-cutaway-layer';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
+/** FIX-X 2026-11-22 (measured, headless Chrome, a 7 x 10 board with template_6): the CLIPPED grid (its lines, each its own
+ *  opacity layer, under the outline's clip path) was re-rastered on every repaint of the editor canvas, i.e. on every pointer
+ *  move (the brush ring, a stroke's live picture): ~240 ms per hover move / ~340 ms per painting move, against ~25 / ~65 ms
+ *  without the frame. While clipped, the grid layer is its own compositing layer (this will-change), so it is rastered once
+ *  per view (~20-35 ms per move measured after). The same drawing; the screenshot differs only by anti-aliasing (edge
+ *  pixels, a grid line a sub-pixel off). The heights / patch rasters are unchanged. Unclipped (no frame): nothing set. */
+export const FRAME_GRID_CLIPPED_WILL_CHANGE = 'transform';
 
 /** F8 (Fred): every frame line (outline, inner edge, miters) in ONE colour. */
 export const FRAME_OUTLINE_COLOR = '#5d4037';
@@ -642,6 +649,8 @@ function _clipGrid(editor, prof) {
   const old = draw.findOne ? draw.findOne('#' + FRAME_GRID_CLIP_ID) : null;
   if (old) old.remove();
   if (typeof layer.unclip === 'function') layer.unclip();
+  const style = layer.node && layer.node.style;
+  if (style) style.willChange = prof ? FRAME_GRID_CLIPPED_WILL_CHANGE : ''; // its own layer only while clipped (see the constant)
   if (!prof) return;
   const clip = draw.clip().id(FRAME_GRID_CLIP_ID);
   clip.path(prof.pathD);
