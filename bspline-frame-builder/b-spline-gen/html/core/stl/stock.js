@@ -97,3 +97,40 @@ export function fitStlDepth(pass, terrain, nx, nz, carveZ, hUnit) {
   if (!Number.isFinite(s)) return { reason: 'flat' };
   return { zScale: s };
 }
+
+/** The solver's numerics (not a rule): a Depth whose own fitStlDepth step is within `relTol` of itself IS the fit (Float32
+ *  heights: ~1e-7); at most `maxSteps` passes are built. */
+export const STL_FIT_SOLVE = Object.freeze({ relTol: 1e-6, maxSteps: 60 });
+
+/**
+ * THE 'Fit to carve depth' solve, on the pass the build makes at each Depth. fitStlDepth is exact for ONE pass: it assumes the
+ * body stays as it is while the Depth scales the height. That holds for the raster, the compress tone map and the softness blur
+ * (all scale-free), but NOT for the crop-edge falloff's 'bottom' edge (core/stl/crop.js applyCropFalloff fades by the height in
+ * INCHES): at Depth 1 a small relief sits inside the fade, its body is crushed, and the one-step fit overshot several times
+ * (SMK KAS1996 cropped, falloff 0.6 in: Depth 26 = a 3.7 in wall on a 0.9 in stock, 2026-11-22).
+ * Every Depth-dependent term only grows with the Depth (height x a fade rising with height), so the stamp is monotone in s and
+ * the fit is the root of one monotone function. Its residual is e(s) = ln(fitStlDepth's step at s / s) (0 at the fit, > 0 = room
+ * left): the first step is fitStlDepth's linear one, then a secant on e against ln s (a power-law stamp is a straight line
+ * there), each kept inside the bracket the earlier passes proved (e > 0 = a lower bound, e < 0 = an upper bound), else the
+ * bracket is halved. A linear stamp converges on the second pass and returns the first step's value unchanged.
+ * `passAt(s)` = the record's pass at Depth s > 0 (core/stl/layer.js stlPass; null = it covers nothing).
+ * @returns {{ zScale: number } | { reason }} as fitStlDepth
+ */
+export function solveStlDepth(passAt, s0, terrain, nx, nz, carveZ) {
+  let s = s0 > 0 ? s0 : 1, lo = 0, hi = Infinity, prev = null;
+  for (let step = 0; step < STL_FIT_SOLVE.maxSteps; step++) {
+    const pass = passAt(s);
+    if (!pass) return { reason: 'empty' };
+    const f = fitStlDepth(pass, terrain, nx, nz, carveZ, Math.abs(pass.depth) / s);
+    if (f.zScale === undefined) return f;
+    const r = f.zScale / s;
+    if (Math.abs(r - 1) <= STL_FIT_SOLVE.relTol) return { zScale: s };
+    if (r > 1) lo = s; else hi = s;
+    const ls = Math.log(s), e = Math.log(r);
+    let next = prev && e !== prev.e ? Math.exp(ls - e * (ls - prev.ls) / (e - prev.e)) : f.zScale;
+    prev = { ls, e };
+    if (!(next > lo && next < hi)) next = !Number.isFinite(hi) ? 2 * s : lo > 0 ? Math.sqrt(lo * hi) : hi / 2;
+    s = next;
+  }
+  return { zScale: lo > 0 ? lo : s }; // not converged: the largest Depth proved to fit
+}

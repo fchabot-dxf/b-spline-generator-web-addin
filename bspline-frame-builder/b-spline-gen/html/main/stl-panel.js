@@ -25,7 +25,7 @@ import {
 } from '../core/stl/layer.js';
 import { ghostState, STL_GHOST_COLOURS } from '../core/stl/ghost.js';
 import { stlPass } from '../core/stl/layer.js';
-import { fitStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/stock.js';
+import { solveStlDepth, getStlStockReport, stlStockMessage } from '../core/stl/stock.js';
 import { layFlatFrame, quickTurnRotation, wrapDeg } from '../core/stl/orient.js';
 import { resolveGrid } from '../core/terrain.js';
 import { meshBounds, meshHealth } from '../core/stl/mesh.js';
@@ -390,10 +390,10 @@ export function resetStlRotation() { return ['rotX', 'rotY', 'rotZ'].every((id) 
 
 // ── fit to the stock, lay flat, quick turns (Fred 2026-11-22) ───────────────────────────────────────────────────────
 /**
- * The Depth that fits record `rec` inside the stock on the LAST BUILT surface (core/stl/stock.js fitStlDepth, the one rule):
- * { zScale } or { reason }. The pass is the record's own at its current Depth (the build's cached raster; Depth 0 reads Depth 1);
- * the relief height per unit Depth is |pass.depth| / |zScale| (raster.js: the height is linear in zScale) and a negative Depth
- * keeps its sign. 'notBuilt' = no surface for the current board grid yet.
+ * The Depth that fits record `rec` inside the stock on the LAST BUILT surface (core/stl/stock.js solveStlDepth over the
+ * record's own pass at each Depth, the one rule): { zScale } or { reason }. The solve starts at its current Depth (the build's
+ * cached raster; Depth 0 reads Depth 1); a negative Depth keeps its sign. 'notBuilt' = no surface for the current board grid yet.
+ * (The pass is rebuilt per Depth: the crop-edge falloff's 'bottom' edge makes the stamp NOT linear in the Depth.)
  */
 function stlFitFor(rec) {
   const r = lastResult;
@@ -401,11 +401,10 @@ function stlFitFor(rec) {
   if (!r || !r.cleanHeights || r.nx !== nx || r.nz !== nz || r.cleanHeights.length !== nx * nz) return { reason: 'notBuilt' };
   const zNow = normaliseStlLayer(rec).zScale;
   const zs = Number.isFinite(zNow) && zNow !== 0 ? zNow : 1;
-  let pass;
-  try { pass = stlPass({ ...rec, enabled: true, zScale: zs }, { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn }); } catch (e) { return { reason: 'unreadable' }; }
-  if (!pass) return { reason: 'empty' };
-  const f = fitStlDepth(pass, r.cleanHeights, nx, nz, P.carveZ, Math.abs(pass.depth) / Math.abs(zs));
-  return f.zScale !== undefined ? { zScale: Math.sign(zs) * f.zScale } : f;
+  const sign = Math.sign(zs), grid = { nx, nz, widthIn: P.widthIn, heightIn: P.heightIn };
+  let f;
+  try { f = solveStlDepth((s) => stlPass({ ...rec, enabled: true, zScale: sign * s }, grid), Math.abs(zs), r.cleanHeights, nx, nz, P.carveZ); } catch (e) { return { reason: 'unreadable' }; }
+  return f.zScale !== undefined ? { zScale: sign * f.zScale } : f;
 }
 /** Why the Fit changed nothing, one line per reason (the status line shows it). */
 const FIT_NO_ROOM = Object.freeze({

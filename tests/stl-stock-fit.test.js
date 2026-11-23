@@ -15,7 +15,7 @@ import { resolveGrid } from '../bspline-frame-builder/b-spline-gen/html/core/ter
 import { checkPreBounds } from '../bspline-frame-builder/b-spline-gen/html/core/sculpt.js';
 import { sampleGridAt } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import {
-  stlStockOvershoot, stlStockReport, getStlStockReport, stlStockMessage, fitStlDepth,
+  stlStockOvershoot, stlStockReport, getStlStockReport, stlStockMessage, fitStlDepth, solveStlDepth,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/stock.js';
 import { globalHistoryLog, globalRedoLog } from '../bspline-frame-builder/b-spline-gen/html/core/history.js';
 import {
@@ -239,6 +239,52 @@ describe('the Fit to carve depth button', () => {
     expect($('stlStock').textContent).toBe('');
     _forgetHeights();
   }, 60000);
+});
+
+// FIX-X 2026-11-22: after a crop with the crop-edge falloff on, the Fit overshot several times (SMK KAS1996 cropped, falloff
+// 0.6 in: Depth 26 = a 3.7 in wall on a 0.9 in stock). The falloff's 'bottom' edge fades by the height in INCHES, so the stamp is
+// not linear in the Depth; the one-step fit read the crushed body at Depth 1.
+describe('Fit to carve depth after a crop with the crop-edge falloff (the stamp is not linear in the Depth)', () => {
+  const lowPeak = (rec) => { // the stamped surface's lowest point over the covered points (Carved)
+    const { nx, nz } = resolveGrid(7, 9, 0.1);
+    const g = { nx, nz, widthIn: 7, heightIn: 9 };
+    const h = applyStampLayers(FLAT(0.5), [stlPass(rec, g)], nx, nz), cov = stlPass(rec, g).mask.isStamped;
+    let lo = Infinity; for (let k = 0; k < h.length; k++) if (cov[k]) lo = Math.min(lo, h[k]);
+    return lo;
+  };
+  /** The pyramid inserted CROPPED by the real insert path (cropMesh: x from 30 %, z from 25 % = a capped two-plane cut), made a
+   *  0.21 in relief at Depth 1 (inside the 0.6 in fade), then the falloff on through the panel's own controls. */
+  function croppedLowRelief(raise) {
+    panelBoard();
+    const rec = addStlFromSoup(pyramid(), 'pyr', { crop: { x: [0.3, 1], z: [0.25, 1] } });
+    expect(rec.crop && rec.crop.capped).toBeGreaterThan(0);
+    expect(setStlField('scale', 0.15)).toBe(true);
+    if (!raise) expect(setStlField('raise', false)).toBe(true);
+    expect(setStlField('cropFalloffWidth', 0.6)).toBe(true);
+    return activeStlLayer();
+  }
+  it('Raised: after the Fit the cropped, faded relief peaks AT the stock top (it overshot to 6.1 in before)', () => {
+    const before = croppedLowRelief(true);
+    expect(before.cropFalloff.widthIn).toBe(0.6);
+    expect(fitStlToCarveDepth()).toBe(true);
+    const after = activeStlLayer();
+    expect(peakAfter(after)).toBeCloseTo(1.5, 4);
+    const { nx, nz } = resolveGrid(7, 9, 0.1), g = { nx, nz, widthIn: 7, heightIn: 9 };
+    const pass = stlPass(after, g);
+    expect(stlStockOvershoot(applyStampLayers(FLAT(0.5), [pass], nx, nz), pass.mask.isStamped, 1.5).count).toBe(0);
+  });
+  it('Carved: the deepest cut of the cropped, faded relief reaches the stock bottom exactly', () => {
+    const before = croppedLowRelief(false);
+    expect(before.raise).toBe(false);
+    expect(fitStlToCarveDepth()).toBe(true);
+    expect(lowPeak(activeStlLayer())).toBeCloseTo(0, 4);
+  });
+  it('a linear stamp (no falloff): the solve returns the one-step fit unchanged (no behaviour change there)', () => {
+    const rec = record({ blend: 'max', position: { x: 0.7, y: -1.1, z: 0.05 } });
+    const one = fitStlDepth(stlPass(rec, GRID), SLOPE(), GRID.nx, GRID.nz, CARVE, Math.abs(stlPass(rec, GRID).depth));
+    const solved = solveStlDepth((s) => stlPass({ ...rec, zScale: s }, GRID), 1, SLOPE(), GRID.nx, GRID.nz, CARVE);
+    expect(solved.zScale).toBe(one.zScale);
+  });
 });
 
 describe('the option: Fit new STLs to the carve depth (P.stlFitOnInsert)', () => {
