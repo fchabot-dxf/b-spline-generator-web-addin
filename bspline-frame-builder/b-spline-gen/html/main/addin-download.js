@@ -95,7 +95,7 @@ export function renderAddinInstallSection(container, nav = globalThis.navigator)
   const zip = doc.createElement('a');
   zip.setAttribute('href', ADDIN_ZIP_URL);
   zip.dataset.addinZip = '';
-  zip.style.cssText = 'font-size:11px;';
+  zip.style.cssText = 'display:inline-block; min-height:28px; line-height:28px; font-size:11px;'; // a 28 px touch target
   zip.textContent = 'Plain ZIP (unzip into Fusion\'s AddIns folder yourself)';
   container.append(zip);
 }

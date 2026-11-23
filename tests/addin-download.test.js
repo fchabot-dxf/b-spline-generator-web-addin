@@ -96,6 +96,8 @@ describe('Settings > Fusion add-in', () => {
     }
     expect(box.querySelector('[data-addin-os="mac"]').textContent).toContain('your computer');
     expect(box.querySelector('a[data-addin-zip]').getAttribute('href')).toBe(ADDIN_ZIP_URL);
+    // phone first: every link in the section is at least a 28 px touch target
+    for (const a of box.querySelectorAll('a')) expect(parseFloat(a.style.minHeight)).toBeGreaterThanOrEqual(28);
   });
 
   it('re-rendering replaces the list (opening Settings twice does not stack it)', () => {
