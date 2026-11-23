@@ -35,6 +35,7 @@ def _install_fake_adsk():
     # be importable names.
     adsk.core.CustomEventHandler = type("CustomEventHandler", (), {})
     adsk.core.CommandCreatedEventHandler = type("CommandCreatedEventHandler", (), {})
+    adsk.core.CommandEventHandler = type("CommandEventHandler", (), {})   # _CheckUpdatesExecuteHandler
     sys.modules["adsk"] = adsk
     sys.modules["adsk.core"] = adsk.core
     sys.modules["adsk.fusion"] = adsk.fusion

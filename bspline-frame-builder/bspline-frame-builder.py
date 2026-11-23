@@ -40,7 +40,18 @@ _refresh_registered = False
 
 REFRESH_EVENT_ID   = 'BsFb_DeferredRefresh'
 RELOAD_COMMAND_ID  = 'bsplineFbReloadCommand'
+UPDATE_COMMAND_ID  = 'bsplineCheckUpdatesCommand'
 PANEL_ID           = 'bsplinePanel'
+UPDATE_TITLE       = 'bspline-frame-builder updates'
+
+# Every command definition this file owns: purged before run() registers them, removed again by stop().
+# (hybridBuilderCommand = a legacy id, purged so old installs clean up.)
+OWN_COMMAND_IDS = ('bsplineCommand',
+                   'frameSketchBuilderCommand',
+                   'frameSolidBuilderCommand',
+                   'hybridBuilderCommand',
+                   RELOAD_COMMAND_ID,
+                   UPDATE_COMMAND_ID)
 
 try:
     _addin_root = os.path.dirname(__file__)
@@ -437,6 +448,173 @@ def _res_paths():
     return fb_res_sketch, fb_res_solid, bs_res
 
 
+def _commands():
+    """The user-facing commands run() registers and adds to every B-Spline Builder panel (declared once).
+    'promoted' (default True) = shown on the panel face; False = in the panel's dropdown only."""
+    fb_res_sketch, fb_res_solid, bs_res = _res_paths()
+    return [
+        {
+            'id':              'bsplineCommand',
+            'name':            'B-Spline Gen',
+            'tooltip':         'Procedural B-Spline Surface & Solid Editor',
+            'res_path':        bs_res,
+            'handler_factory': lambda: _bs.CommandCreatedHandler(),
+        },
+        {
+            'id':              'frameSketchBuilderCommand',
+            'name':            'Sketch Builder',
+            'tooltip':         'Build parametric skeleton sketch from a template',
+            'res_path':        fb_res_sketch,
+            'handler_factory': lambda: _fb_sketch.CommandCreatedHandler(),
+        },
+        {
+            'id':              'frameSolidBuilderCommand',
+            'name':            'Extrude Frame',
+            'tooltip':         'Extrude the frame outline onto a target face',
+            'res_path':        fb_res_solid,
+            'handler_factory': lambda: _fb_solid.CommandCreatedHandler(),
+        },
+        {
+            # Fred 2026-11-22: replaces this add-in with the newest release, only after the user says Yes
+            'id':              UPDATE_COMMAND_ID,
+            'name':            'Check for updates',
+            'tooltip':         'Look for a newer bspline-frame-builder build and, if you say Yes, install it',
+            'res_path':        os.path.join(_addin_root, 'resources', 'UpdateCommand'),
+            'handler_factory': lambda: _CheckUpdatesCreatedHandler(),
+            'promoted':        False,
+        },
+    ]
+
+
+# ── Check for updates (fb_shared/updater.py does the work; this is the Fusion side) ───────────────────────────────────
+def _loaded_palette_ids():
+    """The palette id of every sub-module loaded this run (each declares its own PALETTE_ID) -- derived, so a new
+    palette can't be missed."""
+    ids = []
+    for mod in (_bs, _fb_sketch, _fb_solid, _fi, _tm, _cam, _st):
+        pid = getattr(mod, 'PALETTE_ID', None)
+        if pid and pid not in ids:
+            ids.append(pid)
+    return ids
+
+
+def _close_palettes(ui):
+    """After an update: delete every palette object so the restarted add-in builds fresh ones from the new HTML/JS
+    (a palette that survives a Stop/Run keeps its stale web content -- the measured reload trap)."""
+    closed = []
+    for pid in _loaded_palette_ids():
+        try:
+            pal = ui.palettes.itemById(pid)
+            if pal:
+                pal.deleteMe()
+                closed.append(pid)
+        except Exception:
+            _log_error(f'update: could not close palette {pid}\n' + traceback.format_exc())
+    return closed
+
+
+def _check_for_updates(ui, latest_url=None):
+    """The 'Check for updates' click: compare the installed stamp with the published latest.json; when newer, ASK,
+    and only on Yes download + verify + install. Returns 'current' | 'declined' | 'installed' | 'error'."""
+    if _addin_root not in sys.path:
+        sys.path.insert(0, _addin_root)
+    from fb_shared import updater
+    from fb_shared.build_info import read_build_info
+
+    installed = read_build_info(_addin_root)
+    try:
+        latest = updater.fetch_latest(latest_url or updater.LATEST_URL)
+    except updater.UpdateError as e:
+        ui.messageBox(f'Could not check for updates.\n\n{e}', UPDATE_TITLE)
+        return 'error'
+    if updater.compare_builds(installed, latest) != 'newer':
+        ui.messageBox('You have the newest build.\n\nInstalled: ' + updater.describe_build(installed), UPDATE_TITLE)
+        return 'current'
+
+    answer = ui.messageBox(
+        'A newer build is available.\n\n'
+        f'Installed: {updater.describe_build(installed)}\n'
+        f'Newest:    {updater.describe_build(latest)}\n\n'
+        "Download and install it now? The add-in's open windows will close, so save your work in them first. "
+        'The current version is kept as a backup.',
+        UPDATE_TITLE,
+        adsk.core.MessageBoxButtonTypes.YesNoButtonType,
+        adsk.core.MessageBoxIconTypes.QuestionIconType)
+    if answer != adsk.core.DialogResults.DialogYes:
+        return 'declined'
+
+    progress = None
+    try:
+        progress = ui.createProgressDialog()
+        progress.isCancelButtonShown = False
+        progress.show(UPDATE_TITLE, 'Downloading the newest build... %p%', 0, 100, 0)
+    except Exception:
+        progress = None
+
+    def _on_progress(done, total):
+        size = total or latest.get('size') or 0
+        if progress is not None and size:
+            try:
+                progress.progressValue = min(100, int(100 * done / size))
+            except Exception:
+                pass
+        try:
+            adsk.doEvents()
+        except Exception:
+            pass
+
+    try:
+        result = updater.download_and_install(_addin_root, latest, progress=_on_progress)
+    except updater.UpdateError as e:
+        if progress is not None:
+            progress.hide()
+        ui.messageBox(f'The update was not installed; nothing was changed.\n\n{e}', UPDATE_TITLE)
+        return 'error'
+    except Exception:
+        if progress is not None:
+            progress.hide()
+        _log_error('update failed\n' + traceback.format_exc())
+        ui.messageBox('The update failed unexpectedly:\n\n' + traceback.format_exc(), UPDATE_TITLE)
+        return 'error'
+    if progress is not None:
+        progress.hide()
+
+    _close_palettes(ui)
+    backup = os.path.basename(result['backup']) if result.get('backup') else None
+    ui.messageBox(
+        f'Installed {updater.describe_build(latest)}.\n\n'
+        'To start using it, restart Fusion -- or open Utilities > Add-Ins (Shift+S), select '
+        'bspline-frame-builder, click Stop, then Run.'
+        + (f'\n\nThe previous version is kept in the AddIns folder as {backup}.' if backup else ''),
+        UPDATE_TITLE)
+    return 'installed'
+
+
+class _CheckUpdatesExecuteHandler(adsk.core.CommandEventHandler):
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        try:
+            _check_for_updates(adsk.core.Application.get().userInterface)
+        except Exception:
+            _log_error('check for updates failed\n' + traceback.format_exc())
+
+
+class _CheckUpdatesCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    """The button: no inputs, so the command runs its execute straight away."""
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        try:
+            on_execute = _CheckUpdatesExecuteHandler()
+            args.command.execute.add(on_execute)
+            handlers.append(on_execute)
+        except Exception:
+            _log_error('check for updates: command setup failed\n' + traceback.format_exc())
+
+
 # ── run() ─────────────────────────────────────────────────────────────────────
 def _write_run_lock():
     """Best-effort heartbeat: write .addin-running.lock {pid, started_at} into the
@@ -506,39 +684,11 @@ def run(context):
                 pass
 
         cmd_defs = ui.commandDefinitions
-        fb_res_sketch, fb_res_solid, bs_res = _res_paths()
-
-        COMMANDS = [
-            {
-                'id':              'bsplineCommand',
-                'name':            'B-Spline Gen',
-                'tooltip':         'Procedural B-Spline Surface & Solid Editor',
-                'res_path':        bs_res,
-                'handler_factory': lambda: _bs.CommandCreatedHandler(),
-            },
-            {
-                'id':              'frameSketchBuilderCommand',
-                'name':            'Sketch Builder',
-                'tooltip':         'Build parametric skeleton sketch from a template',
-                'res_path':        fb_res_sketch,
-                'handler_factory': lambda: _fb_sketch.CommandCreatedHandler(),
-            },
-            {
-                'id':              'frameSolidBuilderCommand',
-                'name':            'Extrude Frame',
-                'tooltip':         'Extrude the frame outline onto a target face',
-                'res_path':        fb_res_solid,
-                'handler_factory': lambda: _fb_solid.CommandCreatedHandler(),
-            },
-        ]
+        COMMANDS = _commands()
 
         # 4. Purge any stale command definitions for our IDs (including the reload cmd
         #    and the legacy hybridBuilderCommand from prior installs).
-        for cid in ('bsplineCommand',
-                    'frameSketchBuilderCommand',
-                    'frameSolidBuilderCommand',
-                    'hybridBuilderCommand',
-                    RELOAD_COMMAND_ID):
+        for cid in OWN_COMMAND_IDS:
             try:
                 existing = cmd_defs.itemById(cid)
                 if existing:
@@ -625,8 +775,9 @@ def run(context):
                     else:
                         _log(f'Command {cid} already exists in panel {unique_panel_id} on tab {tab.id!r}')
                     try:
-                        ctrl.isPromoted = True
-                        ctrl.isPromotedByDefault = True
+                        promoted = cmd.get('promoted', True)
+                        ctrl.isPromoted = promoted
+                        ctrl.isPromotedByDefault = promoted
 
                     except Exception:
                         pass
@@ -728,11 +879,7 @@ def stop(context):
 
         # 3. Remove our command definitions (includes legacy hybridBuilderCommand
         #    so old installs are purged when the new build first runs).
-        for cid in ('bsplineCommand',
-                    'frameSketchBuilderCommand',
-                    'frameSolidBuilderCommand',
-                    'hybridBuilderCommand',
-                    RELOAD_COMMAND_ID):
+        for cid in OWN_COMMAND_IDS:
             try:
                 cd = cmd_defs.itemById(cid)
                 if cd:

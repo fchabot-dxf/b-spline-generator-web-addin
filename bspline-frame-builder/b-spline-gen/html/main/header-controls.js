@@ -2,7 +2,7 @@
  * Header / settings-panel button wiring. Owns:
  *   - The "STEP" / "Send to Fusion" header button (mode-aware).
  *   - The export-wizard cancel/run buttons.
- *   - The "Download Add-in" link.
+ *   - The "Download Add-in" button (main/addin-download.js: the OS's installer, else the ZIP).
  *   - The app-refresh (cache-bust) button.
  *   - The "Random seed" button.
  *   - The Settings panel's "Haptic feedback" toggle.
@@ -21,8 +21,7 @@ import { onClearFusionDesign } from './export-flow.js';
 import { copyLogToClipboard } from './copy-log.js';
 import { pullSketchFromFusion } from '../core/fusion-bridge.js';
 import { offeredSendTargets } from './send-targets.js';
-
-const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
+import { bindAddinDownloadButton, renderAddinInstallSection } from './addin-download.js';
 
 export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWizardExport, onWizardCancel }) {
     const btnDownload = document.getElementById('btnDownload'); // STEP / Send to Fusion
@@ -45,16 +44,16 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
     document.getElementById('settings-btn')?.addEventListener('click', () => {
         const sec = document.getElementById('clearFusionSection');
         if (sec) sec.style.display = isFusionMode ? '' : 'none';
+        // the website's installers; inside Fusion the add-in's own "Check for updates" command does this
+        const addin = document.getElementById('addinInstallSection');
+        if (addin) addin.style.display = isFusionMode ? 'none' : '';
+        if (!isFusionMode) renderAddinInstallSection(document.getElementById('addinInstallLinks'));
     });
     const btnWizardCancel = document.getElementById('btnWizardCancel');
     if (btnWizardCancel) btnWizardCancel.addEventListener('click', onWizardCancel);
 
-    const btnDownloadAddin = document.getElementById('btnDownloadAddin');
-    if (btnDownloadAddin) {
-        btnDownloadAddin.addEventListener('click', () => {
-            window.location.href = ADDIN_RELEASE_URL;
-        });
-    }
+    // the one-click installer for this OS, else the plain ZIP (main/addin-download.js ADDIN_INSTALLERS)
+    bindAddinDownloadButton(document.getElementById('btnDownloadAddin'));
 
     // App refresh — bypasses HTTP cache so new code is picked up without
     // hitting browser refresh. window.location.reload(true) is deprecated;
