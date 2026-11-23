@@ -742,14 +742,13 @@ export function _reconcileLayersFromSvg(editor) {
     const children = editor._sketchLayer.children().toArray();
     _ioLog(`reconcile: childCount=${children.length}`);
     if (children.length === 0) {
-        // No children to reconcile, but still create a Layer 1 so the
-        // layer panel isn't empty when the user opens an SVG that
-        // happens to have no shapes (e.g. just <defs> from font embed).
-        // Matches the BUG-10 fix's auto-create behavior on init.
-        const anchor = applyToolingDefaults({ id: '0', name: 'Layer 1', visible: true });
-        editor._layers = [anchor];
-        editor._nextLayerId = 1;
-        return anchor.id;
+        // Fred 2026-11-23 (the unified layer stack, "a new file has no layers"): an SVG with nothing in it reopens with NO
+        // layer -- the same fresh drawing resetArtworkToFresh makes (a saved, never-drawn new project; an editor Cancel
+        // back to it). It used to get an empty "Layer 1" here; an empty layer stamps nothing, so no board's heights change.
+        // (A document holding only metadata -- a <defs> -- still gets its anchor below, SE8b.)
+        editor._layers = [];
+        editor._nextLayerId = 0;
+        return null;
     }
 
     // Reset the runtime roster — we trust the SVG as the source of truth.

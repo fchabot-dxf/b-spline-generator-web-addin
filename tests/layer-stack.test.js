@@ -26,6 +26,7 @@ import {
 import { SIDEBAR_TABS, branchSections } from '../bspline-frame-builder/b-spline-gen/html/main/sidebar-tabs.js';
 import { SECTION_THEMES, SECTION_ICONS } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
 import { JOB_STEP_KINDS } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
+import { _reconcileLayersFromSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const $ = (id) => document.getElementById(id);
@@ -272,6 +273,21 @@ describe('+ Add layer: the declared icon-grid picker', () => {
     expect(seq[seq.indexOf(THICKEN_LINE_KEY) - 1]).toBe(key);
     expect(P.layerOrder.filter((k) => k !== 'stl:s2').slice(-2)).toEqual(['height:h1', key]); // the last one above the line
     expect(card(key).classList.contains('collapsed')).toBe(false);
+  });
+});
+
+describe('a new file has no layers, also once its drawing is reopened (a reload, a project load, an editor Cancel)', () => {
+  // the reopen path of a drawing with no persisted roster: editor-io.js _reconcileLayersFromSvg over the sketch's children
+  const child = (dataLayer, type = 'path') => { let layer = dataLayer; return { type, attr: (n, v) => { if (n !== 'data-layer') return null; if (v !== undefined) { layer = v; return undefined; } return layer; }, node: { tagName: type.toUpperCase(), getAttribute: () => '' } }; };
+  const reopen = (children) => { const ed = { _sketchLayer: { children: () => ({ toArray: () => children }) } }; const anchor = _reconcileLayersFromSvg(ed); return { ed, anchor }; };
+  it('an SVG with nothing in it (a saved, never-drawn new project) reopens with NO layer (was an empty "Layer 1")', () => {
+    const { ed, anchor } = reopen([]);
+    expect(ed._layers).toEqual([]);
+    expect(anchor).toBeNull();
+  });
+  it('pin: a legacy saved drawing WITH children keeps exactly its layers (ids, names) and its orphans\' anchor', () => {
+    const { ed } = reopen([child('3'), child('5'), child('3'), child(null)]);
+    expect(ed._layers.map((l) => [l.id, l.name])).toEqual([['3', 'Layer 1'], ['5', 'Layer 2']]);
   });
 });
 
