@@ -479,7 +479,8 @@ describe('f. the full-screen sheet', () => {
     const t = tiles()[0];
     t.querySelector('img').dispatchEvent(new Event('error'));
     expect(t.querySelector('img')).toBeNull();
-    expect(t.textContent).toBe('Pan troglodytes verus: Talus Left');
+    expect(t.querySelector('.stl-lib-nopic')).toBeTruthy(); // STL-SHEET: a neutral 'no picture' placeholder, not a blank box
+    expect(t.querySelector('.stl-lib-title').textContent).toBe('Pan troglodytes verus: Talus Left');
   });
   it('a failed search shows its message in the status line', async () => {
     open({ fetchImpl: vi.fn(async () => new Response('down', { status: 500, statusText: 'Internal Server Error' })) });
@@ -824,13 +825,13 @@ describe('A3. a multi-part model (a bust and its base: two Low GLB rows of ONE m
 
 describe('A5. phone: the preview stays small enough for the grid to show below it', () => {
   const CSS = readFileSync('bspline-frame-builder/styles/layout-app.css', 'utf8').replace(/\r\n/g, '\n');
-  it('<= 600 px: the picture AND the 3D canvas max-height 40vh, object-fit contain', () => {
+  it('<= 600 px: the picture AND the 3D canvas max-height 20vh inside the pinned 40vh pane, object-fit contain', () => {
     const at = CSS.indexOf('@media (max-width: 600px) {\n  .stl-lib-main');
     expect(at).toBeGreaterThan(-1);
     const block = CSS.slice(at, CSS.indexOf('\n}', at));
     const decl = (sel) => [...block.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sels]) => sels.split(',').map((x) => x.trim()).includes(sel)).map(([, , d]) => d).join(';');
     for (const sel of ['.stl-lib-preview', '.stl-lib-view']) {
-      expect(decl(sel)).toMatch(/max-height:\s*40vh/);
+      expect(decl(sel)).toMatch(/max-height:\s*20vh/);
       expect(decl(sel)).toMatch(/object-fit:\s*contain/);
     }
   });

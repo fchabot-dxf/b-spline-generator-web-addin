@@ -37,6 +37,8 @@ const el = (tag, attrs = {}, kids = []) => {
   for (const k of kids) if (k) e.appendChild(k);
   return e;
 };
+/** The neutral stand-in for a picture that is missing or would not load: an icon + 'no picture' (never an empty box). */
+const noPicture = (cls) => el('div', { class: cls, role: 'img', 'aria-label': 'no picture' }, [el('span', { class: 'stl-lib-nopic-icon', text: '🖼' }), el('span', { text: 'no picture' })]);
 const msgOf = (e) => (e && e.message ? e.message : String(e));
 const fmt = (n) => Number(n).toLocaleString('en-US');
 /** The selected tile's size lookup (a 1-byte Range request) waits this long, so tapping through tiles sends nothing. */
@@ -272,9 +274,9 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     const b = el('button', { type: 'button', class: 'stl-lib-tile', 'data-model-id': t.id, 'data-library': lib.id, title: t.title });
     if (t.thumbUrl) {
       const img = el('img', { class: 'stl-lib-thumb', loading: 'lazy', src: t.thumbUrl, alt: '' });
-      img.addEventListener('error', () => { img.remove(); b.classList.add('stl-lib-tile-text'); }, { once: true });
+      img.addEventListener('error', () => { img.replaceWith(noPicture('stl-lib-thumb stl-lib-nopic')); }, { once: true });
       b.appendChild(img);
-    } else b.classList.add('stl-lib-tile-text');
+    } else b.appendChild(noPicture('stl-lib-thumb stl-lib-nopic'));
     b.appendChild(el('span', { class: 'stl-lib-title', text: t.title }));
     if (multi) { // which library, and its size / shape when the listing has them (no request per tile)
       b.appendChild(el('span', { class: 'stl-lib-meta' }, [
@@ -379,7 +381,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
   function showPicture(t) {
     picHost.textContent = '';
     pic = null;
-    if (!t.previewUrl && !t.thumbUrl) return; // no picture at all: the title alone
+    if (!t.previewUrl && !t.thumbUrl) { picHost.appendChild(noPicture('stl-lib-preview stl-lib-nopic')); return; } // no picture at all: the placeholder
     // Fred 2026-11-22 (the SMK pane looked empty: its large picture takes 1-2 s to arrive): the THUMBNAIL (already loaded by
     // the grid) sits BEHIND the picture as a placeholder, so the pane shows the model at once; the large picture covers it
     // when it has loaded. The picture itself is unchanged (src, fallbacks).
@@ -387,7 +389,7 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     if (t.thumbUrl && t.previewUrl) img.style.backgroundImage = `url("${t.thumbUrl}")`; // the placeholder (CSS: .stl-lib-preview)
     let fellBack = !t.previewUrl;
     img.addEventListener('error', () => {
-      if (!fellBack) { fellBack = true; img.setAttribute('src', t.thumbUrl); } else { img.remove(); if (pic === img) pic = null; } // the thumbnail, then the title alone
+      if (!fellBack) { fellBack = true; img.setAttribute('src', t.thumbUrl); } else { img.replaceWith(noPicture('stl-lib-preview stl-lib-nopic')); if (pic === img) pic = null; } // the thumbnail, then the placeholder
     });
     img.addEventListener('click', () => openLightbox());
     pic = img;
@@ -402,17 +404,19 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     const sizeLine = el('div', { class: 'stl-lib-pane-size' });
     const fileWord = lib.format === 'stl' ? 'STL download' : 'GLB file';
     const setSize = (n) => {
-      sizeLine.textContent = n != null ? `${fileWord}: ${mbText(n)}${lib.format === 'glb' ? ' (only its geometry downloads)' : ''}` : `${fileWord}: size unknown`;
+      sizeLine.hidden = n == null; // an unknown value is not a line ('size unknown' is dropped)
+      sizeLine.textContent = n != null ? `${fileWord}: ${mbText(n)}${lib.format === 'glb' ? ' (only its geometry downloads)' : ''}` : '';
     };
     const dims = t.dims ? ['w', 'h', 'd'].filter((k) => k in t.dims) : [];
     paneInfo.append(
       el('div', { text: `${lib.label} · ${t.licence || lib.licence || ''}` }),
       sizeLine,
-      dims.length ? el('div', { text: `Object: ${dims.map((k) => t.dims[k]).join(' × ')} ${t.dims.unit} (${dims.map((k) => k.toUpperCase()).join(' × ')})` }) : null,
-      el('div', { class: 'stl-lib-pane-credit', text: lib.credit }),
+      ...(dims.length ? [el('div', { text: `Object: ${dims.map((k) => t.dims[k]).join(' × ')} ${t.dims.unit || ''} (${dims.map((k) => k.toUpperCase()).join(' × ')})` })] : []), // Node.append(null) would print 'null'
+      el('div', { class: 'stl-lib-pane-credit', text: lib.credit || '' }),
     );
     if (meta.size != null) { setSize(meta.size); return; }
     if (!opsOf(lib).fileUrl(t)) { sizeLine.textContent = 'In memory (this session)'; return; } // an own file (Recent): nothing to ask
+    sizeLine.hidden = false;
     sizeLine.textContent = `${fileWord}: checking the size…`;
     // asked once the tile has stayed selected a moment: tapping through tiles (or Insert straight away) sends nothing
     clearTimeout(sizeTimer);
@@ -438,8 +442,17 @@ export function openStlLibrarySheet({ source = SMITHSONIAN_SOURCE, libraries = n
     if (selected) selected.button.classList.remove('active');
     selected = { tile: t, button, lib, meta };
     button.classList.add('active');
-    try { button.scrollIntoView?.({ block: 'nearest' }); } catch (_) { /* not scrollable here */ }
     pane.hidden = false;
+    // phone (one column, the pane ABOVE the grid in the scrolling body): bring the pane into view, else a tap far down the grid
+    // leaves the preview scrolled off the top; wide layout: keep the tile in view
+    try {
+      const narrow = !!window.matchMedia?.('(max-width: 600px)').matches;
+      if (!narrow) button.scrollIntoView?.({ block: 'nearest' });
+      else { // the pane is pinned (sticky) at the top of the sheet; if it is not on screen anyway, bring it in
+        const r = pane.getBoundingClientRect(), b = body.getBoundingClientRect();
+        if (r.height && (r.top < b.top - 1 || r.bottom > b.bottom + 1)) pane.scrollIntoView?.({ block: 'start' });
+      }
+    } catch (_) { /* not scrollable here */ }
     paneTitle.textContent = t.title;
     setPaneNote(lib.format === 'stl' ? stlTurnNote(meta.size) : '');
     turnBtn.disabled = false;

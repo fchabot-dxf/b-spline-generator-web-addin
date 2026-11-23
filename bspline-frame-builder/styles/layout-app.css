@@ -1145,6 +1145,9 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .stl-lib-thumb { width: 100%; aspect-ratio: 1; object-fit: cover; background: #eee; display: block; }
 .stl-lib-title { font-size: 11px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .stl-lib-tile-text { justify-content: center; }
+.stl-lib-nopic { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: #eee; color: #777; font-size: 11px; text-align: center; }
+.stl-lib-nopic-icon { font-size: 22px; line-height: 1; }
+.stl-lib-preview.stl-lib-nopic { width: 100%; min-height: 120px; aspect-ratio: 4 / 3; max-height: 40vh; cursor: default; }
 .stl-lib-more { display: block; margin: 10px auto 4px; min-height: 32px; }
 .stl-lib-more[hidden] { display: none; }
 .stl-lib-pane { flex: 0 0 340px; position: sticky; top: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -1193,8 +1196,12 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 }
 @media (max-width: 600px) {
   .stl-lib-main { flex-direction: column; align-items: stretch; }
-  .stl-lib-pane { order: -1; flex: none; position: static; }
-  .stl-lib-preview, .stl-lib-view { max-height: 40vh; object-fit: contain; } /* the grid stays in sight below the preview */
+  /* Fred 2026-11-23: the preview (picture / 3D view + its info + the 2D/3D, Crop, Insert row) stays PINNED at the top of the sheet
+     (capped at 40% of its height, scrolling inside itself) while the results scroll beneath it */
+  .stl-lib-pane { order: -1; flex: none; position: sticky; top: -10px; z-index: 3; max-height: 40vh; padding-top: 10px; overflow-y: auto; background: var(--cad-bg-standard, #fff);
+    padding-bottom: 6px; border-bottom: 1px solid #ccc; }
+  .stl-lib-preview, .stl-lib-view { max-height: 20vh; object-fit: contain; } /* the info + buttons fit under it in the pinned area */
+  .stl-lib-preview.stl-lib-nopic { min-height: 60px; max-height: 20vh; }
 }
 @media (pointer: coarse) {
   .stl-row input { min-width: 28px; min-height: 28px; }
