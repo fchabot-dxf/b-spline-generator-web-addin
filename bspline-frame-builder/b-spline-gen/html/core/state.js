@@ -267,6 +267,9 @@ export const DEFAULT = {
     thickness: 0.125,
     thickenDir: 'down',
     thickenMode: 'adaptive',
+    // Back: Shell / Flat (Fred 2026-11-23, the Thicken line): 'shell' = the offset shell (thickness, direction); 'flat' = the
+    // body solid from the top surface down to a flat bottom at z = 0 (core/engine/build-thicken-data.js). Absent = 'shell'.
+    backMode: 'shell',
     showLeaders: true,
     includeSurface: true,
     bottomSmoothRadius: 0.3, // Hardcoded for machining consistency
@@ -609,7 +612,7 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['terrainFit', 'symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
+    const stringParams = ['terrainFit', 'backMode', 'symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',

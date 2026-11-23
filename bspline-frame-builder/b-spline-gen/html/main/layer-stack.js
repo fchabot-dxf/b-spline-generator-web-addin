@@ -346,7 +346,8 @@ function hostOpen(listEl, items) {
 }
 /** A card's name button id (the brick matrix opens a card by it): layerCardName_<key>, ':' as '_'. */
 export const cardNameId = (key) => `layerCardName_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
-const thickenState = () => (P.thickenEnabled ? `${inches(P.thickness)} in` : 'off');
+// Back 'flat' (Fred 2026-11-23): the body is solid to z = 0, the thickness is not used -- the line says so
+const thickenState = () => (!P.thickenEnabled ? 'off' : P.backMode === 'flat' ? 'flat back' : `${inches(P.thickness)} in`);
 
 /** Re-reads the board and rebuilds the stack (safe any time: a load, an undo, a roster change). */
 export function refreshLayerStack() {

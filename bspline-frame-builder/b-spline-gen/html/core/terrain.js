@@ -51,7 +51,8 @@ export function terrainFitRange(params) {
   try {
     key = JSON.stringify(params, function (k, v) {
       if (this !== params) return v;
-      if (k === 'nx' || k === 'nz' || k === 'carveZ' || k === 'terrainFit' || k === 'smoothIntensity' || k === 'smoothRadius' || k === 'smoothRespectSymmetry') return undefined;
+      if (k === 'nx' || k === 'nz' || k === 'carveZ' || k === 'terrainFit' || k === 'terrainFloorIn' || k === 'smoothIntensity' || k === 'smoothRadius' || k === 'smoothRespectSymmetry') return undefined;
+      if (k === 'thickness' || k === 'thickenEnabled' || k === 'thickenDir' || k === 'backMode') return undefined; // the back: the floor only
       return typeof v === 'string' && v.length > 512 ? undefined : v;
     });
   } catch (_) { key = null; }
@@ -320,6 +321,9 @@ export function generateHeightmap(params, stampParams = null) {
   const fitRange = terrainFills(params) ? terrainFitRange(params) : null;
   const fitLo = fitRange && fitRange[1] > fitRange[0] ? fitRange[0] : null;
   const fitSpan = fitLo === null ? 1 : fitRange[1] - fitRange[0];
+  // the FILL FLOOR (Fred 2026-11-23): the height the lowest point maps to -- the body's bottom clearance under the terrain,
+  // decided by the caller from the back (core/engine/build-thicken-data.js fillFloorIn); absent = 0. The highest stays carveZ.
+  const fitFloor = Number(params.terrainFloorIn) || 0;
 
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
@@ -331,7 +335,7 @@ export function generateHeightmap(params, stampParams = null) {
             heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
             continue;
         }
-        const finalH = fitLo === null ? Math.max(0, h) * (carveZ || 0) : (Math.max(0, h) - fitLo) / fitSpan * (carveZ || 0);
+        const finalH = fitLo === null ? Math.max(0, h) * (carveZ || 0) : fitFloor + (Math.max(0, h) - fitLo) / fitSpan * ((carveZ || 0) - fitFloor);
         heights[j * nx + i] = isNaN(finalH) ? 0 : finalH;
     }
   }

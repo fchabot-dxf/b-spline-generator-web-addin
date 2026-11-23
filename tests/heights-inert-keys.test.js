@@ -116,7 +116,9 @@ describe('HEIGHTS_INERT_KEYS: completeness, from the heights stage code', () => 
     // real code would free more.
     const commentsOnly = [...files].map((f) => read(f).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1')).join('\n');
     const freed = Object.keys(DEFAULT).filter((k) => new RegExp(`\\b${k}\\b`).test(commentsOnly) && !new RegExp(`\\b${k}\\b`).test(code));
-    expect(freed).toEqual(['thickness']); // core/noise/chest.js: a tweak's description text ('flesh thickness')
+    // core/noise/chest.js: a tweak's description text ('flesh thickness'); core/terrain.js terrainFitRange: the back's keys its
+    // reused range ignores by name (k === 'thickness' ...: not a read -- the fill floor reaches the heights as its own input)
+    expect(freed).toEqual(['thickenEnabled', 'thickness', 'thickenDir', 'backMode']);
   });
 });
 
@@ -126,7 +128,7 @@ describe('HEIGHTS_INERT_KEYS: completeness, from the heights stage code', () => 
 const ALT = {
   thickenDir: 'up', thickenMode: 'uniform', exportOrientation: 'y-up', decalResolution: '300', decalLayerIds: { layer0: true },
   frame: { templateId: 'template1' }, photoPatternId: 'brick', editorSvg: '<svg xmlns="http://www.w3.org/2000/svg"/>',
-  stampLayers: [], activeLayerIdx: 1, spacing: 0.06, exportSpacing: 0.02,
+  stampLayers: [], activeLayerIdx: 1, spacing: 0.06, exportSpacing: 0.02, backMode: 'flat',
   brickSettings: { ...DEFAULT.brickSettings, brickLengthIn: 2 },
 };
 const altOf = (k) => (k in ALT ? ALT[k] : typeof DEFAULT[k] === 'boolean' ? !P[k] : typeof P[k] === 'number' ? P[k] * 1.5 + 0.05 : undefined);
@@ -184,7 +186,9 @@ describe('HEIGHTS_INERT_KEYS: a build that reuses the heights equals a full buil
   });
 
   // A real board: smoothing on (the boxFilter), a non-default terrain, the thicken step on (a solid with a bottom).
-  const BOARD = { widthIn: 5, heightIn: 6, spacing: 0.1, smoothIntensity: 0.6, smoothRadius: 0.8, noiseType: 'eroded', thickenEnabled: true };
+  // terrainFit 'legacy': on a 'fill' board the back's keys (thickness, Thicken on, direction, Back) move the fill floor, the
+  // heights stage's own digest term (core/engine/rebuild.js fillFloorIn) -- there the heights are rebuilt (tests/back-mode.test.js)
+  const BOARD = { widthIn: 5, heightIn: 6, spacing: 0.1, smoothIntensity: 0.6, smoothRadius: 0.8, noiseType: 'eroded', thickenEnabled: true, terrainFit: 'legacy' };
   for (const key of [...HEIGHTS_INERT_KEYS]) {
     it(`${key}: reused heights -> the same preview arrays + mesh as a full build`, async () => {
       for (const [k, v] of Object.entries(BOARD)) setP(k, v);

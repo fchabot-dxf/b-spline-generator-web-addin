@@ -665,6 +665,15 @@
                   </div>
                 </div>
 
+                <!-- Fred 2026-11-23: Back: Shell (the offset shell above) / Flat (solid down to a flat bottom at z = 0) -- P.backMode -->
+                <label class="cad-label">Back</label>
+                <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+                  <select id="backMode" title="Shell: the back follows the top at the thickness. Flat: the body is solid down to a flat bottom at the stock bottom (z = 0)" style="width:100%; border:none; background:transparent; font-size:11px;">
+                    <option value="shell" selected>Shell</option>
+                    <option value="flat">Flat</option>
+                  </select>
+                </div>
+
                 <div id="thickenWarning" class="cad-status-text"
                   style="display:none; color:#d97706; font-size:10px; margin-bottom:8px;">
                   ⚠️ Intersections detected
