@@ -21,7 +21,7 @@
 import { meshBounds } from './mesh.js';
 import { placeMesh } from './raster.js';
 import { earClip, pointInPolygon } from '../polygon.js'; // the shared ones (core/preview/frame-mesh.js re-exports them)
-import { BRUSH_FALLOFFS, brushFalloff, curveFromPoints } from '../falloff.js';
+import { BRUSH_FALLOFFS, edgeFade, curveFromPoints } from '../falloff.js';
 
 export const CROP_AXES = Object.freeze(['x', 'y', 'z']);
 /** How a crop PREVIEW draws (the library's 3D view and the STL ghost): the cut-away part faint, the box's edges accent blue. */
@@ -332,11 +332,7 @@ export function applyCropFalloff(body, covered, height, foot, fo, grid) {
   const { nx, nz, widthIn: W, heightIn: H } = grid;
   const dx = W / (nx - 1), dy = H / (nz - 1);
   const fn = fo.profile === 'custom' && fo.customCurve ? curveFromPoints(fo.customCurve) : null;
-  const f = (dist) => {
-    let t = 1 - dist / fo.widthIn;
-    if (!(t > 0)) t = 0; else if (t > 1) t = 1;
-    return brushFalloff(t, 1, 0, fo.profile, fn);
-  };
+  const f = (dist) => edgeFade(dist, fo.widthIn, fo.profile, fn); // core/falloff.js: the one edge fade (also the height feather)
   const e = fo.edges;
   const col = new Float64Array(nx), row = new Float64Array(nz);
   for (let i = 0; i < nx; i++) { const x = -W / 2 + i * dx; col[i] = (e.left ? f(x - foot.x0) : 1) * (e.right ? f(foot.x1 - x) : 1); }

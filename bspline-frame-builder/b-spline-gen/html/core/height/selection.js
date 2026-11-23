@@ -12,6 +12,7 @@
 import { sanitizeSvgForRaster, renderSvgNative } from '../stamp/render-svg.js';
 import { normaliseHeightLayer } from './layer.js';
 import { patchGrid } from './compose.js';
+import { edgeFade } from '../falloff.js';
 
 /** Pixels whose centre lies in the box between corner points (c0, r0) and (c1, r1), either order, edges included. */
 export function rectMask(cols, rows, c0, r0, c1, r1) {
@@ -193,3 +194,119 @@ export async function maskFromSvg(svgText, rec, board, { render = renderSvgAlpha
 
 /** True when any pixel is selected. */
 export const maskAny = (m) => !!m && m.some((v) => v > 0);
+
+// ── slice 4 (Fred 2026-11-23): the magic wand, the selection modifiers, the feather profile ─────────────────────────────
+/** The ways a new selection meets the current one (plain / Shift / Alt; the Selection section's touch row). Soft edges:
+ *  add = max(a, b), subtract = a (1 - b). */
+export const SELECTION_COMBINE = Object.freeze({
+  replace: Object.freeze({ label: 'Replace', title: 'The new selection replaces the old one', fn: (a, b) => b }),
+  add: Object.freeze({ label: 'Add', title: 'Add to the selection (Shift)', fn: (a, b) => (a > b ? a : b) }),
+  subtract: Object.freeze({ label: 'Subtract', title: 'Take away from the selection (Alt)', fn: (a, b) => a * (1 - b) }),
+});
+/** `cur` (or null = nothing selected) combined with `next` by SELECTION_COMBINE[mode]: a fresh mask. */
+export function combineMasks(cur, next, mode = 'replace') {
+  const fn = (SELECTION_COMBINE[mode] || SELECTION_COMBINE.replace).fn;
+  const out = new Float32Array(next.length);
+  for (let k = 0; k < next.length; k++) out[k] = fn(cur ? cur[k] : 0, next[k]);
+  return out;
+}
+
+/**
+ * The MAGIC WAND: the pixels of `values` (cols x rows heights) within `tol` inches of the value at pixel (c, r) -- the
+ * 4-connected region holding (c, r) when `contiguous`, else every such pixel. A fresh 0 / 1 mask.
+ */
+export function wandMask(values, cols, rows, c, r, tol, contiguous = true) {
+  const m = new Float32Array(cols * rows);
+  const cc = Math.min(cols - 1, Math.max(0, Math.round(c))), rr = Math.min(rows - 1, Math.max(0, Math.round(r)));
+  const v0 = values[rr * cols + cc];
+  const ok = (k) => Math.abs(values[k] - v0) <= tol;
+  if (!contiguous) { for (let k = 0; k < m.length; k++) if (ok(k)) m[k] = 1; return m; }
+  const stack = [rr * cols + cc];
+  m[stack[0]] = 1;
+  while (stack.length) {
+    const k = stack.pop(), x = k % cols, y = (k - x) / cols;
+    const visit = (n) => { if (!m[n] && ok(n)) { m[n] = 1; stack.push(n); } };
+    if (x > 0) visit(k - 1);
+    if (x < cols - 1) visit(k + 1);
+    if (y > 0) visit(k - cols);
+    if (y < rows - 1) visit(k + cols);
+  }
+  return m;
+}
+
+/**
+ * The board's built heights (`heights`, nx x nz: column i at X = -W/2 + i dx, row j at Y = -H/2 + j dy, board inches +Y up)
+ * resampled (bilinear) at the pixel centres of patch `rec` (its placement: position, rotation, size). A fresh Float32Array.
+ */
+export function boardHeightsOnPatch(heights, nx, nz, board, rawRec) {
+  const rec = normaliseHeightLayer(rawRec);
+  const { cols, rows } = patchGrid(rec);
+  const { w, h } = rec.sizeIn || { w: board.widthIn, h: board.heightIn };
+  const W = board.widthIn, H = board.heightIn, dx = W / (nx - 1), dy = H / (nz - 1);
+  const a = (rec.rotation * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
+  const out = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++) {
+    const v = ((r + 0.5) * h) / rows - h / 2;
+    for (let c = 0; c < cols; c++) {
+      const u = ((c + 0.5) * w) / cols - w / 2;
+      const X = rec.position.x + cs * u - sn * v, Y = rec.position.y + sn * u + cs * v;
+      const fi = Math.min(nx - 1, Math.max(0, (X + W / 2) / dx)), fj = Math.min(nz - 1, Math.max(0, (Y + H / 2) / dy));
+      const i0 = Math.floor(fi), j0 = Math.floor(fj), i1 = Math.min(nx - 1, i0 + 1), j1 = Math.min(nz - 1, j0 + 1), ti = fi - i0, tj = fj - j0;
+      const lo = heights[j0 * nx + i0] * (1 - ti) + heights[j0 * nx + i1] * ti;
+      const hi = heights[j1 * nx + i0] * (1 - ti) + heights[j1 * nx + i1] * ti;
+      out[r * cols + c] = lo * (1 - tj) + hi * tj;
+    }
+  }
+  return out;
+}
+
+/** The exact squared distance transform along one line (Felzenszwalb-Huttenlocher's lower envelope of parabolas): `f` the
+ *  input squared distances (finite), sample spacing `s` (inches), written into `d`. */
+function edt1(f, n, s, d, v, z) {
+  const s2 = s * s;
+  let k = 0;
+  v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let x = ((f[q] + s2 * q * q) - (f[v[k]] + s2 * v[k] * v[k])) / (2 * s2 * (q - v[k]));
+    while (x <= z[k]) { k--; x = ((f[q] + s2 * q * q) - (f[v[k]] + s2 * v[k] * v[k])) / (2 * s2 * (q - v[k])); }
+    k++; v[k] = q; z[k] = x; z[k + 1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) {
+    while (z[k + 1] < q) k++;
+    d[q] = s2 * (q - v[k]) * (q - v[k]) + f[v[k]];
+  }
+}
+/**
+ * The FEATHER PROFILE (Fred 2026-11-23): the hard selection (m >= 0.5) faded INWARD from its outline -- a pixel's distance to
+ * the outline (its distance to the nearest unselected pixel centre, less half a pixel; the patch's border counts as
+ * unselected) through core/falloff.js edgeFade over `widthIn` with `profile` (+ `customFn` for 'custom'): 0 on the outline,
+ * full strength `widthIn` inside. Outside stays 0. `pxPerInX` / `pxPerInY`: the patch's pixels per inch on each axis. Fresh.
+ */
+export function profileFeatherMask(m, cols, rows, { pxPerInX, pxPerInY, widthIn, profile, customFn = null }) {
+  const C = cols + 2, R = rows + 2, sx = 1 / pxPerInX, sy = 1 / pxPerInY;
+  const sel = (r, c) => r > 0 && r < R - 1 && c > 0 && c < C - 1 && m[(r - 1) * cols + (c - 1)] >= 0.5; // the padding is unselected
+  const g = new Float64Array(C * R); // squared distance (inches^2) to the nearest unselected pixel centre
+  for (let c = 0; c < C; c++) { // up each column: the 1D distance to the nearest unselected pixel (two scans; the padding ends it)
+    let last = -Infinity;
+    for (let r = 0; r < R; r++) { if (!sel(r, c)) last = r; g[r * C + c] = r - last; }
+    last = Infinity;
+    for (let r = R - 1; r >= 0; r--) { if (!sel(r, c)) last = r; const dd = Math.min(g[r * C + c], last - r) * sy; g[r * C + c] = dd * dd; }
+  }
+  const n = Math.max(C, R), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+  for (let r = 0; r < R; r++) { // then across each row
+    for (let c = 0; c < C; c++) f[c] = g[r * C + c];
+    edt1(f, C, sx, d, v, z);
+    for (let c = 0; c < C; c++) g[r * C + c] = d[c];
+  }
+  const half = 0.5 * Math.min(sx, sy);
+  const out = new Float32Array(cols * rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const k = r * cols + c;
+      if (!(m[k] >= 0.5)) continue;
+      out[k] = edgeFade(Math.max(0, Math.sqrt(g[(r + 1) * C + (c + 1)]) - half), widthIn, profile, customFn);
+    }
+  }
+  return out;
+}
