@@ -12,7 +12,7 @@
  * then the new record, then ONE editor undo step (the 'heightLayers' undo part rides in it) and the session save.
  * Nothing here rewrites a loaded board (AGENTS.md rule 3): a control writes only when the user moves it.
  */
-import { P, scheduleSessionSave } from '../core/state.js';
+import { P, scheduleSessionSave, lastResult } from '../core/state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
@@ -21,10 +21,10 @@ import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
 import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
-  PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
+  PATCH_LAYER_BLENDS, BASE_LAYER_ID, IMAGE_MAPPING_DEFAULTS, layerHeights, isLayered, patchLayers, patchGrid, layeredRecord, patchComposite, compositeKey, ensurePatchDecoded, patchRasters,
 } from '../core/height/compose.js';
 import { shadeRaster, shadeSize } from '../core/height/shade.js';
-import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny } from '../core/height/selection.js';
+import { rectMask, ellipseMask, lassoMask, featherMask, invertMask, maskOutline, maskFromSvg, maskAny, SELECTION_COMBINE, combineMasks, wandMask, boardHeightsOnPatch, profileFeatherMask } from '../core/height/selection.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { GRADIENT_DEFAULTS, applyGradient } from '../core/height/gradient.js';
 import { FILL_DEFAULTS, applyFill } from '../core/height/fill.js';
@@ -137,6 +137,8 @@ export const HEIGHT_TOOLS = Object.freeze([
   Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
+  // slice 4 (Fred 2026-11-23): the MAGIC WAND -- a tap selects the heights within the tolerance of the tapped one
+  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'select'] }),
   // slice 3 (Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool")
   Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'select'] }),
   Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
@@ -144,7 +146,10 @@ export const HEIGHT_TOOLS = Object.freeze([
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
-  select: Object.freeze({ featherIn: 0.05 }),
+  // slice 4: combine = how a new selection meets the current one (Shift / Alt on a keyboard); featherProfile 'smooth' = the
+  // slice-2 Gaussian feather (pinned), any other BRUSH_FALLOFFS profile fades inward from the outline
+  select: Object.freeze({ featherIn: 0.05, combine: 'replace', featherProfile: 'smooth', featherCurve: BRUSH_DEFAULTS.customCurve }),
+  wand: Object.freeze({ toleranceIn: 0.01, contiguous: true, sample: 'layer' }),
   gradient: GRADIENT_DEFAULTS,
   fill: FILL_DEFAULTS,
   file: Object.freeze({ asNewPatch: false }),
@@ -156,7 +161,8 @@ export const HEIGHT_TOOL_GROUPS = Object.freeze([
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
   // the tip extras show only for a square / chisel tip (a round brush is set by its falloff; slice 3b / 3c)
   Object.freeze({ id: 'tip', label: 'Square / chisel tip', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
-  Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it', needsPatch: true }),
+  Object.freeze({ id: 'wand', label: 'Magic wand', note: 'tap a height on the patch', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' }),
+  Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it; Shift adds, Alt subtracts', needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
   Object.freeze({ id: 'file', label: 'Heightmap file', note: '8 / 16-bit PNG, JPG, WebP, EXR', after: true }),
@@ -192,8 +198,24 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
     note: '0 = transparent (no effect on the board); type any value' },
   { id: 'fillOpacity', group: 'fill', target: 'fill', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
   { id: 'importAsNew', group: 'file', target: 'file', kind: 'check', path: ['asNewPatch'], label: 'Import as a new patch (sized to the image)' },
+  // slice 4 (Fred 2026-11-23): the WAND's settings (TOOL_DEFAULTS.wand)
+  { id: 'wandToleranceIn', group: 'wand', target: 'wand', kind: 'slider', path: ['toleranceIn'], label: 'Tolerance (in)', step: 0.001, range: () => [0, 0.5],
+    note: 'heights within this of the tapped one' },
+  { id: 'wandContiguous', group: 'wand', target: 'wand', kind: 'check', path: ['contiguous'], label: 'Contiguous (only the connected area)' },
+  { id: 'wandSample', group: 'wand', target: 'wand', kind: 'choice', path: ['sample'], label: 'Sample',
+    options: [['layer', 'Active layer', 'The heights of the layer the tools edit'], ['board', 'Whole board', 'The board as last built (terrain, reliefs, every layer), on this patch']] },
+  // slice 4: how a new selection meets the current one -- the touch way to Shift (add) / Alt (subtract)
+  { id: 'selCombine', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
+    options: Object.entries(SELECTION_COMBINE).map(([k, s]) => [k, s.label, s.title]) },
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
+  // slice 4 (Fred 2026-11-23): the fade's PROFILE, inward from the outline (Smooth = the slice-2 soft blur, unchanged)
+  { id: 'featherProfile', group: 'select', target: 'select', kind: 'choice', path: ['featherProfile'], label: 'Feather profile',
+    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, k === 'smooth' ? 'A soft blur across the edge (the slice-2 feather)' : `${p.title}: 0 on the outline, full at the Feather width inside`, falloffIcon(k)]),
+    alsoSet: (prev, next, st) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(st.featherCurve, BRUSH_DEFAULTS.customCurve)
+      ? { featherCurve: curvePointsFromProfile(prev, 6) } : null) },
+  { id: 'featherCurve', group: 'select', target: 'select', kind: 'curve', path: ['featherCurve'], label: 'Custom feather (outline -> inside)',
+    showWhen: (b, p, ctx) => !!ctx && ctx.tools.select.featherProfile === 'custom' },
   // slice 3b: build-up on (default; slice 1: each dab adds to the stroke) / off (the stroke keeps the brush's profile).
   // Only the user switches it (slice 3c: nothing sets it automatically)
   { id: 'buildUp', group: 'brush', target: 'brush', kind: 'check', path: ['buildUp'], label: 'Build up (off: a stroke keeps the brush profile)' },
@@ -406,7 +428,7 @@ const TOOL = Object.freeze({
 function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) ed._heightTool = TOOL; }
 
 /** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
-const selectGesture = (kind) => ({ start: (pt) => beginSelect(kind, pt), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
+const selectGesture = (kind) => ({ start: (pt, e) => beginSelect(kind, pt, e), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
 const GESTURES = {
   brush: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('brush', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
   eraser: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('eraser', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
@@ -417,6 +439,8 @@ const GESTURES = {
   fill: { start: (pt) => beginFill(pt), move: () => {}, end: () => endFill(), cancel: () => { _fillTap = false; } },
   // slice 3: a drag moves the floating piece (lifting it first); its cancel puts back the drag in flight, the piece floats on
   move: { start: (pt, e) => beginMove(pt, e), move: (pt) => moveMove(pt), end: () => endMove(), cancel: () => cancelMoveDrag() },
+  // slice 4: the wand picks on release (a tap), at the press point, with the press's Shift / Alt
+  wand: { start: (pt, e) => { _wandTap = { pt, combine: combineOf(e) }; return true; }, move: () => {}, end: () => { const t = _wandTap; _wandTap = null; if (t) wandAt(t.pt, t.combine); return _chain; }, cancel: () => { _wandTap = null; } },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
 /** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. A floating piece is dropped first. */
@@ -459,12 +483,14 @@ function maskOf(rec) {
   const g = rec ? patchGrid(rec) : null;
   return sel && g && sel.cols === g.cols && sel.rows === g.rows ? sel.mask : null;
 }
-/** Set the active patch's selection mask (null / nothing selected = clear), redraw its outline. */
-function setSelection(mask) {
+/** Set the active patch's selection mask (null / nothing selected = clear), redraw its outline. `combine` (slice 4,
+ *  SELECTION_COMBINE): how `mask` meets the current selection -- replace (default), add, subtract. */
+function setSelection(mask, combine = 'replace') {
   dropHeightMove(); // another action drops a floating piece first
   const rec = activeHeightLayer();
   if (!rec) return false;
   const g = patchGrid(rec);
+  if (mask && combine !== 'replace') mask = combineMasks(maskOf(rec), mask, combine);
   if (!mask || !maskAny(mask)) _selections.delete(rec.id);
   else _selections.set(rec.id, { cols: g.cols, rows: g.rows, mask, path: null });
   syncHeightPanel();
@@ -480,18 +506,26 @@ const shapeMask = (rec, kind, pts) => {
   return (kind === 'ellipse' ? ellipseMask : rectMask)(cols, rows, c0, r0, c1, r1);
 };
 /** A rectangle / ellipse between two board points, or a lasso through board points ([X, Y], inches, +Y up): the new selection. */
-export function selectHeightRect(p0, p1) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'rect', [patchPx(rec, p0), patchPx(rec, p1)])); }
-export function selectHeightEllipse(p0, p1) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'ellipse', [patchPx(rec, p0), patchPx(rec, p1)])); }
-export function selectHeightLasso(points) { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'lasso', points.map((q) => patchPx(rec, q)))); }
+/** `combine` (slice 4): replace / add / subtract (SELECTION_COMBINE). */
+export function selectHeightRect(p0, p1, combine = 'replace') { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'rect', [patchPx(rec, p0), patchPx(rec, p1)]), combine); }
+export function selectHeightEllipse(p0, p1, combine = 'replace') { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'ellipse', [patchPx(rec, p0), patchPx(rec, p1)]), combine); }
+export function selectHeightLasso(points, combine = 'replace') { const rec = activeHeightLayer(); return !!rec && setSelection(shapeMask(rec, 'lasso', points.map((q) => patchPx(rec, q))), combine); }
+/** The combine mode of a selection gesture: Shift = add, Alt = subtract (a keyboard), else the Selection row (touch). */
+const combineOf = (e) => (e && e.shiftKey ? 'add' : e && e.altKey ? 'subtract' : _tools.select.combine);
 export function invertHeightSelection() { const s = heightSelection(); return !!s && setSelection(invertMask(s.mask)); }
 export function clearHeightSelection() { return setSelection(null); }
-/** Soften the selection edge by `inches` (a blur; a stretched patch blurs by its own pixels per inch on each axis). */
+/** Soften the selection edge by `inches` (a stretched patch by its own pixels per inch on each axis). The profile
+ *  (_tools.select.featherProfile, slice 4): 'smooth' = the slice-2 blur across the edge (byte for byte); any other
+ *  BRUSH_FALLOFFS profile = a fade running INWARD from the outline (0 on it, full `inches` inside; profileFeatherMask). */
 export function featherHeightSelection(inches) {
   const s = heightSelection();
   const rec = activeHeightLayer();
   if (!s || !(inches > 0)) return false;
   const size = placed(rec).sizeIn;
-  return setSelection(featherMask(s.mask, s.cols, s.rows, (inches * s.cols) / size.w, (inches * s.rows) / size.h));
+  const profile = _tools.select.featherProfile || 'smooth';
+  if (profile === 'smooth') return setSelection(featherMask(s.mask, s.cols, s.rows, (inches * s.cols) / size.w, (inches * s.rows) / size.h));
+  const customFn = profile === 'custom' ? curveFromPoints(_tools.select.featherCurve || BRUSH_DEFAULTS.customCurve) : null;
+  return setSelection(profileFeatherMask(s.mask, s.cols, s.rows, { pxPerInX: s.cols / size.w, pxPerInY: s.rows / size.h, widthIn: inches, profile, customFn }));
 }
 /** An editor SVG's shapes (editor coordinates: a Draw-tab layer) as the selection. `opts.render`: the renderer (tests). */
 export async function selectHeightFromSvg(svgText, opts = {}) {
@@ -501,7 +535,7 @@ export async function selectHeightFromSvg(svgText, opts = {}) {
   await withLoadingStage('heightPatch', async () => { mask = await maskFromSvg(svgText, placed(rec), board(), opts); });
   if (activeHeightLayer() !== find(rec.id)) return false;
   if (!maskAny(mask)) { status('That shape does not reach this patch.'); return false; }
-  return setSelection(mask);
+  return setSelection(mask, opts.combine || _tools.select.combine);
 }
 /** A Draw-tab layer (its art, as its stamp sees it: getLayerSvg + the layer's own transform) as the selection. */
 export function selectHeightFromLayer(layerId) {
@@ -530,11 +564,11 @@ function syncSelectionSources() {
 }
 
 // the selection gestures: drag a rectangle / ellipse, draw a lasso; one selection on release (a tap clears it)
-function beginSelect(kind, pt) {
+function beginSelect(kind, pt, e) {
   const rec = activeHeightLayer();
   if (!rec || !patchGrid(rec)) return false;
   const q = pixelOf(rec, pt);
-  _drag = { kind, id: rec.id, pts: [[q.c, q.r]] };
+  _drag = { kind, id: rec.id, pts: [[q.c, q.r]], combine: combineOf(e) };
   syncHeightOverlay();
   return true;
 }
@@ -552,11 +586,39 @@ function endSelect() {
   const rec = d && find(d.id);
   if (!rec) return Promise.resolve();
   const moved = d.kind === 'lasso' ? d.pts.length >= 3 : d.pts.length === 2 && Math.hypot(d.pts[1][0] - d.pts[0][0], d.pts[1][1] - d.pts[0][1]) >= 1;
-  if (!moved) { setSelection(null); return Promise.resolve(); }
-  if (activeHeightLayer() === rec) setSelection(shapeMask(rec, d.kind, d.pts));
+  if (!moved) { if (d.combine === 'replace') setSelection(null); return Promise.resolve(); } // a plain tap clears; Shift / Alt taps keep it
+  if (activeHeightLayer() === rec) setSelection(shapeMask(rec, d.kind, d.pts), d.combine);
   return Promise.resolve();
 }
 function cancelSelect() { if (_drag) { _drag = null; syncHeightOverlay(); } }
+
+// ── the magic wand (slice 4, Fred 2026-11-23; core/height/selection.js wandMask) ─────────────────────────────────────
+/** The heights the wand reads on patch `rec`: the active layer's (an image layer's through its live mapping), or the board
+ *  as last built (lastResult, resampled onto the patch), or null (not ready: a decoding layer / no build yet). */
+function wandValues(rec) {
+  if (_tools.wand.sample === 'board') {
+    const lr = lastResult;
+    if (lr && lr.heights && lr.nx > 1 && lr.nz > 1) return boardHeightsOnPatch(lr.heights, lr.nx, lr.nz, board(), placed(rec));
+    status('The board is not built yet: the wand reads the active layer.');
+  }
+  const work = workingCopy(rec);
+  if (!work) return null;
+  const layer = layerOf(rec);
+  return layer && layer.kind === 'image' ? layerHeights(layer, work.data) : work.data;
+}
+let _wandTap = null; // { pt, combine } between the press and the release
+/** A wand pick at editor point `pt`: the selection (combined by `combine`). */
+function wandAt(pt, combine) {
+  const rec = activeHeightLayer();
+  const g = rec && patchGrid(rec);
+  if (!g) return false;
+  const q = pixelOf(rec, pt);
+  if (!q.inside) return false;
+  const values = wandValues(rec);
+  if (!values) return false;
+  const w = _tools.wand;
+  return setSelection(wandMask(values, g.cols, g.rows, q.c, q.r, w.toleranceIn, w.contiguous !== false), combine);
+}
 
 /** The selection's outline on patch node `node` (image pixel coordinates -> the patch's own box), marching ants. */
 function drawSelection(node, rec, p, show) {
@@ -1481,7 +1543,32 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
 }
 
-/** The active patch's layers, TOP first: visible, name (select), up / down, delete. */
+/** Rename layer `layerId` in place: its name button becomes a text input; Enter or leaving it writes the name (ONE step,
+ *  setPatchLayerField; an unchanged name writes nothing), Esc puts the name back. */
+function beginLayerRename(layerId) {
+  const btn = document.querySelector(`[data-patch-layer-pick="${layerId}"]`);
+  const layer = patchLayers(activeHeightLayer()).find((l) => l.id === layerId);
+  if (!btn || !layer) return false;
+  const input = el('input', { type: 'text', class: 'height-layer-rename', 'data-patch-layer-name-edit': layerId, 'aria-label': 'Layer name',
+    style: 'flex:1 0 auto; min-width:0; max-width:calc(100% - 24px); min-height:32px; font:inherit; box-sizing:border-box;' });
+  input.value = layer.name || '';
+  btn.replaceWith(input);
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep && input.value !== (layer.name || '')) setPatchLayerField(layerId, 'name', input.value); // re-renders the rows
+    else syncHeightPanel();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  if (typeof input.focus === 'function') { input.focus(); if (typeof input.select === 'function') input.select(); }
+  return true;
+}
+
+/** The active patch's layers, TOP first: visible, name (select; double-click renames), rename, up / down, delete. */
 function syncLayerList(rec) {
   const box = byId('heightLayerList');
   if (!box) return;
@@ -1496,6 +1583,8 @@ function syncLayerList(rec) {
       el('button', { type: 'button', class: 'height-layer-name', style: 'flex:1 0 auto; min-width:0; max-width:calc(100% - 24px); min-height:32px; text-align:left; background:none; border:0; font:inherit; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
       // a name longer than the row's free width takes the whole row and its buttons move under it together, right-aligned
       el('span', { style: 'display:flex; gap:2px; margin-left:auto;' }, [
+        // slice 4 (Fred 2026-11-23): rename -- the pencil (touch) or a double-click on the name
+        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-rename': l.id, title: 'Rename this layer', 'aria-label': 'Rename layer', text: '✎' }),
         el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
         el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
         el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
@@ -1623,11 +1712,16 @@ export function initHeightPanel(hooks = {}) {
   });
   byId('heightLayerAdd')?.addEventListener('click', () => { addPaintLayer().catch((e) => status(`Could not add the layer: ${e && e.message ? e.message : e}`, true)); });
   byId('heightLayerList')?.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-patch-layer-pick],[data-patch-layer-move],[data-patch-layer-remove]');
+    const t = e.target.closest('[data-patch-layer-pick],[data-patch-layer-move],[data-patch-layer-remove],[data-patch-layer-rename]');
     if (!t || t.disabled) return;
-    if (t.hasAttribute('data-patch-layer-pick')) selectPatchLayer(t.getAttribute('data-patch-layer-pick'));
+    if (t.hasAttribute('data-patch-layer-rename')) beginLayerRename(t.getAttribute('data-patch-layer-rename'));
+    else if (t.hasAttribute('data-patch-layer-pick')) selectPatchLayer(t.getAttribute('data-patch-layer-pick'));
     else if (t.hasAttribute('data-patch-layer-remove')) removePatchLayer(t.getAttribute('data-patch-layer-remove'));
     else { const v = t.getAttribute('data-patch-layer-move'); const k = v.lastIndexOf(':'); movePatchLayer(v.slice(0, k), Number(v.slice(k + 1))); }
+  });
+  byId('heightLayerList')?.addEventListener('dblclick', (e) => {
+    const t = e.target.closest('[data-patch-layer-pick]');
+    if (t) beginLayerRename(t.getAttribute('data-patch-layer-pick'));
   });
   byId('heightLayerList')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-patch-layer-visible]');

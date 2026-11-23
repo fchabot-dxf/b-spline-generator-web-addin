@@ -68,6 +68,18 @@ export function curvePointsFromProfile(key, n = 6) {
 }
 
 /**
+ * An EDGE FADE: the weight at `dist` inches inside an edge that fades over `widthIn` with profile `profile` (a BRUSH_FALLOFFS
+ * key; 'custom' reads `customFn`): 0 on the edge, 1 from `widthIn` in, the profile between (brushFalloff at hardness 0, t =
+ * 1 - dist / width kept in 0..1). The ONE edge fade: the STL crop edge (core/stl/crop.js) and the height painter's feather
+ * profile (core/height/selection.js profileFeatherMask) both read it.
+ */
+export function edgeFade(dist, widthIn, profile, customFn = null) {
+  let t = 1 - dist / widthIn;
+  if (!(t > 0)) t = 0; else if (t > 1) t = 1;
+  return brushFalloff(t, 1, 0, profile, customFn);
+}
+
+/**
  * The falloff at distance `r` from a dab of radius `R`, `hardness` (0..1) and profile `falloff` (a BRUSH_FALLOFFS key).
  * 'custom' reads `customFn` (curveFromPoints of the brush's customCurve; the default curve when absent).
  */
