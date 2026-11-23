@@ -146,7 +146,9 @@ export const HEIGHT_TOOLS = Object.freeze([
   // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
   // owner 2026-11-23 ('⌫' read as a keyboard backspace): `iconFrom` = the Draw tool button whose own svg this tool wears (the
   // one icon source; `icon` stays the fallback where that button is absent); `iconDashed`: drawn dashed, a selection marquee
-  Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
+  // `key` e (Fred 2026-11-23, "have you tried erasing? it doesnt work"): E is the eraser in every tab -- here it was Draw's
+  // hidden one (the vector eraser, which leaves heights untouched); editor-interaction.js clicks the [data-key] button on screen
+  Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', key: 'e', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
   Object.freeze({ id: 'selectRect', icon: '⬚', iconFrom: 'toolRect', iconDashed: true, label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectEllipse', icon: '◯', iconFrom: 'toolCircle', iconDashed: true, label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),

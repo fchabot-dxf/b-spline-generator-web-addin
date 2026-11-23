@@ -438,6 +438,14 @@ function _isEditorActive(editor) {
     return true;
 }
 
+/** True when nothing from `btn` up hides it (hidden / display none: the tool row of a tab that is not open). */
+function _isShownButton(btn) {
+    for (let n = btn; n && n.nodeType === 1; n = n.parentElement) {
+        if (n.hidden || getComputedStyle(n).display === 'none') return false;
+    }
+    return true;
+}
+
 function _handleEditorKeydown(editor, e) {
     if (!_isEditorActive(editor)) return;
     const sel = (editor._selectedElements || []);
@@ -465,7 +473,11 @@ function _handleEditorKeydown(editor, e) {
     // when any modifier is held (the Ctrl+C/V/A shortcuts below still need
     // their letters) or the user is typing into a text field.
     if (!e.ctrlKey && !e.metaKey && !e.altKey && !_isTypingTarget(e.target)) {
-        const toolBtn = document.querySelector(`#svgEditorModal [data-key="${e.key.toLowerCase()}"]`);
+        // Fred 2026-11-23 ("have you tried erasing? it doesnt work"): a key two tabs declare (E: Draw's #toolErase and the
+        // Height tab's Eraser) clicks the button ON SCREEN -- the first one in the modal was the hidden Draw eraser, which
+        // armed the vector eraser in the Height tab. None on screen: the first, as before.
+        const btns = [...document.querySelectorAll(`#svgEditorModal [data-key="${e.key.toLowerCase()}"]`)];
+        const toolBtn = btns.find(_isShownButton) || btns[0];
         if (toolBtn) {
             e.preventDefault();
             toolBtn.click();
