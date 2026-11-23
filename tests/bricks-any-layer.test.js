@@ -81,6 +81,16 @@ describe('item 64: a new element goes on its KIND\u2019s own layer and stays on 
     runBricks(ed, P.brickSettings, null);
     expect(ed._layers).toHaveLength(4); // reused, not duplicated
   });
+  it('layer stack: on a fresh board with NO layer, a Wall + Frame lay leaves no active layer; the next art gets its own layer', async () => {
+    const ed = fakeEditor();
+    ed._layers = []; ed._activeLayer = null; // a fresh board (editor-io resetArtworkToFresh makes no layer now)
+    runBricks(ed, P.brickSettings, null);
+    expect(ed._layers.map((l) => l.brickKind)).toEqual(['wall', 'frame']);
+    expect(ed._activeLayer).toBe(null); // a kind layer never takes the active slot: art drawn next is not put on "Wall"
+    const { ensureActiveLayer } = await import('../bspline-frame-builder/b-spline-gen/html/editor/layers.js');
+    const artId = ensureActiveLayer(ed);
+    expect(ed._layers.find((l) => l.id === artId).brickKind).toBeUndefined();
+  });
   it('a kind layer is created only when that kind is LAID: a Wall-only lay makes "Wall" and no "Frame"', () => {
     const ed = fakeEditor();
     runBricks(ed, P.brickSettings, null, { kinds: ['wall'] });

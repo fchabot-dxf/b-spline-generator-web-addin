@@ -194,7 +194,10 @@ export function getActiveLayer(editor) {
  *  collapses into the same undo step as the first stroke. */
 export function ensureActiveLayer(editor) {
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
-  const activeOk = layers.some(l => l.id === getActiveLayer(editor));
+  const current = layers.find(l => l.id === getActiveLayer(editor));
+  // item 64: with NO active layer set, getActiveLayer's '0' fallback never hands new art a brick kind's own layer (a fresh
+  // board has no layer since the layer stack, so a first wall's "Wall" layer can be id '0'); a Wall the user ACTIVATED still takes art
+  const activeOk = !!current && !(editor._activeLayer == null && current.brickKind);
   if (layers.length > 0 && activeOk) return getActiveLayer(editor);
 
   // Either no layers exist yet, or the active id is stale (e.g. after
@@ -365,7 +368,9 @@ export function addLayer(editor, opts = {}) {
   }
   applyToolingDefaults(layer);
   editor._layers.push(layer);
-  if (!editor._activeLayer) editor._activeLayer = id;
+  // item 64 "the active layer is untouched": a brick KIND's layer never takes the empty active slot (a fresh board has
+  // no layer since the layer stack; art drawn after a first wall would otherwise land on "Wall")
+  if (!editor._activeLayer && !opts.brickKind) editor._activeLayer = id;
   renderLayersPanel(editor);
   applyLayerState(editor);
   // Caller may pass {skipUndo:true} when this add is bundled with

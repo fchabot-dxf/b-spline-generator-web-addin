@@ -82,6 +82,10 @@ async function layerButton(layerId, cls) {
   return js(`(()=>{ const rs=[...document.querySelectorAll('.layer-row[data-layer-id="${layerId}"]')]; const r=rs.find((e)=>e.offsetParent!==null)||rs[0]; if(!r) return 'no row'; const b=${cls ? `r.querySelector(${JSON.stringify(cls)})` : 'r'}; if(!b) return 'no button'; b.click(); return 'ok'; })()`);
 }
 
+// the layer stack: a fresh board has NO layer now (it had an empty, active "Layer 1"). Rows 7 + 8 need that Layer 1 next
+// to the one they add (a "Layer 2" to pick / move to): set up through the app's own addLayer; the checks are unchanged.
+const ensureLayer1 = () => js(`import('./editor/layers.js').then((L) => { const ed = window.svgEditor; if (!ed._layers.length) L.setActiveLayer(ed, L.addLayer(ed, { skipUndo: true }).id); return ed._layers.length; })`);
+
 async function runBrickLayers() {
   const B = BRICK_LAYERS;
   await reloadWithStorage({}); // a FRESH board (no saved session): slice 3's contract is about new boards
@@ -175,6 +179,7 @@ async function runBrickLayers() {
   // bricks; moving one brick moves the spine and every piece
   await reloadWithStorage({});
   await openEditorTab('editorTabBrick');
+  await ensureLayer1();
   await click(B.addLayer, 900);
   const s7a = await layersRead();
   const layer2 = s7a.active;
@@ -200,7 +205,7 @@ async function runBrickLayers() {
     checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay', false, '', 'F35 item 40'); return;
   }
   await reloadWithStorage({});
-  await openEditorTab(B.artworkTab); await click(B.addLayer, 900);
+  await openEditorTab(B.artworkTab); await ensureLayer1(); await click(B.addLayer, 900);
   await openEditorTab('editorTabBrick'); await click(T.wallTool, 900);
   const vis = await jsJSON(`JSON.stringify((()=>{ const l=document.getElementById(${JSON.stringify(T.list)}); const slot=document.getElementById(${JSON.stringify(T.slot)});
     const rows=[...l.querySelectorAll('[data-layer-id]')]; const r=l.getBoundingClientRect();
