@@ -200,6 +200,20 @@ async function run(tag, metrics, touchOn) {
   await tapAt(ip[0], ip[1]);
   console.log(tag, 'inverted dab (dip with a ridge)', await extremes());
   await shot('8-inverted-dab');
+
+  // 5. the CARVE RANGE readout (detection only): now, then after Apply (a real build) and the editor reopened on the Height tab
+  const rangeNow = () => evalJS(`(()=>{ const e = document.getElementById('heightCarveRange'); return JSON.stringify({ shown: !!e && !e.hidden, text: e && e.textContent, warning: !!e && e.classList.contains('stl-error') }); })()`);
+  console.log(tag, 'carve range (before Apply)', await rangeNow());
+  console.log(tag, 'apply + reopen', await evalJS(`(async()=>{ const W = (ms) => new Promise((r) => setTimeout(r, ms)); const st = await import('./core/state.js'); const g0 = st.lastResultGeneration;
+    document.getElementById('editorApply').dispatchEvent(new Event('pointerdown')); document.getElementById('editorApply').click();
+    for (let i = 0; i < 240 && st.lastResultGeneration === g0; i++) await W(250);
+    await W(1000); await (await import('./main/frame-panel.js')).openEditorOn('height'); await W(2500);
+    return JSON.stringify({ rebuilt: st.lastResultGeneration !== g0 }); })()`, 120000));
+  await drawer(true);
+  console.log(tag, 'carve range (after Apply)', await rangeNow());
+  await rect('#heightCarveRange');
+  await shot('9-range');
+  if (tag === 'e_desktop') writeFileSync(`${OUT}/e_range.png`, readFileSync(`${OUT}/${TAG}-9-range.png`));
 }
 
 try {

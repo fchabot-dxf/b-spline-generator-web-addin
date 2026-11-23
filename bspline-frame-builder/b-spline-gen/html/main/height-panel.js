@@ -18,6 +18,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
 import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, BRUSH_TIPS, BRUSH_ALT_MODE, brushFalloff, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
 import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
+import { carveRangeReport } from '../core/carve-range.js';
 import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
@@ -1244,6 +1245,18 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   return true;
 }
 export const heightBrush = () => ({ ..._brush });
+/** The notes that sit above every section (the status line; slice 5: the carve range readout). */
+const PANEL_TOP_NOTES = Object.freeze(['heightStatus', 'heightCarveRange']);
+/** The carve range of the last build (lastResult.heights against 0..P.carveZ; core/carve-range.js): the ONE place it shows.
+ *  A warning colour when the board carves below the floor or stands above the stock top. Detection only. */
+function syncCarveRange() {
+  const box = byId('heightCarveRange');
+  if (!box) return;
+  const r = carveRangeReport(lastResult && lastResult.heights, P.carveZ);
+  box.hidden = !r;
+  box.textContent = r ? r.text : '';
+  box.classList.toggle('stl-error', !!(r && r.warn));
+}
 /** The panel's sections in view order: the active tool's declared `leads` first (in their order; the status line, when
  *  shown, just above them), then every other part of the panel in its built order. CSS `order` on the flex column body
  *  (renderHeightPanel): no element is moved, so the listeners, the ids and the picker's mount stay as built. */
@@ -1253,7 +1266,7 @@ function orderPanelGroups() {
   const leads = (HEIGHT_TOOLS.find((x) => x.id === _tool) || {}).leads || [];
   [...body.children].forEach((ch, i) => {
     const k = ch.id && ch.id.startsWith('heightGroup_') ? leads.indexOf(ch.id.slice('heightGroup_'.length)) : -1;
-    ch.style.order = String(ch.id === 'heightStatus' ? 0 : k >= 0 ? k + 1 : 100 + i);
+    ch.style.order = String(PANEL_TOP_NOTES.includes(ch.id) ? 0 : k >= 0 ? k + 1 : 100 + i);
   });
 }
 /** The tip extras follow the tip at once (a setting written without a full panel sync): the 'tip' group's declared showWhen. */
@@ -1654,6 +1667,8 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
     el('button', { type: 'button', id: 'heightRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Delete' }),
   ]));
   body.appendChild(el('div', { id: 'heightStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
+  // slice 5 (Fred 2026-11-23): the carve range of the last build (core/carve-range.js) -- detection only
+  body.appendChild(el('div', { id: 'heightCarveRange', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'heightList', class: 'stl-list' }));
   const ctx = panelCtx();
   for (const g of panelGroups()) {
@@ -1781,6 +1796,7 @@ export function syncHeightPanel() {
   syncSelectionSources();
   syncTipGroup();
   syncGreyPalette();
+  syncCarveRange();
   orderPanelGroups();
   const stored = byId('heightStored');
   if (stored) {
@@ -1802,6 +1818,8 @@ function onTabChanged(e) {
   syncHeightOverlay();
 }
 const onViewChanged = () => syncHeightOverlay();
+/** A build finished (core/render-topview.js editorTopViewUpdated): the carve range follows it. */
+const onBuilt = () => syncCarveRange();
 
 /** Wire the tab (main.js). `hooks.onChange`: a committed change (main.js rebuilds once the editor is closed). */
 export function initHeightPanel(hooks = {}) {
@@ -1892,6 +1910,7 @@ export function initHeightPanel(hooks = {}) {
     window.addEventListener('keydown', onMoveKey, true);
     document.addEventListener('editorTabChanged', onTabChanged); // the same function: one listener however often init runs
     for (const ev of ['editorBoardResized', 'editorViewChanged', 'editorTopViewUpdated']) document.addEventListener(ev, onViewChanged);
+    document.addEventListener('editorTopViewUpdated', onBuilt);
   }
   ensureTool();
   syncHeightPanel();
