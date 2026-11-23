@@ -845,9 +845,14 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     gap: 4px;
     margin-bottom: 6px;
 }
-/* the Height tab's tools head its panel the same way (owner 2026-11-23: Draw's frame): a wrapping row, every tool on screen */
+/* the Height tab's tools head its panel the same way (owner 2026-11-23: Draw's frame), every tool on screen. Advisor
+   2026-11-23: two EVEN rows, never 9 + 1 -- a grid of five columns (each 34..72 px, the button centred): 5 + 5 for ten
+   tools, spread over the phone's width, Draw's density in the 236 px desktop panel. display wins over the inline
+   display:flex editor-tabs.js setEditorTab writes on the active tab's toolbar (its panel hides it on any other tab). */
 [data-panel-head] > .panel-tool-row {
-    flex-wrap: wrap;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(34px, 72px));
+    justify-items: center;
     gap: 4px;
 }
 #artTabsHead > #artGeneralBody > div {
