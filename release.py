@@ -14,11 +14,11 @@ Usage:
     commit message. No flags (bare) == --all == the exact original behaviour.
 
 Steps (run in this order for --all / bare):
-  1. Build the Fusion add-in distribution ZIP (bspline-frame-builder.zip)   [--addin]
+  1. Build the Fusion add-in ZIP in release-out/ (build-info.json inside)   [--addin]
   2. git add -A; (auto-generate message if none given); commit; push        [--web]
        (Cloudflare Pages auto-rebuilds the web app on push to main)
   3. gh release upload latest <zip> --clobber                               [--addin]
-       (updates the website's download button source)
+       (the website's button + installers and the add-in's "Update to latest" download it)
   4. Refresh local Fusion 360 AddIns folder                                 [--local]
        (developer convenience; best-effort)
 
@@ -37,13 +37,22 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 ADDIN_ROOT = os.path.join(REPO_ROOT, "bspline-frame-builder")
-ZIP_TARGET = os.path.join(ADDIN_ROOT, "bspline-frame-builder.zip")
+
+# The release zip's name + URL are declared ONCE, in the updater that downloads it (fb_shared/updater.py).
+if ADDIN_ROOT not in sys.path:
+    sys.path.insert(0, ADDIN_ROOT)
+from fb_shared import updater as _updater  # noqa: E402
+
+# Built OUTSIDE the add-in folder (release-out/, gitignored) so neither the next zip nor a local deploy picks it up.
+RELEASE_DIR = os.path.join(REPO_ROOT, "release-out")
+ZIP_TARGET = os.path.join(RELEASE_DIR, _updater.ZIP_NAME)
 PAGES_URL = "https://bspline-generator.pages.dev"
 PAGES_PROJECT = "bspline-generator"
 
@@ -181,31 +190,75 @@ def _zip_should_skip(name):
     return False
 
 
-def step_build_zip():
-    global zip_summary
-    print(f"[1/4] Building distribution ZIP at {ZIP_TARGET}...")
-    if os.path.exists(ZIP_TARGET):
-        os.remove(ZIP_TARGET)
-    addin_root_name = os.path.basename(os.path.normpath(ADDIN_ROOT))
+def _load_deploy_module():
+    """DEPLOY_bspline-frame-builder.py (hyphenated, so loaded by path): the one writer of the version stamp."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "deploy_script", os.path.join(ADDIN_ROOT, "DEPLOY_bspline-frame-builder.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def release_stamp(now, prev_info=None):
+    """The release's version stamp (it rides inside the zip as build-info.json, which the palette badges read): the
+    deploy's own make_build_info, counted per day from the previous local release build, and with source_root
+    blanked (a public file carries no dev path)."""
+    stamp = _load_deploy_module().make_build_info(ADDIN_ROOT, now, prev_info)
+    stamp["source_root"] = ""
+    return stamp
+
+
+def _previous_release_stamp():
+    """build-info.json inside the last zip built in release-out/ (to count today's releases), or None."""
+    try:
+        with zipfile.ZipFile(ZIP_TARGET) as zf:
+            return json.loads(zf.read(f"{_updater.ADDIN_NAME}/build-info.json"))
+    except Exception:
+        return None
+
+
+def build_addin_release(addin_root, out_dir, stamp):
+    """Build the release zip in ``out_dir`` (top folder = the add-in folder's name), with ``build-info.json`` =
+    ``stamp`` written INTO the archive, never into the source tree. Returns its path."""
+    os.makedirs(out_dir, exist_ok=True)
+    zip_path = os.path.join(out_dir, _updater.ZIP_NAME)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+    addin_root_name = os.path.basename(os.path.normpath(addin_root))
     zip_file_count = 0
-    with zipfile.ZipFile(ZIP_TARGET, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(ADDIN_ROOT):
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(addin_root):
             dirs[:] = [d for d in dirs
                        if not _zip_should_skip(d)
                        and d != "dist"
                        and d != "deploy_dist"
                        and not d.startswith("deploy_dist_")]
             for f in files:
-                if _zip_should_skip(f):
+                if _zip_should_skip(f) or (root == addin_root and f == "build-info.json"):
                     continue
                 abs_path = os.path.join(root, f)
-                rel_inside = os.path.relpath(abs_path, ADDIN_ROOT)
+                rel_inside = os.path.relpath(abs_path, addin_root)
                 arc_path = os.path.join(addin_root_name, rel_inside)
                 zf.write(abs_path, arc_path)
                 zip_file_count += 1
+        zf.writestr(f"{addin_root_name}/build-info.json", json.dumps(stamp, indent=4))
+    build_addin_release.file_count = zip_file_count
+    return zip_path
+
+
+def step_build_zip():
+    global zip_summary
+    print(f"[1/4] Building distribution ZIP at {ZIP_TARGET}...")
+    stamp = release_stamp(datetime.now().astimezone(), _previous_release_stamp())
+    if stamp["sha"] == "unknown":
+        print("      Warning: git did not answer; the release stamp reads sha 'unknown'.")
+    build_addin_release(ADDIN_ROOT, RELEASE_DIR, stamp)
+    zip_file_count = build_addin_release.file_count
     zip_size_mb = os.path.getsize(ZIP_TARGET) / (1024 * 1024)
-    zip_summary = f"{zip_file_count} files, {zip_size_mb:.1f} MiB"
+    zip_summary = f"{zip_file_count} files, {zip_size_mb:.1f} MiB, stamp {stamp['version']} {stamp['sha']}"
     print(f"      Packed {zip_file_count} files -> {os.path.basename(ZIP_TARGET)} ({zip_size_mb:.1f} MiB)")
+    print(f"      Stamp {stamp['version']} {stamp['sha']} ({stamp['branch']}){' DIRTY' if stamp['dirty'] else ''}")
 
 
 # ----- step 2: git add -A, commit, push ----------------------------------

@@ -1432,6 +1432,12 @@
           </div>
           <div id="editPasswordStatus" style="font-size:11px; color:#666; margin-top:6px;"></div>
         </div>
+        <!-- Fred 2026-11-22: the one-click add-in installers, filled from main/addin-download.js ADDIN_INSTALLERS on
+             opening Settings (main/header-controls.js); hidden inside Fusion, where the add-in checks for updates -->
+        <div class="cad-panel-section" id="addinInstallSection">
+          <label class="cad-label">Fusion add-in</label>
+          <div id="addinInstallLinks"></div>
+        </div>
         <div class="cad-panel-section">
           <label class="cad-label">Undo Limit</label>
           <div class="cad-nested-input" style="width:100%;">

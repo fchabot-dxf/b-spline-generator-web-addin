@@ -23,7 +23,47 @@ This repository contains a unified dashboard and engine for advanced 3D modeling
 
 ---
 
-## 🛠️ Installation
+## Install the Fusion add-in
+
+The website (https://bspline-generator.pages.dev) has an **Add-in** button in its header. It saves the one-click
+installer for your computer; **Settings > Fusion add-in** lists both installers, a paste-in line for each, and the
+plain ZIP. No admin rights are needed: the installer writes only to your own Fusion AddIns folder.
+
+**Windows**
+- Easiest (no security prompt): open **PowerShell** (Start menu, type `PowerShell`, Enter) and paste
+  `irm https://bspline-generator.pages.dev/install-bspline-addin.cmd | iex`
+- Or double-click the downloaded `install-bspline-addin.cmd`. Windows may say "Windows protected your PC" (the script
+  is not code-signed): click **More info > Run anyway**.
+
+**macOS**
+- Open **Terminal** (Spotlight, type `Terminal`, Return) and paste
+  `curl -fsSL https://bspline-generator.pages.dev/install-bspline-addin.command | bash`
+- Or, after downloading it: `bash ~/Downloads/install-bspline-addin.command` (a downloaded `.command` file can't be
+  double-clicked: the browser drops its run permission and Gatekeeper blocks unsigned scripts).
+
+What the installer does: downloads `bspline-frame-builder.zip` from the GitHub `latest` release, checks it is the add-in
+(one top folder `bspline-frame-builder/` with the `.py` and `.manifest`), moves an existing install aside to `bspline-frame-builder.bak-<date-time>` (only the newest
+backup is kept), unpacks the new one, and turns on `runOnStartup` in its manifest. Nothing else in AddIns is touched.
+Then: **restart Fusion**, or in Fusion open **Utilities > Add-Ins** (Shift+S), pick `bspline-frame-builder` and
+click **Run**.
+
+Exit codes (for support): 0 installed, 1 unexpected error, 2 download failed (offline?), 3 Fusion AddIns folder not
+found (install Fusion and start it once), 5 not the add-in zip, 6 files in use (close Fusion and run it again).
+
+**Updating.** In Fusion, the **B-Spline Builder** panel's dropdown has **Update to latest**. It asks Yes/No, then does
+what the installer does (downloads the release zip, checks it, backs up the old folder, copies the new one in with
+`runOnStartup` on), closes the add-in's windows and tells you to restart Fusion (or Stop, then Run, the add-in). There is
+no version check: it always installs the current release. It replaces the folder the add-in runs from, whatever that
+folder is called (a source checkout included: use git there instead).
+
+**Releasing (maintainer).** `python release.py --addin` builds `release-out/bspline-frame-builder.zip` (with a
+`build-info.json` stamp inside, which the palette badges show) and uploads it to the `latest` release. The installers
+live in `installer/`; the Pages build
+(`deploy_cloudflare.py --build-only`) serves them at the site root. Testing an installer elsewhere:
+`BSPLINE_ADDINS_DIR=<folder>` (or the folder as the first argument) installs there instead of Fusion's AddIns folder;
+`BSPLINE_ZIP_URL` overrides the download; `BSPLINE_NO_PAUSE=1` skips the .cmd's closing pause.
+
+## 🛠️ Installation (developers)
 
 1. Clone this repository into your Fusion 360 Add-ins folder:
    - **Windows**: `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`

@@ -4,3 +4,7 @@
 *.js text eol=lf
 *.css text eol=lf
 *.py text eol=lf
+
+# the website's one-click installers: cmd.exe wants CRLF, bash wants LF
+installer/*.cmd text eol=crlf
+installer/*.command text eol=lf

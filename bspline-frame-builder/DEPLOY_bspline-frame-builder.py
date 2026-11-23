@@ -615,27 +615,28 @@ def next_version(prev_info, now):
     return f"{today}-1"
 
 
-def _write_build_info():
-    """
-    Write build-info.json into the deployed add-in ROOT (DEST-only artifact,
-    fork F1=A) so every palette's Python can read WHAT was deployed:
-        {version, sha, branch, built_at, source_root, dirty}
-    Computed from git in SRC_DIR at deploy time. On ANY git failure (git absent,
-    not a repo, timeout) we fall back to sha='unknown' and STILL write the file —
-    a version stamp must never crash the deploy. Mirrors the _write_*_handshake
-    writers. See VERSION-STAMP-DESIGN.md 2a.
-    """
+def _git_in(src_dir, *args, default="unknown"):
+    """``git -C src_dir <args>`` stdout, or ``default`` on any failure (git absent, not a repo, timeout)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(src_dir), *args],
+            capture_output=True, text=True, timeout=10,
+        )
+        if out.returncode == 0:
+            return out.stdout.strip() or default
+    except Exception:
+        pass
+    return default
+
+
+def make_build_info(src_dir, now, prev_info=None):
+    """The version stamp {version, sha, branch, built_at, source_root, dirty} for a build of ``src_dir`` at ``now``.
+    The ONE writer of the stamp's shape: the local deploy (``_write_build_info``) and the public release
+    (release.py, which puts it inside the zip and into latest.json) both call it. See VERSION-STAMP-DESIGN.md 2a."""
+    src_dir = Path(src_dir)
+
     def _git(*args, default="unknown"):
-        try:
-            out = subprocess.run(
-                ["git", "-C", str(SRC_DIR), *args],
-                capture_output=True, text=True, timeout=10,
-            )
-            if out.returncode == 0:
-                return out.stdout.strip() or default
-        except Exception:
-            pass
-        return default
+        return _git_in(src_dir, *args, default=default)
 
     sha    = _git("rev-parse", "--short", "HEAD")
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
@@ -644,7 +645,7 @@ def _write_build_info():
     # stored portable (~/...) like the handshakes so compare_to_source can locate
     # <source_root>/.git. Falls back to SRC_DIR's parent when git is absent.
     toplevel  = _git("rev-parse", "--show-toplevel", default="")
-    repo_root = Path(toplevel) if toplevel else SRC_DIR.parent
+    repo_root = Path(toplevel) if toplevel else src_dir.parent
     try:
         rel_to_home = repo_root.relative_to(Path.home())
         source_root = f"~/{rel_to_home.as_posix()}"
@@ -657,6 +658,29 @@ def _write_build_info():
     # 'dirty' therefore means "deployed modified tracked code not in any commit".
     dirty = bool(_git("status", "--porcelain", "--untracked-files=no", default=""))
 
+    return {
+        "version":     next_version(prev_info, now),
+        "sha":         sha,
+        "branch":      branch,
+        "built_at":    now.isoformat(timespec="seconds"),
+        "source_root": source_root,
+        "dirty":       dirty,
+    }
+
+
+def _write_build_info():
+    """
+    Write build-info.json into the deployed add-in ROOT (DEST-only artifact,
+    fork F1=A) so every palette's Python can read WHAT was deployed:
+        {version, sha, branch, built_at, source_root, dirty}
+    Computed from git in SRC_DIR at deploy time (make_build_info). On ANY git
+    failure we fall back to sha='unknown' and STILL write the file —
+    a version stamp must never crash the deploy. Mirrors the _write_*_handshake
+    writers. See VERSION-STAMP-DESIGN.md 2a.
+    """
+    def _git(*args, default="unknown"):
+        return _git_in(SRC_DIR, *args, default=default)
+
     now = datetime.now().astimezone()
     # The previous version comes from the deploy log (outside DEST): clean_dir wipes DEST,
     # build-info.json included, before this runs (MEASURED: two deploys both stamped "-1").
@@ -668,16 +692,8 @@ def _write_build_info():
             prev_info = {"version": lines[-1].split()[0]}
     except Exception:
         pass
-    version = next_version(prev_info, now)
-
-    info = {
-        "version":     version,
-        "sha":         sha,
-        "branch":      branch,
-        "built_at":    now.isoformat(timespec="seconds"),
-        "source_root": source_root,
-        "dirty":       dirty,
-    }
+    info = make_build_info(SRC_DIR, now, prev_info)
+    version, sha, branch, dirty = info["version"], info["sha"], info["branch"], info["dirty"]
     try:
         out_path = DEST_DIR / "build-info.json"
         with open(out_path, "w", encoding="utf-8") as f:

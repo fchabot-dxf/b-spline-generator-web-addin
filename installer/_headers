@@ -1,0 +1,11 @@
+# Cloudflare Pages response headers for the one-click add-in installers (copied to the site root by
+# bspline-frame-builder/deploy_cloudflare.py). text/plain lets `irm ... | iex` and `curl ... | bash` read them as
+# text; the attachment header makes a browser click save the file instead of showing it.
+/install-bspline-addin.cmd
+  Content-Type: text/plain; charset=utf-8
+  Content-Disposition: attachment; filename="install-bspline-addin.cmd"
+  Cache-Control: no-cache
+/install-bspline-addin.command
+  Content-Type: text/plain; charset=utf-8
+  Content-Disposition: attachment; filename="install-bspline-addin.command"
+  Cache-Control: no-cache
