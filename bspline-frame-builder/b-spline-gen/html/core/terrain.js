@@ -162,17 +162,22 @@ export function generateHeightmap(params, stampParams = null) {
         const strength = (params.detailStrength != null) ? params.detailStrength : 0.25;
         const effectiveDetail = detailIntensity + (1.0 - detailIntensity) * strength;
         fine = lerp(0.5, fine, effectiveDetail);
+        // Texture Strength (Fred 2026-11-23): 1 / absent = untouched (bit-identical); 0 = the 'Flat (no texture)' value.
+        const texS = (params.textureStrength != null) ? params.textureStrength : 1;
 
         const safeMargin = Math.max(0, Math.min(0.49, edgeMargin || 0));
 
         // ── Flat (no hills): no coarse pass -- the grain alone, from the surface height ──
         if (shapeFlat) {
             let g = params.isolateSkeleton ? 0 : fine * LOW;
+            if (texS !== 1 && !params.isolateSkeleton) g *= texS; // the grain scales by the strength (0 = exactly Flat)
             if (safeMargin > 0) g *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
             const grainH = Math.max(0, g) * (carveZ || 0);
             heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
             continue;
         }
+
+        if (texS !== 1) fine = lerp(0.5, fine, texS); // hills: the fine value toward the flat 0.5 (isolateSkeleton's value)
 
         // ── Pass 2: Coarse Redistribution ──────
         // Seed (raw pattern) → Skeleton transforms (peakShape, clustering,

@@ -259,6 +259,14 @@ export const MIGRATIONS = [
     apply: () => {},
   },
   {
+    id: 'texture-strength',
+    // Fred 2026-11-23 (Terrain Texture > Texture Strength): a board saved before the slider has no textureStrength; absent
+    // reads as 1 = the texture exactly as before (core/terrain.js), so this entry writes nothing -- DECLARED so the new
+    // default is on the record (tests/texture-strength.test.js pins the heightmap digests against main eb918410).
+    when: (p) => p.textureStrength === undefined,
+    apply: () => {},
+  },
+  {
     id: 'removed-noise-type-to-default',
     // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
     // removed after two rejected reworks. A save naming a filter that is no

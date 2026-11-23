@@ -34,6 +34,7 @@ const OUTER_FILTER_KEYS = [
   'scale',
   'detailDensity',
   'detailStrength',
+  'textureStrength',
   'detailDensityRespectSymmetry',
 ];
 
