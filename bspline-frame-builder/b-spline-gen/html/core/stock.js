@@ -48,6 +48,10 @@ export function stockMessage(e, subject) {
 export const stockRoomMessage = (e) => (e && Number.isFinite(e.min) && Number.isFinite(e.max)
   ? `Deepest point ${e.min.toFixed(2)} in above the carve floor / highest ${(e.carveZ - e.max).toFixed(2)} in under the stock top` : '');
 
+/** The same room, short, for a narrow bar (the Height options bar): '↓0.06 in floor · ↑0.12 in top'. */
+export const stockRoomShort = (e) => (e && Number.isFinite(e.min) && Number.isFinite(e.max)
+  ? `↓${e.min.toFixed(2)} in floor · ↑${(e.carveZ - e.max).toFixed(2)} in top` : '');
+
 // The last build's height-painter report { board, patches: { [record id]: entry } } (rebuild.js sets it after each heights
 // build; main/height-panel.js reads it). Setting it announces 'heightStockChanged' on the document.
 let _heightReport = null;

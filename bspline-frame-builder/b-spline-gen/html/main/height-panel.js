@@ -18,7 +18,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { encodeRaster, decodedRaster, ensureRasterDecoded, RASTER_ENC_U16 } from '../core/height/raster.js';
 import { BRUSH_DEFAULTS, BRUSH_MODES, BRUSH_FALLOFFS, BRUSH_TIPS, BRUSH_ALT_MODE, brushFalloff, createStroke, curveFromPoints, curvePointsFromProfile } from '../core/height/brush.js';
 import { liftPiece, placePiece, shiftMask } from '../core/height/move.js';
-import { getHeightStockReport, stockMessage, stockRoomMessage } from '../core/stock.js';
+import { getHeightStockReport, stockMessage, stockRoomMessage, stockRoomShort } from '../core/stock.js';
 import { _isTypingTarget } from '../editor/dom.js';
 import { newHeightLayer, newHeightId, normaliseHeightLayer, boardToPatchPixel, sampleRaster, HEIGHT_PX_PER_IN } from '../core/height/layer.js';
 import {
@@ -236,8 +236,13 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   // ONE Range per patch (record field greyRangeIn, absent = GREY_RANGE_DEFAULT_IN): black = -Range, white = +Range, through
   // core/height/compose.js mapImageValue / heightToGrey (the slice-2 image-layer mapping, one mechanism). It only says how
   // greys translate to inches (and the greyscale view); it never changes a pixel. (The heightmap import keeps its options.)
-  { id: 'greyRangeIn', group: 'palette', target: 'greyMap', kind: 'slider', path: ['rangeIn'], label: 'Range (in)', step: 0.005, range: () => [0, 2],
+  { id: 'greyRangeIn', group: 'palette', target: 'greyMap', field: 'greyRangeIn', kind: 'slider', path: ['rangeIn'], label: 'Range (in)', step: 0.005, range: () => [0, 2],
     note: 'mid-grey = no change; black = -Range (carves), white = +Range (raises)' },
+  // Fred 2026-11-23: a patch uses either grey system (the image layers' own choice, same labels): Mid-grey = 0 (the default; an absent
+  // greyZero reads it, so a saved board is unchanged) or Black = 0 (black = no change, white = +Range). Only this mapping moves:
+  // a paint layer stores inches, so no stored height changes.
+  { id: 'greyZero', group: 'palette', target: 'greyMap', field: 'greyZero', kind: 'choice', path: ['zero'], label: 'Grey system',
+    options: [['black', 'Black = 0', 'Black is no change; white raises by the Range (a height below 0 shows black)'], ['mid', 'Mid-grey = 0', 'Mid-grey is no change; white raises, black lowers by the Range']] },
   // slice 4: how a new selection meets the current one -- the touch way to Shift (add) / Alt (subtract)
   { id: 'selCombine', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
     options: Object.entries(SELECTION_COMBINE).map(([k, s]) => [k, s.label, s.title]) },
@@ -260,6 +265,27 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
     note: 'counter-clockwise; with Turn with the stroke, from the drag direction' },
   { id: 'followStroke', group: 'tip', target: 'brush', kind: 'check', path: ['followStroke'], label: 'Turn with the stroke' },
 ]);
+/**
+ * The Height tab's OPTIONS BAR (Fred 2026-11-23: "In height this space is dead, use it to display information or input fields"):
+ * the strip under the tab row, the shared #editorToolbarTop bar the other tabs fill (editor-tabs.js TOOLBAR_TOP_GROUPS_BY_TAB).
+ * One row per HEIGHT_TOOLS id, declared here: an item is { control } (a HEIGHT_CONTROLS / HEIGHT_TOOL_CONTROLS id -- the SAME
+ * setting as the panel's control, read and written through setHeightField, so both views stay in sync; its showWhen still
+ * applies) with an optional short `label` and `step`, or { widget } (HEIGHT_BAR_WIDGETS: a read-out or a button, never a
+ * setting). HEIGHT_BAR_END is appended to every row (the stock line, from the one function that writes the panel's).
+ */
+export const HEIGHT_OPTIONS_BAR = Object.freeze({
+  brush: Object.freeze([{ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'greyZero', label: 'Grey' }, { control: 'invert', label: 'Paint' }]),
+  eraser: Object.freeze([{ control: 'sizeIn', label: 'Size', step: 0.05 }]),
+  selectRect: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
+  selectEllipse: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
+  selectLasso: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
+  wand: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }, { control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }]),
+  eyedropper: Object.freeze([{ control: 'sampleFrom', label: 'Sample' }, { widget: 'greyChip', label: 'Picked' }, { control: 'greyZero', label: 'Grey' }]),
+  move: Object.freeze([{ widget: 'moveActions' }]),
+  gradient: Object.freeze([{ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }]),
+  fill: Object.freeze([{ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }]),
+});
+export const HEIGHT_BAR_END = Object.freeze([{ widget: 'stock' }]);
 /** Both tables, the one list the renderer and the setter read. */
 const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
 
@@ -669,7 +695,9 @@ export const GREY_RANGE_DEFAULT_IN = 0.25;
 /** Patch `rec`'s Range (its greyRangeIn; absent = GREY_RANGE_DEFAULT_IN). */
 const greyRangeOf = (rec) => (rec && Number.isFinite(rec.greyRangeIn) ? rec.greyRangeIn : GREY_RANGE_DEFAULT_IN);
 /** Patch `rec`'s grey mapping: the image-layer mapping fixed at mid-grey = 0, its Range each way. */
-const greyMapOf = (rec) => { const r = greyRangeOf(rec); return { zero: 'mid', whiteIn: r, darkIn: r }; };
+/** Patch `rec`'s grey system (its greyZero 'mid' | 'black'; absent = 'mid', so a saved board reads as before). */
+const greyZeroOf = (rec) => (rec && rec.greyZero === 'black' ? 'black' : 'mid');
+const greyMapOf = (rec) => { const r = greyRangeOf(rec); return { zero: greyZeroOf(rec), whiteIn: r, darkIn: r }; };
 /** The palette's swatches (percent grey). */
 export const GREY_SWATCHES = Object.freeze([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
 /** Pick grey `g` (0..1): the Set target = its height through the active patch's mapping, the mode = Set (and the Brush, when
@@ -997,6 +1025,7 @@ function syncMoveBar() {
   if (!bar) return;
   bar.hidden = !_float;
   bar.style.display = _float ? 'flex' : 'none'; // the inline display would beat [hidden]
+  syncHeightBar();
 }
 
 // ── heightmap import (slice 2; core/height/import.js): an IMAGE layer, its grey kept, its mapping live ────────────────
@@ -1220,11 +1249,12 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
     v = ok ? value.map((p) => [p[0], p[1]]).sort((a, b) => a[0] - b[0]) : undefined;
   }
   if (v === undefined) return false;
-  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncTipGroup(); syncGreyPalette(); drawCursor(); return true; }
+  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncTipGroup(); syncGreyPalette(); drawCursor(); syncHeightBar(); return true; }
   if (_tools[c.target]) { // a tool's UI state
     const st = _tools[c.target];
     _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
     syncHeightOverlay();
+    syncHeightBar();
     return true;
   }
   const rec = activeHeightLayer();
@@ -1232,7 +1262,7 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   dropHeightMove(); // a patch / layer field is another action
   if (c.target === 'layer') { const l = layerOf(rec); return !!l && setPatchLayerField(l.id, c.path, v, { commit }); }
   if (c.target === 'greyMap') { // slice 5: the patch's grey Range (never a pixel)
-    updateRecord(rec.id, (r) => ({ ...r, greyRangeIn: v }));
+    updateRecord(rec.id, (r) => ({ ...r, [c.field]: v }));
     if (commit) commitStep(c.id);
     syncHeightPanel();
     syncHeightOverlay();
@@ -1250,18 +1280,27 @@ const PANEL_TOP_NOTES = Object.freeze(['heightStatus', 'heightCarveRange']);
 /** The last build against the stock (core/stock.js, set by rebuild.js): the ONE place it shows, one line -- the whole board
  *  (its warning in stlStockMessage's wording, else the room left: deepest above the floor / highest under the top), then the
  *  ACTIVE patch's own warning when it leaves the stock. A warning colour when either does. Detection only. */
-function syncCarveRange() {
-  const box = byId('heightCarveRange');
-  if (!box) return;
+/** The stock line's texts, from the ONE report: { text } (the panel's line), { short } (the options bar's: '↓0.06 in floor ·
+ *  ↑0.12 in top', a warning mark first and the patch's own mark after when either leaves the stock) and { warn }. */
+export function heightStockLines() {
   const rep = getHeightStockReport();
   const rec = activeHeightLayer();
   const board = rep && rep.board;
   const patchWarn = rep && rec && rep.patches ? stockMessage(rep.patches[rec.id], 'This patch') : '';
   const boardWarn = stockMessage(board, 'The board');
   const text = [boardWarn || stockRoomMessage(board), patchWarn].filter(Boolean).join('. ').replace('.. ', '. ');
-  box.hidden = !text;
-  box.textContent = text;
-  box.classList.toggle('stl-error', !!(boardWarn || patchWarn));
+  const short = text ? [`${boardWarn ? '⚠ ' : ''}${stockRoomShort(board)}`, patchWarn ? '⚠ patch' : ''].filter(Boolean).join(' · ') : '';
+  return { text, short, warn: !!(boardWarn || patchWarn) };
+}
+function syncCarveRange() {
+  const box = byId('heightCarveRange');
+  if (box) {
+    const { text, warn } = heightStockLines();
+    box.hidden = !text;
+    box.textContent = text;
+    box.classList.toggle('stl-error', warn);
+  }
+  syncHeightBar();
 }
 /** The panel's sections in view order: the active tool's declared `leads` first (in their order; the status line, when
  *  shown, just above them), then every other part of the panel in its built order. CSS `order` on the flex column body
@@ -1592,6 +1631,115 @@ function renderControl(c) {
     c.note ? el('div', { class: 'photo-layer-note', text: c.note }) : null]);
 }
 
+// ── the options bar (HEIGHT_OPTIONS_BAR): each control rendered compact, bound to the SAME setting as the panel's ──────────
+const BAR_LABEL_STYLE = 'color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;';
+const BAR_TOUCH = 'min-height:var(--touch-target-min, 24px);';
+/** One bar control: a stepper (number) for a slider, the segmented buttons for a choice (the panel's own data-height-choice
+ *  buttons: one wiring and one active-state sync serve both), a check. `data-height-bar` names its control. */
+function renderBarControl(c, item, tool) {
+  const label = item.label || c.label;
+  const wrap = el('div', { class: 'height-bar-item', 'data-height-control-bar': c.id, style: 'display:flex; align-items:center; gap:5px;' }, [el('span', { text: label, style: BAR_LABEL_STYLE })]);
+  if (c.kind === 'slider') {
+    const [min, max] = c.range(P), step = item.step || c.step;
+    // the app's own number stepper (main/ui-bindings.js attachNumberSteppers adds its - / + around a bare number input; its
+    // step is the input's step: the table's `step` for a bar field)
+    const n = el('input', { type: 'number', 'data-height-bar': c.id, id: `heightBar_${tool}_${c.id}`, min: String(min), max: String(max), step: String(step), 'aria-label': label });
+    wrap.appendChild(el('div', { class: 'cad-stepper', style: 'width:96px;' }, [n]));
+  } else if (c.kind === 'check') {
+    wrap.appendChild(el('input', { type: 'checkbox', 'data-height-bar': c.id, id: `heightBar_${tool}_${c.id}`, 'aria-label': label, style: 'min-width:var(--touch-target-min, 0px); min-height:var(--touch-target-min, 0px);' }));
+  } else if (c.kind === 'choice') {
+    wrap.appendChild(el('div', { class: 'relief-toggle', style: 'flex-wrap:nowrap;' }, c.options.map(([key, text, title]) => el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text: String(text), style: `${BAR_TOUCH} padding:0 8px;` }))));
+  }
+  return wrap;
+}
+/** The bar's non-setting items, by widget id: build(item) makes the node, sync(node) refreshes it (syncHeightBar). */
+const HEIGHT_BAR_WIDGETS = Object.freeze({
+  // the Set target as its grey and its height ('60% · +0.05 in'); a tap goes to the grey palette
+  greyChip: {
+    build: (item) => el('div', { class: 'height-bar-item', style: 'display:flex; align-items:center; gap:5px;' }, [
+      el('span', { text: item.label, style: BAR_LABEL_STYLE }),
+      el('button', { type: 'button', class: 'cad-btn cad-btn-secondary height-bar-chip', 'data-height-bar-action': 'greyChip', title: 'The Set height as a grey: tap for the grey palette', style: `display:inline-flex; align-items:center; gap:6px; padding:0 8px; ${BAR_TOUCH}` }, [
+        el('span', { class: 'height-bar-chip-dot', style: 'width:14px; height:14px; border:1px solid #888; border-radius:3px; flex:none;' }), el('span', { class: 'height-bar-chip-text' })]),
+    ]),
+    sync: (node) => {
+      const m = greyMapOf(activeHeightLayer()), t = _brush.invert ? -_brush.targetIn : _brush.targetIn, g = heightToGrey(t, m);
+      const dot = node.querySelector('.height-bar-chip-dot'), text = node.querySelector('.height-bar-chip-text');
+      const k = Math.round(255 * Math.min(1, Math.max(0, g)));
+      if (dot) dot.style.background = `rgb(${k}, ${k}, ${k})`;
+      if (text) text.textContent = `${Math.round(100 * g)}% · ${t >= 0 ? '+' : ''}${t.toFixed(2)} in`;
+    },
+  },
+  // the Move tool: Drop / Cancel while a piece floats (the canvas bar's own functions), else a one-line hint
+  moveActions: {
+    build: () => el('div', { class: 'height-bar-item', style: 'display:flex; align-items:center; gap:8px;' }, [
+      el('span', { class: 'height-bar-move-hint', text: 'Drag to lift the selection (none: the whole layer)', style: 'font-size:11px; color:#555;' }),
+      el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'moveDrop', text: '✓ Drop', style: `${BAR_TOUCH} display:none;` }),
+      el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'moveCancel', text: '✕ Cancel', style: `${BAR_TOUCH} display:none;` }),
+    ]),
+    sync: (node) => {
+      node.querySelector('.height-bar-move-hint').style.display = _float ? 'none' : '';
+      for (const b of node.querySelectorAll('[data-height-bar-action]')) b.style.display = _float ? '' : 'none';
+    },
+  },
+  // the stock range, short, from heightStockLines (the panel's own function)
+  stock: {
+    build: () => el('div', { class: 'height-bar-item height-bar-stock', role: 'status', title: 'The board against the stock: the deepest point above the carve floor, the highest under the stock top', style: 'font-size:11px; margin-left:auto;' }),
+    sync: (node) => { const { short, warn } = heightStockLines(); node.textContent = short; node.hidden = !short; node.style.color = warn ? '#c0392b' : '#555'; node.style.fontWeight = warn ? '700' : ''; node.classList.toggle('stl-error', warn); },
+  },
+});
+/** Build the bar's rows (one per HEIGHT_TOOLS id; syncHeightBar shows the active tool's) into `bar`. */
+function renderHeightBar(bar) {
+  bar.innerHTML = '';
+  for (const t of HEIGHT_TOOLS) {
+    const row = el('div', { class: 'height-bar-row', 'data-height-bar-tool': t.id, style: 'display:none; align-items:center; gap:8px 14px;' });
+    for (const item of [...(HEIGHT_OPTIONS_BAR[t.id] || []), ...HEIGHT_BAR_END]) {
+      let n = null;
+      if (item.widget) { n = HEIGHT_BAR_WIDGETS[item.widget].build(item); n.setAttribute('data-height-bar-widget', item.widget); } else { const c = allControls().find((x) => x.id === item.control); n = c ? renderBarControl(c, item, t.id) : null; }
+      if (n) row.appendChild(n);
+    }
+    bar.appendChild(row);
+  }
+}
+/** Refresh the bar from the SAME state the panel reads: the active tool's row, each control's value and showWhen, the chip,
+ *  the Move actions, the stock line. Safe any time. */
+export function syncHeightBar() {
+  const bar = byId('editorHeightOptions');
+  if (!bar) return;
+  const rec = activeHeightLayer(), n = rec ? placed(rec) : null, ctx = panelCtx();
+  for (const row of bar.querySelectorAll('[data-height-bar-tool]')) {
+    const on = row.getAttribute('data-height-bar-tool') === _tool;
+    row.style.display = on ? 'flex' : 'none';
+    if (!on) continue;
+    for (const w of row.children) {
+      const id = w.getAttribute('data-height-control-bar'), widget = w.getAttribute('data-height-bar-widget');
+      if (id) {
+        const c = allControls().find((x) => x.id === id), src = controlSource(c, rec), v = src ? getPath(src, c.path) : undefined;
+        const hide = !!c.showWhen && !c.showWhen(_brush, n, ctx);
+        w.style.display = hide ? 'none' : 'flex';
+        const x = w.querySelector('[data-height-bar]');
+        if (x && c.kind === 'slider') { const [min, max] = c.range(P); x.min = String(min); x.max = String(max); if (v !== undefined && document.activeElement !== x) x.value = String(Math.round(v * 1e6) / 1e6); x.disabled = !src; }
+        else if (x && c.kind === 'check') x.checked = !!v;
+        else for (const b of w.querySelectorAll('[data-height-choice]')) b.classList.toggle('active', b.getAttribute('data-height-choice') === `${c.id}:${v}`);
+      } else if (widget && HEIGHT_BAR_WIDGETS[widget]) HEIGHT_BAR_WIDGETS[widget].sync(w);
+    }
+  }
+}
+/** The bar's own events (one delegate): a number (typed, or by the app's stepper) or a check writes the setting (setHeightField); the chip goes to the palette; Drop / Cancel are the canvas bar's functions. */
+function wireHeightBar(bar) {
+  const write = (id, value) => { setHeightField(id, value); syncHeightPanel(); };
+  bar.addEventListener('change', (e) => {
+    const x = e.target.closest('[data-height-bar]');
+    if (x) write(x.getAttribute('data-height-bar'), x.type === 'checkbox' ? x.checked : x.value);
+  });
+  bar.addEventListener('click', (e) => {
+    const a = e.target.closest('[data-height-bar-action]');
+    const kind = a && a.getAttribute('data-height-bar-action');
+    if (kind === 'greyChip') { const g = byId('heightGroup_palette'); if (g && typeof g.scrollIntoView === 'function') g.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    else if (kind === 'moveDrop') dropHeightMove();
+    else if (kind === 'moveCancel') cancelHeightMove();
+  });
+}
+
 /** The groups in panel order: the slice-2 tool groups first (the layers on top), the slice-1 groups, then the ones
  *  declared `after` (the file buttons). */
 const panelGroups = () => {
@@ -1606,7 +1754,7 @@ function controlSource(c, rec) {
   if (c.target === 'brush') return _brush;
   if (_tools[c.target]) return _tools[c.target];
   if (!rec) return null;
-  if (c.target === 'greyMap') return { rangeIn: greyRangeOf(rec) };
+  if (c.target === 'greyMap') return { rangeIn: greyRangeOf(rec), zero: greyZeroOf(rec) };
   return c.target === 'layer' ? layerOf(rec) : placed(rec);
 }
 /** A group's own head (above its controls), by group id. */
@@ -1653,7 +1801,8 @@ const GROUP_HEADS = Object.freeze({
 });
 
 /** Build the panel from the declared tables into `body`, and the tools + brush modes into the rail. */
-export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
+export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar = byId('editorHeightOptions')) {
+  if (bar) renderHeightBar(bar); // the options bar (HEIGHT_OPTIONS_BAR)
   if (rail) {
     rail.innerHTML = '';
     // a row's `key` = the editor's own single-key shortcut (editor-interaction.js clicks the modal's [data-key] button)
@@ -1802,7 +1951,7 @@ export function syncHeightPanel() {
   syncSelectionSources();
   syncTipGroup();
   syncGreyPalette();
-  syncCarveRange();
+  syncCarveRange(); // (it syncs the options bar too)
   orderPanelGroups();
   const stored = byId('heightStored');
   if (stored) {
@@ -1831,6 +1980,7 @@ const onBuilt = () => syncCarveRange();
 export function initHeightPanel(hooks = {}) {
   _hooks = { onChange: hooks.onChange || (() => {}) };
   renderHeightPanel(byId('heightPanelBody'));
+  { const ob = byId('editorHeightOptions'); if (ob) wireHeightBar(ob); }
   registerUndoPart('heightLayers', {
     take: () => P.heightLayers, // the copy-on-write list itself: an entry costs a reference
     restore: (v) => { if (v === P.heightLayers) return; cancelStroke(); cancelHeightMove(); P.heightLayers = v; syncHeightPanel(); syncHeightOverlay(); },

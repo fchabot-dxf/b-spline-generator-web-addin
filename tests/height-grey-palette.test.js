@@ -120,8 +120,8 @@ describe('the panel', () => {
     pickHeightGrey(0.37); // the ramp's continuous pick: below mid-grey = below the surface
     expect(heightBrush().targetIn).toBeCloseTo((0.37 - 0.5) * 2 * 0.25, 12);
   });
-  it('the Range is the patch\'s own (one setting; no Black = 0 choice): it relabels the palette, one undo step, no pixel changes', async () => {
-    expect(HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'palette').map((c) => c.id)).toEqual(['greyRangeIn']);
+  it('the Range is the patch\'s own (one setting; the grey system is the separate greyZero choice): it relabels the palette, one undo step, no pixel changes', async () => {
+    expect(HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'palette').map((c) => c.id)).toEqual(['greyRangeIn', 'greyZero']);
     await newHeightPatch();
     await fillHeight({ heightIn: 0.1 });
     expect(activeHeightLayer().greyRangeIn).toBeUndefined(); // absent = 0.25 in (the labels above)

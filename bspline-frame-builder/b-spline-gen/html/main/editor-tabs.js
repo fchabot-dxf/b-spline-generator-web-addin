@@ -128,13 +128,13 @@ let _editorTab = 'artwork';
 // independent of mode OR tab by design (editor-ui.js's own TOOLBAR_GROUPS doc comment).
 const ALL_TAB_GATED_TOOLBAR_GROUPS = [
   'editorStrokeGroup', 'editorColorGroup', 'editorGridGroup', 'editorFillModeGroup',
-  'editorFontGroup', 'editorExpandGroup',
+  'editorFontGroup', 'editorExpandGroup', 'editorHeightOptionsGroup',
 ];
 const TOOLBAR_TOP_GROUPS_BY_TAB = {
   brick: ['editorGridGroup'],
   photo: [],
   frame: [],
-  height: [], // HEIGHT-PAINTER: none of the drawing's top-bar groups
+  height: ['editorHeightOptionsGroup'], // HEIGHT-PAINTER: none of the drawing's groups; its own options bar (main/height-panel.js HEIGHT_OPTIONS_BAR)
 };
 
 export function setEditorTab(tab) {
