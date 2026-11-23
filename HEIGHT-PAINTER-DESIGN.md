@@ -356,8 +356,11 @@ bytes measured on height-painter-4 @ 1763a9a5 before the slice-5 code; the pass 
   picked grey matches what you paint. The Sample choice gains 'As the view' (the default: this layer or the patch's composite,
   as Show says) and 'All layers' (the composite) beside Active layer and Whole board; the wand and the eyedropper share it.
   The Lit view always shows the composite, unchanged.
-- **Carve range readout** (Fred 2026-11-23, detection only: nothing clamped or blocked): core/carve-range.js`n  `carveRangeReport` reads the REAL built heights (lastResult.heights, not the 3D view's H) against the stock 0..carveZ:
-  'Deepest point X in above the carve floor / highest Y in under the stock top', or in a warning colour 'Carves X in below
-  the carve floor' / 'Y in above the stock top (will be cut flat)'. Rendered in ONE place, the Height panel's top note
-  `#heightCarveRange`, refreshed after every build (editorTopViewUpdated). The 3D view's H readout is untouched (its HUD
-  table holds a total height, not a range).
+- **The stock check** (Fred 2026-11-23, detection only: nothing clamped or blocked): ONE overshoot function,
+  core/stock.js `stockOvershoot` (the STL stock check's, moved to a neutral module; core/stl/stock.js re-exports it as
+  `stlStockOvershoot` / `stlStockReport` / `stlStockMessage`, so the STL card is unchanged), now also returning the lowest /
+  highest height. rebuild.js reports after each heights build each height patch (its footprint) and the whole board (every
+  point) -- `setHeightStockReport`. The Height panel shows ONE line (`#heightCarveRange`, a top note): the board's warning in
+  stlStockMessage's wording ('⚠ The board cuts 0.04 in below the stock bottom (Carve Depth 1.50 in) at 3 points.'), else the
+  room left ('Deepest point 0.06 in above the carve floor / highest 0.12 in under the stock top'), then the active patch's
+  own warning ('⚠ This patch rises ...'). Warning colour when either warns. It follows each build (the 3D builds after Apply).
