@@ -49,6 +49,14 @@ export function drawerHeightPx(state, viewportHeight) {
   return PEEK_HEIGHT_PX; // 'peek', and the floor for any unrecognized state
 }
 
+/** Pure: the peek drawer's height -- its own floor, raised to the active tab's pinned essentials (`essentialsPx`), but
+ *  never past HALF the viewport. Measured at 844x390 (a phone held sideways; the portrait drawer still applies below 901 px
+ *  wide): the Brick tab's pinned Generate + layers slot summed to the whole 390 px, so peek covered the editor and the canvas
+ *  had 0 px. Layout cap only: the drawer's own content scrolls, nothing the user set is touched. */
+export function peekHeightPx(viewportHeight, essentialsPx) {
+  return Math.min(Math.max(drawerHeightPx('peek', viewportHeight), essentialsPx || 0), drawerHeightPx('half', viewportHeight));
+}
+
 /** MOB4: landscape phone's own side-column splitter — WIDTH snaps instead
  *  of HEIGHT ones, "canvasMax" (narrowest column: MOB4's own "canvas-max")
  *  through "settingsMax" ("settings-max", the widest). Declared as
@@ -169,7 +177,7 @@ export function initDrawer(editor) {
   }
   function peekFloorPx() {
     // the Art tabs: the tab pair and the tool-panel floor are retired -- a tool's settings sit under Layers now
-    return Math.max(drawerHeightPx('peek', window.innerHeight), tabEssentialsFloorPx());
+    return peekHeightPx(window.innerHeight, tabEssentialsFloorPx());
   }
   // The splitter's own declared snap points — DRAWER_SNAP_STATES stays the
   // single source of the three names (peek/half/full order); 'peek' alone
