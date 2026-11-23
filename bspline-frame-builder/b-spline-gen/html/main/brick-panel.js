@@ -1759,7 +1759,8 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement', 'heights'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'placement', 'surfaceStyle', // 'placement': Fred 2026-11-23, Before / After thicken (core/stamp/placement.js)
+   'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement', 'edgeByElement', 'heights'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */

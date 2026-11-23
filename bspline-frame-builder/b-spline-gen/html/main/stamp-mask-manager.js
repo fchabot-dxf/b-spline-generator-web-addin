@@ -14,6 +14,7 @@ import { rectContains } from '../core/inset-window.js';
 import { layerHasBrickPieces, brickDepth, elementGroutWidth, elementGroutDepth, elementGroutProfile, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
+import { placementOf } from '../core/stamp/placement.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -217,6 +218,7 @@ export async function updateStampMasks(nx, nz) {
     layer._mask = result;
     layer._brickMask = brickResult;
     layer._brickDepth = bDepth;
+    layer._brickPlacement = placementOf(P.brickSettings && P.brickSettings.placement); // Fred 2026-11-23: Before / After thicken
   });
   await Promise.all(promises);
   const latest = myGeneration === _refreshGeneration;

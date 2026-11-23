@@ -66,7 +66,8 @@ export const JOB_STEP_KINDS = Object.freeze({
   back: Object.freeze({ label: 'Back', icon: '▼', section: 'thicken', opens: { sidebar: 'panel-thicken' }, readOnly: 'section', snapshotOnLock: true, cuts: 'back',
     // 'stl': thicken reads the stamped heights, the STL passes included (they are stamped last, rebuild.js _collectStampPasses);
     // an 'afterBack' ("After thicken") STL is NOT read by the back (rebuild.js buildHeights backBase) -- no data change: Back is
-    // snapshotOnLock, its marks are never shown
+    // snapshotOnLock, its marks are never shown. The same for an 'afterBack' vector layer or brick pattern (Fred 2026-11-23,
+    // core/stamp/placement.js): 'vector' / 'bricks' stay listed (a Before-thicken one is read), nothing else changes.
     dependsOn: ['stock', 'sculptTop', 'latticeRails', 'latticeNodes', 'vector', 'bricks', 'stl'] }),
   // rails <- the frame, only for a lattice whose contour follows the frame (editor/editor-lattice-pattern.js:443)
   // section 'stamp': the Lattice tab's own panel is already themed 'stamp' (main/section-themes.js EDITOR_SECTION_THEMES

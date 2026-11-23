@@ -20,7 +20,11 @@ export const globalRedoLog = [];
 // separately since that file special-cases it (never defaulted through
 // TOOLING_DEFAULTS, see its own header comment) but it's still tooling
 // a sidebar control can flip.
-export const LAYER_TOOLING_FIELDS = Object.keys(TOOLING_DEFAULTS).concat(['visible']);
+/** Tooling fields with NO entry in TOOLING_DEFAULTS: absent on a layer = their default (a saved roster is never back-filled
+ *  with them, AGENTS.md rule 3). Fred 2026-11-23: 'placement' (core/stamp/placement.js, absent = 'withSurface'). A restore
+ *  of a snapshot taken while one was absent removes it again. */
+export const OPTIONAL_LAYER_TOOLING_FIELDS = Object.freeze(['placement']);
+export const LAYER_TOOLING_FIELDS = Object.keys(TOOLING_DEFAULTS).concat(['visible'], OPTIONAL_LAYER_TOOLING_FIELDS);
 
 /**
  * UX-UNDO: every sidebar control's undo scope, declared once — 'global'
@@ -111,6 +115,7 @@ export function restoreLayerTooling(layers, layerTooling) {
         if (!layer) continue;
         for (const f of LAYER_TOOLING_FIELDS) {
             if (saved[f] !== undefined) layer[f] = saved[f];
+            else if (OPTIONAL_LAYER_TOOLING_FIELDS.includes(f)) delete layer[f];
         }
     }
 }
