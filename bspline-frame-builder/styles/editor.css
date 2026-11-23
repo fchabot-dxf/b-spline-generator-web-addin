@@ -146,9 +146,20 @@
    the element itself, bspline_gen_palette.html) and shown only under the
    same (pointer: coarse) signal SA-MOBILE-4 already uses above — real
    "imprecise pointer present," not a width guess. */
+/* Owner 2026-11-23 (phone, Height tab: "an empty second row with a thin divider"): NOTHING EMPTY TAKES SPACE in the
+   editor's bars. The touch group shows only while it holds a shown button (Copy / Lock live in the selection bar, Paste /
+   Select all in the long-press menu, Cancel shows while a pen path is drawn: main/editor-chrome.js) -- measured, its lone
+   divider wrapped under the full options row (bar 89 px, not 44). On a narrow screen the bar's trailing spacer (it wrapped
+   alone under a full row) and the left rail when none of its toolbars shows (13 px; only Photo keeps tools there) go too. */
 @media (pointer: coarse) {
-    .editor-touch-actions-group {
+    .editor-touch-actions-group:has(button:not([style*="display: none"], [style*="display:none"])) {
         display: flex !important;
+    }
+}
+@media (max-width: 900px) {
+    #editorToolbarTop > :empty,
+    .editor-sidebar:not(:has(> [id^="editorToolbar"]:not(:empty, [style*="display: none"], [style*="display:none"]))) {
+        display: none !important;
     }
 }
 

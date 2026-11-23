@@ -115,6 +115,34 @@ describe('the Height panel is a collapse tree', () => {
     setHeightTool('gradient');
     expect(sum('gradient')).toMatch(/^Start .* · End /);
   });
+  // owner 2026-11-23: '⌫' read as a keyboard backspace -- a tool Draw has too wears Draw's own icon (its button's svg, the
+  // one source), declared per HEIGHT_TOOLS row (`iconFrom`); the select marquees are Draw's shapes drawn dashed
+  it('the Eraser and the marquee tools wear Draw\'s own icons, from Draw\'s buttons', () => {
+    document.body.innerHTML = page().getElementById('editorLayersPanel').outerHTML + page().getElementById('editorHeightPanel').outerHTML;
+    _resetHeightPanelForTests();
+    initHeightPanel({});
+    const svgOf = (sel) => document.querySelector(sel)?.querySelector('svg');
+    for (const [tool, draw] of [['eraser', 'toolErase'], ['selectRect', 'toolRect'], ['selectEllipse', 'toolCircle']]) {
+      expect(HEIGHT_TOOLS.find((t) => t.id === tool).iconFrom, tool).toBe(draw);
+      const mine = svgOf(`#editorToolbarHeight [data-height-tool="${tool}"]`), theirs = svgOf(`#${draw}`);
+      expect(mine, tool).toBeTruthy();
+      expect([...mine.children].map((n) => n.outerHTML.replace(/ stroke-dasharray="[^"]*"/, '')), tool).toEqual([...theirs.children].map((n) => n.outerHTML));
+    }
+    expect(document.querySelector('#editorToolbarHeight [data-height-tool="eraser"]').textContent).not.toContain('⌫');
+    expect(svgOf('#editorToolbarHeight [data-height-tool="selectRect"]').querySelector('[stroke-dasharray]')).toBeTruthy();
+  });
+  // owner 2026-11-23 ("reuse tool icons where it makes sense"): the Height Brush and the Brick brushes paint -- ONE paintbrush
+  // glyph, the shared table's (editor/tool-icons.js), referenced by both (Brick's no longer holds its own)
+  it('the Brush wears the shared paintbrush glyph, the same definition the Brick brushes use', async () => {
+    const { TOOL_GLYPHS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/tool-icons.js');
+    const { BRICK_TOOL_ICONS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-tool-icons.js');
+    expect(HEIGHT_TOOLS.find((t) => t.id === 'brush').iconGlyph).toBe('paintbrush');
+    expect(BRICK_TOOL_ICONS.brush.glyph).toBe(TOOL_GLYPHS.paintbrush.svg);
+    const svg = document.querySelector('#editorToolbarHeight [data-height-tool="brush"] svg');
+    expect(svg).toBeTruthy();
+    const ref = document.createElement('div'); ref.innerHTML = `<svg>${TOOL_GLYPHS.paintbrush.svg}</svg>`; // the same serialiser
+    expect(svg.innerHTML).toBe(ref.firstChild.innerHTML);
+  });
   it('the carve-range readout stays above the tree (never folded away)', () => {
     const body = document.getElementById('heightPanelBody');
     const kids = [...body.children].map((c) => c.id);

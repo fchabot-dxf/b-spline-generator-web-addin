@@ -37,6 +37,7 @@ import { commitEdit } from '../editor/editor-commit.js';
 import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { createDrawerTree } from './drawer-tree.js';
+import { toolGlyphSvg } from '../editor/tool-icons.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -139,11 +140,15 @@ export const HEIGHT_CONTROLS = Object.freeze([
  *  `leads`: the panel groups shown FIRST while the tool is active (advisor 2026-11-22: the active tool's own section
  *  on top, no scrolling past the patch and the layers to reach it); the others keep their declared order after them. */
 export const HEIGHT_TOOLS = Object.freeze([
-  Object.freeze({ id: 'brush', icon: '🖌', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'palette', 'tip'] }),
+  // owner 2026-11-23 ("reuse tool icons"): `iconGlyph` = the editor's shared glyph for the action (editor/tool-icons.js
+  // TOOL_GLYPHS: the Brick brushes' paintbrush); `icon` is kept only where no tab has the action (lasso, wand, ...)
+  Object.freeze({ id: 'brush', icon: '🖌', iconGlyph: 'paintbrush', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'palette', 'tip'] }),
   // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
-  Object.freeze({ id: 'eraser', icon: '⌫', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
-  Object.freeze({ id: 'selectRect', icon: '⬚', label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
-  Object.freeze({ id: 'selectEllipse', icon: '◯', label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
+  // owner 2026-11-23 ('⌫' read as a keyboard backspace): `iconFrom` = the Draw tool button whose own svg this tool wears (the
+  // one icon source; `icon` stays the fallback where that button is absent); `iconDashed`: drawn dashed, a selection marquee
+  Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
+  Object.freeze({ id: 'selectRect', icon: '⬚', iconFrom: 'toolRect', iconDashed: true, label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
+  Object.freeze({ id: 'selectEllipse', icon: '◯', iconFrom: 'toolCircle', iconDashed: true, label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
   Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
   // slice 4 (Fred 2026-11-23): the MAGIC WAND -- a tap selects the heights within the tolerance of the tapped one
   Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'sample', 'select'] }),
@@ -1838,7 +1843,18 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar 
   if (rail) {
     rail.innerHTML = '';
     // a row's `key` = the editor's own single-key shortcut (editor-interaction.js clicks the modal's [data-key] button)
-    for (const t of HEIGHT_TOOLS) rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ''}: ${t.title}`, 'aria-label': t.label, text: t.icon, ...(t.key ? { 'data-key': t.key } : {}) }));
+    for (const t of HEIGHT_TOOLS) {
+      // `iconFrom`: a copy of that Draw button's own svg (dashed for a marquee); `iconGlyph`: the shared glyph
+      // (editor/tool-icons.js); its glyph `icon` where neither is there (no other tab has the action)
+      const svg = t.iconFrom ? byId(t.iconFrom)?.querySelector('svg')?.cloneNode(true) : null;
+      if (svg && t.iconDashed) for (const n of svg.children) n.setAttribute('stroke-dasharray', '3 2.5');
+      if (svg) svg.setAttribute('aria-hidden', 'true');
+      const glyph = !svg && t.iconGlyph ? toolGlyphSvg(t.iconGlyph) : null;
+      const b = el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ''}: ${t.title}`, 'aria-label': t.label, text: svg || glyph ? '' : t.icon, ...(t.key ? { 'data-key': t.key } : {}) });
+      if (svg) b.appendChild(svg);
+      if (glyph) b.insertAdjacentHTML('afterbegin', glyph);
+      rail.appendChild(b);
+    }
     for (const c of HEIGHT_CONTROLS.filter((x) => x.rail)) {
       for (const [key, text, title] of c.options) {
         rail.appendChild(el('button', { type: 'button', class: 'tool-btn', 'data-height-choice': `${c.id}:${key}`, title: `${text}: ${title}`, 'aria-label': text, text: MODE_LABELS[key] ? MODE_LABELS[key][0] : text }));
