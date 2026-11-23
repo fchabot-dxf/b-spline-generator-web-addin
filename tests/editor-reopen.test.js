@@ -23,7 +23,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { editorRestoreSvg } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 import { createStampCtx } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/_shared.js';
-import { initSvgSource } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/svg-source.js';
+import { openEditorSession } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/svg-source.js';
 
 // A saved editor document, as draw+Apply persists to P.editorSvg.
 const SAVED =
@@ -39,7 +39,6 @@ let openCalls;
 beforeEach(() => {
   document.body.innerHTML =
     '<div id="svgEditorModal" style="display:none"></div>' +
-    '<button id="btnStampEdit"></button>' +
     '<span id="stampFileName"></span>';
   P.activeLayerIdx = 0;
   P.editorSvg = null;
@@ -58,14 +57,11 @@ describe('RO1: editor reopen restores the drawing', () => {
   });
 
   it('reopen opens the persisted editor document, not undefined', () => {
-    const ctx = createStampCtx(null);
-    initSvgSource(ctx, null);
-
     // draw+Apply have persisted the drawing to the unified source of truth.
     P.editorSvg = SAVED;
 
-    // Reopen via the real user path (the Edit button handler).
-    document.getElementById('btnStampEdit').click();
+    // Reopen via the real open path (openEditorSession: the sidebar's Edit button retired, the [2D] toggle calls it).
+    openEditorSession();
 
     expect(openCalls.length).toBe(1);
     expect(openCalls[0]).toBe(SAVED);            // fixed: restores content

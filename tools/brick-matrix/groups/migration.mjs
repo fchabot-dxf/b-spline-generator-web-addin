@@ -85,7 +85,7 @@ async function runMigration() {
   // default board over the fixture (37, measured: it only showed once the default brick length moved off 1 in)
   await reloadWithSession(M.sessionKey, body);
   const z1 = await heightsSettled(null);
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   const a = (await jsJSON(migrationProbe()));
   const setGrout = M.setGroutWidthIn;
@@ -102,7 +102,7 @@ async function runMigration() {
   await sleep(1500);
   await send('Page.reload', {}); await waitApp();
   const z2 = await heightsSettled(null);
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   const b = (await jsJSON(migrationProbe()));
   const keptOk = b.records['wall-full'] === a.records['wall-full'] && b.records.frame === a.records.frame;

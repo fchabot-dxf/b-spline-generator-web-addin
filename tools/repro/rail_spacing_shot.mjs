@@ -41,7 +41,7 @@ if (MODE === 'mobile') {
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 }
 await send('Page.navigate', { url: URL }); await sleep(9000);
-await evalJS(`document.getElementById('btnStampEdit')?.click()`); await sleep(2500);
+await evalJS(`document.getElementById('viewMode_2d')?.click()`); await sleep(2500);
 await evalJS(`document.getElementById('toolLattice')?.click()`); await sleep(500);
 
 // Drive the pattern record directly (R6 = engine + data only, no panel UI for this yet — R7's job).

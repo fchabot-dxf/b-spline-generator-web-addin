@@ -83,7 +83,7 @@ const evalJS = async (expr) => {
   if (r?.exceptionDetails) console.log('PAGE EVAL ERROR:', String(r.exceptionDetails.exception?.description || r.exceptionDetails.text).split(/\r?\n/)[0]);
   return r?.result?.value;
 };
-const appUp = async () => { for (let i = 0; i < 60; i++) { await sleep(1000); if (await evalJS(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; } await sleep(2000); };
+const appUp = async () => { for (let i = 0; i < 60; i++) { await sleep(1000); if (await evalJS(`!!document.getElementById('viewMode_2d') && !document.getElementById('app-splash-name')?.offsetParent`)) break; } await sleep(2000); };
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 // Math.random SEEDED before any page script: a fresh load otherwise draws a new frame shape / terrain each time
@@ -113,7 +113,7 @@ for (const template of todo) {
     await send('Page.navigate', { url: URL }); await appUp();
     const t0 = Date.now();
     const raw = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-      document.getElementById('btnStampEdit').click(); await W(2500);
+      document.getElementById('viewMode_2d').click(); await W(2500);
       { const w = document.getElementById('widthIn'), h = document.getElementById('heightIn');
         w.value = '${BW}'; w.dispatchEvent(new Event('change')); h.value = '${BH}'; h.dispatchEvent(new Event('change')); await W(500); }
       (await import('./main/frame-panel.js')).editFrame({ templateId: '${template}', params: {} }); await W(1500);

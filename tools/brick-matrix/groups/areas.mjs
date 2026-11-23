@@ -113,7 +113,7 @@ async function runWallAreas() {
   // 6. Apply + reopen: the areas persist
   await apply(); await heightsSettled(null);
   const saved = await js(`import('./core/state.js').then(({ P }) => (String(P.editorSvg || '').match(/data-brick-record="wall-area"/g) || []).length)`);
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   const re = await jsJSON(areasState());
   checkRow('areas', 'Apply + reopen: the areas persist', saved === 3 && re.areas.length === 3, `saved ${saved} area records, reopened ${re.areas.length}`);

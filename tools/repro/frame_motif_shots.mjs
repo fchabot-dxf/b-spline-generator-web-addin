@@ -59,7 +59,7 @@ const BUILT = `import('./core/engine/rebuild.js').then((m) => (typeof m.whenRebu
   .then((idle) => idle && (document.getElementById('loading-stage')?.hidden ?? true)))`;
 async function settle(ms = 60000) { const t0 = Date.now(); await sleep(1500); while (Date.now() - t0 < ms && !(await js(BUILT))) await sleep(700); await sleep(1500); }
 
-const splashGone = () => js(`(() => { const s = document.getElementById('app-splash'); return !!document.getElementById('btnStampEdit') && (!s || s.classList.contains('app-splash-hidden')); })()`);
+const splashGone = () => js(`(() => { const s = document.getElementById('app-splash'); return !!document.getElementById('viewMode_2d') && (!s || s.classList.contains('app-splash-hidden')); })()`);
 const T0 = Date.now();
 await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
 await send('Page.navigate', { url: URL });
@@ -79,9 +79,9 @@ const report = [];
 try {
 for (const [tag, preset, template, size, look = {}] of SHOT_LIST) {
   await splashGone();
-  if (!(await editorOpen())) await click('btnStampEdit', 3000);
+  if (!(await editorOpen())) await click('viewMode_2d', 3000);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  if (process.env.DEBUG) console.error('open', await js(`JSON.stringify({ modal: getComputedStyle(document.getElementById('svgEditorModal')).display, ed: !!window.svgEditor, sk: !!window.svgEditor?._sketchLayer, btn: !!document.getElementById('btnStampEdit'), splash: !!document.getElementById('app-splash-name')?.offsetParent })`));
+  if (process.env.DEBUG) console.error('open', await js(`JSON.stringify({ modal: getComputedStyle(document.getElementById('svgEditorModal')).display, ed: !!window.svgEditor, sk: !!window.svgEditor?._sketchLayer, btn: !!document.getElementById('viewMode_2d'), splash: !!document.getElementById('app-splash-name')?.offsetParent })`));
   await click('editorTabFrame', 800);
   const tpl = await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 'none';
     const want=${JSON.stringify(template)}; const opt=[...s.options].find((o)=> want ? o.value===want : !/^template_/.test(o.value));
@@ -113,7 +113,7 @@ for (const [tag, preset, template, size, look = {}] of SHOT_LIST) {
   // 2D: the editor's canvas, the whole board fitted, each laid piece tinted by its relief (data-brick-height-offset:
   // lighter = raised, darker = recessed -- the mockups' convention; display only, this throwaway session is never saved)
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 1700, deviceScaleFactor: 1, mobile: false }); await sleep(1500);
-  await splashGone(); await click('btnStampEdit', 3000); await click('editorTabBrick', 1500); await sleep(2500);
+  await splashGone(); await click('viewMode_2d', 3000); await click('editorTabBrick', 1500); await sleep(2500);
   const [up, flat] = look.tint || ['#e2a07c', null];
   await js(`(()=>{ window.svgEditor.fitView(); const ns = window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick-set]');
     ns.forEach((n) => { const h = +n.getAttribute('data-brick-height-offset') || 0; n.setAttribute('fill', h > 0.04 ? '${up}' : h < -0.04 ? '#5e2a1c' : n.getAttribute('data-brick') === 'wall' ? '#94503a' : '${flat || '#a9583e'}'); }); return ns.length; })()`);

@@ -52,7 +52,7 @@ const sidebar = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(
 })()`);
 await shot('sidebar');
 const editor = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-  document.getElementById('btnStampEdit').click(); await W(3000);
+  document.getElementById('viewMode_2d').click(); await W(3000);
   const e = window.svgEditor; const g = document.getElementById('frame-profile');
   return JSON.stringify({ profileDrawn: !!g, defects: e && e._frameProfile ? e._frameProfile.defects.length : 'n/a',
     fit: e && e._frameProfile ? e._frameProfile.fit.ok : 'n/a', board: e ? [e._mW, e._mH] : null });

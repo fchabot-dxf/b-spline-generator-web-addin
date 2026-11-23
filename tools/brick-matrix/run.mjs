@@ -317,7 +317,7 @@ async function canvasSettled(before) {
 const brickSets = (kinds) => js(`(()=>{ const out={}; for (const k of ${JSON.stringify(kinds)}) out[k]=[...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="'+k+'"]')].map(n=>n.getAttribute('data-brick-set')))]; return JSON.stringify(out); })()`).then(JSON.parse);
 const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditorModal')).display !== 'none'`);
 async function openBrickTool(tool) {
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   await click('editorTabBrick', 800);
   // F35 item 43: the tools are tabs (editor/tab-strip.js .ui-tab) at the top of the Brick panel
   const active = await js(`document.querySelector('#editorToolbarBrick .ui-tab.active')?.id || ''`);
@@ -540,7 +540,7 @@ try {
  *  bootRestore.complete (the boot build landed); a build without it keeps the old 3 s window. item 74k: it says so
  *  when the app never boots (a failed module request leaves no app at all), instead of returning as if it had. */
 async function waitApp() {
-  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`).catch(() => false)) break; }
+  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('viewMode_2d') && !document.getElementById('app-splash-name')?.offsetParent`).catch(() => false)) break; }
   for (let i = 0; i < 180; i++) {
     const done = await js(`import('./core/state.js').then((m) => (m.bootRestore ? m.bootRestore.complete : null), () => 'import-failed')`).catch(() => false);
     if (done === null) { await sleep(3000); return { booted: true, why: 'no boot signal in this build' }; }
@@ -551,7 +551,7 @@ async function waitApp() {
   return { booted: false, why: 'bootRestore.complete never set in 90 s' };
 }
 async function openBrickTab() {
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click('editorTabBrick', 1000);
 }
@@ -582,7 +582,7 @@ async function clearFingerprint() { return (await jsJSON(clearProbe())); }
 // the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
 async function seedClearBoard() {
   await send('Page.reload', {}); await waitApp();
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click('editorTabFrame', 800);
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 'none'; s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return s.value; })()`);
@@ -603,7 +603,7 @@ function checkRow(kind, name, ok, detail, skip) {
 }
 async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
 async function openEditorTab(tabId) {
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click(tabId, 900);
 }

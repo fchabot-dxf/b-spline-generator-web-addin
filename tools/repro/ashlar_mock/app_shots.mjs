@@ -54,7 +54,7 @@ try {
   // the board: 7 x 10 (the Height field, as a user types it)
   await js(`(()=>{const e=document.getElementById('heightIn'); e.value='10'; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   await sleep(4000);
-  await click('btnStampEdit', 2500);
+  await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click('editorTabBrick', 1000);
   await click('brickTool_wall', 1000);

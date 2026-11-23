@@ -26,7 +26,7 @@ export async function buildEdgeColourScenario(evalJS, sleep, opts = {}) {
   await sleep(1200);
 
   // 2. Shape Lattice + Offset from frame (ON, distance EXPLICITLY 0 -- H23 item 70) + Generate.
-  await evalJS(`document.getElementById('btnStampEdit').click(); true`);
+  await evalJS(`document.getElementById('viewMode_2d').click(); true`);
   await sleep(2000);
   await evalJS(`document.getElementById('toolShapeLattice').click(); true`);
   await sleep(800);

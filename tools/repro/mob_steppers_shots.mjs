@@ -37,7 +37,7 @@ await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 await send('Page.navigate', { url: URL }); await sleep(9000);
-await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms)); document.getElementById('btnStampEdit').click(); await W(3000); })()`);
+await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms)); document.getElementById('viewMode_2d').click(); await W(3000); })()`);
 
 // 1) Header: Cancel + Apply visible without any scroll, no page overflow.
 const headerInfo = await evalJS(`(()=>{

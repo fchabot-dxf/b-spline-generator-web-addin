@@ -46,7 +46,7 @@ if (isMobile) {
 
 await send('Page.navigate', { url: URL }); await sleep(9000);
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-  document.getElementById('btnStampEdit').click(); await W(3000);
+  document.getElementById('viewMode_2d').click(); await W(3000);
   document.getElementById('toolLattice').click(); await W(800);
   document.getElementById('latticeGenerate').click(); await W(2000);
   const btns=[...document.querySelectorAll('button,[role=button]')].filter(b=>b.offsetParent && /select/i.test((b.title||'')+(b.getAttribute('aria-label')||'')+b.id));

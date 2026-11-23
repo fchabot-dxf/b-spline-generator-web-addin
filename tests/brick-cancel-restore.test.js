@@ -8,11 +8,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { SvgEditorSnapshot, restoreBrickSettings } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
-import { initSvgSource } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/svg-source.js';
-import { createStampCtx } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/_shared.js';
+import { openEditorSession } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/svg-source.js';
 
 beforeEach(() => {
-  document.body.innerHTML = '<div id="svgEditorModal" style="display:none"></div><button id="btnStampEdit"></button><span id="stampFileName"></span>';
+  document.body.innerHTML = '<div id="svgEditorModal" style="display:none"></div><span id="stampFileName"></span>';
   P.activeLayerIdx = 0;
   P.editorSvg = null;
   P.stampLayers = [{ id: 0, enabled: false }];
@@ -23,8 +22,7 @@ beforeEach(() => {
 
 describe('opening the editor snapshots the brick settings', () => {
   it('a deep copy, so later Brick-tab edits do not change the snapshot', () => {
-    initSvgSource(createStampCtx(null));
-    document.getElementById('btnStampEdit').click();
+    openEditorSession();
     expect(SvgEditorSnapshot.brickSettings.pattern).toBe('stretcher');
     P.brickSettings.pattern = 'basketweave';
     P.brickSettings.grout.widthIn = 0.2;
@@ -43,8 +41,7 @@ describe('opening the editor on a board with no layer still snapshots for Cancel
     window.svgEditor = { _layers: [], _activeLayer: null, open() {} };
     SvgEditorSnapshot.active = false;
     SvgEditorSnapshot.editorSvg = 'stale';
-    initSvgSource(createStampCtx(null));
-    document.getElementById('btnStampEdit').click();
+    openEditorSession();
     expect(SvgEditorSnapshot.active).toBe(true);
     expect(SvgEditorSnapshot.editorSvg).toBe(P.editorSvg);
   });

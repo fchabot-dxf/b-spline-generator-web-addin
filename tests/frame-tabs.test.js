@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { initFramePanel, setEditorTab, getEditorTab, syncFramePanel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { initFramePanel, openEditorOn, setEditorTab, getEditorTab, syncFramePanel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { INACTIVE_LAYER_OPACITY } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { initInteraction } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
@@ -57,13 +57,13 @@ const change = (id, value) => { $(id).value = value; $(id).dispatchEvent(new Eve
 const shown = (id) => $(id).style.display !== 'none';
 
 describe('editor [Frame | Artwork] tabs', () => {
-  it('"Edit frame shape" opens the editor on the Frame tab; "Open SVG Editor" on the Artwork tab', async () => {
+  it('"Edit frame shape" opens the editor on the Frame tab; the [2D] toggle opens on the Artwork tab', async () => {
     $('btnEditFrameShape').click();
     await vi.waitFor(() => expect(getEditorTab()).toBe('frame')); // item 41: its loading stage paints first
     expect([shown('editorFramePanel'), shown('editorLayersPanel'), shown('editorFrameShield')]).toEqual([true, false, true]);
     expect($('editorDrawerTab-layers')).toBeNull(); // the Art tabs retired the drawer's tool | panel tab pair (and its label)
-    $('btnStampEdit').click();
-    expect(getEditorTab()).toBe('artwork');
+    openEditorOn('artwork');
+    await vi.waitFor(() => expect(getEditorTab()).toBe('artwork'));
     expect([shown('editorFramePanel'), shown('editorLayersPanel'), shown('editorFrameShield')]).toEqual([false, true, false]);
   });
 

@@ -59,9 +59,6 @@ const MOVED = [
   'stampTextureSuppression', 'stampTextureSuppressionSlider', 'stampEdgeFilletRadius', 'stampEdgeFilletRadiusSlider',
   'stampFilletPower', 'stampFilletPowerSlider', 'stampMetrics',
 ];
-/** What stays in the sidebar's VECTOR STAMPING panel: Open SVG Editor (its layer list + '+' moved into the LAYERS stack, Fred
- *  2026-11-23, main/layer-stack.js; its per-layer SVG Blueprint is hosted by an open Draw card, parked meanwhile). */
-const SIDEBAR_KEPT = ['btnStampEdit'];
 const BLUEPRINT = ['btnStampChoose', 'btnStampClear', 'stampUpload', 'stampFileName'];
 
 let editor, lines, text, start;
@@ -98,10 +95,12 @@ describe('the Stamp branch of the Draw tree holds every moved control', () => {
   it.each(MOVED)('#%s exists exactly once, inside the Stamp branch, not in the sidebar', (id) => {
     expect(document.querySelectorAll(`[id="${id}"]`).length).toBe(1);
     expect(inStamp(id), `#${id} in the Stamp branch`).not.toBeNull();
-    expect(document.querySelector('.panel-stamp').contains($(id))).toBe(false);
+    expect($(id).closest('.cad-sidebar'), `#${id} outside the sidebar`).toBeNull();
   });
-  it.each(SIDEBAR_KEPT)('#%s stays in the sidebar VECTOR STAMPING panel', (id) => {
-    expect(document.querySelector('.panel-stamp').contains($(id))).toBe(true);
+  it('the sidebar VECTOR STAMPING panel is gone (Fred 2026-11-23): no panel, no Open SVG Editor button', () => {
+    expect(document.querySelector('.panel-stamp')).toBeNull();
+    expect($('btnStampEdit')).toBeNull();
+    expect($('stampSettingsWhere')).toBeNull();
   });
   it.each(BLUEPRINT)('#%s is the SVG Blueprint\'s (#stampBlueprint: a Draw card hosts it), once', (id) => {
     expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);

@@ -91,7 +91,7 @@ async function selectPiece() {
 async function setupBox() {
   await send('Page.navigate', { url: URL }); await sleep(9000);
   await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-    document.getElementById('btnStampEdit').click(); await W(2500);
+    document.getElementById('viewMode_2d').click(); await W(2500);
     document.getElementById('toolLattice').click(); await W(800);
     document.getElementById('latticeGenerate').click(); await W(2500);
   })()`);
@@ -114,7 +114,7 @@ async function setupBox() {
 async function setupShape() {
   await send('Page.navigate', { url: URL }); await sleep(9000);
   await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-    document.getElementById('btnStampEdit').click(); await W(2500);
+    document.getElementById('viewMode_2d').click(); await W(2500);
     document.getElementById('toolShapeLattice').click(); await W(800); document.getElementById('shapePresetHourglass')?.click(); await W(300);
     document.getElementById('shapeLatticeGenerate').click(); await W(2500);
   })()`);

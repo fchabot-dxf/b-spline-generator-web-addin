@@ -84,7 +84,7 @@ try {
   if (BOARD !== 'fresh') await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); } catch (e) {}
     (() => { let a = 0x2f6b9d1; Math.random = () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();` });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
-  for (let i = 0; i < 120 && !(await js('!!document.getElementById("btnStampEdit")')); i++) await sleep(500);
+  for (let i = 0; i < 120 && !(await js('!!document.getElementById("viewMode_2d")')); i++) await sleep(500);
   await sleep(4000);
   if (BOARD !== 'fresh') { // seat A's recipe (shots/seatA/phone_map/README.md), unthrottled, before the audit
     console.log('BOARD', await js(`(async () => { try {
@@ -108,7 +108,7 @@ try {
     } catch (e) { return 'SETUP ERR ' + e.message; } })()`));
   }
   // open the editor on the audited tab (setup, unthrottled)
-  if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
+  if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('viewMode_2d').click();
     // the modal SHOWN (it opens behind the 'openEditor' stage, a few frames after the click) -- svgEditor._draw exists from
     // the page's start, so waiting on it alone measured a hidden editor (seat D 2026-10-09: every undo-map row "could not act")
     for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));

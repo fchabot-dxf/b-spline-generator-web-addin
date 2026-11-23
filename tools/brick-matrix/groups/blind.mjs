@@ -172,7 +172,7 @@ async function runBlindBudget() {
         await js(`(async () => { const root = document.querySelector('.cad-sidebar'); if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 150)); } } return 1; })()`);
       }
       if (row.open) {
-        await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
+        await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('viewMode_2d').click();
           for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250)); return 1; })()`);
         await tap('#' + row.open); await sleep(1500);
       }

@@ -59,7 +59,7 @@ await send('Page.navigate', { url: URL });
 await sleep(9000);
 
 const report = { mode: MODE };
-await evalJS(`document.getElementById('btnStampEdit').click(); true`);
+await evalJS(`document.getElementById('viewMode_2d').click(); true`);
 await sleep(2500);
 await evalJS(`document.getElementById('svgEditorModal').scrollIntoView({ block: 'start' }); true`);
 await sleep(300);

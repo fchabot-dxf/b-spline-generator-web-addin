@@ -97,8 +97,8 @@ try {
   // the open, retried: a first load can replace its own context (the evaluation then comes back empty)
   for (let attempt = 0; attempt < 4; attempt++) {
     const v = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-      for (let i = 0; i < 60 && !document.getElementById('btnStampEdit'); i++) await W(250); await W(1500);
-      document.getElementById('btnStampEdit').click();
+      for (let i = 0; i < 60 && !document.getElementById('viewMode_2d'); i++) await W(250); await W(1500);
+      document.getElementById('viewMode_2d').click();
       for (let i = 0; i < 60 && !(window.svgEditor && window.svgEditor._sketchLayer); i++) await W(250); await W(1000);
       document.getElementById('editorTabHeight').click(); await W(500);
       document.getElementById('heightNew').click(); await W(1500);
