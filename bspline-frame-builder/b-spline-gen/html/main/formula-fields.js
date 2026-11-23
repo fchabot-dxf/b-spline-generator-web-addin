@@ -91,7 +91,7 @@ export const FORMULA_SECTIONS = Object.freeze([
       pname('noise', 'sculptTopNoiseScale', 'Noise scale')],
   },
   {
-    section: 'THICKEN',
+    section: 'THICKEN', // the Layers stack's Thicken line (main/layer-stack.js #thickenSettings; the Thicken panel retired 2026-11-23)
     ids: ['thickenOffset'],
     names: [pname('thickness', 'thickness', 'Offset (thickness)', IN)],
   },

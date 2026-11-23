@@ -149,13 +149,16 @@ describe('renderLayerList', () => {
   });
 });
 
-describe('renderLayersPanel: the editor panel and the sidebar never disagree', () => {
+// Fred 2026-11-23 (the unified layer stack): the main sidebar's two copies of this list (Board > Layers' #mainLayersList and
+// Vector stamping's #stampLayersList) moved into the ONE layer stack (main/layer-stack.js, tests/layer-stack.test.js);
+// renderLayersPanel renders the editor's own list only.
+describe('renderLayersPanel: the editor panel (the sidebar lists moved into the layer stack)', () => {
   let editorList, stampList;
   beforeEach(() => {
     editorList = document.createElement('div');
     editorList.id = 'editorLayersList';
     stampList = document.createElement('div');
-    stampList.id = 'stampLayersList';
+    stampList.id = 'stampLayersList'; // a page that still had the old sidebar list: it is no longer rendered into
     document.body.appendChild(editorList);
     document.body.appendChild(stampList);
   });
@@ -164,69 +167,49 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
     stampList.remove();
   });
 
-  it('both lists render the same rows from one renderLayersPanel call', () => {
+  it('renders the editor panel\'s rows only; the old sidebar list is left empty', () => {
     const editor = mockEditor([mockLayer('0'), mockLayer('1')], '0');
     renderLayersPanel(editor);
     expect(editorList.querySelectorAll('.layer-row').length).toBe(2);
-    expect(stampList.querySelectorAll('.layer-row').length).toBe(2);
-    // The editor panel's rows are NOT compact; the sidebar's are.
     expect(editorList.querySelector('.layer-row.compact')).toBeNull();
-    expect(stampList.querySelector('.layer-row.compact')).not.toBeNull();
+    expect(stampList.querySelectorAll('.layer-row').length).toBe(0);
   });
 
-  it('clicking the eye in the SIDEBAR list updates the EDITOR panel\'s row too (and vice versa) — proven by driving the real click handler, not by asserting on data alone', () => {
+  it('clicking the eye hides the layer and re-renders its row; clicking again shows it -- the real click handler', () => {
     const editor = mockEditor([mockLayer('0', { visible: true })], '0');
     renderLayersPanel(editor);
-
-    const stampEye = stampList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility');
-    stampEye.click(); // calls setLayerVisible(editor, '0', false) -> re-renders BOTH lists
-
-    const editorEye = editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility');
-    expect(editorEye.classList.contains('is-hidden')).toBe(true);
+    editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility').click();
+    expect(editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility').classList.contains('is-hidden')).toBe(true);
     expect(editor._layers[0].visible).toBe(false);
-
-    // And the reverse direction.
-    const editorEyeAgain = editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility');
-    editorEyeAgain.click(); // back to visible
-    const stampEyeAfter = stampList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility');
-    expect(stampEyeAfter.classList.contains('is-hidden')).toBe(false);
+    editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility').click();
+    expect(editorList.querySelector('.layer-row[data-layer-id="0"] .layer-visibility').classList.contains('is-hidden')).toBe(false);
     expect(editor._layers[0].visible).toBe(true);
   });
 
-  it('clicking a row in the sidebar activates that layer, reflected as .active in BOTH lists', () => {
+  it('clicking a row activates that layer, reflected as .active', () => {
     const editor = mockEditor([mockLayer('0'), mockLayer('1')], '0');
     renderLayersPanel(editor);
-
-    const stampRow1 = stampList.querySelector('.layer-row[data-layer-id="1"]');
-    stampRow1.click();
-
+    editorList.querySelector('.layer-row[data-layer-id="1"]').click();
     expect(editor._activeLayer).toBe('1');
     expect(editorList.querySelector('.layer-row[data-layer-id="1"]').classList.contains('active')).toBe(true);
-    expect(stampList.querySelector('.layer-row[data-layer-id="1"]').classList.contains('active')).toBe(true);
     expect(editorList.querySelector('.layer-row[data-layer-id="0"]').classList.contains('active')).toBe(false);
   });
 
-  // T27: the two toggles are wired exactly like the eye — clicking in
-  // either list updates the shared data, so BOTH re-renders agree. One
-  // test per toggle, each driven via a real click, not data.
-  it('clicking 3D carve in the EDITOR panel updates the SIDEBAR row too', () => {
+  // T27: the two toggles are wired exactly like the eye -- one test per toggle, each driven via a real click, not data.
+  it('clicking 3D carve updates the layer and its re-rendered row', () => {
     const editor = mockEditor([mockLayer('0', { carve: true })], '0');
     renderLayersPanel(editor);
-
     editorList.querySelector('.layer-carve').click();
-
     expect(editor._layers[0].carve).toBe(false);
-    expect(stampList.querySelector('.layer-carve').classList.contains('active')).toBe(false);
+    expect(editorList.querySelector('.layer-carve').classList.contains('active')).toBe(false);
   });
 
-  it('clicking the palette showColor button in the EDITOR panel updates the SIDEBAR row too', () => {
+  it('clicking the palette showColor button updates the layer and its re-rendered row', () => {
     const editor = mockEditor([mockLayer('0', { showColor: true })], '0');
     renderLayersPanel(editor);
-
     editorList.querySelector('.layer-showcolor').click();
-
     expect(editor._layers[0].showColor).toBe(false);
-    expect(stampList.querySelector('.layer-showcolor').classList.contains('active')).toBe(false);
+    expect(editorList.querySelector('.layer-showcolor').classList.contains('active')).toBe(false);
   });
 
   // T27's own explicit verify item: "toggling 👁 back on restores
@@ -250,7 +233,6 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
     expect(editor._layers[0].showColor).toBe(false); // preserved exactly
   });
 });
-
 // T27: the declared truth table every gate rewires to — visible is the
 // master for showColor; turn 207 (Fred): hidden is display-only, so EVERY layer is exported; audit B6: and a
 // hidden layer keeps its own carve (display only, fully).
@@ -577,56 +559,3 @@ describe('drag-to-reorder via Pointer Events on the grip (H22 item 1)', () => {
     expect(editor.pushState).not.toHaveBeenCalled();
   });
 });
-
-describe('permanent main sidebar layers panel', () => {
-  let mainList, mainSummary, mainAddBtn;
-  beforeEach(() => {
-    mainList = document.createElement('div');
-    mainList.id = 'mainLayersList';
-    mainSummary = document.createElement('span');
-    mainSummary.id = 'mainLayersSummary';
-    mainAddBtn = document.createElement('button');
-    mainAddBtn.id = 'mainAddLayer';
-    document.body.appendChild(mainList);
-    document.body.appendChild(mainSummary);
-    document.body.appendChild(mainAddBtn);
-  });
-  afterEach(() => {
-    mainList.remove();
-    mainSummary.remove();
-    mainAddBtn.remove();
-  });
-
-  it('renders compact rows and updates the summary count in the main sidebar', () => {
-    const editor = mockEditor([mockLayer('0'), mockLayer('1')], '0');
-    renderLayersPanel(editor);
-
-    expect(mainList.querySelectorAll('.layer-row').length).toBe(2);
-    expect(mainList.querySelector('.layer-row.compact')).not.toBeNull();
-    expect(mainSummary.textContent).toBe('— 2 layers');
-  });
-
-  it('summary shows singular "— 1 layer" when 1 layer exists', () => {
-    const editor = mockEditor([mockLayer('0')], '0');
-    renderLayersPanel(editor);
-
-    expect(mainSummary.textContent).toBe('— 1 layer');
-  });
-
-  it('clicking mainAddLayer adds a new layer and sets it active', () => {
-    const editor = mockEditor([], null);
-    editor.pushState = vi.fn();
-    editor._onChange = vi.fn();
-    initLayerControls(editor);
-
-    expect(editor._layers.length).toBe(1);
-    expect(mainSummary.textContent).toBe('— 1 layer');
-
-    mainAddBtn.click();
-    expect(editor._layers.length).toBe(2);
-    expect(mainSummary.textContent).toBe('— 2 layers');
-    expect(mainList.querySelectorAll('.layer-row').length).toBe(2);
-    expect(editor._activeLayer).toBe(editor._layers[1].id);
-  });
-});
-

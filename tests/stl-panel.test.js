@@ -13,6 +13,7 @@ import {
   STL_CONTROLS, STL_GROUPS, renderStlPanel, bindStlPanel, syncStlPanel, addStlFromBuffer, setStlField, setStoredDetail, removeStlLayer,
   snapStlBase, centreStl, resetStlRotation, activeStlLayer, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 import { ghostState, STL_GHOST_COLOURS } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import { stlPass, stlPasses, STL_WARN_TOTAL_TRIS } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import { _collectStampPasses } from '../bspline-frame-builder/b-spline-gen/html/core/engine/rebuild.js';
@@ -56,17 +57,19 @@ afterEach(() => {
 const setup = () => {
   const hooks = { onChange: vi.fn(), refreshGhosts: vi.fn() };
   renderStlPanel($('stlLayerBody'));
-  bindStlPanel(hooks);
+  bindStlPanel(hooks); mountLayerStack();
   return hooks;
 };
 
 describe('declared, not hand-built', () => {
-  it('the section is in the real palette, in SIDEBAR_TABS (Surface, before Thicken), themed, with an icon and a loading stage', () => {
+  it('the section is in the real palette, in SIDEBAR_TABS (Surface, before the Layers stack and its Thicken line), themed, with an icon and a loading stage', () => {
     expect(HTML).toContain('class="panel panel-stl"');
     expect(HTML).toContain('id="stlLayerBody"');
     const surface = branchSections(SIDEBAR_TABS.find((t) => t.id === 'surface'));
     expect(surface).toContain('panel-stl');
-    expect(surface.indexOf('panel-stl')).toBeLessThan(surface.indexOf('panel-thicken'));
+    // the Thicken panel retired into the Layers stack's Thicken line (Fred 2026-11-23), a branch AFTER Surface
+    expect(SIDEBAR_TABS.findIndex((t) => t.id === 'surface')).toBeLessThan(SIDEBAR_TABS.findIndex((t) => t.id === 'layers'));
+    expect(SIDEBAR_TABS.flatMap(branchSections)).not.toContain('panel-thicken');
     expect(SECTION_THEMES.stl).toBeTruthy();
     expect(SECTION_ICONS.stl).toBeTruthy();
     expect(LOADING_STAGES.stl).toMatchObject({ group: 'computing', surface: 'card' });
@@ -80,9 +83,9 @@ describe('declared, not hand-built', () => {
       else expect(document.querySelectorAll(`#stl_${c.id} [data-stl-choice]`).length, c.id).toBe(c.options.length);
     }
   });
-  it('no STL yet: a hint, the placement controls hidden, nothing written to P', () => {
+  it('no STL yet: no STL card in the layer stack, the placement controls hidden, nothing written to P', () => {
     setup();
-    expect($('stlList').textContent).toMatch(/No STL yet/);
+    expect(document.querySelectorAll('#layerStackList [data-stl-card]')).toHaveLength(0);
     expect($('stlActive').hidden).toBe(true);
     expect(P.stlLayers).toBeUndefined();
   });
@@ -100,7 +103,7 @@ describe('importing', () => {
     expect(rec.unitIn).toBeCloseTo(0.35, 6);
     expect(hooks.onChange).toHaveBeenCalled();
     expect($('stlActive').hidden).toBe(false);
-    expect($('stlList').querySelectorAll('.stl-row')).toHaveLength(1);
+    expect(document.querySelectorAll('#layerStackList [data-stl-card] .stl-row')).toHaveLength(1); // its card in the layer stack
     expect($('stlStored').textContent).toMatch(/Stored 6 of 6 triangles/);
     expect($('stlHealth').textContent).toMatch(/closed mesh/);
   });

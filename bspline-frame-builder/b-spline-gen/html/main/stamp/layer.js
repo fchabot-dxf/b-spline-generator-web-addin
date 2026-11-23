@@ -23,13 +23,11 @@
  * the old populateDropdown() had.
  */
 import { updateP } from '../../core/state.js';
-import { addLayer, setActiveLayer } from '../../editor/layers.js';
-import { withLoadingStageShownFirst } from '../../core/loading-signal.js';
 
 export function initLayer(ctx) {
   const fileNameSpan = document.getElementById('stampFileName');
   const vBitAngleContainer = document.getElementById('vBitAngleContainer');
-  const addBtn = document.getElementById('stampAddLayer');
+  const activeNote = document.getElementById('stampActiveLayerNote');
 
   /** Read the editor's layer roster, or null if the editor isn't ready. */
   const editorLayers = () => {
@@ -59,6 +57,10 @@ export function initLayer(ctx) {
     // input ↔ slider sync.
     ctx.broadcastSyncFromLayer();
 
+    // the layer list moved to the LAYERS stack (main/layer-stack.js, Fred 2026-11-23): this line names the layer the SVG
+    // Blueprint below fills (the active one: opening a Draw card in the stack makes it active)
+    if (activeNote) activeNote.textContent = activeLayer ? `Active layer: ${activeLayer.name}` : 'No layer yet: + Add layer in Layers.';
+
     if (activeLayer && vBitAngleContainer) {
       vBitAngleContainer.style.display = (activeLayer.profile === 'vbit' || activeLayer.profile === 'adaptive')
         ? 'block' : 'none';
@@ -82,22 +84,8 @@ export function initLayer(ctx) {
     document.addEventListener('editorLayersChanged', syncFromEditor);
   }
 
-  // "+" — same addLayer + setActiveLayer the editor's own Layers panel
-  // button (#editorAddLayer, editor/layers.js's initLayerControls) calls.
-  // No-op if the editor hasn't been opened yet — there's no roster to add
-  // to, and nothing in this panel lets you carve without it either.
-  if (addBtn) {
-    addBtn.addEventListener('click', () => {
-      const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
-      if (!editor) return;
-      // Seat D 2026-10-08 (matrix BLIND_BUDGET, tools/brick-matrix/groups/blind.mjs: 390 px, real touch, CPU x4): the add (layer panel,
-      // session save, change pipeline) ran 59-81 ms before the remask's card; its 'carving relief' card is up first now
-      withLoadingStageShownFirst('heightMask', () => {
-        const layer = addLayer(editor);
-        setActiveLayer(editor, layer.id);
-      });
-    });
-  }
+  // (its "+" moved to the LAYERS stack's '+ Add layer > Draw', main/layer-stack.js -- the same addLayer + setActiveLayer
+  // behind the same 'heightMask' card)
 
   // Initial sync, in case the editor already has a roster by the time
   // this module initializes.

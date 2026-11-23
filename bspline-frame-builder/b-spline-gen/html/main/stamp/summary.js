@@ -11,8 +11,10 @@
  */
 import { stampTarget, stampSummaryText } from '../../core/stamp/target.js';
 
-/** The layer lists that carry the summary line (the sidebar's VECTOR STAMPING list). */
-export const STAMP_SUMMARY_LISTS = Object.freeze(['stampLayersList']);
+/** The layer lists that carry the summary line. None now: the sidebar's VECTOR STAMPING list moved into the LAYERS stack
+ *  (Fred 2026-11-23), whose open Draw / Lattice card shows the same stampSummaryText (main/layer-stack.js LAYER_TYPES) and
+ *  re-reads it on STAMP_TARGET_CHANGED. */
+export const STAMP_SUMMARY_LISTS = Object.freeze([]);
 /** Fired after the summaries are fresh (a layer switch or a settings edit). */
 export const STAMP_TARGET_CHANGED = 'stampTargetChanged';
 const SETTINGS_ROOT = 'stampLayerSettings';

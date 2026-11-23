@@ -2,8 +2,9 @@
  * DRAW-STAMP worker U (Fred 2026-11-22: per-layer settings are EDITED IN THE EDITOR, SUMMARISED IN THE SIDEBAR).
  * The Draw layers' stamp settings (Relief + Height, Tool Profile, V-Bit Angle, Fusion Geometry, Transform, Blur,
  * Smoothing, Smooth-the-terrain, Edge Fillet, Fillet Sharpness, the metrics readout) live in ONE 'Stamp' branch of the
- * Draw tab's collapse tree (main/draw-tree.js); the sidebar keeps the layer list, Open Editor, SVG Blueprint (a
- * whole-layer action) and a one-line read-only summary per layer row. The REAL palette markup, the REAL app binders
+ * Draw tab's collapse tree (main/draw-tree.js); the sidebar keeps Open Editor and SVG Blueprint (a whole-layer action);
+ * the layer list and its one-line read-only summary per layer moved into the LAYERS stack (Fred 2026-11-23,
+ * main/layer-stack.js: the open Draw card). The REAL palette markup, the REAL app binders
  * (main/ui-bindings.js bindControls -> applyParam + main/stamp/*), the REAL layer list (editor/layers.js).
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
@@ -34,6 +35,7 @@ import { _collectStampPasses } from '../bspline-frame-builder/b-spline-gen/html/
 import { syncLayerLocks } from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-lock.js';
 import * as jobLock from '../bspline-frame-builder/b-spline-gen/html/main/job-timeline-lock.js';
 import { jobProjectOf, deriveJobSteps, defaultJobOrder } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
+import { initLayerStack, openLayerStackItem } from '../bspline-frame-builder/b-spline-gen/html/main/layer-stack.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.lastIndexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '')
@@ -58,7 +60,8 @@ const MOVED = [
   'stampFilletPower', 'stampFilletPowerSlider', 'stampMetrics',
 ];
 /** What stays in the sidebar's VECTOR STAMPING panel. */
-const SIDEBAR_KEPT = ['btnStampEdit', 'stampAddLayer', 'stampLayersList', 'btnStampChoose', 'btnStampClear', 'stampUpload', 'stampFileName'];
+// (its layer list + '+' moved into the LAYERS stack, Fred 2026-11-23: main/layer-stack.js; the panel names the active layer)
+const SIDEBAR_KEPT = ['btnStampEdit', 'stampActiveLayerNote', 'btnStampChoose', 'btnStampClear', 'stampUpload', 'stampFileName'];
 
 let editor, lines, text, start;
 // the app boots ONCE (bindControls / the tree add document listeners, as in the app); each test starts from the same
@@ -170,8 +173,13 @@ describe('selecting another editor layer shows ITS values', () => {
   });
 });
 
-describe('the sidebar keeps a one-line read-only summary per layer row', () => {
-  const summaryOf = (layer) => $('stampLayersList').querySelector(`.layer-row[data-layer-id="${layer.id}"] .layer-stamp-summary`);
+// the sidebar's layer rows moved into the LAYERS stack (Fred 2026-11-23): each Draw layer's open card shows the same line
+describe('the layer stack: a Draw card shows its layer\'s one-line read-only summary', () => {
+  beforeAll(() => { initLayerStack(); });
+  const summaryOf = (layer) => {
+    openLayerStackItem(`layer:${layer.id}`); // opening a Draw card makes its layer the active one
+    return document.querySelector(`#layerStackList [data-stack-key="layer:${layer.id}"] .layer-card-summary`);
+  };
   it('each row reads its layer: "Raised 0.25 in · V-bit 90°" / "Carved 0.1 in · Ballnose"', () => {
     expect(summaryOf(lines)?.textContent).toBe('Raised 0.25 in · V-bit 90°');
     expect(summaryOf(text)?.textContent).toBe('Carved 0.1 in · Ballnose');

@@ -146,16 +146,20 @@ function updateRecord(id, change) {
   P.stlLayers = list().map((r) => (r && r.id === id ? change(r) : r));
 }
 
+/** The layer stack (main/layer-stack.js) re-reads the records after any STL write: a card's name, its Thicken side. */
+export const LAYER_STACK_STALE = 'layerStackStale';
 function commit(what) {
   scheduleSessionSave();
   scheduleUndoSnapshot(`stl:${what}`, 'STL');
   _hooks.onChange();
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent(LAYER_STACK_STALE));
 }
 
-/** Write one control's value into the ACTIVE record (the user moved it). */
-export function setStlField(controlId, value) {
+/** Write one control's value into the ACTIVE record (the user moved it) -- or into record `id` (the layer stack writes a
+ *  card's Thicken side when it crosses the line: the same write as the card's own Thicken choice). */
+export function setStlField(controlId, value, id = null) {
   const c = STL_CONTROLS.find((x) => x.id === controlId);
-  const rec = activeStlLayer();
+  const rec = id != null ? find(id) : activeStlLayer();
   if (!c || !rec) return false;
   let v = value;
   if (c.kind === 'slider') { v = parseFloat(value); if (!Number.isFinite(v)) return false; }
@@ -206,6 +210,7 @@ export function pickStlLayer(id) {
   _active = id;
   _open = id;
   syncStlPanel();
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stlCardOpened', { detail: { id } })); // the stack closes its other card
   const c = typeof document !== 'undefined' ? [...document.querySelectorAll('[data-stl-card]')].find((x) => x.getAttribute('data-stl-card') === String(id)) : null;
   if (c && typeof c.scrollIntoView === 'function') c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   return true;
@@ -693,6 +698,7 @@ function syncCropGroup() {
 export function renderStlPanel(body) {
   if (!body) return;
   body.innerHTML = '';
+  byId('stlActive')?.remove(); // the settings block may sit in the layer stack's open card: a re-render replaces it there too
   body.appendChild(el('div', { class: 'stl-add-row' }, [
     el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add STL…' }),
     el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse 3D libraries…', title: `Pick a model from the open 3D collections: ${STL_LIBRARIES.map((l) => l.label).join(', ')}` }),
@@ -703,7 +709,8 @@ export function renderStlPanel(body) {
   body.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlFitOnInsert' }), el('span', { text: 'Fit new STLs to the carve depth' })]));
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
-  body.appendChild(el('div', { id: 'stlList', class: 'stl-list' }));
+  // (the STL cards are in the main panel's LAYER STACK now, Fred 2026-11-23: main/layer-stack.js builds one card per record,
+  // in its place in the stack; this panel keeps its global settings above and hosts the settings below in the open card)
   const active = el('div', { id: 'stlActive', hidden: '' }); // moved into the open card by syncStlPanel (never copied)
   for (const g of STL_GROUPS) {
     const mine = STL_CONTROLS.filter((c) => c.group === g.id);
@@ -788,31 +795,54 @@ function detailSliderMax(rec) {
 }
 
 /** Reflect the state on the whole panel. Safe to call any time (a load, an undo, a rebuild). */
+/** Which STL card is open (null: none) -- the layer stack reads it when it builds the STL cards. */
+export const openStlId = () => (find(_open) ? _open : null);
+/** The stack's tap on an STL card's header: open it (and make it the active STL) or close it. One card at a time. */
+export function toggleStlCard(id) {
+  if (!find(id)) return false;
+  _open = _open === id ? null : id; // tap = open / close the card (accordion: opening one closes the other)
+  _active = id;
+  syncStlPanel();
+  _hooks.refreshGhosts();
+  return true;
+}
+/** Another card of the stack opened: no STL card stays open (the settings park). */
+export function closeStlCards() {
+  if (_open === null) return;
+  _open = null;
+  syncStlPanel();
+}
+
+/** The STL cards' header state + the ONE settings block. The cards are the layer stack's (main/layer-stack.js: one card per
+ *  record, [data-stl-card] with an .stl-card-body); this marks each one and moves #stlActive into the open card's body, or
+ *  parks it hidden in the STL panel while none is open. */
+function syncStlCards(recs, activeEl) {
+  const park = byId('stlLayerBody');
+  let host = null;
+  for (const card of document.querySelectorAll('[data-stl-card]')) {
+    const id = card.getAttribute('data-stl-card');
+    const r = recs.find((x) => x && String(x.id) === id);
+    const isOpen = !!r && id === String(_open);
+    card.classList.toggle('stl-card-open', isOpen);
+    card.classList.toggle('collapsed', !isOpen);
+    const pick = card.querySelector('[data-stl-pick]');
+    if (pick) { pick.setAttribute('aria-expanded', String(isOpen)); pick.title = isOpen ? 'Close its settings' : 'Open its settings'; }
+    card.querySelector('.stl-row')?.classList.toggle('stl-row-active', !!r && id === String(_active));
+    const box = card.querySelector('[data-stl-enable]');
+    if (box && r) box.checked = r.enabled !== false;
+    if (isOpen) host = card.querySelector('.stl-card-body');
+  }
+  if (host) { if (activeEl.parentElement !== host) host.appendChild(activeEl); activeEl.hidden = false; }
+  else { activeEl.hidden = true; if (park && activeEl.parentElement !== park) park.appendChild(activeEl); }
+}
+
 export function syncStlPanel() {
-  const listEl = byId('stlList');
-  if (!listEl) return;
+  const activeEl = byId('stlActive');
+  if (!activeEl) return;
   const recs = list();
   if (!find(_active)) _active = recs[0]?.id ?? null;
   if (!find(_open)) _open = null;
-  const activeEl = byId('stlActive');
-  if (activeEl) { activeEl.hidden = true; listEl.after(activeEl); } // park the settings before the cards are rebuilt
-  listEl.innerHTML = '';
-  if (!recs.length) listEl.appendChild(el('div', { class: 'photo-layer-note', text: 'No STL yet. Add one: it is placed at the board centre and stamped into the surface.' }));
-  for (const r of recs) {
-    const on = r.enabled !== false;
-    const isOpen = r.id === _open;
-    const row = el('div', { class: `stl-row${r.id === _active ? ' stl-row-active' : ''}` }, [
-      el('input', { type: 'checkbox', 'data-stl-enable': r.id, title: 'Stamp this STL', ...(on ? { checked: '' } : {}) }),
-      el('button', { type: 'button', class: 'stl-row-name', 'data-stl-pick': r.id, 'aria-expanded': String(isOpen), title: isOpen ? 'Close its settings' : 'Open its settings', text: r.name || 'STL' }),
-      el('span', { class: 'stl-row-warn', 'data-stl-warn': r.id, role: 'img', 'aria-label': 'Over the stock', text: '⚠', hidden: '' }),
-      el('button', { type: 'button', class: 'stl-row-del', 'data-stl-del': r.id, title: 'Remove this STL', 'aria-label': `Remove ${r.name || 'STL'}`, text: '🗑' }),
-    ]);
-    row.querySelector('input').checked = on;
-    const cardBody = el('div', { class: 'stl-card-body' });
-    const cardEl = el('div', { class: `stl-card${isOpen ? ' stl-card-open' : ''}`, 'data-stl-card': r.id }, [row, cardBody]);
-    if (isOpen && activeEl) { cardBody.appendChild(activeEl); activeEl.hidden = false; } // the ONE settings block moves into the open card
-    listEl.appendChild(cardEl);
-  }
+  syncStlCards(recs, activeEl);
   const rec = activeStlLayer();
   if (rec) {
     const n = normaliseStlLayer(rec);
@@ -867,6 +897,12 @@ export function syncStlPanel() {
   }
 }
 
+/** The STL add sheet (STL_LIBRARIES): the panel's 'Browse 3D libraries…' and the layer stack's '+ Add layer > STL relief'
+ *  open the same one. */
+export function openStlAddSheet() {
+  return openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib, opts) => addStlFromLibrary(tile, lib, opts) });
+}
+
 /** Wire the panel. `hooks.onChange`: rebuild the surface; `hooks.refreshGhosts`: redraw the ghosts only. */
 export function bindStlPanel(hooks = {}) {
   _hooks = { onChange: hooks.onChange || (() => {}), refreshGhosts: hooks.refreshGhosts || (() => {}) };
@@ -882,7 +918,7 @@ export function bindStlPanel(hooks = {}) {
   // the slider: the box follows live while dragging; the re-store (a decimate, ~100 ms+) runs on release only
   byId('stlDetailSlider')?.addEventListener('input', (e) => { const b = byId('stlDetail'); if (b) b.value = e.target.value; });
   byId('stlDetailSlider')?.addEventListener('change', (e) => setStoredDetail(e.target.value));
-  byId('stlBrowseSi')?.addEventListener('click', () => openStlLibrarySheet({ libraries: STL_LIBRARIES, onPick: (tile, lib, opts) => addStlFromLibrary(tile, lib, opts) }));
+  byId('stlBrowseSi')?.addEventListener('click', () => openStlAddSheet());
   byId('stlCropApply')?.addEventListener('click', () => {
     const rec = activeStlLayer();
     if (rec && !_cropPending.has(rec.id)) { status('Set the box first: move a crop slider (the ghost shows what is kept).'); return; }
@@ -891,23 +927,8 @@ export function bindStlPanel(hooks = {}) {
   byId('stlCropReset')?.addEventListener('click', () => resetStlCrop());
   for (const b of STL_CROP_EDGE_BOXES) byId(b.id)?.addEventListener('change', (e) => { setStlCropEdge(b.key, e.target.checked); syncStlPanel(); });
   byId('stlGhost')?.addEventListener('change', (e) => { ghostState.visible = !!e.target.checked; _hooks.refreshGhosts(); });
-  byId('stlList')?.addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-stl-pick]');
-    if (pick) {
-      const id = pick.getAttribute('data-stl-pick');
-      _open = _open === id ? null : id; // tap = open / close the card (accordion: opening one closes the other)
-      _active = id;
-      syncStlPanel();
-      _hooks.refreshGhosts();
-      return;
-    }
-    const del = e.target.closest('[data-stl-del]');
-    if (del) removeStlLayer(del.getAttribute('data-stl-del')); // one write, one undo step; it opens nothing
-  });
-  byId('stlList')?.addEventListener('change', (e) => {
-    const box = e.target.closest('[data-stl-enable]');
-    if (box) setStlEnabled(box.getAttribute('data-stl-enable'), box.checked);
-  });
+  // (a card's header -- open / close, its Stamp box, its trash -- is the layer stack's: main/layer-stack.js calls
+  // toggleStlCard / setStlEnabled / removeStlLayer)
   for (const a of STL_ACTIONS) byId(a.id)?.addEventListener('click', () => a.run()); // each run writes, commits and re-syncs
   if (typeof document !== 'undefined') document.addEventListener('stlStockChanged', onStlStockChanged); // one listener (same function)
   for (const c of STL_CONTROLS) {

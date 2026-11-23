@@ -632,6 +632,19 @@ export function setLayerCarve(editor, id, carve) {
   _notifyLayerToolingCommit('carve');
 }
 
+/** The layer's THICKEN placement (Fred 2026-11-23, core/stamp/placement.js), set by the main panel's layer stack when its
+ *  card crosses the Thicken line (main/layer-stack.js): 'afterBack' is stored, 'withSurface' (the default) is stored as
+ *  ABSENT -- a board never moved keeps no field (AGENTS.md rule 3). The same commit + undo route as the carve toggle. */
+export function setLayerPlacement(editor, id, placement) {
+  if (!Array.isArray(editor._layers)) return;
+  const layer = editor._layers.find(l => String(l.id) === String(id));
+  if (!layer) return;
+  if (placement === 'afterBack') layer.placement = 'afterBack'; else delete layer.placement;
+  renderLayersPanel(editor);
+  commitEdit(editor); // the one commit: persist + remask + rebuild
+  _notifyLayerToolingCommit('placement');
+}
+
 /** T27: the palette (showColor) toggle — never disabled. Applies as a
  *  display-only class via applyLayerState (never rewrites an element's
  *  own stored stroke/fill), so turning it back on always restores every
@@ -807,24 +820,8 @@ export function renderLayerList(container, editor, { compact = false } = {}) {
 export function renderLayersPanel(editor) {
   const list = document.getElementById('editorLayersList');
   if (list) renderLayerList(list, editor, { compact: false });
-
-  // SE10: the Vector Stamping sidebar's layer browser — same data, same
-  // renderLayerList, compact presentation. A no-op (renderLayerList's own
-  // `if (!container) return`) on any page/state where #stampLayersList
-  // doesn't exist, e.g. before the editor modal has ever been opened.
-  const stampList = document.getElementById('stampLayersList');
-  if (stampList) renderLayerList(stampList, editor, { compact: true });
-
-  // Permanent main sidebar's layer browser — same data, same renderLayerList, compact presentation.
-  const mainList = document.getElementById('mainLayersList');
-  if (mainList) renderLayerList(mainList, editor, { compact: true });
-
-  const mainSummary = document.getElementById('mainLayersSummary');
-  if (mainSummary) {
-    const layers = Array.isArray(editor._layers) ? editor._layers : [];
-    const count = layers.length;
-    mainSummary.textContent = `— ${count} layer${count === 1 ? '' : 's'}`;
-  }
+  // (the main sidebar's two copies of this list -- Board > Layers and Vector stamping -- moved into the ONE layer stack,
+  // Fred 2026-11-23: main/layer-stack.js renders every layer as a card there, on the event below)
 
   _syncLegacySelect(editor);
 
@@ -958,6 +955,30 @@ export function bakeBrickTransforms(editor) {
     baked++;
   }
   return baked;
+}
+
+/** The layer holding the Lattice / Shape Lattice PATTERN that layer `layerId` belongs to (the pattern's own layer, or a
+ *  kind layer -- Rails / Ties / Nodes / Contour -- of it), or null for a plain drawing layer. Ids compare as strings (svg.js
+ *  hands numbers). The layer's own `.pattern`, else its runtime `patternOwner`, else T80 item 4's declared identity: the
+ *  owner's saved `pattern.layers` map (patternOwner is not in the saved roster). editor-lattice-pattern.js
+ *  resolvePatternLayer and the main panel's layer stack (a Lattice card) read this one rule. */
+export function latticeOwnerLayer(layers, layerId) {
+  const all = Array.isArray(layers) ? layers : [];
+  const key = layerId == null ? null : String(layerId);
+  const layer = all.find((l) => l && String(l.id) === key);
+  if (!layer) return null;
+  if (layer.pattern) return layer;
+  if (layer.patternOwner) return all.find((l) => l && String(l.id) === String(layer.patternOwner)) || null;
+  return all.find((l) => l && l.pattern && l.pattern.layers
+    && Object.values(l.pattern.layers).some((id) => String(id) === key)) || null;
+}
+
+/** Is layer `layerId` part of a GENERATED Lattice / Shape Lattice (its owner's pattern has an `id`: the Lattice panels' own
+ *  "has run once" signal, properties-lattice.js / properties-shape-lattice.js Generate vs Regenerate)? A pattern the panel
+ *  attaches lazily to whatever layer is active, never generated, does not make a drawing layer a lattice. */
+export function isLatticeLayer(layers, layerId) {
+  const owner = latticeOwnerLayer(layers, layerId);
+  return !!(owner && owner.pattern && owner.pattern.id != null);
 }
 
 /** F35 item 64 (Fred: "make wall and frame use their own layers, as brick brush drawing too; they still interact with
@@ -1348,14 +1369,6 @@ export function initLayerControls(editor) {
   const addBtn = document.getElementById('editorAddLayer');
   if (addBtn) {
     on(addBtn, 'click', () => {
-      const layer = addLayer(editor);
-      setActiveLayer(editor, layer.id);
-    });
-  }
-
-  const mainAddBtn = document.getElementById('mainAddLayer');
-  if (mainAddBtn) {
-    on(mainAddBtn, 'click', () => {
       const layer = addLayer(editor);
       setActiveLayer(editor, layer.id);
     });

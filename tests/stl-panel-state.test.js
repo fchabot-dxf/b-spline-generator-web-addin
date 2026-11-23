@@ -14,6 +14,7 @@ import {
   renderStlPanel, bindStlPanel, syncStlPanel, addStlFromBuffer, setStlField, setStoredDetail, removeStlLayer, setStlEnabled,
   activeStlLayer, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 import { ghostState } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import { _resetStlCachesForTests } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import { _collectStampPasses } from '../bspline-frame-builder/b-spline-gen/html/core/engine/rebuild.js';
@@ -63,7 +64,7 @@ afterEach(() => {
 const setup = () => {
   const hooks = { onChange: vi.fn(), refreshGhosts: vi.fn() };
   renderStlPanel($('stlLayerBody'));
-  bindStlPanel(hooks);
+  bindStlPanel(hooks); mountLayerStack();
   return hooks;
 };
 const add = (name = 'p.stl', soup = pyramidSoup()) => addStlFromBuffer(binaryStl(soup), name);

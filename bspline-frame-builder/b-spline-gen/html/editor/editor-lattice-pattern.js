@@ -25,7 +25,7 @@ import {
   LATTICE_ATTR, RAIL_ID_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder, userLockedLayersOf, toastLayersLeftAsIs } from './layers.js';
+import { getActiveLayer, addLayer, setActiveLayer, onLayerRemoved, getElementLayer, syncLayerZOrder, userLockedLayersOf, toastLayersLeftAsIs, latticeOwnerLayer } from './layers.js';
 import { OVERRIDE_COLOR_ATTR, applyColorOverride } from './editor-piece-override.js';
 import { latticeChains, JOINT_TOL, minPieceLength } from './editor-lattice-chains.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
@@ -3313,19 +3313,9 @@ export function resolvePatternLayer(editor, layerId) {
   // actually persisted, though every mock-based test passed, because the
   // mock's own `attr()` never coerces): caught building this turn's own
   // live verification, not a hypothetical.
-  const key = layerId == null ? null : String(layerId);
-  const layer = layers.find((l) => String(l.id) === key);
-  if (!layer) return null;
-  if (layer.pattern) return layer;
-  if (layer.patternOwner) return layers.find((l) => String(l.id) === String(layer.patternOwner)) || null;
-  // T80 item 4: `patternOwner` is runtime-only (not in the saved roster), so
-  // after a reopen a sibling kind-layer had no owner and the panel started a
-  // fresh pattern -> a second Ties/Contour/Nodes set. The owner's own
-  // `pattern.layers` map (saved with the pattern) is the declared identity:
-  // it names each kind-layer by id, so it survives 3D/eye toggles, renames
-  // and reordering.
-  return layers.find((l) => l.pattern && l.pattern.layers
-    && Object.values(l.pattern.layers).some((id) => String(id) === key)) || null;
+  // the lookup itself (the layer's own `.pattern`, its runtime `patternOwner`, else T80 item 4's saved `pattern.layers`
+  // map) lives in layers.js latticeOwnerLayer -- the one rule, also read by the main panel's layer stack
+  return latticeOwnerLayer(layers, layerId);
 }
 
 /** H2 (SEG-COLOR-PANEL): true when `el` is a contour segment carrying an

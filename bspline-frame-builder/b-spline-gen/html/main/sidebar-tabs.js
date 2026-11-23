@@ -15,10 +15,14 @@
 // sections edited in place, then a "2D editor" group with the ones that open the 2D editor (Photo, Brick, Vector
 // stamping -- Decor's two joined Photo there).
 export const SIDEBAR_TABS = Object.freeze([
-  // c64a466 (Fred, 2026-10-14): the permanent Layers panel, right after Stock dimensions
-  Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-layers', 'panel-frame']) }),
-  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-thicken', 'panel-sculpt-bot']),
+  Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
+  // panel-stl / panel-brick / panel-stamp keep their GLOBAL settings only: their layers are cards in the Layers stack
+  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']),
     groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-photo', 'panel-brick', 'panel-stamp']) })]) }),
+  // the unified LAYER STACK (Fred 2026-11-23, main/layer-stack.js): after Surface, before Sculpt bottom and Output. The
+  // stack's section is the permanent Layers panel (c64a466, moved here from Board); the Thicken panel retired into its
+  // Thicken line; Sculpt bottom (the back) follows it as it followed Thicken.
+  Object.freeze({ id: 'layers', label: 'Layers', sections: Object.freeze(['panel-layers', 'panel-sculpt-bot']) }),
   Object.freeze({ id: 'output', label: 'Output', sections: Object.freeze(['panel-view', 'panel-export', 'panel-resolution']) }),
 ]);
 /** Pure: every section of a branch in its order on screen (its own, then each group's). */
@@ -29,8 +33,8 @@ export const groupOfSection = (key) => SIDEBAR_TABS.flatMap((t) => t.groups || [
 // Surface, scrolled to its 2D editor group
 export const SIDEBAR_TAB_ALIASES = Object.freeze({ decor: Object.freeze({ tab: 'surface', group: 'editor' }) });
 export const SIDEBAR_UNLISTED_TAB = 'surface';
-// the mockup's first look: Board and Surface open, Output folded
-export const SIDEBAR_DEFAULT_OPEN = Object.freeze(['board', 'surface']);
+// the mockup's first look: Board and Surface open, Output folded; the Layers stack open too (Fred 2026-11-23)
+export const SIDEBAR_DEFAULT_OPEN = Object.freeze(['board', 'surface', 'layers']);
 export const SIDEBAR_OPEN_STORAGE_KEY = 'bspline.main.sidebarOpen';
 export const SIDEBAR_PINNED_STORAGE_KEY = 'bspline.main.sidebarPinned';
 // the tab a viewer last had (the tab strip's key, read once): on a device with no tree state yet it opens too

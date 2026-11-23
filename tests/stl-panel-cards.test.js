@@ -13,6 +13,7 @@ import {
   STL_CONTROLS, STL_ACTIONS, STL_GROUPS, renderStlPanel, bindStlPanel, syncStlPanel, addStlFromBuffer, setStlField,
   pickStlLayer, activeStlLayer, _resetStlPanelForTests,
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
+import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/history.js', () => ({ scheduleUndoSnapshot: vi.fn() }));
 
@@ -42,7 +43,7 @@ beforeEach(() => {
   ghostState.visible = true;
   scheduleUndoSnapshot.mockClear();
   renderStlPanel($('stlLayerBody'));
-  bindStlPanel({});
+  bindStlPanel({}); mountLayerStack();
 });
 afterEach(() => {
   if (saved.stl === undefined) delete P.stlLayers; else P.stlLayers = saved.stl;
@@ -120,7 +121,7 @@ describe('the settings fold in the declared groups', () => {
     expect(group('rotate').classList.contains('collapsed')).toBe(false);
     syncStlPanel();
     expect(group('rotate').classList.contains('collapsed')).toBe(false);
-    renderStlPanel($('stlLayerBody')); bindStlPanel({});
+    renderStlPanel($('stlLayerBody')); bindStlPanel({}); mountLayerStack();
     expect(group('rotate').classList.contains('collapsed')).toBe(false);
     group('place').querySelector('.panel-header').click(); // and closing Place sticks too
     syncStlPanel();

@@ -29,6 +29,10 @@ export const SECTION_THEMES = Object.freeze({
   resolution: { hue: 235 },
   // the editor's Photo tab, and Surface > Photo (2026-10-10, the photo layer's own sidebar section)
   photo: { hue: 345 },
+  // the LAYER STACK's card kinds with no sidebar section of their own (Fred 2026-11-23, main/layer-stack.js LAYER_TYPES):
+  // a Lattice layer (clear of Draw = stamp's 135 and Texture's 175) and a Height patch (clear of Shape 265 / Bottom 295)
+  lattice: { hue: 155 },
+  height: { hue: 280 },
 });
 
 /** Fred 2026-10-16 (the job timeline's chips: icon-on-colour, no text): one declared icon per SECTION_THEMES id,
@@ -38,6 +42,7 @@ export const SECTION_ICONS = Object.freeze({
   // skeleton = TERRAIN SHAPE's ⛰ since TERRAIN-FLAT (2026-11-22); filter = TERRAIN TEXTURE
   stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰️', filter: '🎨', brick: '🧱', stamp: '📐',
   'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
+  lattice: '🕸️', height: '🎚️', // the layer stack's card kinds (the mockup's Height glyph)
 });
 
 /** A SECTION_THEMES hue as a flat CSS colour (not themeTokens' body/header/stripe/text derivation, which is for
@@ -119,6 +124,16 @@ export function applySectionThemes(doc = typeof document !== 'undefined' ? docum
     n++;
   }
   return n;
+}
+
+/** The layer stack (main/layer-stack.js): tint ONE card built at runtime by a SECTION_THEMES id, exactly as
+ *  applySectionThemes tints a sidebar section (the same tokens + `section-themed`, so the sidebar's own themed-section
+ *  CSS draws its stripe, header and body). */
+export function themeSectionEl(el, id) {
+  if (!el || !SECTION_THEMES[id]) return false;
+  _writeTokens(el, id);
+  el.classList.add('section-themed');
+  return true;
 }
 
 /** Brick-tab v2: tint ONE Brick-editor section by its kind (BRICK_SECTION_THEMES) -- the sections are built at

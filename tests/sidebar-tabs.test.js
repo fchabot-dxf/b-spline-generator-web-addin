@@ -22,7 +22,7 @@ const $ = (id) => document.getElementById(id);
 const sectionsOf = (id) => branchSections(SIDEBAR_TABS.find((t) => t.id === id));
 // a branch's sections as they stand in the page (its own, then its groups')
 const inBranch = (id) => [...$(`sidebarBranch_${id}`).querySelectorAll('.panel')].filter((p) => sectionKey(p.classList)).map((p) => sectionKey(p.classList));
-const BOARD = sectionsOf('board'), SURFACE = sectionsOf('surface'), OUTPUT = sectionsOf('output');
+const BOARD = sectionsOf('board'), SURFACE = sectionsOf('surface'), LAYERS = sectionsOf('layers'), OUTPUT = sectionsOf('output');
 
 beforeEach(() => {
   localStorage.clear();
@@ -37,9 +37,12 @@ describe('phase 5: the main sidebar tree', () => {
     for (const k of keys) expect(SIDEBAR_TABS.flatMap(branchSections).filter((s) => s === k).length, k).toBe(1);
   });
 
-  it('Fred 2026-10-11 (final): three branches; Surface ends with a "2D editor" GROUP -- Photo, Brick, Vector stamping', () => {
-    expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'output']);
-    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-thicken', 'panel-sculpt-bot', 'panel-photo', 'panel-brick', 'panel-stamp']); // STL-RELIEF: panel-stl before Thicken (its heights are what thicken reads)
+  it('Fred 2026-10-11 (final) + 2026-11-23 (the layer stack): four branches; Surface ends with a "2D editor" GROUP; the LAYERS branch after it', () => {
+    expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'layers', 'output']);
+    expect(BOARD).toEqual(['panel-stock', 'panel-frame']);
+    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-photo', 'panel-brick', 'panel-stamp']);
+    // the stack (its Thicken line holds the retired Thicken panel's settings), then Sculpt bottom as it followed Thicken
+    expect(LAYERS).toEqual(['panel-layers', 'panel-sculpt-bot']);
     expect(groupOfSection('panel-brick')).toMatchObject({ id: 'editor', label: '2D editor' });
     expect(groupOfSection('panel-filter')).toBeNull();
     initSidebarTabs();
@@ -56,7 +59,7 @@ describe('phase 5: the main sidebar tree', () => {
     expect([...actions.children].map((c) => c.id)).toEqual(['btnRandomSeed']);
     const branches = [...document.querySelectorAll('.cad-sidebar-sections > .sidebar-branch')];
     expect(branches.map((b) => b.dataset.branch)).toEqual(SIDEBAR_TABS.map((t) => t.id));
-    expect(branches.map((b) => b.querySelector('.sidebar-branch-label').textContent)).toEqual(['Board', 'Surface', 'Output']);
+    expect(branches.map((b) => b.querySelector('.sidebar-branch-label').textContent)).toEqual(['Board', 'Surface', 'Layers', 'Output']);
     // the page's markup has Photo after Filter and Brick in its own block: the declaration, not the markup, orders them
     for (const t of SIDEBAR_TABS) expect(inBranch(t.id), t.id).toEqual(branchSections(t));
   });
@@ -66,10 +69,10 @@ describe('phase 5: the main sidebar tree', () => {
       .toEqual(['panel-stock', 'panel-skeleton', 'panel-photo', 'panel-stamp', 'panel-new', 'panel-view']);
   });
 
-  it('the first look is the mockup\'s: Board and Surface open, Output folded', () => {
+  it('the first look is the mockup\'s: Board, Surface and the Layers stack open, Output folded', () => {
     initSidebarTabs();
-    expect(SIDEBAR_DEFAULT_OPEN).toEqual(['board', 'surface']);
-    expect(shown()).toEqual([...BOARD, ...SURFACE]);
+    expect(SIDEBAR_DEFAULT_OPEN).toEqual(['board', 'surface', 'layers']);
+    expect(shown()).toEqual([...BOARD, ...SURFACE, ...LAYERS]);
     expect($('sidebarTab_board').getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector('[data-branch="output"] .sidebar-branch-caret').textContent).toBe(BRANCH_CARET.folded);
   });
@@ -77,13 +80,13 @@ describe('phase 5: the main sidebar tree', () => {
   it('a caret folds and unfolds its own branch only; the open set is remembered per device', () => {
     initSidebarTabs();
     document.querySelector('[data-branch="board"] .sidebar-branch-caret').click();
-    expect(shown()).toEqual(SURFACE);
+    expect(shown()).toEqual([...SURFACE, ...LAYERS]);
     document.querySelector('[data-branch="output"] .sidebar-branch-caret').click();
-    expect(shown()).toEqual([...SURFACE, ...OUTPUT]);
-    expect(JSON.parse(localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY))).toEqual(['surface', 'output']);
+    expect(shown()).toEqual([...SURFACE, ...LAYERS, ...OUTPUT]);
+    expect(JSON.parse(localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY))).toEqual(['surface', 'layers', 'output']);
     document.body.innerHTML = SIDEBAR;
     initSidebarTabs();
-    expect(shown()).toEqual([...SURFACE, ...OUTPUT]);
+    expect(shown()).toEqual([...SURFACE, ...LAYERS, ...OUTPUT]);
   });
 
   it('a branch label (the former tab id) opens its branch and scrolls to it -- a second tap never folds it', () => {
@@ -122,8 +125,8 @@ describe('phase 5: the main sidebar tree', () => {
   it('a device\'s saved state from before the merge: a stored "decor" open flag reads as Surface, the old Decor tab too', () => {
     expect(initialOpenBranches(['decor', 'output'], null)).toEqual(['surface', 'output']);
     expect(initialOpenBranches(['board'], 'decor')).toEqual(['board']); // a saved set wins
-    expect(initialOpenBranches(null, 'decor')).toEqual(['board', 'surface']);
-    expect(initialOpenBranches(null, 'output')).toEqual(['board', 'surface', 'output']);
+    expect(initialOpenBranches(null, 'decor')).toEqual(['board', 'surface', 'layers']);
+    expect(initialOpenBranches(null, 'output')).toEqual(['board', 'surface', 'layers', 'output']);
     expect(initialOpenBranches(['gone'], null)).toEqual([]); // unknown ids dropped
     localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, JSON.stringify(['decor']));
     initSidebarTabs();
@@ -143,7 +146,7 @@ describe('phase 5: the main sidebar tree', () => {
     pin.click();
     expect(window.togglePanel).not.toHaveBeenCalled(); // the pin never folds the section
     expect(brick.parentElement.id).toBe('sidebarPinned');
-    toggleSidebarBranch('board'); toggleSidebarBranch('surface');
+    toggleSidebarBranch('board'); toggleSidebarBranch('surface'); toggleSidebarBranch('layers');
     expect(shown()).toEqual(['panel-brick']);
     expect(pin.classList.contains('pinned')).toBe(true);
     expect(JSON.parse(localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY))).toEqual(['panel-brick']);
@@ -156,10 +159,10 @@ describe('phase 5: the main sidebar tree', () => {
     initSidebarTabs();
     toggleSidebarPin('panel-view');
     toggleSidebarPin('panel-stamp');
-    toggleSidebarPin('panel-thicken');
+    toggleSidebarPin('panel-sculpt-bot');
     const box = $('sidebarPinned');
     expect(box.parentElement.firstElementChild).toBe(box);
-    expect([...box.children].map((p) => sectionKey(p.classList))).toEqual(['panel-thicken', 'panel-stamp', 'panel-view']);
+    expect([...box.children].map((p) => sectionKey(p.classList))).toEqual(['panel-stamp', 'panel-sculpt-bot', 'panel-view']);
   });
 
   it('revealSidebarSection: its branch opens and the section unfolds (the brick matrix uses it); a pinned one stays put', () => {
@@ -185,7 +188,7 @@ describe('phase 5: the main sidebar tree', () => {
     const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
     try {
       initSidebarTabs();
-      expect(shown()).toEqual([...BOARD, ...SURFACE]);
+      expect(shown()).toEqual([...BOARD, ...SURFACE, ...LAYERS]);
       setSidebarTab('output');
       expect(shown()).toContain('panel-export');
     } finally { get.mockRestore(); set.mockRestore(); }

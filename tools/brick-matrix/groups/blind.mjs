@@ -32,7 +32,9 @@ export const BLIND_BUDGET = {
     { name: 'Board width change (sidebar, editor closed)', sidebar: 'board', act: { set: 'widthIn', value: 7.25 }, fixedBy: '497e30d' },
     // the sidebar phone audit's small ones (advisor: the budget pins them)
     { name: 'Output: Colour edges', sidebar: 'output', act: { tap: 'colourEdges' } },
-    { name: 'Decor: add a stamp layer', sidebar: 'surface', act: { tap: 'stampAddLayer' } },
+    // the layer stack (Fred 2026-11-23): Vector stamping's '+' moved to the LAYERS stack's '+ Add layer > Draw' (the same add
+    // behind the same 'heightMask' card, main/layer-stack.js); the picker opens first (pre), the Draw tile is the timed tap
+    { name: 'Layers: add a Draw layer', sidebar: 'layers', pre: ['layerStackAddBtn'], act: { tap: 'layerStackAdd_draw' } },
     { name: 'Decor: stamp Clear', sidebar: 'surface', act: { tap: 'btnStampClear' } },
     // MEASURED: no task at all on one run, one 57 ms task (no rebuild, no card) on another -- the long-task floor, left as
     // the Scissors check's 53 ms was (advisor); pinned here against a real regression

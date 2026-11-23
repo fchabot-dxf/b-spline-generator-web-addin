@@ -42,6 +42,7 @@ import { saveLastSession, flushSessionSave, isFusionMode, P, lastResult } from '
 import { renderStlPanel, bindStlPanel, applyStlTransform, pickStlLayer, isStlLocked, activeStlLayer } from './stl-panel.js';
 import { updateStlGhosts, ghostSurface } from '../core/stl/ghost.js';
 import { initHeightPanel } from './height-panel.js';
+import { initLayerStack } from './layer-stack.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -185,6 +186,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // path every other carved layer already triggers, so this needs no
     // onChange callback of its own.
     initBrickPanel();
+    // the unified LAYER STACK (Fred 2026-11-23): every layer as a card, the Thicken line, '+ Add layer' -- after the STL,
+    // Height and Brick panels it hosts / reads; a new stamp order rebuilds the 3D
+    initLayerStack({ onChange: () => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0) });
     initArtTabs(); // the Artwork editor's tabs (mockup v2)
     initDrawTree(); // phase 4: the Draw drawer as one collapse tree (main/draw-tree.js)
     applyModeHosts(); // its branches filled by the Draw tab's declared panelHosts
