@@ -750,6 +750,9 @@
             <select id="frameTemplate" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
           </div>
           <div id="frameSettings" style="display:none;">
+            <!-- Bars On / Off (Fred 2026-11-23): Off = no wood bars, the board still cut to the frame's shape. Drawn by
+                 main/frame-panel.js FRAME_RECORD_SWITCHES (the Frame tab's panel shows the same record). -->
+            <div id="frameBarsSwitch" style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px;"></div>
             <div id="frameThicknessRow">
               <label class="cad-label">Frame thickness (in)</label>
               <div class="cad-stepper" style="margin-bottom:12px;">
@@ -760,9 +763,11 @@
                  Up | Down), drawn by main/frame-panel.js FRAME_SHAPE_CONTROL_HOSTS from frame-defs `handles[].control`;
                  empty and hidden for a template that declares none. The Frame tab's panel shows the same record. -->
             <div id="frameShapeControls" style="display:none;"></div>
-            <label class="cad-label">Frame bottom (z)</label>
-            <div class="cad-stepper" style="margin-bottom:12px;">
-              <input type="number" id="frameBottomZ" value="-1" step="0.125">
+            <div id="frameBottomZRow">
+              <label class="cad-label">Frame bottom (z)</label>
+              <div class="cad-stepper" style="margin-bottom:12px;">
+                <input type="number" id="frameBottomZ" value="-1" step="0.125">
+              </div>
             </div>
             <!-- FB-APP F9: the template's boundingboxoffset (the gap between the board edge and the frame). -->
             <label class="cad-label">Trim offset (in)</label>
@@ -774,9 +779,11 @@
             <div class="cad-stepper" style="margin-bottom:12px;">
               <input type="number" id="framePanelLip" step="0.0625" min="0" value="0">
             </div>
-            <label class="cad-label">Wood</label>
-            <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-              <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+            <div id="frameAppearanceRow">
+              <label class="cad-label">Wood</label>
+              <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+                <select id="frameAppearance" style="width:100%; border:none; background:transparent; font-size:11px;"></select>
+              </div>
             </div>
             <!-- T82 item 2: a second small mitred frame set into the panel, always open, hidden behind it
                  (INSET-WINDOW-DESIGN.md). Off by default; position/size are dragged in the Frame tab AND
@@ -2739,7 +2746,9 @@
             <!-- T20 TRAPEZOID: the same declared shape controls as the sidebar's #frameShapeControls (one record, two
                  views; main/frame-panel.js FRAME_SHAPE_CONTROL_HOSTS) -- hidden for a template with none. -->
             <div id="editorFrameShapeControls" style="display:none;"></div>
-            <label>Thickness (in)
+            <!-- Bars On / Off: the same record as the sidebar's #frameBarsSwitch (FRAME_RECORD_SWITCHES). -->
+            <div id="editorFrameBarsSwitch" style="display:none; flex-direction:column; gap:4px;"></div>
+            <label id="editorFrameThicknessRow">Thickness (in)
               <div class="cad-stepper" style="margin-top:4px;">
                 <input type="number" id="editorFrameThickness" step="0.0625">
               </div>

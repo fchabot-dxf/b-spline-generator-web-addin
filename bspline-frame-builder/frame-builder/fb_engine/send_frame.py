@@ -48,6 +48,7 @@ from fb_engine.seed_geometry import apply_seed_geometry, SeedGeometryError
 from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
 from fb_engine.board_scope import BoardScope, naming, board_params, fusion_expr, FRAME_SEND_PARAMS
+from fb_engine.frame_bars import bars_of
 from fb_engine.parameter_schema import ParameterSchema as _Schema
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
@@ -359,6 +360,9 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
         joined = joined_miters_of(payload)
         if joined:
             data["joined_miters"] = joined
+        if not bars_of(payload):  # Bars Off (fb_engine/frame_bars.py): the shape only, no bar bodies
+            data["bars"] = False
+            log("SEND FRAME: bars off -- the frame shape only (the trim cut, no bar bodies)")
         data["frame_scope"] = scope  # frame_engine: the frame component goes under the board's host
         # H23 item 52: set the marker before the inlay ONCE, covering BOTH build_sketch and
         # build_solid below (Fusion advances the marker itself as each new item lands, confirmed
