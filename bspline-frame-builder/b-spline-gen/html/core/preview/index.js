@@ -44,6 +44,7 @@ import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { StlGizmoController, StlGizmoThreeView } from './stl-gizmo.js';
 import { CROP_PREVIEW_LOOK } from '../stl/crop.js';
+import { trimGhost } from '../stl/ghost-trim.js';
 import {
   buildHeightField,
   buildLiveBrushColours,
@@ -548,7 +549,7 @@ export class TerrainPreview {
 
   /** STL-RELIEF: the STL ghosts (core/stl/ghost.js ghostGeometry: scene-space positions, indices, per-vertex colours). Replaces
    *  the previous ones; [] removes them. Overlay meshes of their own, never part of the terrain, never saved or exported. */
-  setStlGhosts(list) {
+  setStlGhosts(rawList) {
     const THREE = this._THREE;
     for (const m of [...(this._stlGhosts || []), ...(this._stlMeetLines || [])]) {
       this._scene.remove(m); m.geometry.dispose(); m.material.dispose();
@@ -556,7 +557,11 @@ export class TerrainPreview {
     }
     this._stlGhosts = [];
     this._stlMeetLines = [];
-    for (const g of list || []) {
+    // Fred 2026-11-22 (claude 47): trimmed to the SAME outline the terrain is (_trimPoly, _applyFrame; none = the board
+    // rectangle); the untrimmed list is kept so a frame change alone (refreshFrame) re-trims them
+    this._stlGhostSrc = rawList || [];
+    const list = this._stlGhostSrc.map((g) => trimGhost(g, this._trimPoly));
+    for (const g of list) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(g.colours, 3));
@@ -581,7 +586,7 @@ export class TerrainPreview {
       this._stlGhosts.push(mesh);
       // no meet line is drawn (Fred 2026-11-22: "only keep red"; ghost.js meetLine stays computed)
     }
-    this._stlGizmo?.setGhosts(list || [], { meshes: this._stlGhosts, lines: this._stlMeetLines });
+    this._stlGizmo?.setGhosts(list, { meshes: this._stlGhosts, lines: this._stlMeetLines });
     this._needsRender = true;
   }
 
@@ -635,6 +640,7 @@ export class TerrainPreview {
   /** Re-apply the frame live (record / wood change), without a terrain rebuild. */
   refreshFrame() {
     this._applyFrame();
+    if (this._stlGhostSrc && this._stlGhostSrc.length) this.setStlGhosts(this._stlGhostSrc); // the new outline trims them
     this._needsRender = true;
   }
 

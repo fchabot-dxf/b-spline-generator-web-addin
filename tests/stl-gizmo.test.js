@@ -10,7 +10,7 @@ import {
   ghostGeometry, updateStlGhosts, ghostState, meetLine,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 import {
-  STL_GIZMO, StlGizmoController, wrapDeg, rayPlane, xyDelta, zDelta, ringAngle, pickHandle, previewTransform, commitValues,
+  STL_GIZMO, StlGizmoController, StlGizmoThreeView, wrapDeg, rayPlane, xyDelta, zDelta, pickHandle, previewTransform, commitValues,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/stl-gizmo.js';
 import { TerrainPreview } from '../bspline-frame-builder/b-spline-gen/html/core/preview/index.js';
 
@@ -45,11 +45,8 @@ describe('gizmo math: pointer rays to exact deltas', () => {
     // looking straight down there is no vertical plane facing the camera: no delta (never NaN / Infinity)
     expect(zDelta({ origin: [0, 0, 5], dir: [0, 0, -1] }, { origin: [1, 0, 5], dir: [0, 0, -1] }, [0, 0])).toBe(null);
   });
-  it('ROTATE: the pointer angle round the pivot, counter-clockwise from +x; a step is wrapped to [-180, 180)', () => {
-    const down = (x, y) => ({ origin: [x, y, 10], dir: [0, 0, -1] });
-    expect(ringAngle(down(3, 2), [1, 2], 0)).toBeCloseTo(0, 9);
-    expect(ringAngle(down(1, 4), [1, 2], 0)).toBeCloseTo(90, 9);
-    expect(ringAngle(down(-1, 2), [1, 2], 0)).toBeCloseTo(180, 9);
+  // Fred 2026-11-22: no ring -- the ring's angle math is gone; wrapDeg stays (an angle wrapped to [-180, 180))
+  it('wrapDeg: an angle wrapped to [-180, 180)', () => {
     expect(wrapDeg(-170 - 170)).toBeCloseTo(20, 9);  // 170 -> -170 across the seam is +20, not -340
     expect(wrapDeg(170 - -170)).toBeCloseTo(-20, 9);
     expect(wrapDeg(180)).toBe(-180);
@@ -62,26 +59,27 @@ describe('gizmo math: pointer rays to exact deltas', () => {
     expect(commitValues('body', place, null)).toBe(null);
     expect(commitValues('body', place, { dx: 0, dy: 0 })).toBe(null);
     expect(commitValues('z', place, 0)).toBe(null);
-    expect(commitValues('ring', place, 0)).toBe(null);
     expect(commitValues('body', place, { dx: 0.5, dy: -1 })).toEqual({ x: 1.5, y: 1 });
     expect(commitValues('z', place, 0.75)).toEqual({ z: 0.25 });
-    expect(commitValues('ring', place, -45)).toEqual({ rotZ: -15 });
   });
-  it('the turn preview rotates the scene-space ghost about the vertical axis through the pivot (the pivot stays put)', () => {
-    const xf = previewTransform('ring', 90, [2, 1]);
-    const apply = ([x, y]) => [Math.cos(xf.rotationZ) * x - Math.sin(xf.rotationZ) * y + xf.position[0], Math.sin(xf.rotationZ) * x + Math.cos(xf.rotationZ) * y + xf.position[1]];
-    expect(apply([2, 1]).map((v) => +v.toFixed(9))).toEqual([2, 1]);
-    expect(apply([3, 1]).map((v) => +v.toFixed(9))).toEqual([2, 2]); // +x of the pivot turns to +y (rotation.z sense)
-    expect(previewTransform('body', { dx: 1, dy: 2 }, [5, 5]).position).toEqual([1, 2, 0]);
-    expect(previewTransform('z', -0.5, [5, 5]).position).toEqual([0, 0, -0.5]);
+  it('the drag preview shifts the scene-space ghost (a move in X / Y, the arrow in Z)', () => {
+    expect(previewTransform('body', { dx: 1, dy: 2 }).position).toEqual([1, 2, 0]);
+    expect(previewTransform('z', -0.5).position).toEqual([0, 0, -0.5]);
   });
   it('handle picking is in screen pixels: a coarse pointer grabs 17 px from the arrow, a fine one does not', () => {
-    const screen = { z: [[100, 200], [100, 140]], ring: Array.from({ length: 64 }, (_, i) => [300 + 50 * Math.cos(i / 64 * 2 * Math.PI), 300 + 50 * Math.sin(i / 64 * 2 * Math.PI)]) };
+    const screen = { z: [[100, 200], [100, 140]] };
     expect(pickHandle([117, 170], screen, STL_GIZMO.pickPx.coarse)).toBe('z');
     expect(pickHandle([117, 170], screen, STL_GIZMO.pickPx.fine)).toBe(null);
-    expect(pickHandle([300, 366], screen, STL_GIZMO.pickPx.coarse)).toBe('ring');
-    expect(pickHandle([300, 300], screen, STL_GIZMO.pickPx.coarse)).toBe(null); // the ring's middle is the body's, not the ring's
     expect(2 * STL_GIZMO.pickPx.coarse).toBeGreaterThanOrEqual(28);              // AGENTS.md: a finger's target
+  });
+  // Fred 2026-11-22: "no need for the orange ring" -- the gizmo has no rotate ring: none declared, drawn, picked or committed
+  it('no ring: nothing declared for it, a ring-shaped screen loop is never picked, a turn is never committed', () => {
+    expect(Object.keys(STL_GIZMO).filter((k) => /ring/i.test(k))).toEqual([]);
+    expect(Object.keys(STL_GIZMO.colours)).toEqual(['z', 'drag']);
+    const loop = Array.from({ length: 64 }, (_, i) => [300 + 50 * Math.cos(i / 64 * 2 * Math.PI), 300 + 50 * Math.sin(i / 64 * 2 * Math.PI)]);
+    expect(pickHandle([300, 350], { z: [[100, 200], [100, 140]], ring: loop }, STL_GIZMO.pickPx.coarse)).toBe(null);
+    expect(commitValues('ring', { x: 0, y: 0, z: 0, rotZ: 30 }, -45)).toBe(null);
+    expect(previewTransform('ring', 90, [2, 1])).toBe(null);
   });
 });
 
@@ -128,26 +126,15 @@ describe('StlGizmoController: the pointer chain link', () => {
     expect(handlers.pick).not.toHaveBeenCalled();   // it was already the active STL
   });
 
-  it('down on the ring: the turn round (position.x, position.y) commits rotZ = start + the angle turned', () => {
-    const { ctrl, state, handlers } = rig();
+  // Fred 2026-11-22: no ring -- a 'ring' hit starts no drag and commits nothing (the turn is set in the STL card)
+  it('a ring hit is not a handle: the press is not consumed (orbit gets it), nothing turns or commits', () => {
+    const { ctrl, view, state, handlers } = rig();
     state.hit = { kind: 'ring', id: 'a' };
-    // pivot (1, 2): scene (3, 2) = angle 0 is client (30, -20); scene (1, 4) = 90 degrees is client (10, -40)
-    expect(ctrl.tryHandleCanvasMousedown(mouse(30, -20))).toBe(true);
-    ctrl.tryHandleWindowMousemove(mouse(10, -40));
-    ctrl.handleWindowMouseup();
-    expect(handlers.commit).toHaveBeenCalledTimes(1);
-    expect(Object.keys(handlers.commit.mock.calls[0][1])).toEqual(['rotZ']);
-    expect(handlers.commit.mock.calls[0][1].rotZ).toBeCloseTo(10 + 90, 9);
-  });
-
-  it('a turn across the +-180 seam adds up its wrapped steps (no 340-degree jump)', () => {
-    const { ctrl, state, handlers } = rig();
-    state.hit = { kind: 'ring', id: 'a' };
-    const at = (deg) => { const r = deg * Math.PI / 180; return mouse((1 + 2 * Math.cos(r)) * 10, -(2 + 2 * Math.sin(r)) * 10); };
-    ctrl.tryHandleCanvasMousedown(at(150));
-    for (const d of [170, -170, -150]) ctrl.tryHandleWindowMousemove(at(d));
-    ctrl.handleWindowMouseup();
-    expect(handlers.commit.mock.calls[0][1].rotZ).toBeCloseTo(10 + 60, 6);
+    expect(ctrl.tryHandleCanvasMousedown(mouse(30, -20))).toBe(false);
+    expect(ctrl.tryHandleWindowMousemove(mouse(10, -40))).toBe(false);
+    expect(ctrl.handleWindowMouseup()).toBe(false);
+    expect(view.previews).toHaveLength(0);
+    expect(handlers.commit).not.toHaveBeenCalled();
   });
 
   it('down on the arrow: Z on the vertical plane facing the camera commits {z}', () => {
@@ -290,13 +277,10 @@ describe('StlGizmoController: the pointer chain link', () => {
     expect(handlers.commit.mock.calls[0][1].y).toBeCloseTo(2 + 4, 9);
   });
 
-  it('touch uses the coarse wobble allowance: a finger wobble under it on the ring or the body commits nothing', () => {
+  // Fred 2026-11-22: no ring -- the wobble check runs on the body (the ring's half is gone)
+  it('touch uses the coarse wobble allowance: a finger wobble under it on the body commits nothing', () => {
     const { ctrl, state, handlers } = rig();
     const w = STL_GIZMO.slopPx.coarse - 0.5;
-    state.hit = { kind: 'ring', id: 'a' };
-    ctrl.tryHandleTouchstart({ clientX: 30, clientY: -20 });
-    ctrl.tryHandleTouchmove({ clientX: 30, clientY: -20 - w });
-    ctrl.handleTouchend();
     state.hit = { kind: 'body', id: 'a', point: [10, -10, 0] };
     ctrl.tryHandleTouchstart({ clientX: 100, clientY: 100 });
     ctrl.tryHandleTouchmove({ clientX: 100 + w, clientY: 100 });
@@ -304,17 +288,35 @@ describe('StlGizmoController: the pointer chain link', () => {
     expect(handlers.commit).not.toHaveBeenCalled();
   });
 
-  // Fred 2026-11-22 (question 3 of 4): "Wrap to -180..180" -- the ring's commit, same orientation, the number in range
-  it('a turn past half a turn commits rotZ wrapped to [-180, 180)', () => {
-    expect(commitValues('ring', { rotZ: 170 }, 20)).toEqual({ rotZ: -170 });
-    expect(commitValues('ring', { rotZ: -170 }, -400)).toEqual({ rotZ: 150 });
-    const { ctrl, state, handlers } = rig();
-    state.hit = { kind: 'ring', id: 'a' };
-    const at = (deg) => { const r = deg * Math.PI / 180; return mouse((1 + 2 * Math.cos(r)) * 10, -(2 + 2 * Math.sin(r)) * 10); };
-    ctrl.tryHandleCanvasMousedown(at(0));
-    for (const d of [60, 120, 180, 240]) ctrl.tryHandleWindowMousemove(at(d)); // +240 from rotZ 10 = 250 = -110
-    ctrl.handleWindowMouseup();
-    expect(handlers.commit.mock.calls[0][1].rotZ).toBeCloseTo(-110, 6);
+  // Fred 2026-11-22 (question 3 of 4, "Wrap to -180..180") pinned the ring's commit; Fred 2026-11-22: no ring, so it is gone
+});
+
+// Fred 2026-11-22: "no need for the orange ring" -- the THREE side draws the Z arrow only, and its screen handles have no ring
+describe('StlGizmoThreeView (a minimal THREE): no ring drawn', () => {
+  function threeStub() {
+    class Obj { constructor(geometry, material) { this.geometry = geometry; this.material = material; this.userData = {}; this.rotation = { x: 0, y: 0, z: 0, set() {} }; this.position = { set() {} }; } }
+    const geo = (kind) => class { constructor(...a) { this.kind = kind; this.args = a; } dispose() {} };
+    return {
+      Raycaster: class { constructor() { this.ray = { origin: {}, direction: {} }; } },
+      Group: class { constructor() { this.children = []; this.position = { set() {} }; this.rotation = { set() {} }; } add(c) { this.children.push(c); } },
+      Mesh: Obj,
+      CylinderGeometry: geo('cylinder'), ConeGeometry: geo('cone'), TorusGeometry: geo('torus'),
+      MeshBasicMaterial: class { dispose() {} },
+      Color: class {},
+      Vector3: class { constructor(x, y, z) { Object.assign(this, { x, y, z }); } project() { return this; } },
+    };
+  }
+  it('draw adds the arrow (shaft + head, handle z) and nothing else; handleScreen lists the arrow only', () => {
+    const THREE = threeStub();
+    const added = [];
+    const view = new StlGizmoThreeView({ THREE, scene: { add: (o) => added.push(o), remove() {} },
+      camera: { top: 5, bottom: -5, zoom: 1 }, canvas: { clientHeight: 500, getBoundingClientRect: () => ({ left: 0, top: 0, width: 500, height: 500 }) } });
+    const g = { id: 'a', place: { x: 1, y: 2, z: 0, rotZ: 0, baseZ: 0 }, top: 1 };
+    view.draw(g, null);
+    const kids = added[0].children;
+    expect(kids.map((m) => m.geometry.kind)).toEqual(['cylinder', 'cone']);
+    expect(kids.map((m) => m.userData.stlHandle)).toEqual(['z', 'z']);
+    expect(Object.keys(view.handleScreen(g))).toEqual(['z']);
   });
 });
 

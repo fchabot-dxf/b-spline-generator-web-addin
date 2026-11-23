@@ -6,6 +6,7 @@ import { indexMesh, encodeMesh } from '../bspline-frame-builder/b-spline-gen/htm
 import { normaliseStlLayer } from '../bspline-frame-builder/b-spline-gen/html/core/stl/layer.js';
 import {
   ghostGeometry, surfaceAt, openEdgeVertices, updateStlGhosts, ghostState, STL_GHOST_COLOURS, STL_GHOST_KINDS,
+  STL_OPEN_LOOP_MIN_CELLS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/stl/ghost.js';
 
 const tri = (a, b, c) => [...a, ...b, ...c];
@@ -65,6 +66,33 @@ describe('ghostGeometry', () => {
     expect(open.counts.open).toBe(4); // floated: the four base corners are an open outline above the surface
     expect(ghostGeometry(rec(), FLAT(0), GRID).counts.open).toBe(0);
     expect(Array.from(openEdgeVertices(indexMesh(pyramid({ base: false }))))).toContain(1);
+  });
+  // Fred 2026-11-22: red spots were scan noise -- only an open LOOP larger than a grid cell (STL_OPEN_LOOP_MIN_CELLS) is red
+  it('a sub-cell scan crack above the surface stays stone; a hole larger than a grid cell is red', () => {
+    // a closed mesh: a 10 x 10 in top of 40 x 40 quads (0.25 in, half the 0.5 in grid cell) + a fan to a point 1 in below
+    const crackedPlate = (holes) => {
+      const n = 40, s = 10, top = (i, j) => [-s / 2 + (i / n) * s, -s / 2 + (j / n) * s, 1], apex = [0, 0, 0], t = [];
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+        if (holes(i, j)) continue;
+        t.push(tri(top(i, j), top(i + 1, j), top(i + 1, j + 1)), tri(top(i, j), top(i + 1, j + 1), top(i, j + 1)));
+      }
+      const ring = [];
+      for (let i = 0; i < n; i++) ring.push(top(i, 0));
+      for (let j = 0; j < n; j++) ring.push(top(n, j));
+      for (let i = n; i > 0; i--) ring.push(top(i, n));
+      for (let j = n; j > 0; j--) ring.push(top(0, j));
+      for (let k = 0; k < ring.length; k++) t.push(tri(ring[k], ring[(k + 1) % ring.length], apex));
+      return Float32Array.from(t.flat());
+    };
+    const at = (soup) => ghostGeometry(rec({ position: { x: 0, y: 0, z: 0.5 } }, soup), FLAT(0), GRID);
+    expect(at(crackedPlate(() => false)).counts.open).toBe(0);                   // closed: nothing open
+    const crack = at(crackedPlate((i, j) => i === 20 && j === 20));                // one 0.25 in quad missing
+    expect(Array.from(openEdgeVertices(indexMesh(crackedPlate((i, j) => i === 20 && j === 20)))).filter(Boolean)).toHaveLength(4);
+    expect(crack.counts.open).toBe(0);                                            // under a cell: stone
+    for (let v = 0; v < crack.kinds.length; v++) expect(colourOf(crack, v)).toEqual(same(STL_GHOST_COLOURS.shows));
+    const hole = at(crackedPlate((i, j) => i >= 10 && i < 16 && j >= 10 && j < 16)); // a 1.5 in hole: three cells
+    expect(hole.counts.open).toBe(4 * 6);                                          // its whole rim is red
+    expect(STL_OPEN_LOOP_MIN_CELLS).toBe(1);                                       // the one declared threshold
   });
   it('above the surface, a face that looks down is marked overhang (a top-down stamp loses it); the underside ON the surface is not', () => {
     const openUp = pyramid({ base: false });
