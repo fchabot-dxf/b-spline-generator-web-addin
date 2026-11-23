@@ -59,8 +59,7 @@ _SHA256_RE = re.compile(r"\b([0-9a-fA-F]{64})\b")
 
 
 class UpdateError(Exception):
-    """A plain-English failure. ``code``: offline | bad_latest | checksum | bad_zip | in_use | no_addins_dir |
-    not_installed_copy."""
+    """A plain-English failure. ``code``: offline | bad_latest | checksum | bad_zip | in_use | no_addins_dir."""
 
     def __init__(self, code, message):
         super().__init__(message)
@@ -327,9 +326,9 @@ def _remove_tree(p) -> bool:
     return not os.path.exists(_long(p))
 
 
-def _prune_backups(addins: Path, keep: Path | None):
-    """Keep only the newest ``bspline-frame-builder.bak-*``. Returns the ones actually removed."""
-    backups = sorted(p for p in addins.iterdir() if p.is_dir() and p.name.startswith(BACKUP_PREFIX))
+def _prune_backups(addins: Path, keep: Path | None, prefix: str = BACKUP_PREFIX):
+    """Keep only the newest ``<folder>.bak-*``. Returns the ones actually removed."""
+    backups = sorted(p for p in addins.iterdir() if p.is_dir() and p.name.startswith(prefix))
     newest = keep if keep is not None else (backups[-1] if backups else None)
     removed = []
     for p in backups:
@@ -340,8 +339,10 @@ def _prune_backups(addins: Path, keep: Path | None):
     return removed
 
 
-def install_zip(zip_path, addins_dir, *, run_on_startup=None, now=None, rename=os.rename) -> dict:
-    """Install the add-in zip into ``addins_dir`` (the AddIns folder that holds ``bspline-frame-builder/``).
+def install_zip(zip_path, addins_dir, *, folder_name=ADDIN_NAME, run_on_startup=None, now=None,
+                rename=os.rename) -> dict:
+    """Install the add-in zip as ``addins_dir/folder_name`` (``folder_name`` = the folder the running add-in lives in,
+    whatever its name -- Fred 2026-11-23; backups are ``<folder_name>.bak-<time>``).
 
     1. check the zip's shape, 2. extract it into a staging folder next to the add-in (same drive, so the swap is a
     rename), 3. set runOnStartup (``None`` = keep what the installed manifest says; True for a first install), 4. carry
@@ -352,7 +353,8 @@ def install_zip(zip_path, addins_dir, *, run_on_startup=None, now=None, rename=o
     if not addins.is_dir():
         raise UpdateError("no_addins_dir", f"The Fusion AddIns folder was not found: {addins}")
     validate_zip(zip_path)
-    live = addins / ADDIN_NAME
+    live = addins / folder_name
+    backup_prefix = folder_name + ".bak-"
     staging = addins / STAGING_NAME
     backup = None
     _remove_tree(staging)                         # a crashed earlier run's leftover (our own name)
@@ -373,7 +375,7 @@ def install_zip(zip_path, addins_dir, *, run_on_startup=None, now=None, rename=o
             _retry_rename(rename, staged, live)
             mode = "fresh"
         else:
-            backup = _stamp_name(BACKUP_PREFIX, addins, now)
+            backup = _stamp_name(backup_prefix, addins, now)
             try:
                 _retry_rename(rename, live, backup)
             except OSError:
@@ -390,24 +392,21 @@ def install_zip(zip_path, addins_dir, *, run_on_startup=None, now=None, rename=o
                 mode = "swap"
     finally:
         _remove_tree(staging)
-    removed = _prune_backups(addins, backup)
+    removed = _prune_backups(addins, backup, backup_prefix)
     return {"mode": mode, "backup": None if backup is None else str(backup), "removed_backups": removed}
 
 
 def download_and_install(addin_root, latest: dict, *, progress=None, now=None) -> dict:
     """The user clicked Update: download ``latest['zip_url']`` to a temp file, verify its SHA-256 against
-    ``latest['sha256']``, then :func:`install_zip` into the folder that holds ``addin_root``."""
+    ``latest['sha256']``, then :func:`install_zip` over ``addin_root`` itself: the folder this add-in runs from,
+    whatever its name or what sits next to it (Fred 2026-11-23: no source-checkout refusal)."""
     validate_latest(latest)
     root = Path(addin_root).resolve()
-    if root.name != ADDIN_NAME or (root.parent / ".git").exists():
-        # run from a source checkout (or a renamed copy): the folder next to it is not an AddIns folder to swap into
-        raise UpdateError("not_installed_copy", f"This add-in runs from {root}, which is not an installed copy "
-                                                "(a source checkout?). Update it with git, or use the website installer.")
-    tmp =Path(tempfile.mkdtemp(prefix="bspline-update-"))
+    tmp = Path(tempfile.mkdtemp(prefix="bspline-update-"))
     try:
         zpath = tmp / ZIP_NAME
         download(latest["zip_url"], zpath, progress=progress)
         verify_sha256(zpath, latest["sha256"])
-        return install_zip(zpath, root.parent, now=now)
+        return install_zip(zpath, root.parent, folder_name=root.name, now=now)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

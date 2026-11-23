@@ -301,21 +301,26 @@ def test_a_tampered_download_is_refused_before_anything_moves(tmp_path):
     assert sorted(p.name for p in addins.iterdir()) == [NAME]
 
 
-@pytest.mark.parametrize('layout', ['repo-checkout', 'renamed-folder'])
-def test_an_add_in_run_from_a_source_checkout_is_never_overwritten(tmp_path, layout):
-    # README's old way: clone the repo into AddIns and run bspline-frame-builder/ from it. root.parent is then the repo:
-    # "updating" would replace the SOURCE folder. Same when the add-in folder has another name (not ours to swap).
-    parent = tmp_path / 'repo'
-    root = parent / (NAME if layout == 'repo-checkout' else 'my-copy')
+@pytest.mark.parametrize('layout', ['renamed-folder', 'next-to-dot-git'])
+def test_the_updater_updates_the_folder_it_runs_from_whatever_its_name(tmp_path, layout):
+    # Fred 2026-11-23 ("Remove it"): no source-checkout refusal. The folder the add-in runs from is the one replaced
+    # and backed up, whatever its name and whatever sits next to it; nothing named bspline-frame-builder appears beside it.
+    parent = tmp_path / 'AddIns'
+    root = parent / ('my-copy' if layout == 'renamed-folder' else NAME)
     root.mkdir(parents=True)
-    if layout == 'repo-checkout':
+    if layout == 'next-to-dot-git':
         (parent / '.git').mkdir()
-    (root / f'{NAME}.py').write_text('# source\n', encoding='utf-8')
+    (root / f'{NAME}.py').write_text('# old\n', encoding='utf-8')
+    (root / f'{NAME}.manifest').write_text(MANIFEST, encoding='utf-8')
     rel = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
-    with pytest.raises(updater.UpdateError) as e:
-        updater.download_and_install(root, updater.fetch_latest((rel / 'latest.json').as_uri()), now=NOW)
-    assert e.value.code == 'not_installed_copy'
-    assert (root / f'{NAME}.py').read_text(encoding='utf-8') == '# source\n'
+    result = updater.download_and_install(root, updater.fetch_latest((rel / 'latest.json').as_uri()), now=NOW)
+    assert (root / f'{NAME}.py').read_text(encoding='utf-8') == '# entry new\n'
+    assert read_build_info(root)['sha'] == 'new1111'
+    backup = parent / f'{root.name}.bak-20261122-213005'
+    assert result['backup'] == str(backup)
+    assert (backup / f'{NAME}.py').read_text(encoding='utf-8') == '# old\n'
+    want = sorted([root.name, backup.name] + (['.git'] if layout == 'next-to-dot-git' else []))
+    assert sorted(p.name for p in parent.iterdir()) == want
 
 
 def test_offline_reads_as_a_plain_error(tmp_path):
