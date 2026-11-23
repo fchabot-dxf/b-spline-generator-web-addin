@@ -1802,6 +1802,13 @@
                  style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; border:0; opacity:0; overflow:hidden; pointer-events:none;">
         </div>
 
+        <!-- HEIGHT-PAINTER: the Height tab's options bar (main/height-panel.js HEIGHT_OPTIONS_BAR): the active tool's key controls
+             + the stock line. Shown on the Height tab only (editor-tabs.js TOOLBAR_TOP_GROUPS_BY_TAB.height; the hidden attribute
+             keeps it away from the other tabs). It scrolls sideways inside itself when a phone is too narrow for the row. -->
+        <div id="editorHeightOptionsGroup" hidden style="min-width:0; max-width:100%; align-items:center; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;">
+          <div id="editorHeightOptions" style="display:flex; align-items:center; gap:8px 14px; flex-wrap:nowrap; white-space:nowrap; min-height:34px;"></div>
+        </div>
+
         <!--
           Grid + snap (SE6; H1 SNAP-SPLIT). A faint reference grid; GRID
           rounds pointer coordinates to the nearest grid line while
