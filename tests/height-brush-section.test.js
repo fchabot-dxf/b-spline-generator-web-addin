@@ -119,9 +119,10 @@ describe('kept from slice 3b', () => {
     expect(hidden(document.querySelector('[data-height-control="mode"]'))).toBe(true);
     expect(hidden(document.querySelector('[data-height-control="tip"]'))).toBe(false);
   });
-  it('the active tool\'s section comes first (leads + CSS order)', async () => {
-    const first = () => [...document.getElementById('heightPanelBody').children].filter((c) => !c.hidden && c.id.startsWith('heightGroup_'))
-      .sort((a, b) => Number(a.style.order) - Number(b.style.order))[0].id;
+  // owner 2026-11-23: the panel is a collapse tree -- the active tool's section is the first group of its branch, the first branch
+  it('the active tool\'s section comes first (its leads, in the armed tool\'s branch)', async () => {
+    const first = () => [...document.querySelectorAll('#heightDrawerTree > .drawer-branch')].find((b) => b.style.display !== 'none')
+      .querySelector(':scope > .drawer-branch-body > [id^="heightGroup_"]:not([hidden])').id;
     expect(first()).toBe('heightGroup_brush');
     await newHeightPatch();
     for (const [tool, group] of [['eraser', 'heightGroup_brush'], ['move', 'heightGroup_move'], ['selectLasso', 'heightGroup_select'], ['gradient', 'heightGroup_gradient'], ['fill', 'heightGroup_fill']]) {

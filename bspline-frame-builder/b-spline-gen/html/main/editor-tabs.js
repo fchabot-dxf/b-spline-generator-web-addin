@@ -83,9 +83,12 @@ export const EDITOR_TABS = [
       { content: 'editorLayersList', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
     ] },
   // HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md slice 1): paint height patches ON the shared canvas (main/height-panel.js);
-  // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js), its rail the brush modes
+  // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js).
+  // Owner 2026-11-23 (Draw's frame): no left rail -- the tool row (`toolbarId`) is the pinned head of its own panel
+  // (#heightToolsHead, [data-panel-head]), as Draw's #editorToolbarArtwork heads its panel; the settings (a collapse tree,
+  // main/height-panel.js HEIGHT_DRAWER_TREE) scroll under it. On a phone that head is the drawer's, shown in full at peek.
   { id: 'height', label: 'Height', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight',
-    modes: ['select', 'heightBrush'] },
+    modes: ['select', 'heightBrush'], peekEssentials: ['#heightToolsHead'] },
 ];
 
 /** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;

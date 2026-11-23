@@ -845,6 +845,11 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     gap: 4px;
     margin-bottom: 6px;
 }
+/* the Height tab's tools head its panel the same way (owner 2026-11-23: Draw's frame): a wrapping row, every tool on screen */
+[data-panel-head] > .panel-tool-row {
+    flex-wrap: wrap;
+    gap: 4px;
+}
 #artTabsHead > #artGeneralBody > div {
     flex-wrap: wrap;
     margin-bottom: 6px;

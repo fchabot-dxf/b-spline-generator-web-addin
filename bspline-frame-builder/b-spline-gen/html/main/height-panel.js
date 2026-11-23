@@ -36,6 +36,7 @@ import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
+import { createDrawerTree } from './drawer-tree.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -288,6 +289,50 @@ export const HEIGHT_OPTIONS_BAR = Object.freeze({
 export const HEIGHT_BAR_END = Object.freeze([{ widget: 'stock' }]);
 /** Both tables, the one list the renderer and the setter read. */
 const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
+
+/**
+ * The Height panel as ONE collapse tree (owner 2026-11-23: the Height tab uses the Draw tab's frame -- [the pinned tool row]
+ * [the branches]; main/drawer-tree.js, the Brick / Draw trees' one mechanism). A TOOL branch per HEIGHT_TOOLS row (armsTool:
+ * open while its tool is armed, the only tool branch shown) holds the groups the tool `leads` with, in that order; a group
+ * several tools lead with (the Selection, the Sample, the grey palette) follows the armed tool and is otherwise at home in
+ * its free branch below. The FREE branches fold on their own (remembered per device). Every HEIGHT_GROUPS /
+ * HEIGHT_TOOL_GROUPS group sits in exactly one place at a time. The status and the carve-range lines stay above the tree.
+ */
+const groupDom = (g) => `heightGroup_${g}`;
+/** A control's value as short text: a choice's option name, a slider's number, a check's label when on; '' when unset / hidden. */
+function controlText(id, label = '') {
+  const c = allControls().find((x) => x.id === id);
+  const rec = activeHeightLayer(), src = c ? controlSource(c, rec) : null, v = src ? getPath(src, c.path) : undefined;
+  if (v === undefined || (c.showWhen && !c.showWhen(_brush, rec ? placed(rec) : null, panelCtx()))) return '';
+  if (c.kind === 'choice') return String((c.options.find(([k]) => k === v) || [])[1] ?? '');
+  if (c.kind === 'check') return v ? (label || c.label) : '';
+  if (c.kind === 'slider') return `${label ? `${label} ` : ''}${fmt(v)}`;
+  return '';
+}
+/** A tool branch's summary: the first two settings of its options-bar row (HEIGHT_OPTIONS_BAR), e.g. 'Size 0.5 · Raise'. */
+const toolSummary = (toolId) => (HEIGHT_OPTIONS_BAR[toolId] || []).filter((i) => i.control).map((i) => controlText(i.control, i.label)).filter(Boolean).slice(0, 2).join(' · ');
+const layerCount = (rec) => { const n = patchLayers(rec).length; return `${n} layer${n === 1 ? '' : 's'}`; };
+export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
+  Object.freeze({ id: 'patch', title: 'Patch & layers', hosts: Object.freeze(['heightPatchActions', 'heightList', groupDom('layers')]),
+    summary: () => { const r = activeHeightLayer(); return r ? `${r.name || 'Height'} · ${layerCount(r)}` : 'no patch yet'; } }),
+  Object.freeze({ id: 'view', title: 'View', hosts: Object.freeze([groupDom('view')]),
+    summary: () => [controlText('viewLook'), controlText('viewShow')].filter(Boolean).join(' · ') }),
+  Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze([groupDom('stamp')]),
+    summary: () => [controlText('raise'), controlText('blend')].filter(Boolean).join(' · ') }),
+  Object.freeze({ id: 'selection', title: 'Selection', hosts: Object.freeze([groupDom('select')]), summary: () => (heightSelection() ? 'active' : 'none') }),
+  Object.freeze({ id: 'place', title: 'Position & size', hosts: Object.freeze([groupDom('patch')]),
+    summary: () => { const w = controlText('sizeW'), h = controlText('sizeH'); return w && h ? `${w} × ${h} in` : ''; } }),
+  Object.freeze({ id: 'file', title: 'Heightmap file', hosts: Object.freeze([groupDom('file'), 'heightStored']), summary: 'import · export' }),
+]);
+export const HEIGHT_DRAWER_TREE = Object.freeze([
+  ...HEIGHT_TOOLS.map((t) => Object.freeze({ id: t.id, title: t.label, armsTool: t.id, hosts: Object.freeze(t.leads.map(groupDom)), summary: () => toolSummary(t.id) })),
+  ...HEIGHT_TREE_FREE_BRANCHES,
+]);
+export const HEIGHT_TREE_DEFAULT_OPEN = Object.freeze(['patch']);
+export const HEIGHT_TREE_OPEN_KEY = 'bspline.height.drawerOpen';
+export const heightBranchDomId = (id) => `heightBranch_${id}`;
+export const HEIGHT_TREE = createDrawerTree({ id: 'heightDrawerTree', branches: HEIGHT_DRAWER_TREE, openKey: HEIGHT_TREE_OPEN_KEY,
+  defaultOpen: HEIGHT_TREE_DEFAULT_OPEN, branchDomId: heightBranchDomId, armedOnly: true });
 
 // ── state (UI only; the data is P.heightLayers) ─────────────────────────────────────────────────────────────────────
 let _active = null;          // the active record's id
@@ -1275,8 +1320,6 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
   return true;
 }
 export const heightBrush = () => ({ ..._brush });
-/** The notes that sit above every section (the status line; slice 5: the carve range readout). */
-const PANEL_TOP_NOTES = Object.freeze(['heightStatus', 'heightCarveRange']);
 /** The last build against the stock (core/stock.js, set by rebuild.js): the ONE place it shows, one line -- the whole board
  *  (its warning in stlStockMessage's wording, else the room left: deepest above the floor / highest under the top), then the
  *  ACTIVE patch's own warning when it leaves the stock. A warning colour when either does. Detection only. */
@@ -1301,18 +1344,6 @@ function syncCarveRange() {
     box.classList.toggle('stl-error', warn);
   }
   syncHeightBar();
-}
-/** The panel's sections in view order: the active tool's declared `leads` first (in their order; the status line, when
- *  shown, just above them), then every other part of the panel in its built order. CSS `order` on the flex column body
- *  (renderHeightPanel): no element is moved, so the listeners, the ids and the picker's mount stay as built. */
-function orderPanelGroups() {
-  const body = byId('heightPanelBody');
-  if (!body) return;
-  const leads = (HEIGHT_TOOLS.find((x) => x.id === _tool) || {}).leads || [];
-  [...body.children].forEach((ch, i) => {
-    const k = ch.id && ch.id.startsWith('heightGroup_') ? leads.indexOf(ch.id.slice('heightGroup_'.length)) : -1;
-    ch.style.order = String(PANEL_TOP_NOTES.includes(ch.id) ? 0 : k >= 0 ? k + 1 : 100 + i);
-  });
 }
 /** The tip extras follow the tip at once (a setting written without a full panel sync): the 'tip' group's declared showWhen. */
 function syncTipGroup() {
@@ -1800,7 +1831,8 @@ const GROUP_HEADS = Object.freeze({
   ]),
 });
 
-/** Build the panel from the declared tables into `body`, and the tools + brush modes into the rail. */
+/** Build the panel from the declared tables into `body` (its groups in the collapse tree, HEIGHT_DRAWER_TREE), and the tools
+ *  into `rail`: the tool row, pinned at the head of the panel (#heightToolsHead; EDITOR_TABS height). */
 export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar = byId('editorHeightOptions')) {
   if (bar) renderHeightBar(bar); // the options bar (HEIGHT_OPTIONS_BAR)
   if (rail) {
@@ -1815,9 +1847,9 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar 
   }
   if (!body) return;
   body.innerHTML = '';
-  // a flex column: the sections take their view order from orderPanelGroups (the active tool's own section first)
+  // the status and carve-range lines, then the collapse tree (HEIGHT_DRAWER_TREE): the groups built below move into it
   body.style.display = 'flex'; body.style.flexDirection = 'column';
-  body.appendChild(el('div', { class: 'photo-layer-buttons' }, [
+  body.appendChild(el('div', { id: 'heightPatchActions', class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightNew', class: 'cad-btn cad-btn-secondary', text: '＋ New height patch', title: 'An unpainted patch over the whole board (100 pixels per inch)' }),
     el('button', { type: 'button', id: 'heightRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Delete' }),
   ]));
@@ -1839,6 +1871,19 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar 
     body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
+  HEIGHT_TREE.build(body, (toolId) => setHeightTool(toolId));
+  syncHeightTree();
+}
+/** The tree for the armed tool: its branch open with its lead groups (main/drawer-tree.js moves them), the summaries fresh;
+ *  a group's own label is hidden where the branch header already says it (its note stays). */
+function syncHeightTree() {
+  if (typeof document === 'undefined' || !byId(HEIGHT_TREE.id)) return;
+  HEIGHT_TREE.sync(_tool);
+  for (const g of panelGroups()) {
+    const name = byId(groupDom(g.id))?.querySelector(':scope > .photo-layer-group > span');
+    const title = name && name.closest('.drawer-branch')?.querySelector('.drawer-branch-title');
+    if (name) name.hidden = !!title && title.textContent === g.label;
+  }
 }
 
 /** Rename layer `layerId` in place: its name button becomes a text input; Enter or leaving it writes the name (ONE step,
@@ -1952,7 +1997,7 @@ export function syncHeightPanel() {
   syncTipGroup();
   syncGreyPalette();
   syncCarveRange(); // (it syncs the options bar too)
-  orderPanelGroups();
+  syncHeightTree();
   const stored = byId('heightStored');
   if (stored) {
     const bytes = recs.reduce((s, r) => s + patchRasters(r).reduce((t, x) => t + ((x && x.data && x.data.length) || 0), 0), 0);

@@ -675,6 +675,15 @@
            viewport at peek, invisible, regardless of drawer height. */
         overflow: visible !important;
     }
+    /* a split panel (.editor-panel-split) fills the drawer body instead: its head stays, its settings scroll on their own */
+    #editorMobileDrawer .editor-layers-panel.editor-panel-split {
+        overflow: hidden !important;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    #editorMobileDrawer .editor-panel-split > .editor-panel-scroll {
+        touch-action: pan-y;
+    }
 
     /* Peek's own declared content ("Add: Rail/Tie/Node + Generate/
        Regenerate", MOB3's dispatch) needs no DOM relocation: Add is
@@ -1780,6 +1789,28 @@
    rest via scrolling, not shrinking. */
 .editor-layers-panel > * {
     flex-shrink: 0;
+}
+
+/* A SPLIT panel (owner 2026-11-23, the Height tab first): the pinned head does not scroll; the settings under it scroll on
+   their own (.editor-panel-scroll), so a layer list can later sit above them and scroll separately. Desktop: the column
+   itself stops scrolling; phone: the panel fills the drawer body (below) and its settings scroll inside it. */
+.editor-layers-panel.editor-panel-split {
+    overflow: hidden;
+    padding-bottom: 0;
+}
+.editor-panel-split > .sticky-actions {
+    position: relative;
+    top: 0;
+}
+.editor-panel-split > .editor-panel-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin: 0 -14px;
+    padding: 10px 14px 60px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 /* Audit K1 (Brick tab): a stepper whose value needs 3 decimals (Max Height 0.125, Brick size 0.375)
