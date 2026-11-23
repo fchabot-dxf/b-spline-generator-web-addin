@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, stripEditorOnlyBrickAttrs, isBrickToolNode, addLayer, setActiveLayer, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, stripEditorOnlyBrickAttrs, isBrickToolNode, setActiveLayer, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -876,14 +876,10 @@ export function resetArtworkToFresh(editor) {
     // legacy file-level `editor._latticePattern`, which no longer exists),
     // so dropping the array clears pattern state and its layer tags too.
     editor._layers = [];
-    editor._activeLayer = null;
-    // Same auto-create as initLayerControls (BUG-10) so a fresh editor
-    // session always has a Layer 1 ready to go, instead of showing an
-    // empty layers list and the user wondering where to draw. skipUndo so
-    // this doesn't pollute the undo stack — the CALLER's own pushState()
-    // (after this returns) is what makes the whole reset one undo step.
-    const layer = addLayer(editor, { skipUndo: true });
-    setActiveLayer(editor, layer.id);
+    // Fred 2026-11-23 (the unified layer stack): a NEW drawing has NO layer -- the main panel's stack starts empty and the
+    // user adds the layers he wants (+ Add layer). The empty "Layer 1" this used to make is gone; the first stroke / text /
+    // brick / lattice still gets its layer from ensureActiveLayer (layers.js), as on any board whose active layer is gone.
+    setActiveLayer(editor, null);
 }
 
 export function open(editor, svgString, w, h) {

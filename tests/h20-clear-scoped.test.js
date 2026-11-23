@@ -126,15 +126,16 @@ function freshSessionLayers() {
 }
 
 describe('H20 item 3: resetArtworkToFresh matches a brand-new session\'s artwork exactly', () => {
-  it('one default layer, no pattern, matching a fresh open(editor, null, w, h) session', () => {
+  // Fred 2026-11-23 (the unified layer stack): a new drawing has NO layer (it was one empty "Layer 1"): the main panel's
+  // stack starts empty; the first stroke gets its layer from ensureActiveLayer
+  it('no layer, no pattern, no active layer, matching a fresh open(editor, null, w, h) session', () => {
     const editor = makeEditor();
     resetArtworkToFresh(editor);
 
     const fresh = freshSessionLayers();
     expect(editor._layers).toEqual(fresh);
-    expect(editor._layers).toHaveLength(1);
-    expect(editor._layers[0].pattern).toBeUndefined();
-    expect(editor._activeLayer).toBe(editor._layers[0].id);
+    expect(editor._layers).toHaveLength(0);
+    expect(editor._activeLayer).toBeNull();
   });
 
   it('clears the sketch layer content (the drawn path is gone)', () => {
