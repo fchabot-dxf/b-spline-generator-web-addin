@@ -8,7 +8,8 @@
  *   meets       within STL_MEET_BAND_IN of the surface: the band where the STL meets the surface (the intersection)
  *   overhang    above the surface, the face looks DOWN: a top-down stamp loses it
  *   open        an open edge of the mesh ABOVE the surface (a hole there can carve a pit; an open back resting on or in the
- *               terrain never shows, so it keeps its other kind)
+ *               terrain never shows, so it keeps its other kind), on a boundary loop larger than a grid cell
+ *               (STL_OPEN_LOOP_MIN_CELLS: a sub-cell scan crack is smoothed over by the surface, it stays stone)
  * What it SHOWS (STL_GHOST_COLOURS, one declared table; Fred 2026-11-22 "only keep red"): a plain stone ghost, red only on
  * an `open` vertex. No meet line is drawn (the classification and meetLine stay: the counts and the gizmo read them).
  *
@@ -22,6 +23,7 @@ import { decodeMesh, meshBounds } from './mesh.js';
 import { cropBoxIn, isFullCropBox } from './crop.js';
 import { placeMesh } from './raster.js';
 import { normaliseStlLayer, recordStlError, stlErrorId } from './layer.js';
+import { polygonPointTester } from '../preview/frame-mesh.js'; // the terrain trim's own batched point-in-polygon
 
 export const STL_GHOST_KINDS = Object.freeze(['shows', 'buried', 'meets', 'overhang', 'open']);
 const STL_GHOST_STONE = Object.freeze([0.78, 0.72, 0.63]); // the library preview's stone (main/stl-preview-3d.js 0xc8b8a0)
@@ -56,6 +58,53 @@ export function sampleGridAt(heights, nx, nz, fi0, fj0) {
   const ti = fi - i0, tj = fj - j0;
   const h = (i, j) => heights[j * nx + i];
   return (h(i0, j0) * (1 - ti) + h(i1, j0) * ti) * (1 - tj) + (h(i0, j1) * (1 - ti) + h(i1, j1) * ti) * tj;
+}
+
+/**
+ * Fred 2026-11-22 ("red spots were scan noise", claude 47's SMK friezes): an open boundary LOOP is marked red only when it
+ * could carve a visible pit -- its extent in the placed board frame (the larger side of its X / Y bounding box, inches) is
+ * more than this many of the board's grid cells (the ghost's own grid: min(W / (nx - 1), H / (nz - 1))). A scan crack smaller
+ * than a cell is smoothed over by the surface; it keeps its other kind (stone). Detection only: it decides a colour.
+ */
+export const STL_OPEN_LOOP_MIN_CELLS = 1;
+
+/** The open (boundary) edges of `mesh` -- each used by exactly one triangle -- grouped into connected LOOPS (edges sharing a
+ *  vertex join): an array of vertex-index arrays. */
+export function openEdgeLoops(mesh) {
+  const nv = mesh.positions.length / 3, { indices } = mesh;
+  const use = new Map();
+  const key = (a, b) => (a < b ? a * nv + b : b * nv + a);
+  for (let t = 0; t < indices.length; t += 3) {
+    for (const [u, v] of [[indices[t], indices[t + 1]], [indices[t + 1], indices[t + 2]], [indices[t + 2], indices[t]]]) {
+      const k = key(u, v); use.set(k, (use.get(k) || 0) + 1);
+    }
+  }
+  const parent = new Map();
+  const find = (v) => { let r = v; while (parent.get(r) !== r) r = parent.get(r); let c = v; while (c !== r) { const n = parent.get(c); parent.set(c, r); c = n; } return r; };
+  for (const [k, n] of use) {
+    if (n !== 1) continue;
+    const a = Math.floor(k / nv), b = k - a * nv;
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+  const groups = new Map();
+  for (const v of parent.keys()) { const r = find(v); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(v); }
+  return [...groups.values()];
+}
+
+/** 1 per vertex of an open loop whose placed X / Y extent (`xyz`, scene inches) is more than STL_OPEN_LOOP_MIN_CELLS cells. */
+function visibleOpenVertices(mesh, xyz, grid) {
+  const cell = grid && grid.nx > 1 && grid.nz > 1 ? Math.min(grid.widthIn / (grid.nx - 1), grid.heightIn / (grid.nz - 1)) : 0;
+  const min = STL_OPEN_LOOP_MIN_CELLS * cell;
+  const flag = new Uint8Array(mesh.positions.length / 3);
+  for (const loop of openEdgeLoops(mesh)) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const v of loop) { const x = xyz[v * 3], y = xyz[v * 3 + 1]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (Math.max(x1 - x0, y1 - y0) > min) for (const v of loop) flag[v] = 1;
+  }
+  return flag;
 }
 
 /** 1 per vertex that lies on an edge used by exactly one triangle. */
@@ -136,7 +185,7 @@ export function ghostGeometry(rawRec, heights, grid, { cropBox = null } = {}) {
     const fx = uy * vz - uz * vy, fy = uz * vx - ux * vz, fz = ux * vy - uy * vx;
     for (const v of [idx[t], idx[t + 1], idx[t + 2]]) { nrm[v * 3] += fx; nrm[v * 3 + 1] += fy; nrm[v * 3 + 2] += fz; }
   }
-  const open = openEdgeVertices(full);
+  const open = visibleOpenVertices(full, xyz, grid); // only a loop larger than a grid cell (STL_OPEN_LOOP_MIN_CELLS)
   const positions = new Float32Array(nv * 3);
   const colours = new Float32Array(nv * 3);
   const kinds = new Uint8Array(nv);
@@ -163,10 +212,52 @@ export function ghostGeometry(rawRec, heights, grid, { cropBox = null } = {}) {
     colours[v * 3] = C[kind][0]; colours[v * 3 + 1] = C[kind][1]; colours[v * 3 + 2] = C[kind][2];
   }
   return {
-    id: rec.id, positions, indices: mesh.indices, colours, kinds, counts,
+    id: rec.id, positions, indices: mesh.indices, colours, kinds, counts, rels,
     meetLine: meetLine(positions, rels, mesh.indices),
     place: { x: rec.position.x, y: rec.position.y, z: zOff, rotZ: rec.rotation.z, baseZ },
     ...(split ? { cutIndices: split.cut } : {}),
+  };
+}
+
+/**
+ * The ghost `g` (ghostGeometry's shape) TRIMMED to the board outline `poly` -- the SAME loop the terrain preview is trimmed to
+ * (core/preview/index.js _trimPoly = frameLoopsWorld(spec, grid).panel, scene x / y; null = no frame template: the board
+ * rectangle, nothing trimmed and `g` itself comes back). Fred 2026-11-22 (claude 47, template_3): the ghost hung past the
+ * frame's waist notch over empty space. Every triangle whose centroid (x, y) lies outside `poly` is DROPPED (not drawn faint:
+ * the faint set means "the pending crop cuts this", and past the trim there is no board to show it on); the crop preview's
+ * faint triangles are trimmed the same way. The vertices only dropped triangles used are dropped too (the gizmo's arrow sits
+ * on the kept ghost's top) and the meet line is recomputed from the kept triangles. `counts` stay the whole STL's.
+ */
+export function trimGhost(g, poly) {
+  if (!g || !Array.isArray(poly) || poly.length < 3) return g;
+  const inside = polygonPointTester(poly), p = g.positions;
+  const keepTris = (ix) => {
+    const out = [];
+    for (let t = 0; t < ix.length; t += 3) {
+      const a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
+      if (inside((p[a] + p[b] + p[c]) / 3, (p[a + 1] + p[b + 1] + p[c + 1]) / 3)) out.push(ix[t], ix[t + 1], ix[t + 2]);
+    }
+    return out;
+  };
+  const kept = keepTris(g.indices), cut = g.cutIndices ? keepTris(g.cutIndices) : null;
+  if (kept.length === g.indices.length && (!cut || cut.length === g.cutIndices.length)) return g;
+  const nv = p.length / 3, map = new Int32Array(nv).fill(-1);
+  let n = 0;
+  for (const v of kept) if (map[v] < 0) map[v] = n++;
+  if (cut) for (const v of cut) if (map[v] < 0) map[v] = n++;
+  const positions = new Float32Array(n * 3), colours = new Float32Array(n * 3), kinds = new Uint8Array(n), rels = new Float64Array(n);
+  for (let v = 0; v < nv; v++) {
+    const k = map[v];
+    if (k < 0) continue;
+    for (let a = 0; a < 3; a++) { positions[k * 3 + a] = p[v * 3 + a]; colours[k * 3 + a] = g.colours[v * 3 + a]; }
+    kinds[k] = g.kinds[v];
+    rels[k] = g.rels ? g.rels[v] : 0;
+  }
+  const indices = Uint32Array.from(kept, (v) => map[v]);
+  return {
+    ...g, positions, colours, kinds, rels, indices,
+    meetLine: g.rels ? meetLine(positions, rels, indices) : new Float32Array(0),
+    ...(cut ? { cutIndices: Uint32Array.from(cut, (v) => map[v]) } : {}),
   };
 }
 

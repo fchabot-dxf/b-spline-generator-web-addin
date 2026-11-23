@@ -3,21 +3,21 @@
  *
  *   body   the ghost itself          MOVE in X / Y   (the pointer on the horizontal plane through the grab point)
  *   arrow  a vertical arrow above it  Z               (the pointer on the vertical plane through the pivot, facing the camera)
- *   ring   a ring round its footprint ROTATE about Z  (the pointer's angle round (position.x, position.y); each tick's step
- *                                                     wrapped to [-180, 180) and summed, so several turns add up)
+ * No rotate ring (Fred 2026-11-22: "no need for the orange ring"): the turn is set in the STL card (its Rotate fields and
+ * the +-90 quick turns).
  *
  * A link of the preview's ONE pointer chain (core/preview/index.js _bindEvents): sculpt first, then this, then orbit. Every
  * tryHandle* returns true when it consumed the event. During a drag only the THREE objects move (nothing is written, no
  * rebuild per tick); the release commits ONCE through the host's handler (main/stl-panel.js applyStlTransform: one write, one
- * undo step, one rebuild). No movement, or a wobble within STL_GIZMO.slopPx, = no commit; a turn commits rotZ wrapped to [-180, 180). Escape, a lost pointer (window blur, touchcancel) or a second finger cancel:
+ * undo step, one rebuild). No movement, or a wobble within STL_GIZMO.slopPx, = no commit. Escape, a lost pointer (window blur, touchcancel) or a second finger cancel:
  * the ghost goes back, nothing is written. Locked (the job timeline holds the STL section), ghosts hidden, no handlers, or the
  * sculpt tool on: no handles are drawn and no event is consumed (orbit works as before).
  *
  * The math is pure (rays are { origin: [x,y,z], dir: [x,y,z] }) and the controller takes its picking / ray / drawing from
  * injectable deps, so it runs without THREE; StlGizmoThreeView is the only part that touches THREE (r128, window.THREE).
  *
- * Pick tolerance: the arrow and the ring are picked in SCREEN space, by the pointer's distance in CSS px to their projected
- * axis / circle, within STL_GIZMO.pickPx (coarse pointer or any touch: 18 px each side = a 36 px wide band >= 28 px,
+ * Pick tolerance: the arrow is picked in SCREEN space, by the pointer's distance in CSS px to its projected
+ * axis, within STL_GIZMO.pickPx (coarse pointer or any touch: 18 px each side = a 36 px wide band >= 28 px,
  * AGENTS.md); their drawn size is fixed in CSS px too (rescaled with the zoom), so the target is the same at every zoom. The
  * body is picked by a THREE.Raycaster hit on the ghost mesh itself (the ghost is fitted to half the board at import, far larger
  * than any tolerance).
@@ -35,19 +35,13 @@ export const STL_GIZMO = Object.freeze({
   arrowHeadPx: 18,
   arrowShaftRadiusPx: 2.5,
   arrowHeadRadiusPx: 8,
-  ringMarginPx: 14,        // ring radius = the footprint's radius round the pivot + this
-  ringTubePx: 3,
-  ringSegments: 64,        // drawn and picked (screen polyline) with this many segments
   rescaleRatio: 0.01,      // the handles are rebuilt when the zoom changes the world-per-pixel by more than this
   renderOrder: 7,          // drawn over the ghost (5) and the meet line (6), depth test off: never hidden by the surface
   colours: Object.freeze({
     z: Object.freeze([0.15, 0.45, 0.95]),
-    ring: Object.freeze([0.95, 0.5, 0.1]),
     drag: Object.freeze([1.0, 0.9, 0.2]), // the handle being dragged (the old meet-line yellow)
   }),
 });
-
-const RAD = Math.PI / 180;
 
 // ── pure math ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -84,12 +78,6 @@ export function zDelta(rayA, rayB, pivot) {
   return a && b ? b[2] - a[2] : null;
 }
 
-/** ROTATE: the pointer's angle (degrees, counter-clockwise from +x, the rotation.z sense) round `pivot` on the plane z = `z`. */
-export function ringAngle(ray, pivot, z) {
-  const h = rayPlane(ray, [0, 0, z], [0, 0, 1]);
-  return h ? Math.atan2(h[1] - pivot[1], h[0] - pivot[0]) / RAD : null;
-}
-
 /** Distance from screen point p to segment ab (all [x, y]). */
 export function distToSegment(p, a, b) {
   const vx = b[0] - a[0], vy = b[1] - a[1];
@@ -98,39 +86,25 @@ export function distToSegment(p, a, b) {
   return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
 }
 
-/** Distance from p to a closed screen polyline. */
-export function distToLoop(p, pts) {
-  let best = Infinity;
-  for (let i = 0; i < pts.length; i++) best = Math.min(best, distToSegment(p, pts[i], pts[(i + 1) % pts.length]));
-  return best;
-}
-
 /**
- * Which handle a screen point grabs: `screen` = { z: [foot, tip], ring: [[x, y], ...] } in the same pixels as `p`; the nearer
- * one within `tolPx`, the arrow on a tie; null = neither (the body or the orbit get the event).
+ * Which handle a screen point grabs: `screen` = { z: [foot, tip] } in the same pixels as `p`; 'z' within `tolPx`, else null
+ * (the body or the orbit get the event). There is no ring (Fred 2026-11-22).
  */
 export function pickHandle(p, screen, tolPx) {
-  const dz = screen.z ? distToSegment(p, screen.z[0], screen.z[1]) : Infinity;
-  const dr = screen.ring && screen.ring.length > 1 ? distToLoop(p, screen.ring) : Infinity;
-  if (dz <= tolPx && dz <= dr) return 'z';
-  if (dr <= tolPx) return 'ring';
-  return null;
+  const dz = screen && screen.z ? distToSegment(p, screen.z[0], screen.z[1]) : Infinity;
+  return dz <= tolPx ? 'z' : null;
 }
 
-/** The ghost's top z and its footprint radius round the pivot (px, py), from its scene positions. */
-export function ghostExtent(positions, px, py) {
-  let top = -Infinity, footR = 0;
-  for (let i = 0; i < positions.length; i += 3) {
-    if (positions[i + 2] > top) top = positions[i + 2];
-    const r = Math.hypot(positions[i] - px, positions[i + 1] - py);
-    if (r > footR) footR = r;
-  }
-  return { top: Number.isFinite(top) ? top : 0, footR };
+/** The ghost's top z, from its scene positions. */
+export function ghostExtent(positions) {
+  let top = -Infinity;
+  for (let i = 2; i < positions.length; i += 3) if (positions[i] > top) top = positions[i];
+  return { top: Number.isFinite(top) ? top : 0 };
 }
 
-/** Where the handles are, in scene inches, for a ghost `g` = { place, top, footR } at `wpp` inches per CSS px. */
+/** Where the handles are, in scene inches, for a ghost `g` = { place, top } at `wpp` inches per CSS px. */
 export function handleLayout(g, wpp, T = STL_GIZMO) {
-  const { x, y, z, baseZ } = g.place;
+  const { x, y } = g.place;
   const foot = g.top + T.arrowGapPx * wpp;
   return {
     pivot: [x, y],
@@ -139,38 +113,20 @@ export function handleLayout(g, wpp, T = STL_GIZMO) {
       shaftLen: T.arrowShaftPx * wpp, headLen: T.arrowHeadPx * wpp,
       shaftR: T.arrowShaftRadiusPx * wpp, headR: T.arrowHeadRadiusPx * wpp,
     },
-    // at the ghost's base (its lowest point = surface + Z offset), or at the surface when it is sunk (a buried ring is unseen)
-    ring: { centre: [x, y, baseZ + Math.max(0, z)], radius: g.footR + T.ringMarginPx * wpp, tube: T.ringTubePx * wpp },
   };
 }
 
-/** The ring's points in scene inches (for the screen pick). */
-export function ringPoints(ring, n = STL_GIZMO.ringSegments) {
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    out.push([ring.centre[0] + ring.radius * Math.cos(a), ring.centre[1] + ring.radius * Math.sin(a), ring.centre[2]]);
-  }
-  return out;
-}
-
-/**
- * The transform that shows a drag on the THREE objects (whose geometry is already in scene coordinates): a move shifts them,
- * a turn rotates them about the vertical axis through `pivot` (position = p - Rz p, so the pivot stays put).
- */
-export function previewTransform(kind, delta, pivot) {
+/** The transform that shows a drag on the THREE objects (whose geometry is already in scene coordinates): a shift. */
+export function previewTransform(kind, delta) {
   if (kind === 'body') return { position: [delta.dx, delta.dy, 0], rotationZ: 0 };
   if (kind === 'z') return { position: [0, 0, delta], rotationZ: 0 };
-  const r = delta * RAD, c = Math.cos(r), s = Math.sin(r);
-  return { position: [pivot[0] - (c * pivot[0] - s * pivot[1]), pivot[1] - (s * pivot[0] + c * pivot[1]), 0], rotationZ: r };
+  return null;
 }
 
 /** What a finished drag writes (absolute values from the start `place`), or null when it did not move. */
 export function commitValues(kind, place, delta) {
   if (kind === 'body') return delta && (delta.dx !== 0 || delta.dy !== 0) ? { x: place.x + delta.dx, y: place.y + delta.dy } : null;
   if (kind === 'z') return delta ? { z: place.z + delta } : null;
-  // Fred 2026-11-22 ("Wrap to -180..180"): the same orientation, the number kept in the Rotate slider's range
-  if (kind === 'ring') return delta ? { rotZ: wrapDeg(place.rotZ + delta) } : null;
   return null;
 }
 
@@ -184,7 +140,7 @@ export class StlGizmoController {
    * @param {object} deps.view           drawing + hit testing (StlGizmoThreeView, or a stand-in): draw(g|null, dragKind),
    *                                     preview(id, xf|null), setObjects(objects), wpp(), handleScreen(g), pickBody(cx, cy),
    *                                     ray(cx, cy), bodyCandidates(id), sceneObjects(), dispose()
-   * @param {Function} [deps.pick]       (clientX, clientY, tolPx) -> { kind: 'body'|'z'|'ring', id, point? } | null
+   * @param {Function} [deps.pick]       (clientX, clientY, tolPx) -> { kind: 'body'|'z', id, point? } | null
    * @param {Function} [deps.ray]        (clientX, clientY) -> { origin, dir } | null
    * @param {Function} [deps.isCoarse]   true on a coarse pointer (mouse events); a touch always uses the coarse tolerance
    * @param {Function} [deps.isSuppressed] true while another tool owns the pointer (the sculpt tool)
@@ -198,7 +154,7 @@ export class StlGizmoController {
     this._isSuppressed = isSuppressed;
     this._requestRender = requestRender;
     this._handlers = null;
-    this._ghosts = [];          // { id, place, top, footR }
+    this._ghosts = [];          // { id, place, top }
     this._drag = null;
     this._drawn = { id: undefined, wpp: 0, kind: null };
     /** the last commit handed to the host (a debug / check aid: { id, values }) */
@@ -210,7 +166,7 @@ export class StlGizmoController {
 
   /** The ghosts just drawn (core/stl/ghost.js entries: id, positions, place) and their THREE objects. */
   setGhosts(entries, objects) {
-    this._ghosts = (entries || []).filter((e) => e && e.place).map((e) => ({ id: e.id, place: e.place, ...ghostExtent(e.positions || [], e.place.x, e.place.y) }));
+    this._ghosts = (entries || []).filter((e) => e && e.place).map((e) => ({ id: e.id, place: e.place, ...ghostExtent(e.positions || []) }));
     this._view?.setObjects?.(objects);
     this._drawn.id = undefined;
     const d = this._drag;
@@ -285,19 +241,18 @@ export class StlGizmoController {
     return hit ? { kind: hit.kind, id: hit.id } : null;
   }
 
-  /** Client-pixel points to press for each handle of the active ghost: { id, body, z, ring } (body: null if none found). */
+  /** Client-pixel points to press for each handle of the active ghost: { id, body, z } (body: null if none found). */
   handleScreenPoints() {
     const g = this.isActive() ? this.activeGhost() : null;
     if (!g || !this._view?.handleScreen) return null;
     const s = this._view.handleScreen(g);
     const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const ring = s.ring.reduce((best, p) => (p[1] > best[1] ? p : best), s.ring[0]); // the ring's lowest point on screen
     let body = null;
     for (const p of this._view.bodyCandidates?.(g.id) || []) {
       const hit = this.pickAt(p[0], p[1], true);
       if (hit && hit.kind === 'body' && hit.id === g.id) { body = p; break; }
     }
-    return { id: g.id, body, z: mid(s.z[0], s.z[1]), ring };
+    return { id: g.id, body, z: mid(s.z[0], s.z[1]) };
   }
 
   // ── private ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -328,12 +283,7 @@ export class StlGizmoController {
       if (!xyDelta(ray, ray, d.grabZ)) return false;
     } else if (hit.kind === 'z') {
       if (zDelta(ray, ray, pivot) === null) return false;
-    } else if (hit.kind === 'ring') {
-      d.ringZ = handleLayout(g, 0).ring.centre[2];
-      d.lastAngle = ringAngle(ray, pivot, d.ringZ);
-      if (d.lastAngle === null) return false;
-      d.acc = 0;
-    } else return false;
+    } else return false; // no other handle (no ring since Fred 2026-11-22)
     if (g.id !== this._handlers.activeId?.()) this._handlers.pick?.(g.id); // a press on another STL's ghost makes it the active one
     this._drag = d;
     this._requestRender();
@@ -352,13 +302,9 @@ export class StlGizmoController {
     let delta = null;
     if (d.kind === 'body') delta = xyDelta(d.ray0, ray, d.grabZ);
     else if (d.kind === 'z') delta = zDelta(d.ray0, ray, d.pivot);
-    else {
-      const a = ringAngle(ray, d.pivot, d.ringZ);
-      if (a !== null) { d.acc += wrapDeg(a - d.lastAngle); d.lastAngle = a; delta = d.acc; }
-    }
     if (delta === null) return true; // a ray parallel to the drag plane: keep the last position
     d.delta = delta;
-    d.xf = previewTransform(d.kind, delta, d.pivot);
+    d.xf = previewTransform(d.kind, delta);
     this._view?.preview?.(d.id, d.xf);
     this._requestRender();
     return true;
@@ -434,7 +380,7 @@ export class StlGizmoThreeView {
 
   handleScreen(g) {
     const L = handleLayout(g, this.wpp(), this._T);
-    return { z: [this._toClient(L.arrow.foot), this._toClient(L.arrow.tip)], ring: ringPoints(L.ring, this._T.ringSegments).map((p) => this._toClient(p)) };
+    return { z: [this._toClient(L.arrow.foot), this._toClient(L.arrow.tip)] };
   }
 
   /** Screen points of (up to 300) triangle centroids of ghost `id` (handleScreenPoints keeps the first one the raycast confirms). */
@@ -457,7 +403,6 @@ export class StlGizmoThreeView {
     const L = handleLayout(g, this.wpp(), T);
     const mat = (rgb) => new THREE.MeshBasicMaterial({ color: new THREE.Color(rgb[0], rgb[1], rgb[2]), depthTest: false, transparent: true, opacity: 0.95 });
     const zCol = dragKind === 'z' ? T.colours.drag : T.colours.z;
-    const ringCol = dragKind === 'ring' ? T.colours.drag : T.colours.ring;
     const group = new THREE.Group();
     const a = L.arrow;
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(a.shaftR, a.shaftR, a.shaftLen, 12), mat(zCol));
@@ -466,11 +411,8 @@ export class StlGizmoThreeView {
     const head = new THREE.Mesh(new THREE.ConeGeometry(a.headR, a.headLen, 16), mat(zCol));
     head.rotation.x = Math.PI / 2;
     head.position.set(a.foot[0], a.foot[1], a.foot[2] + a.shaftLen + a.headLen / 2);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(L.ring.radius, L.ring.tube, 8, T.ringSegments), mat(ringCol)); // in the XY plane
-    ring.position.set(L.ring.centre[0], L.ring.centre[1], L.ring.centre[2]);
     shaft.userData.stlHandle = head.userData.stlHandle = 'z';
-    ring.userData.stlHandle = 'ring';
-    for (const m of [shaft, head, ring]) { m.renderOrder = T.renderOrder; group.add(m); }
+    for (const m of [shaft, head]) { m.renderOrder = T.renderOrder; group.add(m); }
     this._group = group;
     this._groupId = g.id;
     this._scene.add(group);
