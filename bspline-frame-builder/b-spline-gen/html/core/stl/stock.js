@@ -9,28 +9,15 @@
  *     when the user presses the button (or adds an STL with P.stlFitOnInsert on).
  */
 import { sampleGridAt } from './ghost.js';
+import { stockOvershoot, stockReport, stockMessage } from '../stock.js';
 
-/** Over the points `covered` marks: how many leave the stock, and the worst overshoot above the top / below the bottom (inches). */
-export function stlStockOvershoot(heights, covered, carveZ) {
-  let count = 0, maxOver = 0, maxUnder = 0;
-  for (let k = 0, n = heights.length; k < n; k++) {
-    if (!covered[k]) continue;
-    const z = heights[k];
-    if (z > carveZ) { count++; maxOver = Math.max(maxOver, z - carveZ); } // checkPreBounds' rule, point for point
-    if (z < 0) { count++; maxUnder = Math.max(maxUnder, -z); }
-  }
-  return { count, maxOver, maxUnder };
-}
+/** THE overshoot check now lives in core/stock.js (HEIGHT-PAINTER slice 5: the height patches and the whole board use it
+ *  too); the STL names stay, the same functions. Over the points `covered` marks: how many leave the stock, the worst over /
+ *  under (inches) -- plus, since slice 5, the lowest / highest height there. */
+export const stlStockOvershoot = stockOvershoot;
 
-/** One entry per STL pass (kind 'stl', id 'stl:<record id>'), keyed by the record id: { count, maxOver, maxUnder, carveZ }. */
-export function stlStockReport(passes, heights, carveZ) {
-  const out = {};
-  for (const p of passes || []) {
-    if (!p || p.kind !== 'stl' || typeof p.id !== 'string' || !p.mask || !p.mask.isStamped) continue;
-    out[p.id.slice('stl:'.length)] = { ...stlStockOvershoot(heights, p.mask.isStamped, carveZ), carveZ };
-  }
-  return out;
-}
+/** One entry per STL pass (kind 'stl', id 'stl:<record id>'), keyed by the record id: { count, maxOver, maxUnder, min, max, carveZ }. */
+export function stlStockReport(passes, heights, carveZ) { return stockReport(passes, heights, carveZ, 'stl'); }
 
 // The last build's report (core/engine/rebuild.js sets it after each heights build; main/stl-panel.js reads it). Setting it
 // announces 'stlStockChanged' on the document, the panel's cue to redraw its line.
@@ -41,15 +28,8 @@ export function setStlStockReport(report) {
   if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stlStockChanged'));
 }
 
-const inches = (v) => `${v.toFixed(2)} in`;
-/** The panel's one line for an entry ('' when it stays inside the stock). */
-export function stlStockMessage(e) {
-  if (!e || !(e.count > 0)) return '';
-  const bits = [];
-  if (e.maxOver > 0) bits.push(`rises ${inches(e.maxOver)} above the stock top`);
-  if (e.maxUnder > 0) bits.push(`cuts ${inches(e.maxUnder)} below the stock bottom`);
-  return `⚠ This STL ${bits.join(' and ')} (Carve Depth ${inches(e.carveZ)}) at ${e.count} point${e.count === 1 ? '' : 's'}.`;
-}
+/** The panel's one line for an entry ('' when it stays inside the stock): core/stock.js stockMessage about 'This STL'. */
+export function stlStockMessage(e) { return stockMessage(e, 'This STL'); }
 
 /** How far inside the bound the fit aims (inches): the heights are Float32, so a stamp aimed exactly AT the bound can round a
  *  hair past it and trip the (exact) warning. Numerics, not a rule: 0.00001 in is far below any cutter. */

@@ -30,6 +30,7 @@ import { stlPasses } from '../stl/layer.js';
 import { heightPasses, heightRastersReady, decodeHeightLayers } from '../height/layer.js';
 import { isStoredRaster } from '../height/raster.js';
 import { stlStockReport, setStlStockReport } from '../stl/stock.js';
+import { stockReport, stockOvershoot, setHeightStockReport } from '../stock.js';
 import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
@@ -134,7 +135,7 @@ function _copyBuilt(b) {
     const c = (a) => { if (!ArrayBuffer.isView(a)) return a; if (!seen.has(a)) seen.set(a, a.slice()); return seen.get(a); };
     const generated = {};
     for (const [k, v] of Object.entries(b.generated)) generated[k] = c(v);
-    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated, backBase: c(b.backBase), stlStock: b.stlStock };
+    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated, backBase: c(b.backBase), stlStock: b.stlStock, heightStock: b.heightStock };
 }
 function buildHeightsReusing(nx, nz) {
     const digest = heightsInputDigest(nx, nz);
@@ -185,9 +186,10 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
         await withLoadingStage('rebuild', async () => {
             await yieldToMain();
-            const { heights, cleanHeights, baseHeights, generated, backBase, stlStock } = buildHeightsReusing(nx, nz);
+            const { heights, cleanHeights, baseHeights, generated, backBase, stlStock, heightStock } = buildHeightsReusing(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
             setStlStockReport(stlStock); // STL-RELIEF: each STL against the stock (detection only; main/stl-panel.js shows it)
+            setHeightStockReport(heightStock); // HEIGHT-PAINTER slice 5: each height patch and the whole board (main/height-panel.js)
 
             await yieldToMain();
             // job-timeline step 3 slice 2: Back LOCKED + the Settings switch ON -- the frozen underside, resampled
@@ -343,8 +345,10 @@ function buildHeights(nx, nz) {
     // STL-RELIEF (Fred 2026-11-22): per STL pass, its covered points where these FINAL heights leave the stock (the sculpt
     // check's bounds, core/stl/stock.js). Detection only: one pass over the points per STL, nothing is changed.
     const stlStock = stlStockReport(passes, heights, P.carveZ);
+    // HEIGHT-PAINTER slice 5 (Fred 2026-11-23): the same check per height patch (its footprint) and over the whole board
+    const heightStock = { patches: stockReport(passes, heights, P.carveZ, 'height'), board: { ...stockOvershoot(heights, null, P.carveZ), carveZ: P.carveZ } };
 
-    return { heights, cleanHeights, baseHeights: generated.heights, generated, backBase, stlStock };
+    return { heights, cleanHeights, baseHeights: generated.heights, generated, backBase, stlStock, heightStock };
 }
 
 /**

@@ -155,8 +155,9 @@ describe("the panel's 'customCurve' control", () => {
     syncHeightPanel();
     return svg();
   }
-  // Fred 2026-11-22 (asked: "Stop at the box (0 to 1)"): a drag far above the box stops at full strength, far below at 0
-  it('a drag past the top of the box stops at 1, past the bottom at 0', () => {
+  // Fred 2026-11-22 (asked: "Stop at the box (0 to 1)"): a drag far above the box stops at full strength. Fred 2026-11-23 (slice 5)
+  // replaced the bottom: the brush's curve runs -1..1 (below 0 the brush paints the opposite), so far below stops at -1
+  it('a drag past the top of the box stops at 1, past the bottom at -1', () => {
     const s = openCustom([[0, 1], [0.5, 0.5], [1, 0]]);
     let [x, y] = at(handles()[1]);
     handles()[1].dispatchEvent(ptr('pointerdown', x, y));
@@ -167,7 +168,7 @@ describe("the panel's 'customCurve' control", () => {
     handles()[1].dispatchEvent(ptr('pointerdown', x, y));
     s.dispatchEvent(ptr('pointermove', x, y + 500));
     s.dispatchEvent(ptr('pointerup', x, y + 500));
-    expect(heightBrush().customCurve[1][1]).toBe(0);
+    expect(heightBrush().customCurve[1][1]).toBe(-1);
   });
   it('dragging the middle handle writes the curve once, on pointerup', () => {
     const s = openCustom([[0, 1], [0.5, 0.5], [1, 0]]);

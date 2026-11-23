@@ -98,7 +98,8 @@ describe('the panel', () => {
     expect(wand.leads[0]).toBe('wand');
     expect(document.querySelector('#editorToolbarHeight [data-height-tool="wand"]')).toBeTruthy();
     const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'wand').map((c) => c.id);
-    expect(ids).toEqual(['wandToleranceIn', 'wandContiguous', 'wandSample']);
+    // slice 5 (Fred 2026-11-23): Sample is one setting shared with the eyedropper ('sampleFrom', its own 'sample' section)
+    expect(ids).toEqual(['wandToleranceIn', 'wandContiguous']);
     await newHeightPatch(); // the wand's section needs a patch (like the selection's)
     setHeightTool('wand');
     expect(document.getElementById('heightGroup_wand').hidden).toBe(false);
@@ -123,7 +124,7 @@ describe('the panel', () => {
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) heights[j * nx + i] = i >= 10 ? 1 : 0;
     setLastResult({ heights, nx, nz });
     setHeightTool('wand');
-    setHeightField('wandSample', 'board'); setHeightField('wandToleranceIn', 0.01);
+    setHeightField('sampleFrom', 'board'); // slice 5: the shared Sample setting (was 'wandSample') setHeightField('wandToleranceIn', 0.01);
     await tap([0.5, 0]);
     const m = heightSelection().mask;
     expect(count(m)).toBe(100 * 200);

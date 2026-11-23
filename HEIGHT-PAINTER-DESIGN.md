@@ -315,3 +315,52 @@ main @ 73a7e10c before the slice-4 code); probe `tools/repro/height_painter4_sho
   (same arithmetic). Linear = a bevelled tile, Dome = a pillow, Plateau = a flat top with a steep rim.
 - **Layer rename**: the pencil on each layer row (touch) or a double-click on the name opens an inline text box; Enter or
   leaving it writes the name through `setPatchLayerField` (one undo step; an unchanged name writes nothing), Esc cancels.
+
+## 14. Slice 5: greyscale view, grey palette, eyedropper (branch `height-painter-5`)
+
+Fred 2026-11-23: a classic heightmap editor ("I thought I selected the value in a palette"), and for the mapping "black as
+carve and white as raise". Tests: `tests/height-grey-palette.test.js`, the pins `tests/height-grey-pin.test.js` (the Lit
+bytes measured on height-painter-4 @ 1763a9a5 before the slice-5 code; the pass with / without a Range); probe
+`tools/repro/height_painter5_shots.mjs`.
+
+- **The mapping** (palette + greyscale view): the slice-2 image-layer mapping (core/height/compose.js `mapImageValue`, and
+  its inverse `heightToGrey`) FIXED at mid-grey = 0, with ONE **Range** per patch (record field `greyRangeIn`, absent =
+  0.25 in): mid-grey = no change, black = -Range (carves), white = +Range (raises). It only says how greys translate to
+  inches (and how the greyscale view draws); it never changes a pixel and never reaches the pass (pinned). The heightmap
+  IMPORT keeps its own mapping options (Black = 0 | Mid-grey = 0).
+- **Greyscale view** (View: Lit | Greyscale, session state; core/height/shade.js `HEIGHT_LOOKS`, one renderer with a second
+  look): the patch composite's height as an opaque grey through the patch's mapping. A 0 pixel -- unpainted and erased are
+  the same thing (compose.js's transparent 0; no new coverage channel) -- is the zero grey (mid-grey) under a faint 6 px
+  checker, so "no effect here" shows. Lit is unchanged (pinned bytes).
+- **Grey palette** (its own section right after the Brush's, shown for the Brush and the Eyedropper): 11 swatches 0..100 %
+  with their grey and their height (the 50 % swatch reads "no change"), a ramp to tap anywhere (a marker at the target's
+  grey) and a readout. A pick sets the Set target through the mapping and the mode to Set (and arms the Brush).
+- **Eyedropper** (a rail tool; I on a keyboard through the rail button's `data-key`, the editor's own single-key
+  mechanism): a tap reads the height there (bilinear) -- Sample: active layer | whole board, ONE setting shared with the
+  wand (`sampleFrom`, its own 'Sample' section; was the wand's 'wandSample') -- sets the Set target, marks the matching
+  swatch, and returns to the Brush in Set mode.
+- **Signed custom curve** (Fred 2026-11-23, replacing the 2026-11-22 "stop at 0" rule for the BRUSH's curve only): the
+  brush's custom falloff runs -1..1 (the curve control's declared `valueRange`; the widget draws a zero line; the
+  gradient's and the feather's curves keep 0..1). In the dab, a negative falloff makes the coverage SIGNED (it builds
+  toward -cap): Raise / Lower add curve(t) x amount (a negative rim carves a moat), Set paints toward curve(t) x T
+  (h (1 - |a|) + T a). Build up off keeps the dab with the largest |contribution| (with only positive dabs that is the old
+  max). Erase / Smooth use |a|. Every falloff >= 0 runs the old arithmetic: an existing 0..1 curve paints byte for byte
+  (tests/height-brush-tip-pin.test.js 'custom ring'). The fades (feather profile, STL crop edge) read the curve clamped
+  to 0..1 at that one use (core/falloff.js edgeFade), never in the curve.
+- **Invert** (a Normal | Inverted toggle heading the Brush section, session state): the brush paints the opposite --
+  Raise <-> Lower, a Set target T paints -T (the palette marks the mirrored grey); Smooth and the Eraser are unaffected.
+  Alt while painting flips it once more for that stroke (Alt alone = inverted; Invert + Alt = normal; Alt now also
+  inverts Set, where slice 3b's Alt only swapped Raise / Lower). Applied in ONE place, the stroke's setup
+  (main/height-panel.js strokeBrush); the brush settings themselves are never rewritten.
+- **Greyscale shows the active layer** by default (View > Show: This layer | All layers; coordinator 2026-11-23): the
+  picked grey matches what you paint. The Sample choice gains 'As the view' (the default: this layer or the patch's composite,
+  as Show says) and 'All layers' (the composite) beside Active layer and Whole board; the wand and the eyedropper share it.
+  The Lit view always shows the composite, unchanged.
+- **The stock check** (Fred 2026-11-23, detection only: nothing clamped or blocked): ONE overshoot function,
+  core/stock.js `stockOvershoot` (the STL stock check's, moved to a neutral module; core/stl/stock.js re-exports it as
+  `stlStockOvershoot` / `stlStockReport` / `stlStockMessage`, so the STL card is unchanged), now also returning the lowest /
+  highest height. rebuild.js reports after each heights build each height patch (its footprint) and the whole board (every
+  point) -- `setHeightStockReport`. The Height panel shows ONE line (`#heightCarveRange`, a top note): the board's warning in
+  stlStockMessage's wording ('⚠ The board cuts 0.04 in below the stock bottom (Carve Depth 1.50 in) at 3 points.'), else the
+  room left ('Deepest point 0.06 in above the carve floor / highest 0.12 in under the stock top'), then the active patch's
+  own warning ('⚠ This patch rises ...'). Warning colour when either warns. It follows each build (the 3D builds after Apply).
