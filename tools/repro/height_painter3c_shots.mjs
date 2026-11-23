@@ -87,6 +87,7 @@ async function run(tag, metrics, touchOn) {
   await send('Emulation.setTouchEmulationEnabled', { enabled: touchOn, maxTouchPoints: touchOn ? 5 : 1 });
   // a fresh start per viewport: no session restored from the previous run (it would replace the new patch)
   await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
+  await send('Network.enable'); await send('Network.clearBrowserCache'); await send('Network.setCacheDisabled', { cacheDisabled: true }); // the page's modules as on disk now
   await send('Page.navigate', { url: URL }); await sleep(9000);
   let opened = false;
   for (let attempt = 0; attempt < 4; attempt++) {

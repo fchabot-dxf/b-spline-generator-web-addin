@@ -62,7 +62,7 @@ function tipIcon(key) {
   const shape = tip.box === 'rect'
     ? `<rect x="${9 - r}" y="${(9 - ry).toFixed(1)}" width="${2 * r}" height="${(2 * ry).toFixed(1)}" fill="${ink}" fill-opacity="0.3" stroke="${ink}" stroke-width="1.5"/>`
     : `<circle cx="9" cy="9" r="${r}" fill="${ink}" fill-opacity="0.3" stroke="${ink}" stroke-width="1.5"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" style="vertical-align:middle; margin-right:4px; flex:none;">${shape}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" style="flex:none;">${shape}</svg>`;
 }
 /** The Falloff row's icons (slice 3c): each profile across the brush (hardness 0, so the shape shows), 26 x 18 px. Custom
  *  is drawn as an example curve with its points (it is the user's own). */
@@ -73,7 +73,7 @@ function falloffIcon(key) {
   const pts = [];
   for (let i = 0; i <= 26; i++) { const t = Math.abs(i / 13 - 1); pts.push(`${i.toFixed(1)} ${(16 - 13 * (ex ? ex(t) : brushFalloff(t, 1, 0, key))).toFixed(1)}`); }
   const dots = custom ? [[0, 0.55], [0.45, 1]].map(([t, v]) => `<circle cx="${(13 + 13 * t).toFixed(1)}" cy="${(16 - 13 * v).toFixed(1)}" r="1.6" fill="${ink}"/>`).join('') : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 18" width="26" height="18" aria-hidden="true" style="vertical-align:middle; margin-right:4px; flex:none;"><path d="M0 16L${pts.join('L')}L26 16Z" fill="${ink}" fill-opacity="0.35" stroke="${ink}" stroke-width="1.2"/>${dots}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 18" width="26" height="18" aria-hidden="true" style="flex:none;"><path d="M0 16L${pts.join('L')}L26 16Z" fill="${ink}" fill-opacity="0.35" stroke="${ink}" stroke-width="1.2"/>${dots}</svg>`;
 }
 const sameCurve = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
 
@@ -1379,7 +1379,9 @@ function renderControl(c) {
       c.options.map(([key, text, title, icon]) => {
         const b = el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text });
         // an option's optional 4th entry: its drawn icon (svg markup made by this module), shown before its name
-        if (icon) { b.insertAdjacentHTML('afterbegin', icon); b.style.display = 'inline-flex'; b.style.alignItems = 'center'; b.style.justifyContent = 'center'; }
+        // the icon over the name, three to a line (the STL crop falloff row's precedent, layout-app.css #stl_cropFalloffProfile):
+        // measured at 390 px, seven icon + name buttons on one line overlapped their names
+        if (icon) { b.insertAdjacentHTML('afterbegin', icon); Object.assign(b.style, { flex: '1 0 30%', flexDirection: 'column', gap: '2px', padding: '4px 2px', fontSize: '11px' }); }
         return b;
       }))]);
   }
