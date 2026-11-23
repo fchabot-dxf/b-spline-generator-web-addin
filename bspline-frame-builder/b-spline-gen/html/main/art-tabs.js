@@ -103,8 +103,15 @@ export function initArtTabs() {
     if (!top.artTabs.includes(_tab)) setArtTab(top.artDefault || top.artTabs[0], { arm: false });
   });
   document.addEventListener('editorModeChanged', (e) => {
-    const t = artTabOfMode(e.detail && e.detail.mode);
-    if (t && t !== _tab) setArtTab(t, { arm: false });
+    const mode = e.detail && e.detail.mode;
+    const t = artTabOfMode(mode);
+    if (!t || t === _tab) return;
+    // a mode the CURRENT top tab owns too (EDITOR_TABS `modes`: Select, Cut, Erase, Stripe on Lattice) keeps that tab --
+    // measured 2026-11-23: Draw with Line armed, one tap on Lattice, and the switch's own "back to Select"
+    // (global-events.js) read Select as Draw's Edit tab and put Draw back up
+    const cur = EDITOR_TABS.find((x) => x.id === getEditorTab());
+    if (cur && cur.artTabs && !cur.artTabs.includes(t) && (cur.modes || []).includes(mode)) return;
+    setArtTab(t, { arm: false });
   });
   setArtTab(ART_DEFAULT_TAB, { arm: false });
 }

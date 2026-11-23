@@ -1926,8 +1926,6 @@
           <div id="editorToolbarPhoto" style="display:none; flex-direction:column; align-items:center; gap:8px;">
             <!-- Populated at runtime by main/photo-panel.js's declared PHOTO_TOOLS. -->
           </div>
-          <!-- HEIGHT-PAINTER: the Height tab's rail -- the brush modes, rendered from main/height-panel.js HEIGHT_CONTROLS -->
-          <div id="editorToolbarHeight" style="display:none; flex-direction:column; align-items:center; gap:8px;"></div>
           <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
                list, moved here from the old sidebar's horizontal row (renderToolList's own target
                container, same function, same click behaviour -- only the container moved). -->
@@ -2950,9 +2948,15 @@
 
         <!-- HEIGHT-PAINTER slice 1: the Height tab's right panel -- the patches, the brush and the active patch's place /
              stamp options, rendered from main/height-panel.js HEIGHT_CONTROLS. The painting itself is on the shared canvas. -->
-        <aside class="editor-layers-panel" id="editorHeightPanel" style="display:none;">
-          <div class="layers-header"><span>Height</span></div>
-          <div id="heightPanelBody" style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;"></div>
+        <!-- Owner 2026-11-23: the Draw tab's frame -- [the pinned tool row][the branches]. The tools (main/height-panel.js HEIGHT_TOOLS,
+             a wrapping row like Draw's) head the panel, pinned (on a phone: the drawer's pinned head, shown at peek: EDITOR_TABS
+             height `peekEssentials`); the branches (HEIGHT_DRAWER_TREE) scroll on their own below it (.editor-panel-scroll), so a
+             layer stack can later sit above the tool row and scroll separately from the settings. -->
+        <aside class="editor-layers-panel editor-panel-split" id="editorHeightPanel" style="display:none;">
+          <div id="heightToolsHead" class="sticky-actions" data-panel-head>
+            <div id="editorToolbarHeight" class="panel-tool-row" style="display:none;"></div>
+          </div>
+          <div id="heightPanelBody" class="editor-panel-scroll" style="display:flex; flex-direction:column; gap:4px; font-size:11px;"></div>
         </aside>
 
         <!-- F35 item 10: the Brick tab's own right panel (moved from the sidebar's panel-brick) --

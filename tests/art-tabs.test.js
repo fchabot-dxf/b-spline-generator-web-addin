@@ -84,6 +84,26 @@ describe('Art tabs: behaviour', () => {
     expect(document.getElementById('artGeneralBody').style.display).toBe('');
     expect(document.getElementById('editorToolbarArtwork').style.display).toBe('flex');
   });
+  // 2026-11-23 (measured with a real tap, desktop and phone): Draw with Line armed, ONE tap on the Lattice tab landed back on
+  // Draw -- the switch's own "back to Select" (global-events.js, Line is not Lattice's) read Select as Draw's Edit tab
+  it('a mode the current top tab owns too (Select, Erase...) keeps that tab: the Lattice tab stays up after Line', async () => {
+    const { setEditorTab, getEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    const { dropForeignModeOnTabChange } = await import('../bspline-frame-builder/b-spline-gen/html/main/global-events.js');
+    window.svgEditor = { _currentMode: 'line', setMode(m) { this._currentMode = m; document.dispatchEvent(new CustomEvent('editorModeChanged', { detail: { mode: m } })); } };
+    const drop = (e) => dropForeignModeOnTabChange(e.detail && e.detail.tab); // registered after the Art tabs, as in the app
+    document.addEventListener('editorTabChanged', drop);
+    try {
+      setEditorTab('artwork');
+      setEditorTab('lattice');
+      expect(window.svgEditor._currentMode).toBe('select');
+      expect(getEditorTab()).toBe('lattice');
+      expect(activeArtTab()).toBe('lattice');
+      window.svgEditor.setMode('erase'); // a shared tool on Lattice's own row
+      expect(getEditorTab()).toBe('lattice');
+      window.svgEditor.setMode('line'); // a Draw-only mode still brings Draw up (a shortcut)
+      expect(getEditorTab()).toBe('artwork');
+    } finally { document.removeEventListener('editorTabChanged', drop); setEditorTab('artwork'); }
+  });
   it('a mode change from anywhere else (a shortcut, Esc) brings its tab up', () => {
     document.dispatchEvent(new CustomEvent('editorModeChanged', { detail: { mode: 'lattice' } }));
     expect(activeArtTab()).toBe('lattice');

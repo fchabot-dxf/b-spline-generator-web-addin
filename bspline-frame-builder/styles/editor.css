@@ -146,9 +146,20 @@
    the element itself, bspline_gen_palette.html) and shown only under the
    same (pointer: coarse) signal SA-MOBILE-4 already uses above — real
    "imprecise pointer present," not a width guess. */
+/* Owner 2026-11-23 (phone, Height tab: "an empty second row with a thin divider"): NOTHING EMPTY TAKES SPACE in the
+   editor's bars. The touch group shows only while it holds a shown button (Copy / Lock live in the selection bar, Paste /
+   Select all in the long-press menu, Cancel shows while a pen path is drawn: main/editor-chrome.js) -- measured, its lone
+   divider wrapped under the full options row (bar 89 px, not 44). On a narrow screen the bar's trailing spacer (it wrapped
+   alone under a full row) and the left rail when none of its toolbars shows (13 px; only Photo keeps tools there) go too. */
 @media (pointer: coarse) {
-    .editor-touch-actions-group {
+    .editor-touch-actions-group:has(button:not([style*="display: none"], [style*="display:none"])) {
         display: flex !important;
+    }
+}
+@media (max-width: 900px) {
+    #editorToolbarTop > :empty,
+    .editor-sidebar:not(:has(> [id^="editorToolbar"]:not(:empty, [style*="display: none"], [style*="display:none"]))) {
+        display: none !important;
     }
 }
 
@@ -674,6 +685,15 @@
            live: without this, Generate sat in normal flow far below the
            viewport at peek, invisible, regardless of drawer height. */
         overflow: visible !important;
+    }
+    /* a split panel (.editor-panel-split) fills the drawer body instead: its head stays, its settings scroll on their own */
+    #editorMobileDrawer .editor-layers-panel.editor-panel-split {
+        overflow: hidden !important;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    #editorMobileDrawer .editor-panel-split > .editor-panel-scroll {
+        touch-action: pan-y;
     }
 
     /* Peek's own declared content ("Add: Rail/Tie/Node + Generate/
@@ -1785,6 +1805,28 @@
    rest via scrolling, not shrinking. */
 .editor-layers-panel > * {
     flex-shrink: 0;
+}
+
+/* A SPLIT panel (owner 2026-11-23, the Height tab first): the pinned head does not scroll; the settings under it scroll on
+   their own (.editor-panel-scroll), so a layer list can later sit above them and scroll separately. Desktop: the column
+   itself stops scrolling; phone: the panel fills the drawer body (below) and its settings scroll inside it. */
+.editor-layers-panel.editor-panel-split {
+    overflow: hidden;
+    padding-bottom: 0;
+}
+.editor-panel-split > .sticky-actions {
+    position: relative;
+    top: 0;
+}
+.editor-panel-split > .editor-panel-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin: 0 -14px;
+    padding: 10px 14px 60px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 /* Audit K1 (Brick tab): a stepper whose value needs 3 decimals (Max Height 0.125, Brick size 0.375)

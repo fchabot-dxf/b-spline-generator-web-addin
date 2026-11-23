@@ -8,9 +8,38 @@
  * document). `armsTool`: an ELEMENT / TOOL branch opens by arming its tool -- an accordion in step with the tool row
  * (the settings follow the armed tool); a branch without it folds on its own, remembered per device. `headerId`: the
  * header keeps a retired control's id (a tab the tree replaced), for the brick matrix.
+ *
+ * A host declared by SEVERAL branches (the Height tree: a group several tools lead with, e.g. the Selection) lives in the
+ * armed tool's branch while that branch declares it, else in its HOME: the first free branch declaring it, else the first
+ * branch declaring it (derived, never typed). `armedOnly`: a tool branch shows only while its tool is armed (the tool row
+ * above the tree is the picker; ten folded tool headers would repeat it).
  */
-export function createDrawerTree({ id, branches, openKey, defaultOpen = [], branchDomId }) {
+export function createDrawerTree({ id, branches, openKey, defaultOpen = [], branchDomId, armedOnly = false }) {
   const state = { doc: null, open: null, folded: new Set(), armed: null };
+  const shared = (() => {
+    const n = new Map();
+    for (const b of branches) for (const h of b.hosts) n.set(h, (n.get(h) || 0) + 1);
+    return new Set([...n].filter(([, k]) => k > 1).map(([h]) => h));
+  })();
+  const homeOf = (h) => (branches.find((b) => !b.armsTool && b.hosts.includes(h)) || branches.find((b) => b.hosts.includes(h))).id;
+  /** The branch a host sits in for the armed tool (a host declared once: its own branch). */
+  const placeOf = (h, armed) => {
+    const a = armed ? branches.find((b) => b.armsTool === armed && b.hosts.includes(h)) : null;
+    return a ? a.id : homeOf(h);
+  };
+  /** Moves the shared hosts for the armed tool; each branch body keeps its declared order. Moves only what changed (a
+   *  re-append of an unchanged node would blur a focused field in it). */
+  const placeShared = (doc, armed) => {
+    if (!shared.size) return;
+    for (const b of branches) {
+      const body = doc.getElementById(`${branchDomId(b.id)}_body`);
+      if (!body) continue;
+      const want = b.hosts.filter((h) => !shared.has(h) || placeOf(h, armed) === b.id).map((h) => doc.getElementById(h)).filter(Boolean);
+      const have = [...body.children].filter((c) => want.includes(c));
+      if (want.length === have.length && want.every((n, i) => n === have[i])) continue;
+      for (const n of want) body.appendChild(n);
+    }
+  };
   const read = () => {
     try { const v = JSON.parse(localStorage.getItem(openKey)); if (Array.isArray(v)) return v; } catch (_) { /* blocked */ }
     return [...(typeof defaultOpen === 'function' ? defaultOpen() : defaultOpen)]; // a function: read at each build (phone / desktop)
@@ -86,9 +115,11 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
       const doc = state.doc;
       if (!doc) return;
       if (armed !== state.armed) { state.folded.clear(); state.armed = armed; }
+      placeShared(doc, armed);
       for (const b of branches) {
         const shell = doc.getElementById(branchDomId(b.id));
         if (!shell) continue;
+        if (armedOnly && b.armsTool) shell.style.display = b.armsTool === armed ? '' : 'none';
         const o = isOpen(b);
         shell.classList.toggle('open', o);
         shell.classList.toggle('armed', !!b.armsTool && b.armsTool === armed);

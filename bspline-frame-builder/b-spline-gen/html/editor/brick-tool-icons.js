@@ -16,9 +16,10 @@
  * other candidates (the v2 depth treatments, the v3 2-brick run, the old up-arrow) are gone with the sheets.
  */
 import { toolMiniBricks } from './editor-brick-tool.js';
+import { TOOL_GLYPHS } from './tool-icons.js';
 
-const PAINTBRUSH = '<path d="M21.5 2.5 15 9"/><path d="M15 9 12.8 11.2" stroke-width="3.6"/>'
-  + '<path d="M12.8 11.2c-2.2 0-3.5 1.3-3.8 3.8 2.5-.3 3.8-1.6 3.8-3.8z" fill="currentColor" stroke-width="1"/>';
+// the paintbrush is the editor's SHARED glyph (editor/tool-icons.js: the Height Brush wears it too)
+const PAINTBRUSH = TOOL_GLYPHS.paintbrush.svg;
 const SCISSORS = '<circle cx="4.6" cy="4.2" r="2.3"/><circle cx="4.6" cy="11.3" r="2.3"/><path d="M6.6 5.4 20 10.4M6.6 10.1 20 5.2"/>';
 
 export const BRICK_TOOL_ICONS = Object.freeze({
