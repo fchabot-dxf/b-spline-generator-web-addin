@@ -2,7 +2,9 @@
  * core/state.js SESSION_SAVE (seat A 2026-10-11, the advisor's pick; matrix blind row "Surface: photo layer Filter shows
  * through drag", 58 ms frozen): a per-input write (updateP, a slider row's tweak) asks for ONE trailing session save
  * instead of serialising the whole board on every tick; the explicit saveLastSession() still writes at once; a pending
- * save is flushed when the page hides / is left, and before Save, Send, a load / New.
+ * save is flushed when the page hides / is left, and before Save, Send, a load / New. (Its
+ * first slider was the photo layer's share; the photo left 2026-11-23 and the rows drive Smoothing intensity instead --
+ * the same updateP path.)
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -36,23 +38,23 @@ describe('SESSION_SAVE: one trailing save per burst', () => {
   });
 
   it('a slider drag of 12 ticks (updateP each) = ONE session save, after the quiet', () => {
-    for (let i = 0; i < 12; i++) { updateP('photoFilterAmount', 10 + i); vi.advanceTimersByTime(40); }
+    for (let i = 0; i < 12; i++) { updateP('smoothIntensity', (10 + i) / 100); vi.advanceTimersByTime(40); }
     expect(sessionWrites()).toBe(0); // nothing in the gesture
     expect(sessionSavePending()).toBe(true);
     vi.advanceTimersByTime(SESSION_SAVE.trailingMs);
     expect(sessionWrites()).toBe(1);
-    expect(JSON.parse(localStorage.getItem(KEY)).P.photoFilterAmount).toBe(21);
+    expect(JSON.parse(localStorage.getItem(KEY)).P.smoothIntensity).toBe(0.21);
   });
 
   it('a slider row\'s tweak ticks coalesce the same way', () => {
-    for (let i = 0; i < 8; i++) setTweak('photo', 'scale', 1 + i / 10);
+    for (let i = 0; i < 8; i++) setTweak('simplex', 'scale', 1 + i / 10);
     expect(sessionWrites()).toBe(0);
     vi.advanceTimersByTime(SESSION_SAVE.trailingMs);
     expect(sessionWrites()).toBe(1);
   });
 
   it('an explicit saveLastSession() writes at once and takes the pending save with it (no second write)', () => {
-    updateP('photoFilterAmount', 33);
+    updateP('smoothIntensity', 0.33);
     saveLastSession();
     expect(sessionWrites()).toBe(1);
     expect(sessionSavePending()).toBe(false);
@@ -71,11 +73,11 @@ describe('SESSION_SAVE: one trailing save per burst', () => {
   });
 
   it('an edit, then the page leaving (its flush), then a reload: the edit is restored', () => {
-    updateP('photoFilterAmount', 57);
+    updateP('smoothIntensity', 0.57);
     flushSessionSave(); // what visibilitychange-hidden runs; pagehide runs saveLastSession -- both write it
-    P.photoFilterAmount = DEFAULT.photoFilterAmount; // the reload's fresh state
+    P.smoothIntensity = DEFAULT.smoothIntensity; // the reload's fresh state
     expect(loadLastSession()).toBe(true);
-    expect(P.photoFilterAmount).toBe(57);
+    expect(P.smoothIntensity).toBe(0.57);
   });
 });
 

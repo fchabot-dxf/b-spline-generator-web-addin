@@ -271,8 +271,8 @@ describe('Flat (no hills): the Shape rows that no longer act are greyed, not hid
       }
     } finally { P.shapeFlat = keep; }
   });
-  it('the greyed style is the photo section\'s own (styles/layout-app.css)', () => {
+  it('the greyed style is the photo section\'s old one, kept for these rows when the photo left (styles/layout-app.css)', () => {
     const css = readFileSync('bspline-frame-builder/styles/layout-app.css', 'utf8');
-    expect(css).toMatch(/\.photo-layer-needs-on,\s*\.shape-flat-greyed\s*\{\s*opacity:\s*0\.45;/);
+    expect(css).toMatch(/\.shape-flat-greyed\s*\{\s*opacity:\s*0\.45;/);
   });
 });

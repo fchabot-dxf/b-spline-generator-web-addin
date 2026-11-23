@@ -49,7 +49,7 @@ describe('entering a tab drops a tool mode it does not own', () => {
 
   it.each([
     ['shapeLattice', 'brick'], ['lattice', 'brick'], ['draw', 'brick'], ['node', 'brick'],
-    ['shapeLattice', 'photo'], ['lattice', 'frame'], ['brickBrush', 'artwork'], ['brickBrush', 'frame'],
+    ['shapeLattice', 'height'], ['lattice', 'frame'], ['brickBrush', 'artwork'], ['brickBrush', 'frame'],
     // redesign phase 2: the lattice tools are the Lattice tab's -- Draw does not own them, nor Lattice the drawing tools
     ['shapeLattice', 'artwork'], ['lattice', 'artwork'], ['draw', 'lattice'], ['text', 'lattice'],
   ])('%s -> %s tab: back to Select', (mode, tab) => {

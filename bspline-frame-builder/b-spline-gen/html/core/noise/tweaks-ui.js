@@ -63,8 +63,8 @@ function writeOverride(filterId, key, value) {
   if (_onChange) _onChange();
 }
 
-/** 2026-10-10 (the photo layer's own section, main/photo-layer-section.js): a control that is not a slider row (the
- *  photo's Repeat checkbox, its -90 / +90 rotation steps) writes a tweak the same way a row does -- one undo step. */
+/** 2026-10-10: a control that is not a slider row (first written for the photo layer's checkbox / rotation steps, removed
+ *  with the photo 2026-11-23) writes a tweak the same way a row does -- one undo step. */
 export function setTweak(filterId, key, value) {
   writeOverride(filterId, key, value);
   scheduleUndoSnapshot(`filterTweak:${filterId}:${key}`);

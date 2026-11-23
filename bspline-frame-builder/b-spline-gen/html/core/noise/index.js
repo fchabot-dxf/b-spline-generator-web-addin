@@ -43,7 +43,6 @@ import * as moon       from './moon.js';
 import * as venus      from './venus.js';
 import * as mycelium   from './mycelium.js';
 import * as dunes      from './dunes.js';
-import * as photo      from './photo.js';
 
 // Order here = dropdown order.
 const _all = [
@@ -51,7 +50,6 @@ const _all = [
   chest, carved, faceted, ripples, sandstone, silk, eroded,
   magma, reef, glacier,
   mars, moon, venus, mycelium, dunes,
-  photo,
 ];
 
 export const NoiseModes    = Object.fromEntries(_all.map(m => [m.id, m.fn]));
@@ -87,7 +85,6 @@ export function populateNoiseDropdown(selectEl, selectedId) {
   const want = selectedId ?? selectEl.value ?? selectEl.dataset.default ?? _all[0].id;
   selectEl.innerHTML = '';
   for (const m of _all) {
-    if (m.layerOnly) continue; // the photo: a layer over the filter (its own Surface section), not a filter choice
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.label;

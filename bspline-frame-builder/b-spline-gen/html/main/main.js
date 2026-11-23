@@ -32,9 +32,6 @@ import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
-import { initPhotoPanel, syncPhotoPanel, commitPhotoPlacement } from './photo-panel.js';
-import { initPhotoFootprint } from './photo-footprint.js';
-import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { bindShapeFlat } from './terrain-shape-flat.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
@@ -48,7 +45,6 @@ import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
-import { refreshEditorTopView } from '../core/render-topview.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { receiveEditPasswordFromFusion } from './edit-password.js';
@@ -140,21 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderTweaksPanel(noiseSelect?.value || 'simplex');
     if (noiseSelect) noiseSelect.addEventListener('change', (e) => renderTweaksPanel(e.target.value));
 
-    // F34 item 1: the Photo filter's own small editor (pattern row, load-my-
-    // own, crop/rotate/flip/levels/brightness/contrast/blur/invert, undo).
-    // core/in-editor-3d.js 'photo': with the editor open a photo edit repaints its backdrop only (no 3D while editing)
-    // 2026-10-10: Surface > Photo, rendered from its declared PHOTO_CONTROLS BEFORE the Photo tab binds (Max Height moved
-    // there with its ids) and before bindControls (the layer's own P-key controls bind the generic way)
-    renderPhotoLayerSection(document.getElementById('photoLayerBody'));
     renderStlPanel(document.getElementById('stlLayerBody')); // STL-RELIEF: Surface > STL stamp, from its declared STL_CONTROLS
-    initPhotoPanel({
-        onChange: (opts) => {
-            const action = inEditor3dAction('photo', opts); // opts.drag: a slider's drag tick (its release notifies again)
-            if (action === 'backdrop') refreshEditorTopView();
-            else if (action === 'rebuild') scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
-        },
-    });
-    bindPhotoLayerSection(); // its mirrored image edits go through the Photo tab's own steps (photo-panel.js photoEditApi)
     bindStlPanel({
         onChange: () => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0),
         // the ghost toggle / a different STL picked: redraw the ghosts from the heights already built (no rebuild)
@@ -171,8 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isLocked: () => isStlLocked(),
         activeId: () => activeStlLayer()?.id ?? null,
     });
-    syncPhotoPanel();
-    initPhotoFootprint({ commit: commitPhotoPlacement }); // the photo's footprint on the board, on the Photo tab
     // HEIGHT-PAINTER slice 1: the editor's Height tab. Its changes are made in the editor, where Fred's "no 3D while
     // editing" holds (core/in-editor-3d.js): the 3D is built by Apply / the 3D toggle (app-init.js editorSessionFingerprint
     // sees the patches); a change with the editor closed (a project's own restore) rebuilds as any other.

@@ -35,7 +35,6 @@ export const LOADING_STAGES = {
   // seat D 2026-10-08 (phone audit, 390 px, CPU x4, a real tap): the Frame tab's edits blocked 0.5-2.2 s with nothing
   // on screen (a template 2.2 s, Generate 0.6-1.1 s); a photo pattern 1.2 s before the rebuild's card came up
   frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
-  photo: { group: 'computing', label: 'loading the photo', surface: 'pill' },
   stl: { group: 'computing', label: 'reading the STL', surface: 'card' }, // STL-RELIEF: parse + weld + store a mesh (main/stl-panel.js)
   // HEIGHT-PAINTER: a height patch encoded (a stroke's commit, a new patch) or decoded (a loaded project's, before the build)
   heightPatch: { group: 'computing', label: 'storing the height patch', surface: 'pill' },

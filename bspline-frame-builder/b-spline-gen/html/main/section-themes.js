@@ -27,8 +27,6 @@ export const SECTION_THEMES = Object.freeze({
   view: { hue: 195 },
   export: { hue: 90 },
   resolution: { hue: 235 },
-  // the editor's Photo tab, and Surface > Photo (2026-10-10, the photo layer's own sidebar section)
-  photo: { hue: 345 },
   // the LAYER STACK's card kinds with no sidebar section of their own (Fred 2026-11-23, main/layer-stack.js LAYER_TYPES):
   // a Lattice layer (clear of Draw = stamp's 135 and Texture's 175) and a Height patch (clear of Shape 265 / Bottom 295)
   lattice: { hue: 155 },
@@ -41,7 +39,7 @@ export const SECTION_THEMES = Object.freeze({
 export const SECTION_ICONS = Object.freeze({
   // skeleton = TERRAIN SHAPE's ⛰ since TERRAIN-FLAT (2026-11-22); filter = TERRAIN TEXTURE
   stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰️', filter: '🎨', brick: '🧱', stamp: '📐',
-  'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️', photo: '📷',
+  'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️',
   lattice: '🕸️', height: '🎚️', // the layer stack's card kinds (the mockup's Height glyph)
 });
 
@@ -58,7 +56,6 @@ export const EDITOR_SECTION_THEMES = Object.freeze({
   // a PANEL: its own grey header (.layers-header) takes the theme's header + stripe (Fred)
   editorFramePanel: { theme: 'frame', part: 'panel' },
   editorLayersPanel: { theme: 'stamp', part: 'panel' },
-  editorPhotoPanel: { theme: 'photo', part: 'panel' },
   // Brick-tab v2 (Fred, 2026-10-07): the Wall / Frame / Brush / Raised settings now sit in their own KIND sections
   // (BRICK_SECTION_THEMES below), so the whole-tool tints and the shared 'Brick' header are gone; Stripe has none.
   brickStripeSection: { theme: 'brick', shade: 4 },

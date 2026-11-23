@@ -576,18 +576,12 @@ function clearProbe() { return `(async()=>{ const { P } = await import('./core/s
   return JSON.stringify({
     frame: { empty: P.frame?.templateId == null, hash: h(JSON.stringify(P.frame || null)) },
     artwork: { empty: art.length === 0, hash: art.length + '#' + h(canon(art)) },
-    photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
-      hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
     bricks: { empty: gen.length === 0 && records.length === 0, hash: gen.length + '/' + records.length + '#' + h(canon(gen)) } }); })()`; }
 async function clearFingerprint() { return (await jsJSON(clearProbe())); }
-// A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
+// A board holding all three kinds, each made through the real UI (the photo kind left with the photo, Fred 2026-11-23):
 // the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
 async function seedClearBoard() {
   await send('Page.reload', {}); await waitApp();
-  const doc = await send('DOM.getDocument', { depth: 0 });
-  const q = await send('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: '#photoFileInput' });
-  await send('DOM.setFileInputFiles', { nodeId: q.result.nodeId, files: [path.join(ROOT, CLEAR_MENU.seed.photoFile)] });
-  for (let i = 0; i < 30 && !(await js(`(async()=>{ const { P } = await import('./core/state.js'); return P.photoImageDataUrl != null; })()`)); i++) await sleep(500);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click('editorTabFrame', 800);

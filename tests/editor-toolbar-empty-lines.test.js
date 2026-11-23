@@ -59,16 +59,15 @@ describe('the editor top bar: nothing empty takes a line', () => {
     expect(matchesAny(spacer, gone)).toBe(true);
     for (const id of ['editorGridGroup', 'editorHeightOptionsGroup', 'editorStrokeGroup']) expect(matchesAny(document.getElementById(id), gone), id).toBe(false);
     const rail = document.querySelector('.editor-sidebar');
-    const photo = document.getElementById('editorToolbarPhoto');
     const frame = document.getElementById('editorToolbarFrame');
     // the Height / Draw / Brick tabs: every toolbar in the rail hidden -> the rail goes
-    photo.style.display = 'none'; frame.style.display = 'none';
+    frame.style.display = 'none';
     expect(matchesAny(rail, gone)).toBe(true);
     // the Wood frame tab: its toolbar shown but empty -> the rail goes
     frame.style.display = 'flex';
     expect(matchesAny(rail, gone)).toBe(true);
-    // the Photo tab: its tools shown -> the rail stays
-    photo.style.display = 'flex'; photo.appendChild(Object.assign(document.createElement('button'), { className: 'tool-btn' }));
+    // a toolbar with tools shown (the Photo tab's was the last, Fred 2026-11-23: the rule is kept) -> the rail stays
+    frame.appendChild(Object.assign(document.createElement('button'), { className: 'tool-btn' }));
     expect(matchesAny(rail, gone)).toBe(false);
   });
 });

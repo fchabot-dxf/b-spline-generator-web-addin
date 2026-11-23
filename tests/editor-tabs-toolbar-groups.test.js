@@ -13,7 +13,6 @@ const GATED_GROUPS = ['editorStrokeGroup', 'editorColorGroup', 'editorGridGroup'
 const FIXTURE = `
   <button id="editorTabFrame"></button><div id="editorFramePanel"></div><div id="editorToolbarFrame"></div>
   <button id="editorTabArtwork"></button><div id="editorLayersPanel"></div><div id="editorToolbarArtwork"></div>
-  <button id="editorTabPhoto"></button><div id="editorPhotoPanel"></div><div id="editorToolbarPhoto"></div>
   <button id="editorTabBrick"></button><div id="editorBrickPanel"></div><div id="editorToolbarBrick"></div>
   <div id="editorToolbarTop"></div>
   <div id="editorStrokeGroup"></div>
@@ -45,8 +44,8 @@ describe('setEditorTab: per-tab top-toolbar GROUP gating', () => {
     }
   });
 
-  it('Photo and Frame: hide every gated group, bar itself stays visible', () => {
-    for (const tab of ['photo', 'frame']) {
+  it('Frame: hides every gated group, bar itself stays visible (the Photo tab left with the photo)', () => {
+    for (const tab of ['frame']) {
       setEditorTab(tab);
       expect($('editorToolbarTop').style.display).toBe('flex');
       for (const id of GATED_GROUPS) expect($(id).style.display).toBe('none');
@@ -74,7 +73,7 @@ describe('setEditorTab: per-tab top-toolbar GROUP gating', () => {
   });
 
   it('never touches editorTouchActionsGroup -- its own visibility is a CSS media query, independent of tab by design', () => {
-    for (const tab of ['brick', 'photo', 'frame', 'artwork']) {
+    for (const tab of ['brick', 'frame', 'artwork']) {
       setEditorTab(tab);
       expect($('editorTouchActionsGroup').style.display).toBe('');
     }

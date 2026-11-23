@@ -13,14 +13,12 @@ import { _isTypingTarget } from '../editor/dom.js';
 import { routedUndo, routedRedo } from '../editor/editor-ui.js';
 import { getEditorTab, EDITOR_TABS } from './editor-tabs.js';
 import { deselectTool as deselectBrickTool } from './brick-panel.js';
-import { deselectPhotoTool } from './photo-panel.js';
 
 /** "Back to the select tool" for a tab -- the ONE path both Esc and a tab switch use. Dispatches by
- *  tab rather than unifying onto one shared mode concept (Wall/Frame/Photo's own tools have no
+ *  tab rather than unifying onto one shared mode concept (Wall/Frame's own tools have no
  *  gesture "mode" to exit; Brick's deselect also clears its own active tool). */
 function returnToSelect(tab) {
     if (tab === 'brick') deselectBrickTool();
-    else if (tab === 'photo') deselectPhotoTool();
     else window.svgEditor?.setMode?.('select');
 }
 
@@ -39,7 +37,7 @@ export function wireGlobalEvents(preview) {
     window.addEventListener('keydown', e => {
         // F35 (advisor: "Esc = back to the select tool in every tab"): dispatches by the
         // CURRENTLY ACTIVE editor tab rather than unifying onto one shared mode concept (Wall/
-        // Frame/Photo's own tools have no gesture "mode" to exit) -- Artwork's own Draw-mode
+        // Frame's own tools have no gesture "mode" to exit) -- Artwork's own Draw-mode
         // anchor-path-cancel (editor-interaction.js's own Escape handler, installed only while
         // actively placing anchor points) stays completely separate and still runs first; this
         // always ALSO returns the editor to plain Select afterward, which is the literal ask.

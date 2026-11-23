@@ -2,26 +2,25 @@
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
 // ---- Clear menu (F35 item 28; seat 37 fb-app 678c746). The editor header's Clear opens a menu: All / Frame /
-// Artwork / Photo / Bricks. Answers declared by the advisor (2026-10-04): Clear Frame removes the frame SHAPE only
+// Artwork / Bricks (Photo left with the photo, Fred 2026-11-23). Answers declared by the advisor (2026-10-04): Clear Frame removes the frame SHAPE only
 // (template -> Rectangle) and the frame/wall bricks re-lay on the rectangle at once; Clear Bricks removes every
-// brick element and nulls the laid key; Clear All resets everything incl. the template and the photo; ONE undo
-// restores everything a Clear removed. Each row seeds a board holding all four kinds, uses the option from the
+// brick element and nulls the laid key; Clear All resets everything incl. the template; ONE undo
+// restores everything a Clear removed. Each row seeds a board holding all three kinds, uses the option from the
 // tab that owns its kind, then checks: every `clears` kind is empty, every `changes` kind is still present (it
 // may differ), every other kind is byte-identical; then one Ctrl+Z must bring every kind back.
 //   kinds:   how each kind is fingerprinted in the page -- see run.mjs CLEAR_PROBE (frame: P.frame; artwork: the
-//            sketch children on non-Bricks layers; photo: P.photoImageDataUrl / photoEdits / photoPatternId;
+//            sketch children on non-Bricks layers;
 //            bricks: [data-brick-gen="1"] + the wall/frame records <g data-brick-record> (item 22, seat 37
 //            fb-app 8fe50e2: the old shared layer key brickLaidKey is retired; records are hidden <g>s, never art)
 export const CLEAR_MENU = {
   button: 'editorClear',
   confirmOk: '.pm-prompt-ok',
-  seed: { photoFile: 'b-spline-gen/html/assets/logo-64.png', stroke: [[0.35, 0.4], [0.5, 0.55], [0.65, 0.4]] },
+  seed: { stroke: [[0.35, 0.4], [0.5, 0.55], [0.65, 0.4]] },
   options: [
-    { name: 'Clear All', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'ok', clears: ['frame', 'artwork', 'photo', 'bricks'], changes: [] },
+    { name: 'Clear All', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'ok', clears: ['frame', 'artwork', 'bricks'], changes: [] },
     { name: 'Clear All, then Keep', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'keep', clears: [], changes: [], undo: false },
     { name: 'Clear Frame', item: 'editorClear_frame', tab: 'editorTabFrame', clears: ['frame'], changes: ['bricks'] },
     { name: 'Clear Artwork', item: 'editorClear_artwork', tab: 'editorTabArtwork', clears: ['artwork'], changes: [] },
-    { name: 'Clear Photo', item: 'editorClear_photo', tab: 'editorTabPhoto', clears: ['photo'], changes: [] },
     { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'editorTabBrick', clears: ['bricks'], changes: [] },
   ],
   introducedBy: '678c746',
@@ -33,7 +32,7 @@ let sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBo
 export function bind(ctx) { ({ sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBoard, key } = ctx); }
 export async function run() { await runClear(); }
 
-function clearKinds() { return ['frame', 'artwork', 'photo', 'bricks']; }
+function clearKinds() { return ['frame', 'artwork', 'bricks']; }
 function clearRow(name, ok, detail) {
   rows.push({ name, kind: 'clear', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', clear: ok ? 'PASS' : 'FAIL' } });
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);

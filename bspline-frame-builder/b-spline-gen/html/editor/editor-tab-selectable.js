@@ -18,14 +18,12 @@ export function selectKindOf(node) {
 }
 
 /** Per editor tab: the kinds of drawing node it may select, and its empty-canvas menu's "Select all" label (Fred: named
- *  by the tab). Frame: the frame's own handles only (not drawing nodes; the artwork is locked there anyway); Photo:
- *  nothing on the canvas. */
+ *  by the tab). Frame: the frame's own handles only (not drawing nodes; the artwork is locked there anyway). */
 export const EDITOR_TAB_SELECTABLE = Object.freeze({
   artwork: Object.freeze({ kinds: Object.freeze(['art']), selectAllLabel: 'Select all artwork' }),
   lattice: Object.freeze({ kinds: Object.freeze(['art']), selectAllLabel: 'Select all artwork' }), // redesign phase 2: lattice pieces are art
   brick: Object.freeze({ kinds: Object.freeze(['brick']), selectAllLabel: 'Select all bricks' }),
   frame: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }),
-  photo: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }),
   height: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }), // HEIGHT-PAINTER: the brush paints; nothing picked
 });
 

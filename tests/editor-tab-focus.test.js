@@ -1,6 +1,6 @@
 /**
  * editor/editor-frame-profile.js EDITOR_TAB_FOCUS (Fred 2026-10-10: "in brick tab the artwork is still 100 opacity";
- * he picked the fade): the art -- the drawing's non-brick nodes -- at 35% in the Brick and Photo tabs, the bricks at
+ * he picked the fade): the art -- the drawing's non-brick nodes -- at 35% in the Brick tab (the Photo tab left with the photo, Fred 2026-11-23), the bricks at
  * full, the frame profile as before; the Frame tab unchanged (the whole drawing at 0.4). Display only: the attribute /
  * style on #sketch-layer itself and a CSS rule (styles/editor.css); the drawing the save / export / carve read (the
  * layer's children) is byte-identical in every tab.
@@ -21,23 +21,22 @@ function makeEditor() {
 }
 
 describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
-  it('declared: Frame as before; Artwork full; Brick and Photo fade the art to 35%, bricks full, the frame profile faded', () => {
+  it('declared: Frame as before; Artwork full; Brick fades the art to 35%, bricks full, the frame profile faded', () => {
     expect(ART_FADE_OPACITY).toBe(0.35);
     // HEIGHT-PAINTER (Fred 2026-11-22, "tabs content carry over visually"): + heightPatches on every row (the painted patches
     // in full in their own tab, faded like other off-focus content elsewhere) and the Height tab's own row (art faded as
-    // in Photo / Brick). The five existing rows' drawing / art / frameProfile are unchanged.
+    // in Brick). The existing rows' drawing / art / frameProfile are unchanged.
     const H = INACTIVE_LAYER_OPACITY;
     expect(EDITOR_TAB_FOCUS).toEqual({
       frame: { drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1, heightPatches: H },
       artwork: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
       lattice: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H }, // redesign phase 2: Draw's focus
-      photo: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
       brick: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
       height: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 },
     });
   });
 
-  it('the Height tab fades the art like Photo / Brick (context while painting)', () => {
+  it('the Height tab fades the art like Brick (context while painting)', () => {
     const ed = makeEditor(), s = ed._sketchLayer.node;
     setEditorFocus(ed, 'height');
     expect({ drawing: s.getAttribute('opacity'), fade: s.hasAttribute('data-focus-art-fade'), art: s.style.getPropertyValue('--focus-art-opacity'), profile: ed.profile.node.getAttribute('opacity') })
@@ -48,8 +47,6 @@ describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
     const ed = makeEditor(), s = ed._sketchLayer.node;
     const read = () => ({ drawing: s.getAttribute('opacity'), fade: s.hasAttribute('data-focus-art-fade'), art: s.style.getPropertyValue('--focus-art-opacity'), profile: ed.profile.node.getAttribute('opacity') });
     setEditorFocus(ed, 'brick');
-    expect(read()).toEqual({ drawing: null, fade: true, art: '0.35', profile: '0.4' });
-    setEditorFocus(ed, 'photo');
     expect(read()).toEqual({ drawing: null, fade: true, art: '0.35', profile: '0.4' });
     setEditorFocus(ed, 'frame');
     expect(read()).toEqual({ drawing: '0.4', fade: false, art: '', profile: null });
@@ -62,7 +59,7 @@ describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
   it("the drawing (the layer's children: what save / export / Send / the carve read) is byte-identical in every tab", () => {
     const ed = makeEditor(), s = ed._sketchLayer.node;
     const before = s.innerHTML;
-    for (const tab of ['brick', 'photo', 'frame', 'artwork', 'brick']) {
+    for (const tab of ['brick', 'height', 'frame', 'artwork', 'brick']) {
       setEditorFocus(ed, tab);
       expect(s.innerHTML, tab).toBe(before);
     }

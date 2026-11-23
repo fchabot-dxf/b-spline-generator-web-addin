@@ -60,45 +60,9 @@ export const DEFAULT = {
     // Session-only — defaults live in each filter's `tweaks` schema and
     // are NOT seeded here. Empty object means "use schema defaults".
     filterTweaks: {},
-    // F34 item 1: the 'photo' filter's own source. photoImageDataUrl is the
-    // RAW (unedited) decoded source image, embedded as a PNG data: URL,
-    // downscaled at upload time (core/photo/codec.js's own PHOTO_MAX_DIM) so
-    // saved projects stay small. photoEdits is the declared, ORDERED list
-    // of {op, params} edit steps (crop/rotate90/flip/levels/
-    // brightnessContrast/blur/invert, core/photo/ops.js) applied to it in
-    // one pure function — "undo" is popping the last entry. Both are plain
-    // JSON, so they round-trip through saveLastSession/loadLastSession like
-    // any other P field; written DIRECTLY (not through updateP/applyParam),
-    // same convention as P.stampLayers/P.decalLayerIds/P.editorSvg — none of
-    // these is a single scalar a generic <input> binds to.
-    photoImageDataUrl: null,
-    photoEdits: [],
-    // F34 item 3: which built-in pattern (data/photo-patterns.json id) the
-    // current photo came from, if any -- null for a user's own upload. Drives
-    // "Save settings to this pattern" (main/photo-panel.js); declared on P
-    // (not a module-local var) so it survives a reload via the existing
-    // generic session save/load, same as photoImageDataUrl/photoEdits above.
-    photoPatternId: null,
-    // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): the photo layer on/off and "Filter shows
-    // through" in percent (0 = the photo alone). Absent in an older save = off / 0 (a save on the old Photo FILTER is
-    // migrated to the layer: main/app-init.js MIGRATIONS 'photo-filter-to-layer'). Heights inputs: core/terrain.js.
-    photoLayer: false,
-    photoFilterAmount: 0,
-    // 2026-10-10 (Fred): the photo under Symmetry -- core/terrain.js PHOTO_MIRROR_MODES: 'whole' (new boards: the whole
-    // photo, unsqueezed, on the source half, mirrored across the axis), 'mirror' (boards saved with it that day),
-    // 'squeeze' (every board before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load --
-    // a board that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'whole'.
-    photoMirrorMode: null,
-    // 2026-10-10 (seat A, MEASURED): the photo sat upside-down on the board (core/noise/photo.js upright). 'upright' =
-    // the photo's top at the board's top; 'legacy-flipped' = how every board did it before. null = undecided:
-    // MIGRATIONS 'photo-orientation' -- a board that already has a photo stays 'legacy-flipped' (byte-identical), any
-    // other (a fresh one too) gets 'upright'.
-    photoOrientation: null,
-    // 2026-10-10 (Fred): what the photo layer gives OUTSIDE the photo (core/terrain.js PHOTO_EDGE_MODES): 'fade' (new
-    // boards: nothing -- the plain filter shows there, after a short fade at the photo's edge), 'clamp' (every board
-    // before: the edge pixels stretched outward). null = undecided: MIGRATIONS 'photo-edge' -- a board that already has a
-    // photo stays 'clamp' (byte-identical), any other (a fresh one too) gets 'fade'. Repeat on tiles either way.
-    photoEdge: null,
+    // Fred 2026-11-23 ("Remove photo"): the photo's keys (photoImageDataUrl, photoEdits, photoPatternId, photoLayer,
+    // photoFilterAmount, photoMirrorMode, photoOrientation, photoEdge, filterTweaks.photo) are retired -- a saved board
+    // keeps them in its data and nothing reads them (main/app-init.js MIGRATIONS 'photo-removed').
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
@@ -409,7 +373,6 @@ export const SLIDER_PAIRS = {
     macroScale: 'macroSlider',
     // H17 item 1: new -- Filter's "Map" group.
     mapZoom: 'mapZoomSlider',
-    photoFilterAmount: 'photoFilterAmountSlider', // 2026-10-10: Surface > Photo, "Filter shows through"
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
@@ -638,7 +601,7 @@ export function updateP(key, value) {
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton', 'shapeFlat',
         'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay',
-        'sameAsDisplayResolution', 'photoLayer',
+        'sameAsDisplayResolution',
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

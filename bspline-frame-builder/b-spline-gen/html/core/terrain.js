@@ -6,13 +6,10 @@
 
 import { PerlinNoise } from './noise.js';
 import { NoiseModes, NoiseMetadata } from './noise/index.js';
-import { photoCoverAt } from './noise/photo.js';
-import { getProcessedPhotoImage } from './photo/state.js';
 import { SeedTypes } from './seed/index.js';
 
-// 2026-10-10 (seat A + seat D: the on-board photo footprint and the photo preview's "not sampled" overlay): the board
-// -> sample mapping generateHeightmap uses (Map Zoom + Map Offset, then the Symmetry fold), exported ONCE so both read
-// it instead of a copy. Its constants are cached on the params object (a heightmap passes the same one throughout).
+// The board -> sample mapping generateHeightmap uses (Map Zoom + Map Offset, then the Symmetry fold). Its constants are
+// cached on the params object (a heightmap passes the same one throughout).
 let _fold = null;
 export function foldSpecOf(params) {
   if (_fold && _fold.params === params) return _fold;
@@ -32,63 +29,8 @@ export function foldUV(u, v, params, out = {}) {
   // the mirror axis shifted by symOffsetX/Y; the fold scaled by 2 keeps the noise frequency of the un-offset case
   out.su = f.fx ? Math.abs(zu - f.mx) * 2 : zu;
   out.sv = f.fy ? Math.abs(zv - f.my) * 2 : zv;
-  // 2026-10-10 (Fred: "the photo shouldn't be squeezed by default"): the TRUE mirror -- no x2, the far side reflected
-  // onto the source side (past the axis), like a mirror held to the print. The photo layer samples this in its 'mirror'
-  // mode (P.photoMirrorMode); procedural filters keep su / sv.
-  out.mu = f.fx ? f.mx + Math.abs(zu - f.mx) : zu;
-  out.mv = f.fy ? f.my + Math.abs(zv - f.my) : zv;
   return out;
 }
-/** The inverse, per mirror copy: a sample point (su, sv) -> the board fraction (u, v) it shows at. `sx` / `sy` (+1 / -1)
- *  pick the copy on a folded axis (+1 = the source side, past the mirror axis); unfolded axes ignore them.
- *  `mirror` true: (su, sv) are the true-mirror coordinates (mu, mv) instead. */
-export function unfoldUV(su, sv, params, sx = 1, sy = 1, mirror = false) {
-  const f = foldSpecOf(params);
-  const zu = f.fx ? f.mx + sx * (mirror ? su - f.mx : su / 2) : su;
-  const zv = f.fy ? f.my + sy * (mirror ? sv - f.my : sv / 2) : sv;
-  return { u: 0.5 + (zu - 0.5) * f.mapZoom - f.seedOffsetX, v: 0.5 + (zv - 0.5) * f.mapZoom - f.seedOffsetY };
-}
-/** The photo layer under Symmetry, one row per P.photoMirrorMode (core/state.js):
- *  `coords` -- which fold the photo samples: 'fold' (su / sv, the x2 fold) or 'mirror' (mu / mv, the true mirror);
- *  `halfAspect` -- the photo is cover-fitted to the SOURCE half (its own proportions), not to the whole board.
- *  'squeeze': the whole photo squeezed into each half (every board before 2026-10-10; byte-identical).
- *  'mirror': the photo placed over the whole board, its source half kept and mirrored (boards saved 2026-10-10).
- *  'whole' (Fred, 2026-10-10: "the symmetry should still sample the whole image ... it would simply extend toward the
- *  axis side with the mirror"): the WHOLE photo, unsqueezed, on the source half; the mirror reflects it across the axis.
- *  A params object without the key (or an unknown value) reads as 'squeeze'. */
-export const PHOTO_MIRROR_MODES = Object.freeze({
-  squeeze: Object.freeze({ coords: 'fold', halfAspect: false }),
-  mirror: Object.freeze({ coords: 'mirror', halfAspect: false }),
-  whole: Object.freeze({ coords: 'fold', halfAspect: true }),
-});
-/** 2026-10-10 (Fred: "outside the footprint the photo layer contributes nothing"): what the photo layer gives where
- *  the photo does not reach (P.photoEdge, core/state.js). `fadeIn`: the soft edge, in board inches, just inside the photo
- *  -- outside it the plain filter shows, as with the layer off. null: 'clamp', the edge pixels stretched outward (every
- *  board before; byte-identical). Repeat on tiles the photo, so nothing is outside it in either mode. A params object
- *  without the key reads as 'clamp'. */
-export const PHOTO_EDGE_MODES = Object.freeze({
-  clamp: Object.freeze({ fadeIn: null }),
-  fade: Object.freeze({ fadeIn: 0.1 }),
-});
-/** The fade in the photo's sample units (0 = none): its vertical sample unit spans the board's height times Map Zoom,
- *  half that on a y fold sampled in fold coordinates (x2). */
-export function photoEdgeFadeUnits(params) {
-  const fadeIn = (PHOTO_EDGE_MODES[params.photoEdge] || PHOTO_EDGE_MODES.clamp).fadeIn;
-  if (!(fadeIn > 0)) return 0;
-  const f = foldSpecOf(params);
-  const inchesPerUnit = (params.heightIn || 9) * f.mapZoom * (f.fy && !photoMirrors(params) ? 0.5 : 1);
-  return fadeIn / inchesPerUnit;
-}
-export const photoMirrorModeOf = (params) => PHOTO_MIRROR_MODES[params.photoMirrorMode] || PHOTO_MIRROR_MODES.squeeze;
-/** True when the photo samples the true-mirror coordinates (mu / mv). */
-export const photoMirrors = (params) => photoMirrorModeOf(params).coords === 'mirror';
-/** The aspect the photo's sample space has: the board's, or the source half's ('whole': a fold spans half an axis). */
-export function photoSampleAspect(params, aspect) {
-  if (!photoMirrorModeOf(params).halfAspect) return aspect;
-  const f = foldSpecOf(params);
-  return aspect * (f.fx ? 0.5 : 1) / (f.fy ? 0.5 : 1);
-}
-
 /**
  * Generate a flat Float32Array[nz × nx] of heights in inches.
  * Index: heights[j * nx + i]  i=col/U/X  j=row/V/Z
@@ -138,19 +80,6 @@ export function generateHeightmap(params, stampParams = null) {
       ? () => 0.5
       : (NoiseModes[noiseType] || NoiseModes['simplex']);
   const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: 0, rawV: 0 };
-  // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter, "how much of the filter transpires"): with
-  // P.photoLayer on, the fine value is the PHOTO, plus the board's filter normalised by its declared span
-  // (NoiseMetadata nominalRange, about 0..1 like the photo) around its middle, times "Filter shows through"
-  // (photoFilterAmount, 0..100 %). At 0 % the filter is not sampled at all: the fine value is the photo's own -- exactly
-  // what a board on the old Photo filter gave. Everything after (detail, the coarse pass, carve depth) is as before.
-  // "Hide filter texture" (isolateSkeleton) hides the FILTER -- with the photo layer, no filter share at all (its flat
-  // 0.5 would still add a constant offset once normalised); the photo layer stays.
-  const photoLayer = !!params.photoLayer;
-  const photoParams = photoLayer ? { ...params, tweaks: (params.filterTweaks && params.filterTweaks.photo) || {} } : null;
-  const filterShare = (photoLayer && !params.isolateSkeleton) ? Math.max(0, Math.min(100, Number(params.photoFilterAmount) || 0)) / 100 : 0;
-  const [rangeLo, rangeHi] = (NoiseMetadata[noiseType] || NoiseMetadata['simplex']).nominalRange || [0, 1];
-  const rangeSpan = (rangeHi - rangeLo) || 1;
-
   // TERRAIN-FLAT (Fred 2026-11-22, TERRAIN-FLAT-DESIGN.md): TERRAIN SHAPE's 'Flat (no hills)' (P.shapeFlat) drops the coarse
   // layer -- the board is a flat base at P.surfaceHeightIn (inches) with the TEXTURE on top, at the amplitude it has in
   // today's valleys: height = surfaceHeightIn + (isolateSkeleton ? 0 : fine * LOW * carveZ). The Flat Border fades only
@@ -160,12 +89,7 @@ export function generateHeightmap(params, stampParams = null) {
   const surfaceZ = shapeFlat ? (Number(params.surfaceHeightIn) || 0) : 0;
   const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42; // the valley / peak shares of the fine value (Pass 2 below)
 
-  const folded = { zu: 0, zv: 0, su: 0, sv: 0, mu: 0, mv: 0 }; // foldUV's output, one object for the whole heightmap
-  const photoMirror = photoLayer && photoMirrors(params); // the photo's true mirror (no squeeze), when declared
-  const photoAspect = photoLayer ? photoSampleAspect(params, aspect) : aspect; // 'whole': the source half's own proportions
-  // 'fade' (PHOTO_EDGE_MODES): outside the photo the plain filter, through a soft edge; 0 = 'clamp' (untouched)
-  const photoFade = photoLayer ? photoEdgeFadeUnits(params) : 0;
-  const photoImg = photoFade > 0 ? getProcessedPhotoImage(photoParams) : null;
+  const folded = { zu: 0, zv: 0, su: 0, sv: 0 }; // foldUV's output, one object for the whole heightmap
 
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
@@ -197,23 +121,15 @@ export function generateHeightmap(params, stampParams = null) {
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2
         // so the noise frequency stays consistent with the un-offset case.
-        // 2026-10-10: both steps are foldUV (above), the ONE copy the photo footprint / overlay read too.
+        // Both steps are foldUV (above).
         foldUV(u, v, params, folded);
         const zu = folded.zu, zv = folded.zv, su = folded.su, sv = folded.sv;
 
         // ── Pass 1: Fine Detail (Strategy Pattern; modeFunc / noiseRefs above the loop) ──
         noiseRefs.rawU = u; noiseRefs.rawV = v;
-        let fine;
-        if (photoLayer) {
-            fine = photoMirror ? NoiseModes.photo(folded.mu, folded.mv, photoAspect, photoParams, noiseRefs) : NoiseModes.photo(su, sv, photoAspect, photoParams, noiseRefs);
-            if (filterShare > 0) fine += ((modeFunc(su, sv, aspect, modeParams, noiseRefs) - rangeLo) / rangeSpan - 0.5) * filterShare;
-            if (photoImg) {
-                const w = photoMirror ? photoCoverAt(folded.mu, folded.mv, photoAspect, photoParams, photoImg, photoFade) : photoCoverAt(su, sv, photoAspect, photoParams, photoImg, photoFade);
-                if (w < 1) fine = w * fine + (1 - w) * modeFunc(su, sv, aspect, modeParams, noiseRefs); // outside: the layer off
-            }
-        } else {
-            fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
-        }
+        // Fred 2026-11-23 ("Remove photo"): the photo layer is gone; a saved board's leftover photo keys (photoLayer, ...)
+        // are not read -- it builds as it did with its photo off (main/app-init.js MIGRATIONS 'photo-removed')
+        let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
 
         // ── Detail Modulation (Spatial Density) ──
         //   detailDensity   (0..1) spatial mask: 1 = full detail everywhere,

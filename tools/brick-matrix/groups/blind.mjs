@@ -49,13 +49,7 @@ export const BLIND_BUDGET = {
     { name: 'Grout cut stroke', pre: ['brickRaisedMode_grout'], act: { stroke: [[0.3, 0.2], [0.7, 0.75]] }, post: ['brickRaisedMode_bricks'], fixedBy: '12718cf' },
     { name: 'Area brush stroke', pre: ['brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], act: { stroke: [[0.3, 0.3], [0.62, 0.38]] } },
     { name: 'Frame tab Generate', pre: ['editorTabFrame'], act: { tap: 'editorFrameGenerate' } },
-    { name: 'Photo pattern pick', pre: ['editorTabPhoto', 'photoTab_source'], act: { tapSel: '#photoPatternRow button' } },
-    // the editor's backdrop repaint after a Photo change (seat D 2026-10-09: ~340 ms, no card) -- the 'backdrop' stage
-    { name: 'Photo: blur slider release (editor open)', pre: ['photoTab_adjust', 'photoTool_blur'], act: { set: 'photoBlurSlider', value: 3 } },
-    { name: 'Photo: Rotate 90 (editor open)', pre: ['photoTab_source', 'photoTool_rotateFlip'], act: { tap: 'photoBtnRotate' } },
-    // 2026-10-11 (seat A): the photo footprint's release -- one placement step + the backdrop repaint (main/photo-footprint.js);
-    // the board's middle is inside the footprint at scale 1, so the touch drag moves the photo
-    { name: 'Photo: footprint drag release (editor open)', act: { stroke: [[0.5, 0.5], [0.58, 0.55]] } },
+    // (the Photo tab's four rows and Surface > Photo's two left with the photo, Fred 2026-11-23)
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
     // the Brick panel's body is the Brick card's now (main/layer-stack.js HOSTED): its card is opened first (pre), then stays open
@@ -64,9 +58,6 @@ export const BLIND_BUDGET = {
     // seat A's re-time 2026-10-09 (loaded board): the size nudge's apply serialised every carved layer in the tap, 55-85 ms
     // before the 'frame' card -- main/ui-bindings.js PARAM_STAGES
     { name: 'Board width change (bricks laid)', sidebar: 'board', act: { set: 'widthIn', value: 7.5 } },
-    // 2026-10-11 (seat A): the photo layer's own sidebar controls (Surface > Photo) -- the toggle and the share drag rebuild the 3D
-    { name: 'Surface: photo layer "Filter shows through" drag', sidebar: 'surface', act: { drag: 'photoFilterAmountSlider', values: [10, 20, 30, 40] } },
-    { name: 'Surface: photo layer toggle (off)', sidebar: 'surface', act: { tap: 'photoLayer' } }, // last: off greys the share slider
     // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
     // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
     // redesign phase 2: the lattices are the top-level Lattice tab's (a real tap reaches its own Art tabs, not Draw's)

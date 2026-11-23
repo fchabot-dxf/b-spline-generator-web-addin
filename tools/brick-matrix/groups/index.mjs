@@ -22,7 +22,6 @@ import * as grout from './grout.mjs';
 import * as handedit from './handedit.mjs';
 import * as strokes from './strokes.mjs';
 import * as blind from './blind.mjs';
-import * as photoLayer from './photo-layer.mjs';
 
 const MODULES = {
   wall: wall,
@@ -45,7 +44,8 @@ const MODULES = {
   handedit: handedit,
   strokes: strokes,
   blind: blind,
-  'photo-layer': photoLayer,
+  // 'photo-layer' RETIRED with the photo (Fred 2026-11-23, "Remove photo"): every row drove the removed Surface > Photo
+  // section / Photo tab; a saved photo board's build is pinned in tests/photo-removed-pin.test.js instead
 };
 
 export const GROUPS = Object.keys(MODULES);
@@ -57,7 +57,7 @@ export const SEQUENTIAL_GROUPS = GROUPS.filter((g) => MODULES[g].sequential);
 export const GROUP_MEASURED_S = Object.freeze({
   wall: 786, layout: 727, frame: 548, lay: 531, clear: 523, migration: 489, strokes: 484, persistence: 472, layers: 435,
   'frame-ui': 392, undo: 336, areas: 328, brush: 316, grout: 284, 'sidebar-3d': 252, 'sidebar-quick': 216, handedit: 210,
-  password: 205, select: 164, blind: 165, 'photo-layer': 138,
+  password: 205, select: 164, blind: 165,
 });
 /** --parallel's spawn order: the parallel groups longest first, so a long group never waits out a late stagger slot (that
  *  gate: strokes, 484 s, started last at 180 s and finished third) */
@@ -111,4 +111,3 @@ export { PATTERN_PARAM_PERSIST, PERSIST_BOARD, GENERATE_AFTER_RESTORE } from './
 export { GROUT_JOINTS } from './grout.mjs';
 export { HAND_EDIT } from './handedit.mjs';
 export { STROKE_CLEAR } from './strokes.mjs';
-export { PHOTO_LAYER } from './photo-layer.mjs';

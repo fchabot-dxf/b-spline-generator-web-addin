@@ -24,10 +24,6 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js', () 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { resetArtworkToFresh, sync3DBackground } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
-const photoMock = vi.hoisted(() => ({ state: { url: null, edits: [], patternId: null } }));
-vi.mock('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', () => ({
-  clearPhoto: vi.fn(), restorePhoto: vi.fn(), photoState: () => photoMock.state,
-}));
 const frameHist = vi.hoisted(() => ({ depth: 0 }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js', () => ({
   frameHistoryDepth: () => frameHist.depth, undoFrame: vi.fn(() => { frameHist.depth--; return true; }),
@@ -35,7 +31,6 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js', () => 
 // the bricks' re-lay commits like the real one (one editor undo step)
 const relay = vi.hoisted(() => ({ calls: 0, onCall: null }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js', () => ({ generateBricks: () => { relay.calls++; relay.onCall?.(); } }));
-import { clearPhoto, restorePhoto } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
 import { undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 import { CLEAR_KINDS, clearOptions, runClear, initClearMenu, undoLastClear } from '../bspline-frame-builder/b-spline-gen/html/main/editor-clear-menu.js';
@@ -151,9 +146,10 @@ describe('H20 item 3: resetArtworkToFresh matches a brand-new session\'s artwork
   });
 });
 
-// F35 item 28 (Fred): the header's Clear is a MENU -- All / Frame / Artwork / Photo / Bricks -- built from the tab
-// registry (main/editor-clear-menu.js). It supersedes H20 item 3's tab-scoped Clear (that block's tests retired).
-describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)', () => {
+// F35 item 28 (Fred): the header's Clear is a MENU -- All / Frame / Artwork / Bricks -- built from the tab registry
+// (main/editor-clear-menu.js). It supersedes H20 item 3's tab-scoped Clear (that block's tests retired). Its Photo entry
+// left with the photo (Fred 2026-11-23).
+describe('F35 item 28: the Clear menu (All / Frame / Artwork / Bricks)', () => {
   const BRICKS = { id: '7', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: 'KEY' };
   function editorWithBricks() {
     const editor = makeEditor();
@@ -167,13 +163,13 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
   }
   const ids = (editor) => editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'));
   let frameClear;
-  beforeEach(() => { frameClear = vi.fn(); setFrameClearHandler(frameClear); clearPhoto.mockClear(); dialog.answer = true; });
+  beforeEach(() => { frameClear = vi.fn(); setFrameClearHandler(frameClear); dialog.answer = true; });
   afterEach(() => setFrameClearHandler(null));
 
   it('the options come from the tab registry: All first, then one per tab that declares `clears`', () => {
-    expect(clearOptions().map((o) => [o.id, o.label])).toEqual([['all', 'All'], ['frame', FRAME_LABELS.wood], ['artwork', 'Artwork'], ['photo', 'Photo'], ['bricks', 'Bricks']]);
-    expect(clearOptions()[0].kinds).toEqual(['frame', 'artwork', 'photo', 'bricks']);
-    expect(Object.keys(CLEAR_KINDS)).toEqual(['frame', 'artwork', 'photo', 'bricks']);
+    expect(clearOptions().map((o) => [o.id, o.label])).toEqual([['all', 'All'], ['frame', FRAME_LABELS.wood], ['artwork', 'Artwork'], ['bricks', 'Bricks']]);
+    expect(clearOptions()[0].kinds).toEqual(['frame', 'artwork', 'bricks']);
+    expect(Object.keys(CLEAR_KINDS)).toEqual(['frame', 'artwork', 'bricks']);
   });
 
   it('Artwork: the art layers and their content go in ONE undo step, the Bricks layer and its bricks stay; undo brings it back', async () => {
@@ -185,7 +181,6 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe('KEY');
     expect(editor._undoStack.length).toBe(depth + 1);
     expect(frameClear).not.toHaveBeenCalled();
-    expect(clearPhoto).not.toHaveBeenCalled();
     editor.undo();
     expect(ids(editor)).toEqual(['path-1', 'brick-1', 'brick-2']);
     expect(editor._layers.find((l) => l.id === '1').pattern).toEqual({ id: 'lattice-1', seed: 42, threeDOff: true });
@@ -210,14 +205,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     expect(editor._undoStack.length).toBe(depth);
   });
 
-  it('Photo: the photo clear only; the drawing is untouched', async () => {
-    const editor = editorWithBricks();
-    await runClear('photo', editor);
-    expect(clearPhoto).toHaveBeenCalledTimes(1);
-    expect(ids(editor)).toEqual(['path-1', 'brick-1', 'brick-2']);
-  });
-
-  it('All: asks first; declined = nothing; accepted = frame + photo + a fresh drawing in ONE undo step', async () => {
+  it('All: asks first; declined = nothing; accepted = frame + a fresh drawing in ONE undo step', async () => {
     const editor = editorWithBricks();
     dialog.answer = false;
     expect(await runClear('all', editor)).toBe(false);
@@ -227,7 +215,6 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     const depth = editor._undoStack.length;
     expect(await runClear('all', editor)).toBe(true);
     expect(frameClear).toHaveBeenCalledTimes(1);
-    expect(clearPhoto).toHaveBeenCalledTimes(1);
     expect(ids(editor)).toEqual([]);
     expect(editor._layers).toEqual(freshSessionLayers());
     expect(editor._undoStack.length).toBe(depth + 1);
@@ -237,7 +224,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     const { confirmDialog } = await import('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js');
     confirmDialog.mockClear();
     const editor = editorWithBricks();
-    for (const id of ['frame', 'artwork', 'photo', 'bricks']) await runClear(id, editor);
+    for (const id of ['frame', 'artwork', 'bricks']) await runClear(id, editor);
     expect(confirmDialog).not.toHaveBeenCalled();
   });
 
@@ -261,7 +248,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     document.body.innerHTML = '<button id="editorClear">Clear</button>';
     initClearMenu();
     const menu = document.getElementById('editorClearMenu');
-    expect([...menu.querySelectorAll('button')].map((b) => b.id)).toEqual(['editorClear_all', 'editorClear_frame', 'editorClear_artwork', 'editorClear_photo', 'editorClear_bricks']);
+    expect([...menu.querySelectorAll('button')].map((b) => b.id)).toEqual(['editorClear_all', 'editorClear_frame', 'editorClear_artwork', 'editorClear_bricks']);
     expect(menu.style.display).toBe('none');
     document.getElementById('editorClear').click();
     expect(menu.style.display).toBe('flex');
@@ -289,22 +276,20 @@ describe('F35 item 28 follow-up: one undo takes the WHOLE Clear back', () => {
   const ids = (editor) => editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'));
   let frameClear;
   beforeEach(() => {
-    frameHist.depth = 0; undoFrame.mockClear(); restorePhoto.mockClear(); clearPhoto.mockClear(); relay.calls = 0; relay.onCall = null;
-    photoMock.state = { url: 'data:x', edits: [], patternId: null };
+    frameHist.depth = 0; undoFrame.mockClear(); relay.calls = 0; relay.onCall = null;
     frameClear = vi.fn(() => { frameHist.depth++; }); // the real handler pushes a Frame-tab history step
     setFrameClearHandler(frameClear);
     dialog.answer = true;
   });
   afterEach(() => setFrameClearHandler(null));
 
-  it('Clear All: one undo brings back the drawing, the frame (its step) and the photo', async () => {
+  it('Clear All: one undo brings back the drawing and the frame (its step)', async () => {
     const editor = board();
     await runClear('all', editor);
     expect(ids(editor)).toEqual([]);
     expect(undoLastClear(editor)).toBe(true);
     expect(ids(editor)).toEqual(['path-1', 'brick-1']);
     expect(undoFrame).toHaveBeenCalledTimes(1);
-    expect(restorePhoto).toHaveBeenCalledWith({ url: 'data:x', edits: [], patternId: null });
   });
 
   it('Clear Frame: the bricks re-lay on the rectangle INSIDE the Clear, and one undo takes the re-lay AND the frame back', async () => {
@@ -317,30 +302,15 @@ describe('F35 item 28 follow-up: one undo takes the WHOLE Clear back', () => {
     expect(undoLastClear(editor)).toBe(true);
     expect(editor._undoStack.length).toBe(depth); // the re-lay taken back
     expect(undoFrame).toHaveBeenCalledTimes(1);
-    expect(restorePhoto).not.toHaveBeenCalled();
   });
 
-  it('Clear Photo: one undo restores the photo and touches NOTHING else (no earlier editor step popped)', async () => {
-    const editor = board();
-    commitEdit(editor); // an earlier, unrelated step (e.g. a brick Generate)
-    const depth = editor._undoStack.length;
-    await runClear('photo', editor);
-    expect(undoLastClear(editor)).toBe(true);
-    expect(restorePhoto).toHaveBeenCalledTimes(1);
-    expect(editor._undoStack.length).toBe(depth);
-    expect(undoFrame).not.toHaveBeenCalled();
-  });
-
-  it('only while the Clear is the latest change: a later edit, frame change or photo change voids it (normal undo then)', async () => {
+  it('only while the Clear is the latest change: a later edit or frame change voids it (normal undo then)', async () => {
     const editor = board();
     await runClear('bricks', editor);
     commitEdit(editor);
     expect(undoLastClear(editor)).toBe(false);
     await runClear('artwork', editor);
     document.dispatchEvent(new CustomEvent('frameRecordChanged'));
-    expect(undoLastClear(editor)).toBe(false);
-    await runClear('frame', editor);
-    photoMock.state = { url: 'data:y', edits: [], patternId: null };
     expect(undoLastClear(editor)).toBe(false);
   });
 

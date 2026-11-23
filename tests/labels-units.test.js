@@ -10,7 +10,6 @@ import { bind, syncPair } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { createStampCtx } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/_shared.js';
 import { initDepth } from '../bspline-frame-builder/b-spline-gen/html/main/stamp/depth.js';
 import { attachFormulaFields, FORMULA_FIELDS } from '../bspline-frame-builder/b-spline-gen/html/main/formula-fields.js';
-import { renderPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 import { isFormulaField } from '../bspline-frame-builder/b-spline-gen/html/core/formula-field.js';
 import { evaluate } from '../bspline-frame-builder/b-spline-gen/html/core/formula.js';
 
@@ -39,7 +38,6 @@ describe('LABELS T: renamed labels (display only)', () => {
     ['stampTextureSuppression', 'Smooth the terrain under it (0–1)'],
     ['brickSuppression', 'Remove bricks (fraction)'],
     ['brickFrameSuppression', 'Crumble (fraction)'],
-    ['photoBlur', 'Blur (image px)'],
     ['stampVBitAngle', 'V-Bit Angle (°)'],
     ['stampEdgeFilletRadius', 'Edge Fillet (in)'],
     ['sculptTopRadius', 'Brush Size (in)'],
@@ -51,17 +49,6 @@ describe('LABELS T: renamed labels (display only)', () => {
     expect(labelOf(id)).toBe(text);
   });
 
-  it('the sidebar Photo mirror says Blur (image px) too', () => {
-    const body = document.createElement('div');
-    document.body.appendChild(body);
-    renderPhotoLayerSection(body);
-    const n = body.querySelector('#photo3dBlur');
-    expect(n).toBeTruthy();
-    let el = n, text = null;
-    while (el && !text) { const p = el.previousElementSibling; if (p && p.tagName === 'LABEL') text = p.textContent.trim(); el = el.parentElement; }
-    expect(text).toBe('Blur (image px)');
-    body.remove();
-  });
 });
 
 describe('LABELS T: the SVG stamp Relief Raised | Carved toggle writes the signed depth', () => {

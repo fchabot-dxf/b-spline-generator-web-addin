@@ -37,7 +37,6 @@ import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
-import { isPhotoReady } from '../photo/state.js';
 import { isJobTimelineEnabled } from '../job-timeline-enabled.js';
 import { isBackLocked, dequantizeHeights } from '../job-timeline-snapshot.js';
 
@@ -84,8 +83,9 @@ const _heightReadyTerm = () => (Array.isArray(P.heightLayers) && P.heightLayers.
 export function rebuildInputDigest(preview, nx, nz) {
     try {
         let h = 2166136261;
-        // + the one async input outside P: the Photo filter's decoded image (core/photo/state.js) lands after its URL
-        h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}|${isPhotoReady(P.photoImageDataUrl)}${_heightReadyTerm()}`);
+        // + the async input outside P: the height patches' decoded rasters (the photo's decoded image was one until the
+        // photo's removal, Fred 2026-11-23)
+        h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}${_heightReadyTerm()}`);
         h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta); h = _fnvArray(h, postDelta); h = _fnvArray(h, extraThickenThinMask);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
@@ -110,16 +110,15 @@ export const HEIGHTS_INERT_KEYS = new Set([
     'decalEnabled', 'decalResolution', 'decalLayerIds',
     'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
     'spacing', 'exportSpacing', 'sameAsDisplayResolution', 'exportOrientation', // the grid (nx, nz) is its own input
-    // the stamp / brick / frame / photo-pattern settings reach the heights only through the editor layers' masks
-    // and P.photoImageDataUrl, both inputs below
+    // the stamp / brick / frame settings reach the heights only through the editor layers' masks (an input below)
     'stampSmoothingRadius', 'stampFilletPower', 'stampVBitAngle', 'stampBlur', 'stampTextureSuppression',
-    'brickSettings', 'frame', 'photoPatternId', 'stampLayers', 'activeLayerIdx', 'editorSvg',
+    'brickSettings', 'frame', 'stampLayers', 'activeLayerIdx', 'editorSvg',
 ]);
 /** The heights stage's declared inputs as one digest (null = unreadable: the heights are rebuilt). */
 export function heightsInputDigest(nx, nz) {
     try {
         let h = 2166136261;
-        h = _fnv(h, `${nx}x${nz}|${isPhotoReady(P.photoImageDataUrl)}${_heightReadyTerm()}`);
+        h = _fnv(h, `${nx}x${nz}${_heightReadyTerm()}`);
         h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
         h = _fnvArray(h, preDelta);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];

@@ -215,45 +215,6 @@ aside {
     background: var(--surface2, rgba(0, 0, 0, 0.06));
 }
 
-/* F34 item 1: the Photo filter's own pattern-row thumbnails + raw-image
-   preview canvas (main/photo-panel.js). */
-.photo-pattern-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-
-.photo-pattern-thumb {
-    padding: 0;
-    width: 40px;
-    height: 40px;
-    border: 1px solid #bcbcbc;
-    background: #222;
-    cursor: pointer;
-    overflow: hidden;
-}
-
-.photo-pattern-thumb:hover {
-    border-color: #0696D7;
-}
-
-.photo-pattern-thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-.photo-preview-canvas {
-    width: 100%;
-    max-width: 220px;
-    display: block;
-    margin: 0 auto 4px;
-    background: #222;
-    border: 1px solid #bcbcbc;
-}
-
 /* F34 item 1 (Fred): the Invert control as a 2-state segmented "Relief"
    toggle (Raised/Carved) instead of a plain checkbox -- still just the same
    underlying `invert` setting. */
@@ -860,28 +821,18 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 #brickGroutPaintRow {
     flex-wrap: wrap;
 }
-/* the Photo tabs: the strip heads the Photo panel (pinned) */
-#photoTabsHead {
-    padding-bottom: 0;
-}
-#photoTabsHead > #photoTabStrip {
-    margin: -12px -14px 0;
-}
-
-/* 2026-10-10: Surface > Photo, the photo layer's own section (main/photo-layer-section.js PHOTO_CONTROLS) */
+/* 2026-10-10: first the photo layer's own section (removed with the photo, Fred 2026-11-23); the check / note / group /
+   button rows below are SHARED -- the STL and Height panels build their rows with them (main/stl-panel.js, height-panel.js) */
 .photo-layer-check { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0 0 10px; min-height: 28px; }
 .photo-layer-check input { width: auto; margin: 0; flex: 0 0 auto; }
-.photo-layer-source { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.photo-layer-source-name { flex: 1; font-size: 11px; opacity: 0.8; }
-.photo-layer-source .cad-btn { min-height: 32px; flex: 0 0 auto; }
 .photo-layer-note { font-size: 10px; opacity: 0.65; margin: -6px 0 8px; }
 .photo-layer-group { font-weight: 600; opacity: 0.75; margin: 10px 0 4px; }
 .photo-layer-group-note { font-weight: 400; opacity: 0.8; }
 .photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
 .photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
-/* the layer is off: photo-only controls greyed (photo-layer-section.js needsLayer); TERRAIN SHAPE's rows that its Flat
-   (no hills) switch no longer reads (main/terrain-shape-flat.js SHAPE_FLAT_ROWS) -- the same greyed look */
-.photo-layer-needs-on, .shape-flat-greyed { opacity: 0.45; }
+/* TERRAIN SHAPE's rows that its Flat (no hills) switch no longer reads (main/terrain-shape-flat.js SHAPE_FLAT_ROWS) --
+   the greyed look the photo section's off rows had */
+.shape-flat-greyed { opacity: 0.45; }
 
 /* The JOB TIMELINE strip (Fred 2026-10-14, main/job-timeline-strip.js; mockups shots/seatD/timeline/): along the bottom
    of each canvas (the 3D view; the 2D editor above the phone drawer). A chip per step in the kind's colour

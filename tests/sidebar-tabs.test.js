@@ -1,7 +1,8 @@
 /**
  * Redesign phase 5 (seat D's mockups shots/seatD/redesign/mock_Sidebar_*): the main sidebar's former tabs are the
  * BRANCHES of one collapse tree, Generate New Seed pinned above; item 47's PIN keeps a section at the top. Fred
- * 2026-10-11 (final): three branches, Surface ending with a "2D editor" group (Photo, Brick, Vector stamping). The real
+ * 2026-10-11 (final): three branches, Surface ending with a "2D editor" group (Vector stamping; Photo left with the photo
+ * 2026-11-23). The real
  * sidebar markup is loaded from the palette (the shapes the app really has), not a hand-built DOM.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -40,7 +41,7 @@ describe('phase 5: the main sidebar tree', () => {
   it('Fred 2026-10-11 (final) + 2026-11-23 (the layer stack): four branches; Surface ends with a "2D editor" GROUP; the LAYERS branch after it', () => {
     expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'layers', 'output']);
     expect(BOARD).toEqual(['panel-stock', 'panel-frame']);
-    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-photo', 'panel-stamp']); // the Brick panel's body is the Brick card's (layer stack)
+    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-stamp']); // the Brick panel's body is the Brick card's (layer stack)
     // the stack (its Thicken line holds the retired Thicken panel's settings), then Sculpt bottom as it followed Thicken
     expect(LAYERS).toEqual(['panel-layers', 'panel-sculpt-bot']);
     expect(groupOfSection('panel-stamp')).toMatchObject({ id: 'editor', label: '2D editor' });
@@ -50,7 +51,10 @@ describe('phase 5: the main sidebar tree', () => {
     expect(group.parentElement.id).toBe('sidebarBranch_surface');
     expect(group.parentElement.lastElementChild).toBe(group); // after Surface's own sections
     expect(group.querySelector('.sidebar-group-head').textContent).toBe('2D editor');
-    expect([...group.querySelectorAll(':scope > .panel')].map((p) => sectionKey(p.classList))).toEqual(['panel-photo', 'panel-stamp']);
+    expect([...group.querySelectorAll(':scope > .panel')].map((p) => sectionKey(p.classList))).toEqual(['panel-stamp']);
+    // Fred 2026-11-23 ("Remove photo"): no Photo section anywhere in the sidebar
+    expect(SIDEBAR_TABS.flatMap(branchSections)).not.toContain('panel-photo');
+    expect(document.querySelector('.panel-photo')).toBeNull();
   });
 
   it('Generate New Seed stays first and alone in the pinned bar; the branches follow in SIDEBAR_TABS order, each in its DECLARED order', () => {
@@ -60,13 +64,13 @@ describe('phase 5: the main sidebar tree', () => {
     const branches = [...document.querySelectorAll('.cad-sidebar-sections > .sidebar-branch')];
     expect(branches.map((b) => b.dataset.branch)).toEqual(SIDEBAR_TABS.map((t) => t.id));
     expect(branches.map((b) => b.querySelector('.sidebar-branch-label').textContent)).toEqual(['Board', 'Surface', 'Layers', 'Output']);
-    // the page's markup has Photo after Filter and Brick in its own block: the declaration, not the markup, orders them
+    // the page's markup has its sections in its own order: the declaration, not the markup, orders them
     for (const t of SIDEBAR_TABS) expect(inBranch(t.id), t.id).toEqual(branchSections(t));
   });
 
   it('declaredSectionOrder: branch by branch in the declared order; an undeclared section after its branch\'s own', () => {
-    expect(declaredSectionOrder(['panel-stamp', 'panel-view', 'panel-photo', 'panel-stock', 'panel-new', 'panel-skeleton']))
-      .toEqual(['panel-stock', 'panel-skeleton', 'panel-photo', 'panel-stamp', 'panel-new', 'panel-view']);
+    expect(declaredSectionOrder(['panel-stamp', 'panel-view', 'panel-stl', 'panel-stock', 'panel-new', 'panel-skeleton']))
+      .toEqual(['panel-stock', 'panel-skeleton', 'panel-stl', 'panel-stamp', 'panel-new', 'panel-view']);
   });
 
   it('the first look is the mockup\'s: Board, Surface and the Layers stack open, Output folded', () => {
@@ -116,7 +120,7 @@ describe('phase 5: the main sidebar tree', () => {
 
   it('a group whose sections are all pinned away hides its heading; one back shows it again', () => {
     initSidebarTabs();
-    for (const k of ['panel-photo', 'panel-stamp']) toggleSidebarPin(k);
+    for (const k of ['panel-stamp']) toggleSidebarPin(k);
     expect($('sidebarGroup_editor').hidden).toBe(true);
     toggleSidebarPin('panel-stamp');
     expect($('sidebarGroup_editor').hidden).toBe(false);

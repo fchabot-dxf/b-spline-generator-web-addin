@@ -20,7 +20,6 @@ import { renderLayersPanel } from '../bspline-frame-builder/b-spline-gen/html/ed
 const FIXTURE = `
   <button id="editorTabFrame"></button><div id="editorFramePanel"></div><div id="editorToolbarFrame"></div>
   <button id="editorTabArtwork"></button><div id="editorToolbarArtwork"></div>
-  <button id="editorTabPhoto"></button><div id="editorPhotoPanel"></div><div id="editorToolbarPhoto"></div>
   <button id="editorTabBrick"></button><div id="editorToolbarBrick"></div>
   <div id="editorToolbarTop"></div>
   <div id="editorStrokeGroup"></div><div id="editorColorGroup"></div><div id="editorGridGroup"></div>

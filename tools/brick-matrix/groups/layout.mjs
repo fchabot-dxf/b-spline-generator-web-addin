@@ -21,7 +21,7 @@ export const PEEK_LAYOUT = {
 export const PANEL_FIT = {
   viewports: [{ name: 'desktop 1366x900', width: 1366, height: 900 }, { name: 'narrow 900x900', width: 900, height: 900 }],
   sections: [
-    { name: 'Photo crop', open: ['editorTabPhoto', 'photoTab_source'], ids: ['photoCropX', 'photoCropY', 'photoCropW', 'photoCropH', 'photoBtnResetCrop'] },
+    // (the 'Photo crop' section, this table's first row, left with the photo, Fred 2026-11-23)
     // item 74e: the "Applies on the next Generate" line over each lattice panel's next-Generate group
     { name: 'Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
     { name: 'Shape Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
@@ -72,7 +72,7 @@ export const BOARD_FOLLOWS = {
 };
 
 // ---- touch targets (Fred, 2026-10-08, "yes, all controls"; seat D): on a phone (coarse pointer) every shown control -- the
-// main sidebar's tabs (their collapsed panels opened), the editor's Brick / Art / Frame / Photo tabs -- has its smaller side
+// main sidebar's tabs (their collapsed panels opened), the editor's Brick / Art / Frame tabs -- has its smaller side
 // >= minPx (styles/editor.css --touch-target-min) and lies on screen (the bigger targets push nothing past the right
 // edge; advisor: the narrow phone too). A checkbox counts by its label (the label row is the target); `skip` = not a tap
 // target of its own (a range slider's thumb is; the colour input sits under its own toggle). One row per viewport x tab.
@@ -82,7 +82,6 @@ export const TOUCH_TARGETS = {
   sidebarTabs: SIDEBAR_TABS.map((t) => t.id), // the sidebar tree's branches, read from the app's own declaration
   brickTabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush', 'brickTool_scissors'],
   artTabs: ['general', 'draw', 'lattice', 'shape', 'text', 'edit'],
-  photoTools: [['source', 'crop'], ['source', 'straighten'], ['source', 'rotateFlip'], ['adjust', 'levels'], ['adjust', 'blur']],
   skip: 'input[type="range"], #editorColor, input[type="hidden"], input[type="color"]',
 };
 
@@ -350,10 +349,6 @@ async function runTouchTargets() {
       await touchRow(vp, `Art ${t}`, opened, EDITOR_ROOT);
     }
     await touchRow(vp, 'Frame', (await click('editorTabFrame', 1200)) === 'ok', EDITOR_ROOT);
-    for (const [tab, tool] of T.photoTools) {
-      const opened = (await click('editorTabPhoto', 900)) === 'ok' && (await click(`photoTab_${tab}`, 600)) === 'ok' && (await click(`photoTool_${tool}`, 900)) === 'ok';
-      await touchRow(vp, `Photo ${tab} / ${tool}`, opened, EDITOR_ROOT);
-    }
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });

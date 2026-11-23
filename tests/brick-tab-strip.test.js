@@ -43,12 +43,12 @@ describe('item 43: the Brick tab strip', () => {
     expect(strip.nextElementSibling.id).toBe('brickGenerate');
   });
 
-  it('the left rail no longer holds a Brick toolbar (Photo keeps its own rail)', () => {
+  it('the left rail no longer holds a Brick toolbar (nor a Photo one: the Photo tab left with the photo, Fred 2026-11-23)', () => {
     const rail = doc.querySelector('aside.editor-sidebar');
     expect(rail.querySelector('#editorToolbarBrick')).toBeNull();
-    expect(rail.querySelector('#editorToolbarPhoto')).not.toBeNull();
+    expect(rail.querySelector('#editorToolbarPhoto')).toBeNull();
     expect(EDITOR_TABS.find((t) => t.id === 'brick').toolbarId).toBeNull();
-    expect(EDITOR_TABS.find((t) => t.id === 'photo').toolbarId).toBe('editorToolbarPhoto');
+    expect(EDITOR_TABS.find((t) => t.id === 'photo')).toBeUndefined();
   });
 
   it('every block of the shared rows has a declared scope, and every declared one exists', () => {

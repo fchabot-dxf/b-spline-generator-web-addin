@@ -33,9 +33,9 @@ describe('the tabs in the page', () => {
   beforeEach(() => {
     document.body.innerHTML = `
       <button id="editorTabFrame"></button><button id="editorTabArtwork"></button><button id="editorTabLattice"></button>
-      <button id="editorTabPhoto"></button><button id="editorTabBrick"></button>
-      <div id="editorFramePanel"></div><div id="editorLayersPanel"></div><div id="editorPhotoPanel"></div><div id="editorBrickPanel"></div>
-      <div id="editorToolbarFrame"></div><div id="editorToolbarPhoto"></div><div id="editorToolbarTop"></div>
+      <button id="editorTabBrick"></button>
+      <div id="editorFramePanel"></div><div id="editorLayersPanel"></div><div id="editorBrickPanel"></div>
+      <div id="editorToolbarFrame"></div><div id="editorToolbarTop"></div>
       <div id="editorToolbarArtwork">${ART_TABS.flatMap((t) => t.tools).map((id) => `<button id="${id}"></button>`).join('')}</div>
       <div id="artTabStrip"></div><div id="artGeneralBody"></div>`;
     initArtTabs();

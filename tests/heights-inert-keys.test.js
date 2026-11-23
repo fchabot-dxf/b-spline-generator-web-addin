@@ -90,10 +90,10 @@ function heightsStageSource() {
 describe('HEIGHTS_INERT_KEYS: completeness, from the heights stage code', () => {
   const { files, code } = heightsStageSource();
 
-  it('the scan reads the real closure (terrain, the noise + seed modules, the photo filter, the stamp layers)', () => {
-    for (const f of ['core/terrain.js', 'core/noise/index.js', 'core/noise/photo.js', 'core/seed/index.js', 'core/photo/state.js', 'core/engine/apply-stamp-layers.js'])
+  it('the scan reads the real closure (terrain, the noise + seed modules, the stamp layers; the photo filter left with the photo)', () => {
+    for (const f of ['core/terrain.js', 'core/noise/index.js', 'core/seed/index.js', 'core/engine/apply-stamp-layers.js'])
       expect(files.has(f), f).toBe(true);
-    for (const k of ['seed', 'smoothRadius', 'noiseType', 'edgeMarginIn', 'stampDepth', 'photoEdits']) expect(code).toMatch(new RegExp(`\\b${k}\\b`)); // keys it does read
+    for (const k of ['seed', 'smoothRadius', 'noiseType', 'edgeMarginIn', 'stampDepth', 'macroScale']) expect(code).toMatch(new RegExp(`\\b${k}\\b`)); // keys it does read
   });
 
   it('every listed key is a real P key and is never named in the heights stage', () => {

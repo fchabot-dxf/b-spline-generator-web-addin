@@ -27,7 +27,6 @@ import { isFittedView, applyView } from '../editor/editor-view.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
-import { adoptStoredPhoto } from './photo-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
 import { paletteCss, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
@@ -50,12 +49,11 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, frame: null, fingerprint: null };
 
 /** F35 item 25: what an editor session can change, as one comparable string -- the drawing, the frame record,
- *  the brick settings and the photo. Taken when the editor opens (SvgEditorSnapshot.fingerprint); the viewport's
+ *  the brick settings and the height patches. Taken when the editor opens (SvgEditorSnapshot.fingerprint); the viewport's
  *  [3D] closes without the Apply rebuild when nothing in it changed. */
 export function editorSessionFingerprint() {
   return JSON.stringify({
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
-    photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
     relief: P.carveZ ?? null, // in-editor-3d.js 'relief': its slider builds no 3D in the editor, so [3D] must see it
     // HEIGHT-PAINTER: the Height tab's patches (their rasters by content hash: the text is never re-read here)
     heights: Array.isArray(P.heightLayers) ? P.heightLayers.map((l) => (l && l.raster ? { ...l, raster: l.raster.h } : l)) : null,
@@ -146,7 +144,7 @@ export const CHANGE_PIPELINE_IN_EDITOR = {
     tooling: ['serialize', 'persist'],
 };
 
-// The same rule for the changes that do not come through the editor's onChange (the Photo tab, its relief height,
+// The same rule for the changes that do not come through the editor's onChange (the relief height, the Height tab,
 // the Frame tab's record writes): core/in-editor-3d.js IN_EDITOR_3D, one row per kind.
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
@@ -232,43 +230,33 @@ export function bootBuildOwner() {
  * applySnapshot too) is a no-op once a migration's own `when` stops matching.
  */
 export const MIGRATIONS = [
-  {
-    id: 'photo-orientation',
-    // 2026-10-10 (seat A, measured; advisor: the photoMirrorMode precedent): new boards get the photo upright; a board
-    // saved with a photo before keeps its (flipped) heights byte-identical. Decided after the save is merged, like
-    // 'photo-mirror-mode' below.
-    when: (p) => p.photoOrientation == null,
-    apply: (p) => { p.photoOrientation = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'legacy-flipped' : 'upright'; },
-  },
-  {
-    id: 'photo-mirror-mode',
-    // 2026-10-10 (Fred): new boards mirror the photo unsqueezed; a board saved with a photo before that keeps the squeeze
-    // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here
-    // (core/state.js DEFAULT), so `photo` is judged on the merged board.
-    when: (p) => p.photoMirrorMode == null,
-    // 'whole' since Fred's second pick (2026-10-10); a board saved with 'mirror' keeps it (the key is set, so `when` skips it)
-    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'whole'; },
-  },
-  {
-    id: 'photo-edge',
-    // 2026-10-10 (Fred): outside the photo, new boards show the plain filter (a short fade at the edge); a board saved
-    // with a photo before keeps its stretched edge pixels, byte-identical. Decided after the merge, like the two above.
-    when: (p) => p.photoEdge == null,
-    apply: (p) => { p.photoEdge = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'clamp' : 'fade'; },
-  },
+  // 'photo-orientation', 'photo-mirror-mode' and 'photo-edge' (2026-10-10: which way a board's photo sampled) are RETIRED
+  // with the photo (Fred 2026-11-23, 'photo-removed' below): they only decided keys nothing reads any more. A board they
+  // already wrote keeps its keys in its data.
   {
     id: 'photo-filter-to-layer',
     // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): a save on the old Photo FILTER becomes
-    // the photo layer over a plain filter, showing through at 0 % -- the SAME heights: at 0 % the fine value is the
-    // photo's own (core/terrain.js), and 'simplex' has the photo's coarse multiplier (2.5). A save that hid the filter
-    // texture showed no photo at all (isolateSkeleton flattened it): its layer stays off. The photo's own settings
-    // (photoImageDataUrl, photoEdits, filterTweaks.photo) stay where they are.
+    // the photo layer over a plain filter. Kept after the photo's removal (Fred 2026-11-23) for its noiseType: such a
+    // board builds on 'simplex' -- exactly what main built for it with its photo layer off -- never on the default
+    // filter 'removed-noise-type-to-default' would pick. Its photo keys are written as before (they are not read).
     when: (p) => p.noiseType === 'photo',
     apply: (p) => {
       p.noiseType = 'simplex';
       p.photoLayer = !p.isolateSkeleton;
       p.photoFilterAmount = 0;
     },
+  },
+  {
+    id: 'photo-removed',
+    // Fred 2026-11-23 ("Remove photo"): the photo (Surface > Photo, the editor's Photo tab, the terrain's photo layer) is
+    // removed; new textures come from an image imported into a Height patch (core/height/import.js). The DOCUMENTED
+    // removal: a board saved with its photo layer on now builds exactly as main 9c3f6618 built it with its photo layer
+    // OFF (tests/photo-removed-pin.test.js pins the digests). Its photo keys (photoLayer, photoImageDataUrl, photoEdits,
+    // photoPatternId, photoFilterAmount, photoMirrorMode, photoOrientation, photoEdge, filterTweaks.photo) stay in its
+    // data untouched (AGENTS.md rule 3) and nothing reads them -- so this entry writes nothing. Each of Fred's cloud
+    // boards that used a photo has a '<name> v2' holding the same relief as a height patch ('Photo relief').
+    when: (p) => p.photoLayer === true,
+    apply: () => {},
   },
   {
     id: 'removed-noise-type-to-default',
@@ -760,7 +748,6 @@ export async function initApp(preview, wireGlobalEvents) {
   if (!restored && !P.frame) P.frame = normalizeFrameRecord({ templateId: FRESH_START_FRAME_TEMPLATE });
   // the Frame panel was built before this ran (main.js initFramePanel): show the restored / fresh-start frame
   syncFramePanel();
-  adoptStoredPhoto(); // item 74a: likewise the Photo panel -- the restored photo is decoded (and a full-size one downscaled)
 
   // syncUItoParam fires a real 'change' on checkboxes, which schedules an undo step -- and that step marked a fresh,
   // untouched start as "unsaved" (the leave-page warning then fired for nothing). The same guard applySnapshot uses.

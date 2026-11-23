@@ -37,21 +37,19 @@ beforeEach(() => {
 afterEach(() => { document.body.innerHTML = ''; });
 
 describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', () => {
-  it('declared: photo -> the backdrop in the editor, the rebuild when closed; frame -> its 2D profile vs + the 3D', () => {
+  it('declared: frame -> its 2D profile vs + the 3D; height -> nothing vs the rebuild (the photo row left with the photo)', () => {
     expect(IN_EDITOR_3D).toEqual({
-      // inEditorDrag (Fred 2026-10-09): a Photo slider's drag tick repaints nothing; its release repaints once
-      photo: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
       frame: { inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' },
       // HEIGHT-PAINTER: a stroke in the editor builds no 3D (Apply / the 3D toggle do); closed, it rebuilds
       height: { inEditor: 'none', closed: 'rebuild' },
     });
     const at = (kind, opts) => inEditor3dAction(kind, opts);
     modal.style.display = 'flex';
-    expect(['photo', 'frame'].map((k) => at(k))).toEqual(['backdrop', 'profile']);
-    expect(['photo', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['none', 'profile']); // frame: no drag row
+    expect(at('frame')).toBe('profile');
+    expect(at('frame', { drag: true })).toBe('profile'); // frame: no drag row
     modal.style.display = 'none';
-    expect(['photo', 'frame'].map((k) => at(k))).toEqual(['rebuild', 'refresh3D']);
-    expect(['photo', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['rebuild', 'refresh3D']); // closed: as before
+    expect(at('frame')).toBe('refresh3D');
+    expect(at('frame', { drag: true })).toBe('refresh3D'); // closed: as before
     // HEIGHT-PAINTER: the height row through the same declared lookup main.js reads
     expect(at('height')).toBe('rebuild');
     modal.style.display = 'flex';
@@ -82,7 +80,7 @@ describe('a restore (applySnapshot) leaves the 3D frame to its own rebuild (2026
     try {
       for (const shown of ['none', 'flex']) {
         modal.style.display = shown;
-        expect(['photo', 'frame'].map((k) => inEditor3dAction(k))).toEqual(shown === 'flex' ? ['backdrop', 'profile'] : ['rebuild', 'profile']);
+        expect(['height', 'frame'].map((k) => inEditor3dAction(k))).toEqual(shown === 'flex' ? ['none', 'profile'] : ['rebuild', 'profile']);
       }
     } finally { setUndoRestoring(false); }
   });
@@ -110,14 +108,6 @@ describe('the board Z while the editor is open (once the Photo relief height; Bo
       applyParam('carveZ', 0.15);
       expect(sched.calls).toBe(1);
     } finally { P.carveZ = was; }
-  });
-  // 2026-10-10 (Fred): no Max Height in the photo panels and a pattern pick no longer sets the board Z -- the relief
-  // slider this used to pin is gone with its setReliefHeight; inverted: nothing in the photo panel writes P.carveZ
-  it('the photo panel writes no board Z (no relief slider, no setReliefHeight, no carveZ write)', () => {
-    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', 'utf8');
-    expect(src).not.toMatch(/function setReliefHeight/);
-    expect(src).not.toMatch(/applyParam\('carveZ'/);
-    expect(src).not.toMatch(/inEditor3dAction\('relief'/);
   });
   it('a Z-only editor session is a change: [3D] takes the Apply way (the rebuild), not the plain close', () => {
     const was = P.carveZ;

@@ -1,13 +1,12 @@
 /**
  * F35 item 24: one monochrome icon per Brick tool -- the tool's glyph + a miniature of what it leaves on the board,
  * laid by the real engine (editor/brick-tool-icons.js, editor-brick-tool.js toolMiniBricks). currentColor only, so
- * the button's idle / active colour drives it. Step 2 (Fred's picks): WIRED -- BRICK_TOOLS / PHOTO_TOOLS declare
- * `iconSvg`, the tool registry renders it; the Raised brush = the 3-brick run, MIDDLE brick raised.
+ * the button's idle / active colour drives it. Step 2 (Fred's picks): WIRED -- BRICK_TOOLS declare
+ * `iconSvg` (the Photo tools' icons left with the photo, Fred 2026-11-23), the tool registry renders it; the Raised brush = the 3-brick run, MIDDLE brick raised.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { BRICK_TOOL_ICONS, brickToolIconSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-tool-icons.js';
-import { PHOTO_TOOL_ICONS, photoToolIconSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/photo-tool-icons.js';
 import { renderToolRegistry } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-tool-registry.js';
 import { toolMiniBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -60,7 +59,7 @@ describe('Brick tool icons', () => {
   });
 });
 
-describe('item 24 step 2: wired (Fred: Raised = 3 bricks, the middle one raised; the Photo toolbar too)', () => {
+describe('item 24 step 2: wired (Fred: Raised = 3 bricks, the middle one raised)', () => {
   it('the Raised brush: 3 bricks, the MIDDLE one highest with its side face, the paintbrush, no arrow', () => {
     const doc = parse(brickToolIconSvg('raisedBrush', 40));
     const polys = [...doc.querySelectorAll('polygon')];
@@ -72,26 +71,13 @@ describe('item 24 step 2: wired (Fred: Raised = 3 bricks, the middle one raised;
     expect(doc.querySelectorAll('rect[opacity]')).toHaveLength(1); // the side face
     expect(brickToolIconSvg('raisedBrush')).not.toMatch(/M20\.5 22v-6\.5/);
   });
-  it('the Photo tools: one line icon each, in the same 24 box, currentColor only, all different', () => {
-    expect(Object.keys(PHOTO_TOOL_ICONS)).toEqual(['crop', 'straighten', 'rotateFlip', 'levels', 'blur']);
-    const svgs = Object.keys(PHOTO_TOOL_ICONS).map((id) => photoToolIconSvg(id, 20));
-    for (const svg of svgs) {
-      expect(svg).toMatch(/^<svg[^>]*viewBox="0 0 24 24" width="20" height="20"/);
-      expect(svg).not.toMatch(/#[0-9a-f]{3,6}|rgb\(/i);
-      expect(parse(svg).querySelector('parsererror')).toBeNull();
-    }
-    expect(new Set(svgs).size).toBe(5);
-    expect(photoToolIconSvg('nope')).toBe(null);
-  });
-  it('the registry renders a declared iconSvg (the text icon stays the fallback); every Brick + Photo tool declares one', () => {
+  it('the registry renders a declared iconSvg (the text icon stays the fallback); every Brick tool declares one', () => {
     const box = document.createElement('div');
     renderToolRegistry(box, [{ id: 'a', buttonId: 'tA', label: 'A', icon: 'x', iconSvg: () => brickToolIconSvg('wall') }, { id: 'b', buttonId: 'tB', label: 'B', icon: 'y' }], () => {});
     expect(box.querySelector('#tA svg')).toBeTruthy();
     expect(box.querySelector('#tB').textContent).toBe('y');
     const brickPanel = readFileSync('bspline-frame-builder/b-spline-gen/html/main/brick-panel.js', 'utf-8');
     for (const id of Object.keys(BRICK_TOOL_ICONS)) expect(brickPanel).toContain(`iconSvg: () => brickToolIconSvg('${id}')`);
-    const photoPanel = readFileSync('bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', 'utf-8');
-    for (const id of Object.keys(PHOTO_TOOL_ICONS)) expect(photoPanel).toContain(`iconSvg: () => photoToolIconSvg('${id}')`);
   });
   it('the Artwork-only bold-stroke rule no longer reaches a registry icon (it would turn the white icon dark)', () => {
     const css = readFileSync('bspline-frame-builder/styles/editor.css', 'utf-8');

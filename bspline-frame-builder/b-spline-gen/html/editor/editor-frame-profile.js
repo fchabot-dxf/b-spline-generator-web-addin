@@ -47,7 +47,7 @@ export const INACTIVE_LAYER_OPACITY = 0.4;
 export const FRAME_HANDLE_RADIUS = 0.09;
 
 /** Fred 2026-10-10 ("in brick tab the artwork is still 100 opacity"; he picked the fade): the ART -- the drawing's
- *  nodes that are not bricks -- at this opacity in the Brick and Photo tabs, so the bricks / the photo read. */
+ *  nodes that are not bricks -- at this opacity in the Brick tab, so the bricks read. */
 export const ART_FADE_OPACITY = 0.35;
 /** The editor's per-tab focus (design §3.1, F8's symmetric rule, + the art fade): what each tab draws faded.
  *  `drawing`: the whole drawing layer (art AND bricks); `art`: its non-brick nodes on top of that; `frameProfile`:
@@ -60,9 +60,8 @@ export const EDITOR_TAB_FOCUS = Object.freeze({
   frame: Object.freeze({ drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1, heightPatches: INACTIVE_LAYER_OPACITY }),
   artwork: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
   lattice: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }), // redesign phase 2: the art, in focus
-  photo: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
   brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
-  // the Height tab: the art faded as in Photo / Brick (context, not edited), bricks full, the patches in full
+  // the Height tab: the art faded as in Brick (context, not edited), bricks full, the patches in full
   height: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 }),
 });
 /** The focus of `editor`'s current tab (before any setEditorFocus: its frame / artwork mode; a tab not declared reads
@@ -73,7 +72,7 @@ export const editorFocusOf = (editor) => EDITOR_TAB_FOCUS[editor?._focusTab ?? e
  * The editor's modes (design §3.1). 'frame': the frame is edited, the
  * artwork is a faded, LOCKED background (editor._artworkLocked: no selection,
  * no shortcut reaches it; drawn from the same layer, never modified).
- * Any other tab: the artwork is editable, the frame profile is the faded background; the Brick and Photo tabs
+ * Any other tab: the artwork is editable, the frame profile is the faded background; the Brick and Height tabs
  * also fade the art (EDITOR_TAB_FOCUS).
  */
 export function setEditorFocus(editor, tab) {

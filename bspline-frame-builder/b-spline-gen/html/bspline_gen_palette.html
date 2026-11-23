@@ -190,10 +190,6 @@
        panel scrolled sideways. The stepper fills what the dice button leaves. */
     .brick-seed-row > .cad-stepper { flex: 1 1 0; min-width: 0; }
     .brick-seed-row > .cad-btn { flex: 0 0 auto; min-width: 0; padding: 0 8px; }
-    /* item 74 (seat D, measured): the Photo crop row put four 75 px-minimum steppers in one flex row -- at 1366 its
-       W/H fields sat off the 220 px panel (x 1368-1508). Two columns, Left/Top over Width/Height. */
-    .photo-crop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
-    .photo-crop-grid > .cad-stepper { min-width: 0; }
     .cad-nested-input:has(> .cad-stepper) {
       padding: 0;
     }
@@ -1053,13 +1049,6 @@
         </div>
       </div>
 
-      <!-- 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): every 3D setting of the photo, plus
-           some image edits mirrored with the editor's Photo tab. Rendered from main/photo-layer-section.js PHOTO_CONTROLS. -->
-      <div class="panel panel-photo">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">📷 PHOTO</div>
-        <div class="panel-body hidden" id="photoLayerBody"></div>
-      </div>
-
       <!-- STL-RELIEF (STL-RELIEF-DESIGN.md): an STL stamped into the surface -- place, size, rotate (X / Y / Z), Max / Add, Raised / Carved.
            Rendered from main/stl-panel.js STL_CONTROLS; each STL is one record in P.stlLayers. -->
       <div class="panel panel-stl">
@@ -1677,16 +1666,16 @@
         <div style="display:flex; align-items:center; gap:10px;">
           <!-- Fred: "I don't think it's useful to have the layer drop down in the header" --
                the active-layer pill is gone; the Layers panel already shows the active layer. -->
-          <!-- FB-APP F8 + F35 item 10: [Frame | Artwork | Photo | Brick] -- a declared tab registry
+          <!-- FB-APP F8 + F35 item 10: [Frame | Artwork | Brick] -- a declared tab registry
                (main/editor-tabs.js), each tab swapping BOTH its own left toolbar (the vertical icon
                rail) and its own right panel. Frame = the frame's template + params with the live cut
-               profile; Artwork = the general draw tools; Photo/Brick = their own former sidebar
-               sections, moved here (Fred: each uses a completely different toolbar). -->
+               profile; Artwork = the general draw tools; Brick = its own former sidebar
+               section, moved here (Fred: each uses a completely different toolbar). The Photo tab left with
+               the photo (Fred 2026-11-23). -->
           <div id="editorModeTabs" role="tablist" style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
             <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;"><span data-frame-label="wood">Wood frame</span></button>
             <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Draw</button>
             <button type="button" id="editorTabLattice" role="tab" data-editor-tab="lattice" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Lattice</button>
-            <button type="button" id="editorTabPhoto" role="tab" data-editor-tab="photo" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Photo</button>
             <button type="button" id="editorTabBrick" role="tab" data-editor-tab="brick" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Brick</button>
             <!-- HEIGHT-PAINTER slice 1: paint height patches on the board (main/height-panel.js) -->
             <button type="button" id="editorTabHeight" role="tab" data-editor-tab="height" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Height</button>
@@ -1730,7 +1719,7 @@
 
       <!-- Editor Properties Bar -->
       <!-- F35 item 10 follow-up (advisor): this bar (Stroke width/Color/Grid/Style) only applies to
-           hand-drawn Artwork shapes -- shown on the Artwork tab only, hidden for Frame/Photo/Brick
+           hand-drawn Artwork shapes -- shown on the Artwork tab only, hidden for Frame/Brick
            (main/editor-tabs.js's own setEditorTab; not one of EDITOR_TABS' own toolbar/panel pairs
            since it isn't a tab, just shared styling chrome for ONE of them). -->
       <!-- F35 item 53 (Fred: the option bar clipped its GRID label + STYLE chips): it sizes to its content and wraps to a
@@ -1884,12 +1873,6 @@
                drags on the canvas (editor-frame-profile.js), the same way it always worked; an empty
                toolbar here is the honest declaration of that, not a placeholder. -->
           <div id="editorToolbarFrame" style="display:none;"></div>
-          <!-- F35 item 10: Photo's own toolbar -- picking a tool shows just that tool's own settings
-               in #editorPhotoPanel (main/photo-panel.js's own declared PHOTO_TOOLS), mirroring how
-               these 4 top-level tabs themselves work, one level deeper. -->
-          <div id="editorToolbarPhoto" style="display:none; flex-direction:column; align-items:center; gap:8px;">
-            <!-- Populated at runtime by main/photo-panel.js's declared PHOTO_TOOLS. -->
-          </div>
           <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
                list, moved here from the old sidebar's horizontal row (renderToolList's own target
                container, same function, same click behaviour -- only the container moved). -->
@@ -2786,127 +2769,6 @@
               </div>
             </div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
-          </div>
-        </aside>
-
-        <!-- F35 item 10: the Photo tab's own right panel (moved from the sidebar's panel-photo,
-             F34 item 1) -- common controls (pattern/load/preview/relief/height/tweaks/save) stay
-             visible regardless of which Photo tool is active; each tool's own settings live in their
-             own photoToolSection_* div, shown/hidden by main/photo-panel.js's selectPhotoTool. -->
-        <aside class="editor-layers-panel" id="editorPhotoPanel" style="display:none;">
-          <!-- The Photo tabs (Fred's OK on mockup v2): Source | Adjust | Relief, pinned at the top of this panel
-               (main/photo-panel.js PHOTO_TABS: each tab's blocks + its tools' sections; the rail stays, a tool pick
-               opens its tab). The preview and Save show on every tab. -->
-          <div id="photoTabsHead" class="sticky-actions" data-panel-head><div id="photoTabStrip"></div></div>
-          <div class="layers-header"><span>Photo</span></div>
-          <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
-            <div id="photoSourceBlock" style="display:flex; flex-direction:column; gap:4px;">
-            <label class="cad-label">Patterns</label>
-            <div id="photoPatternRow" class="photo-pattern-row"></div>
-
-            <label class="cad-label">Load my own</label>
-            <input type="file" id="photoFileInput" accept="image/png,image/jpeg" style="width:100%; font-size:11px; margin-bottom:10px;">
-            </div>
-
-            <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
-            <div id="photoPreviewCaption" style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = not on the board (outside where the photo lands)</div>
-
-            <div id="photoToolSection_crop" style="display:none;">
-              <label class="cad-label">Crop (%)</label>
-              <div class="photo-crop-grid">
-                <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" title="Left">
-                <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" title="Top">
-                <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" title="Width">
-                <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" title="Height">
-              </div>
-              <button type="button" id="photoBtnResetCrop" class="cad-btn" style="width:100%; margin-bottom:14px;" title="Back to the whole photo (the original is always kept)">Reset crop (full image)</button>
-            </div>
-
-            <div id="photoToolSection_straighten" style="display:none;">
-              <label class="cad-label">Straighten (degrees)</label>
-              <div class="cad-slider-row" style="margin-bottom:10px;">
-                <input type="range" id="photoStraightenSlider" class="cad-slider" min="-45" max="45" step="0.5" value="0">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoStraighten" value="0"></div>
-              </div>
-            </div>
-
-            <div id="photoToolSection_rotateFlip" style="display:none;">
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Rotate / Flip</label>
-              <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
-                <button type="button" id="photoBtnRotate" class="cad-btn">⟳ Rotate 90°</button>
-                <button type="button" id="photoBtnFlipH" class="cad-btn">⇋ Flip H</button>
-                <button type="button" id="photoBtnFlipV" class="cad-btn">⇅ Flip V</button>
-                <button type="button" id="photoBtnUndo" class="cad-btn">Undo</button>
-              </div>
-            </div>
-
-            <div id="photoToolSection_levels" style="display:none;">
-              <label class="cad-label">Levels — Black point</label>
-              <div class="cad-slider-row" style="margin-bottom:8px;">
-                <input type="range" id="photoLevelsBlackSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsBlack" value="0"></div>
-              </div>
-              <label class="cad-label">Levels — White point</label>
-              <div class="cad-slider-row" style="margin-bottom:8px;">
-                <input type="range" id="photoLevelsWhiteSlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsWhite" value="1"></div>
-              </div>
-              <label class="cad-label">Levels — Midpoint (gamma)</label>
-              <div class="cad-slider-row" style="margin-bottom:12px;">
-                <input type="range" id="photoLevelsMidSlider" class="cad-slider" min="0.2" max="3" step="0.05" value="1">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsMid" value="1"></div>
-              </div>
-              <label class="cad-label">Brightness</label>
-              <div class="cad-slider-row" style="margin-bottom:8px;">
-                <input type="range" id="photoBrightnessSlider" class="cad-slider" min="-0.5" max="0.5" step="0.01" value="0">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBrightness" value="0"></div>
-              </div>
-              <label class="cad-label">Contrast</label>
-              <div class="cad-slider-row" style="margin-bottom:12px;">
-                <input type="range" id="photoContrastSlider" class="cad-slider" min="-0.9" max="3" step="0.05" value="0">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoContrast" value="0"></div>
-              </div>
-            </div>
-
-            <div id="photoToolSection_blur" style="display:none;">
-              <label class="cad-label">Blur (image px)</label>
-              <div class="cad-slider-row" style="margin-bottom:14px;">
-                <input type="range" id="photoBlurSlider" class="cad-slider" min="0" max="8" step="1" value="0">
-                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBlur" value="0"></div>
-              </div>
-            </div>
-
-            <div id="photoReliefBlock" style="display:flex; flex-direction:column; gap:4px;">
-            <!-- Fred: "a cute 2-state segmented toggle", not a plain checkbox -- drives the
-                 same `invert` setting (core/photo/ops.js), no new state. -->
-            <label class="cad-label">Relief</label>
-            <div class="relief-toggle" id="photoReliefToggle" style="margin-bottom:4px;">
-              <button type="button" class="relief-toggle-btn active" id="photoBtnReliefRaised" title="Light areas raised, dark areas as grooves">
-                <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
-                  <rect x="0" y="6" width="5" height="6"/><rect x="6" y="3" width="5" height="9"/>
-                  <rect x="12" y="6" width="5" height="6"/><rect x="18" y="3" width="5" height="9"/>
-                </svg>
-                <span>Raised</span>
-              </button>
-              <button type="button" class="relief-toggle-btn" id="photoBtnReliefCarved" title="Inverted: dark areas raised, light areas as grooves">
-                <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
-                  <rect x="0" y="0" width="5" height="6"/><rect x="6" y="0" width="5" height="9"/>
-                  <rect x="12" y="0" width="5" height="6"/><rect x="18" y="0" width="5" height="9"/>
-                </svg>
-                <span>Carved</span>
-              </button>
-            </div>
-
-            <!-- 2026-10-10: Max Height and the effect params (depth / scale / offset / rotation / repeat) moved to
-                 Surface > Photo (main/photo-layer-section.js PHOTO_CONTROLS): this tab edits the image. -->
-            </div>
-
-            <!-- F34 item 3: writes the live edits+tweaks+Max Height back into
-                 the loaded pattern's own `settings` (data/photo-patterns.json),
-                 downloaded as an updated file for the advisor to apply -- same
-                 "save a real file" idiom as Settings > Save log. Disabled for a
-                 user's own upload (main/photo-panel.js's syncSaveButtonState). -->
-            <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
           </div>
         </aside>
 

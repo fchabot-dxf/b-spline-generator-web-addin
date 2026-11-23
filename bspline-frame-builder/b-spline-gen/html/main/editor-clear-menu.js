@@ -6,17 +6,16 @@
  *   Frame   -- the frame SHAPE only: the template goes to Rectangle (no frame); the bricks re-lay on it
  *              (main/brick-panel.js 'frameRecordChanged').
  *   Artwork -- the art layers and their content (the Bricks layer stays).
- *   Photo   -- the photo (image, its edits, its pattern) as on a new board.
  *   Bricks  -- every brick element, and the Bricks layer's laid key nulled.
  *   All     -- everything, the template included; it alone asks first (the in-app dialog, audit K5).
  * Each option is ONE undo step for EVERYTHING it removed (88's rows, the advisor's rule): the editor kinds share
- * one commitEdit, the frame keeps a Frame-tab history step, the photo its prior state -- and the next Ctrl+Z (or the
+ * one commitEdit, the frame keeps a Frame-tab history step -- and the next Ctrl+Z (or the
  * editor's undo button), while nothing else changed since, takes them ALL back at once (undoLastClear). A Clear
  * Frame re-lays the bricks on the rectangle INSIDE the Clear, so its undo takes that re-lay back too (the bricks
  * return to the template). CLEAR_KINDS + clearOptions() are plain data for 88's matrix.
+ * (The Photo entry left with the photo, Fred 2026-11-23.)
  */
 import { EDITOR_TABS } from './editor-tabs.js';
-import { clearPhoto, photoState, restorePhoto } from './photo-panel.js';
 import { undoFrame, frameHistoryDepth } from './frame-panel.js';
 import { generateBricks } from './brick-panel.js';
 import { P } from '../core/state.js';
@@ -34,10 +33,9 @@ import { FRAME_LABELS } from '../core/frame-labels.js';
 export const CLEAR_KINDS = Object.freeze({
   frame: { label: FRAME_LABELS.wood, editor: false, run: () => clearFrame() },
   artwork: { label: 'Artwork', editor: true, run: (editor) => clearArtworkLayers(editor) },
-  photo: { label: 'Photo', editor: false, run: () => clearPhoto() },
   bricks: { label: 'Bricks', editor: true, run: (editor) => clearBrickElements(editor) },
 });
-export const CLEAR_ALL_CONFIRM = 'Clear everything -- the frame, artwork, photo and bricks?';
+export const CLEAR_ALL_CONFIRM = 'Clear everything -- the frame, artwork and bricks?';
 
 /** [{ id, label, kinds, confirm? }]: All first, then one per tab that declares `clears`, in tab order. */
 export function clearOptions() {
@@ -45,12 +43,11 @@ export function clearOptions() {
   return [{ id: 'all', label: 'All', kinds, confirm: true }, ...kinds.map((k) => ({ id: k, label: CLEAR_KINDS[k].label, kinds: [k] }))];
 }
 
-/** The last Clear, while it is still the latest change: how many editor / frame steps it pushed, the photo it
- *  replaced, and the frame + photo it left (anything else changing since voids it). */
+/** The last Clear, while it is still the latest change: how many editor / frame steps it pushed, and the frame it
+ *  left (anything else changing since voids it). */
 let _lastClear = null;
 let _clearing = false;
 const _frameNow = () => JSON.stringify(P.frame ?? null);
-const _photoNow = () => JSON.stringify(photoState());
 
 /** Clear one option's kinds; false when unknown, no editor, or the All dialog was declined. */
 export async function runClear(optionId, editor = (typeof window !== 'undefined' ? window.svgEditor : null)) {
@@ -58,7 +55,7 @@ export async function runClear(optionId, editor = (typeof window !== 'undefined'
   if (!option || !editor) return false;
   if (option.confirm && !(await confirmDialog(CLEAR_ALL_CONFIRM, { okLabel: 'Clear all', cancelLabel: 'Keep', zIndex: 10002 }))) return false;
   const editorKinds = option.kinds.filter((k) => CLEAR_KINDS[k].editor);
-  const photoBefore = photoState(), frameDepthBefore = frameHistoryDepth();
+  const frameDepthBefore = frameHistoryDepth();
   let editorSteps = 0;
   const countStep = () => { editorSteps++; };
   document.addEventListener('editorCommit', countStep); // each commitEdit = one editor undo step (incl. a re-lay's)
@@ -87,8 +84,7 @@ export async function runClear(optionId, editor = (typeof window !== 'undefined'
   }
   _lastClear = {
     editorSteps, frameSteps: frameHistoryDepth() - frameDepthBefore,
-    photo: option.kinds.includes('photo') ? photoBefore : null,
-    frameAfter: _frameNow(), photoAfter: _photoNow(),
+    frameAfter: _frameNow(),
   };
   return true;
 }
@@ -96,11 +92,10 @@ export async function runClear(optionId, editor = (typeof window !== 'undefined'
 /** Undo the last Clear as ONE step (everything it removed), if it is still the latest change. */
 export function undoLastClear(editor = (typeof window !== 'undefined' ? window.svgEditor : null)) {
   const c = _lastClear;
-  if (!c || !editor || c.frameAfter !== _frameNow() || c.photoAfter !== _photoNow()) { _lastClear = null; return false; }
+  if (!c || !editor || c.frameAfter !== _frameNow()) { _lastClear = null; return false; }
   _lastClear = null;
   for (let i = 0; i < c.editorSteps; i++) editor.undo();
   for (let i = 0; i < c.frameSteps; i++) undoFrame();
-  if (c.photo) restorePhoto(c.photo);
   return true;
 }
 export const hasUndoableClear = () => !!_lastClear;
