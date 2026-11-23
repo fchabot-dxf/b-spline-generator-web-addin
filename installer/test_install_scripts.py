@@ -4,7 +4,6 @@ install-bspline-addin.command (macOS bash). Each run here targets a temp AddIns 
 local zip built by release.py's own build_addin_release (file:// stands in for https) -- never the real AddIns folder.
 Hidden processes only (CREATE_NO_WINDOW).
 """
-import hashlib
 import importlib.util
 import json
 import os
@@ -83,10 +82,8 @@ def addins(tmp_path):
     return a
 
 
-def _run(runner, addins_dir, zip_url, sha_url=None, extra_env=None):
+def _run(runner, addins_dir, zip_url, extra_env=None):
     env = dict(os.environ, BSPLINE_ADDINS_DIR=str(addins_dir), BSPLINE_ZIP_URL=zip_url, BSPLINE_NO_PAUSE='1')
-    if sha_url:
-        env['BSPLINE_SHA256_URL'] = sha_url
     env.update(extra_env or {})
     if runner == 'cmd':
         args = ['cmd.exe', '/d', '/c', str(CMD)]
@@ -104,6 +101,7 @@ def _snapshot(a):
 
 @pytest.mark.parametrize('runner', RUNNERS)
 def test_installs_backs_up_and_sets_run_on_startup(runner, release_dir, addins):
+    assert sorted(p.name for p in release_dir.iterdir()) == [f'{NAME}.zip']      # the release publishes only the zip
     rc, out = _run(runner, addins, (release_dir / f'{NAME}.zip').as_uri())
     assert rc == 0, out
     live = addins / NAME
@@ -137,17 +135,6 @@ def test_first_install_into_an_empty_addins_folder(runner, release_dir, tmp_path
 
 
 @pytest.mark.parametrize('runner', RUNNERS)
-def test_checksum_mismatch_changes_nothing(runner, release_dir, addins, tmp_path):
-    bad = tmp_path / 'bad.sha256'
-    bad.write_text('0' * 64 + f'  {NAME}.zip\n', encoding='utf-8')
-    before = _snapshot(addins)
-    rc, out = _run(runner, addins, (release_dir / f'{NAME}.zip').as_uri(), sha_url=bad.as_uri())
-    assert rc == 4, out
-    assert 'checksum' in out
-    assert _snapshot(addins) == before
-
-
-@pytest.mark.parametrize('runner', RUNNERS)
 def test_offline_is_exit_2(runner, addins, tmp_path):
     before = _snapshot(addins)
     rc, out = _run(runner, addins, (tmp_path / 'nowhere' / f'{NAME}.zip').as_uri())
@@ -169,7 +156,6 @@ def test_a_zip_that_is_not_the_add_in_is_exit_5(runner, addins, tmp_path):
     z = tmp_path / 'other.zip'
     with zipfile.ZipFile(z, 'w') as zf:
         zf.writestr('some-other-thing/readme.txt', 'hi')
-    (tmp_path / 'other.zip.sha256').write_text(hashlib.sha256(z.read_bytes()).hexdigest() + '  other.zip\n', encoding='utf-8')
     before = _snapshot(addins)
     rc, out = _run(runner, addins, z.as_uri())
     assert rc == 5, out
@@ -203,7 +189,6 @@ def test_cmd_installs_the_deepest_file_into_a_deep_addins_folder(tmp_path):
         zf.writestr(f'{NAME}/{NAME}.py', '# entry\n')
         zf.writestr(f'{NAME}/{NAME}.manifest', MANIFEST)
         zf.writestr(deep, '{}')
-    (tmp_path / f'{NAME}.zip.sha256').write_text(hashlib.sha256(z.read_bytes()).hexdigest() + f'  {NAME}.zip\n', encoding='utf-8')
     rc, out = _run('cmd', a, z.as_uri())
     assert rc == 0, out
     assert (a / deep).read_text(encoding='utf-8') == '{}'
@@ -214,7 +199,9 @@ def test_both_scripts_download_from_the_updaters_release():
         text = script.read_text(encoding='utf-8')
         assert updater.RELEASE_BASE_URL in text, script.name
         assert f"'{updater.ADDIN_NAME}'" in text or f'"{updater.ADDIN_NAME}"' in text, script.name
-        assert '.sha256' in text and 'runOnStartup' in text and '.bak-' in text and 'BSPLINE_ADDINS_DIR' in text
+        assert 'runOnStartup' in text and '.bak-' in text and 'BSPLINE_ADDINS_DIR' in text
+        # Fred 2026-11-23: just the release zip -- no checksum file is downloaded (the release no longer publishes one)
+        assert '.sha256' not in text and 'checksum' not in text.lower(), script.name
 
 
 def test_line_endings_suit_each_shell():

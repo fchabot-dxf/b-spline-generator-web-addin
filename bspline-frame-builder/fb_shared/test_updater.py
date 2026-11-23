@@ -1,13 +1,12 @@
 """
-The in-add-in updater (fb_shared/updater.py): "Check for updates" reads the installed build-info.json stamp, fetches
-the published latest.json, and only on the user's click downloads the zip, verifies its SHA-256, backs the old folder
-up and swaps the new one in. These tests drive the pure functions on temp trees -- never the real AddIns folder.
+The in-add-in updater (fb_shared/updater.py): "Update to latest", after the user's Yes, downloads the release zip,
+checks it is the add-in, backs the old folder up and swaps the new one in (Fred 2026-11-23: no version compare, no
+checksum file). These tests drive the pure functions on temp trees -- never the real AddIns folder.
 
 Run with:
     cd bspline-frame-builder
     python -m pytest fb_shared/test_updater.py
 """
-import hashlib
 import json
 import os
 import sys
@@ -67,61 +66,7 @@ def _install_old(addins, extra=None):
     return live
 
 
-# â”€â”€ is there a newer build? (the existing version stamp, compared by built_at) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-def test_newer_build_when_latest_was_built_later():
-    assert updater.compare_builds(_stamp('2026-11-20T10:00:00-05:00'), _stamp('2026-11-22T09:00:00-05:00', sha='def5678')) == 'newer'
-
-
-def test_current_when_the_sha_matches_even_if_the_times_differ():
-    # Fred's own deploy of the same commit is stamped later than the release: still "current"
-    assert updater.compare_builds(_stamp('2026-11-22T23:00:00-05:00'), _stamp('2026-11-22T09:00:00-05:00')) == 'current'
-
-
-def test_current_when_the_installed_build_is_newer_than_the_release():
-    assert updater.compare_builds(_stamp('2026-11-23T08:00:00-05:00', sha='111aaaa'), _stamp('2026-11-22T09:00:00-05:00', sha='222bbbb')) == 'current'
-
-
-def test_an_unstamped_install_is_offered_the_release():
-    # zips released before this change carry no build-info.json -> read_build_info's sentinel
-    assert updater.compare_builds(read_build_info('/no/such/dir'), _stamp('2026-11-22T09:00:00-05:00')) == 'newer'
-
-
-def test_time_zones_are_compared_as_instants():
-    # 10:00 in Montreal (-05:00) is 15:00 UTC: later than 14:00 UTC
-    assert updater.compare_builds(_stamp('2026-11-22T14:00:00+00:00', sha='a'), _stamp('2026-11-22T10:00:00-05:00', sha='b')) == 'newer'
-
-
-def test_a_latest_json_without_a_time_is_refused():
-    with pytest.raises(updater.UpdateError) as e:
-        updater.validate_latest({'sha': 'abc', 'sha256': 'x'})
-    assert e.value.code == 'bad_latest'
-
-
-def test_describe_build_names_version_sha_and_date():
-    text = updater.describe_build(_stamp('2026-11-22T09:15:00-05:00'))
-    assert '2026.11.22-1' in text and 'abc1234' in text and '2026-11-22' in text
-    assert 'no version stamp' in updater.describe_build(read_build_info('/no/such/dir'))
-
-
-# â”€â”€ checksum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-def test_parse_sha256_reads_the_sha256sum_format():
-    hexd = 'a' * 64
-    assert updater.parse_sha256_text(f'{hexd}  bspline-frame-builder.zip\n') == hexd
-    assert updater.parse_sha256_text(hexd.upper()) == hexd
-    with pytest.raises(updater.UpdateError):
-        updater.parse_sha256_text('<html>Not Found</html>')
-
-
-def test_verify_sha256_refuses_a_mismatch(tmp_path):
-    z = _make_zip(tmp_path / 'a.zip', _release_files())
-    good = hashlib.sha256(z.read_bytes()).hexdigest()
-    updater.verify_sha256(z, good)
-    with pytest.raises(updater.UpdateError) as e:
-        updater.verify_sha256(z, '0' * 64)
-    assert e.value.code == 'checksum'
-
-
-# â”€â”€ zip shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── zip shape ───────────────────────────────────────────────────────────────────────────────────────────────────────
 def test_validate_zip_accepts_the_release_shape(tmp_path):
     names = updater.validate_zip(_make_zip(tmp_path / 'a.zip', _release_files()))
     assert f'{NAME}/{NAME}.manifest' in names
@@ -146,7 +91,7 @@ def test_validate_zip_refuses_a_file_that_is_not_a_zip(tmp_path):
     assert e.value.code == 'bad_zip'
 
 
-# â”€â”€ run on startup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── run on startup ──────────────────────────────────────────────────────────────────────────────────────────────────
 def test_set_run_on_startup_flips_only_that_key():
     out = updater.set_run_on_startup(MANIFEST, True)
     assert json.loads(out)['runOnStartup'] is True
@@ -158,7 +103,7 @@ def test_set_run_on_startup_adds_a_missing_key():
     assert json.loads(updater.set_run_on_startup(text, True)) == {'runOnStartup': True, 'id': 'bspline-frame-builder'}
 
 
-# â”€â”€ install: staging swap on a temp tree â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── install: staging swap on a temp tree ────────────────────────────────────────────────────────────────────────────
 def test_install_swaps_the_folder_and_keeps_a_backup(tmp_path):
     addins = tmp_path / 'AddIns'
     live = _install_old(addins)
@@ -263,42 +208,39 @@ def test_a_file_held_open_rolls_the_update_back(tmp_path):
     assert not (addins / 'bsfb-new').exists()
 
 
-# â”€â”€ the whole click: fetch latest.json -> download -> verify -> install (file:// stands in for https) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-def _publish(tmp_path, stamp):
+# ── the whole click: download -> check -> back up -> copy in (file:// stands in for https) ─────────────────────────────────
+def _publish(tmp_path, stamp=None):
     rel = tmp_path / 'release'
     rel.mkdir()
-    z = _make_zip(rel / 'bspline-frame-builder.zip', _release_files(stamp=stamp))
-    latest = dict(stamp, zip_url=z.as_uri(), sha256=hashlib.sha256(z.read_bytes()).hexdigest(), size=z.stat().st_size)
-    (rel / 'latest.json').write_text(json.dumps(latest), encoding='utf-8')
-    return rel
+    return _make_zip(rel / 'bspline-frame-builder.zip', _release_files(stamp=stamp))
 
 
-def test_check_then_install_end_to_end(tmp_path):
-    addins = tmp_path / 'AddIns'
-    live = _install_old(addins, extra={'build-info.json': json.dumps(_stamp('2026-11-01T09:00:00-05:00', sha='old0000'))})
-    rel = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
-
-    latest = updater.fetch_latest((rel / 'latest.json').as_uri())
-    assert updater.compare_builds(read_build_info(live), latest) == 'newer'
-    assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# entry old\n'   # checking never installs
-
-    seen = []
-    result = updater.download_and_install(live, latest, now=NOW, progress=lambda done, total: seen.append(done))
-    assert read_build_info(live)['sha'] == 'new1111'
-    assert result['backup'].endswith('.bak-20261122-213005')
-    assert seen and seen[-1] == latest['size']
-
-
-def test_a_tampered_download_is_refused_before_anything_moves(tmp_path):
+def test_update_downloads_the_release_zip_and_installs_it_with_run_on_startup(tmp_path):
+    # Fred 2026-11-23 ("why can't it just be a script that copies the file"): no latest.json, no version compare, no
+    # checksum file -- the click (after Yes) downloads the one release zip and copies it in, like the installers.
     addins = tmp_path / 'AddIns'
     live = _install_old(addins)
-    rel = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
-    latest = updater.fetch_latest((rel / 'latest.json').as_uri())
-    latest['sha256'] = 'f' * 64
+    (live / f'{NAME}.manifest').write_text(MANIFEST, encoding='utf-8')            # installed with runOnStartup false
+    z = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
+    assert updater.ZIP_URL.endswith('/releases/download/latest/bspline-frame-builder.zip')
+    seen = []
+    result = updater.download_and_install(live, z.as_uri(), now=NOW, progress=lambda done, total: seen.append(done))
+    assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# entry new\n'
+    assert read_build_info(live)['sha'] == 'new1111'
+    assert json.loads((live / f'{NAME}.manifest').read_text(encoding='utf-8'))['runOnStartup'] is True
+    assert result['backup'].endswith('.bak-20261122-213005')
+    assert seen and seen[-1] == z.stat().st_size
+
+
+def test_a_download_that_is_not_the_add_in_changes_nothing(tmp_path):
+    addins = tmp_path / 'AddIns'
+    live = _install_old(addins)
+    (tmp_path / 'page.html').write_text('<html>Not Found</html>', encoding='utf-8')
     with pytest.raises(updater.UpdateError) as e:
-        updater.download_and_install(live, latest, now=NOW)
-    assert e.value.code == 'checksum'
+        updater.download_and_install(live, (tmp_path / 'page.html').as_uri(), now=NOW)
+    assert e.value.code == 'bad_zip'
     assert sorted(p.name for p in addins.iterdir()) == [NAME]
+    assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# entry old\n'
 
 
 @pytest.mark.parametrize('layout', ['renamed-folder', 'next-to-dot-git'])
@@ -312,8 +254,8 @@ def test_the_updater_updates_the_folder_it_runs_from_whatever_its_name(tmp_path,
         (parent / '.git').mkdir()
     (root / f'{NAME}.py').write_text('# old\n', encoding='utf-8')
     (root / f'{NAME}.manifest').write_text(MANIFEST, encoding='utf-8')
-    rel = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
-    result = updater.download_and_install(root, updater.fetch_latest((rel / 'latest.json').as_uri()), now=NOW)
+    z = _publish(tmp_path, _stamp('2026-11-22T09:00:00-05:00', sha='new1111'))
+    result = updater.download_and_install(root, z.as_uri(), now=NOW)
     assert (root / f'{NAME}.py').read_text(encoding='utf-8') == '# entry new\n'
     assert read_build_info(root)['sha'] == 'new1111'
     backup = parent / f'{root.name}.bak-20261122-213005'
@@ -324,6 +266,9 @@ def test_the_updater_updates_the_folder_it_runs_from_whatever_its_name(tmp_path,
 
 
 def test_offline_reads_as_a_plain_error(tmp_path):
+    addins = tmp_path / 'AddIns'
+    live = _install_old(addins)
     with pytest.raises(updater.UpdateError) as e:
-        updater.fetch_latest((tmp_path / 'nothing-here.json').as_uri())
+        updater.download_and_install(live, (tmp_path / 'nothing-here.zip').as_uri(), now=NOW)
     assert e.value.code == 'offline'
+    assert sorted(p.name for p in addins.iterdir()) == [NAME]

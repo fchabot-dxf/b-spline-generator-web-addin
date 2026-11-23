@@ -5,7 +5,7 @@ rem The first line is a batch label to cmd.exe and opens a comment to PowerShell
 rem     irm https://bspline-generator.pages.dev/install-bspline-addin.cmd ^| iex
 rem pasted into PowerShell (that route shows no download warning).
 rem Testing: set BSPLINE_ADDINS_DIR (or pass the folder as the first argument) to install somewhere else;
-rem BSPLINE_ZIP_URL / BSPLINE_SHA256_URL override the download; BSPLINE_NO_PAUSE=1 skips the closing pause.
+rem BSPLINE_ZIP_URL overrides the download; BSPLINE_NO_PAUSE=1 skips the closing pause.
 setlocal
 if not "%~1"=="" set "BSPLINE_ADDINS_DIR=%~1"
 set "BSPLINE_SELF=%~f0"
@@ -18,7 +18,7 @@ exit /b %BSPLINE_RC%
 
 # ---- PowerShell part. Keep these steps in step with fb_shared/updater.py and install-bspline-addin.command. ----
 # Exit codes: 0 installed | 1 unexpected error | 2 download failed (offline?) | 3 Fusion AddIns folder not found
-#             4 checksum mismatch | 5 not the add-in zip | 6 files in use (close Fusion)
+#             5 not the add-in zip | 6 files in use (close Fusion)
 
 function Install-BsplineAddin {
     $ErrorActionPreference = 'Stop'
@@ -26,7 +26,6 @@ function Install-BsplineAddin {
     $Name = 'bspline-frame-builder'
     $ReleaseBase = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/'
     $ZipUrl = if ($env:BSPLINE_ZIP_URL) { $env:BSPLINE_ZIP_URL } else { $ReleaseBase + "$Name.zip" }
-    $ShaUrl = if ($env:BSPLINE_SHA256_URL) { $env:BSPLINE_SHA256_URL } else { $ZipUrl + '.sha256' }
     $Override = [bool]$env:BSPLINE_ADDINS_DIR
     $AddIns = if ($Override) { $env:BSPLINE_ADDINS_DIR } else { Join-Path $env:APPDATA 'Autodesk\Autodesk Fusion 360\API\AddIns' }
 
@@ -46,41 +45,26 @@ function Install-BsplineAddin {
         }
     }
 
-    foreach ($u in @($ZipUrl, $ShaUrl)) {
-        if (-not ($u.StartsWith('https://') -or $u.StartsWith('file:'))) { return (Fail 2 "Refusing a non-https download: $u") }
-    }
+    if (-not ($ZipUrl.StartsWith('https://') -or $ZipUrl.StartsWith('file:'))) { return (Fail 2 "Refusing a non-https download: $ZipUrl") }
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("bspline-install-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
     $staging = $null
     try {
-        # 2. download the zip and its published checksum
+        # 2. download the release zip
         $zip = Join-Path $tmp "$Name.zip"
-        $sha = Join-Path $tmp "$Name.zip.sha256"
         $wc = New-Object Net.WebClient
         $wc.Headers.Add('User-Agent', 'bspline-frame-builder-installer')
-        $current = $ShaUrl
         try {
-            Say "Downloading the checksum..."
-            $wc.DownloadFile($ShaUrl, $sha)
-            $current = $ZipUrl
             Say "Downloading the add-in (about 40 MB)..."
             $wc.DownloadFile($ZipUrl, $zip)
         } catch {
             $e = $_.Exception; while ($e.InnerException) { $e = $e.InnerException }
-            return (Fail 2 "The download failed. Are you online?`n       $($e.Message)`n       ($current)")
+            return (Fail 2 "The download failed. Are you online?`n       $($e.Message)`n       ($ZipUrl)")
         } finally { $wc.Dispose() }
 
-        # 3. checksum
-        $m = [regex]::Match([IO.File]::ReadAllText($sha), '\b[0-9a-fA-F]{64}\b')
-        if (-not $m.Success) { return (Fail 4 "The published checksum file is not readable ($ShaUrl).") }
-        $want = $m.Value.ToLower()
-        $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
-        if ($got -ne $want) { return (Fail 4 "The download does not match its published checksum (damaged download, or the release is being updated). Try again in a minute.") }
-        Say "Checksum OK ($($got.Substring(0, 12))...)"
-
-        # 4. is it the add-in? one top folder bspline-frame-builder/ with the .py + .manifest, nothing outside it
+        # 3. is it the add-in? one top folder bspline-frame-builder/ with the .py + .manifest, nothing outside it
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         try { $za = [IO.Compression.ZipFile]::OpenRead($zip) } catch { return (Fail 5 "The download is not a zip file.") }
         try { $names = @($za.Entries | ForEach-Object { $_.FullName.Replace('\', '/') }) } finally { $za.Dispose() }
@@ -93,7 +77,7 @@ function Install-BsplineAddin {
             if ($names -notcontains $req) { return (Fail 5 "The zip is missing $req.") }
         }
 
-        # 5. extract next to the add-in (same drive, so the swap is a rename). A SHORT staging name: Windows
+        # 4. extract next to the add-in (same drive, so the swap is a rename). A SHORT staging name: Windows
         #    PowerShell cannot write paths over 260 characters and the add-in's deepest file is ~115 below AddIns.
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
         $staging = Join-Path $AddIns 'bsfb-new'
@@ -101,7 +85,7 @@ function Install-BsplineAddin {
         [IO.Compression.ZipFile]::ExtractToDirectory($zip, $staging)
         $staged = Join-Path $staging $Name
 
-        # 6. run on startup (the manifest's own key), written back without a BOM
+        # 5. run on startup (the manifest's own key), written back without a BOM
         $mf = Join-Path $staged "$Name.manifest"
         $text = [IO.File]::ReadAllText($mf)
         $re = [regex]'("runOnStartup"\s*:\s*)(true|false)'
@@ -109,7 +93,7 @@ function Install-BsplineAddin {
         else { $text = ([regex]'\{').Replace($text, "{`n    `"runOnStartup`": true,", 1) }
         [IO.File]::WriteAllText($mf, $text, (New-Object Text.UTF8Encoding $false))
 
-        # 7. back up the old install, swap the new one in
+        # 6. back up the old install, swap the new one in
         $live = Join-Path $AddIns $Name
         $backup = $null
         if (Test-Path -LiteralPath $live) {
@@ -130,7 +114,7 @@ function Install-BsplineAddin {
             return (Fail 6 "Could not move the new version into place; the old one is back. Close Fusion and try again.")
         }
 
-        # 8. keep only the newest backup
+        # 7. keep only the newest backup
         $baks = @(Get-ChildItem -LiteralPath $AddIns -Directory | Where-Object { $_.Name -like "$Name.bak-*" } | Sort-Object Name)
         $keep = if ($backup) { Split-Path -Leaf $backup } elseif ($baks.Count) { $baks[-1].Name } else { '' }
         foreach ($b in $baks) {

@@ -1,24 +1,19 @@
 """
-fb_shared.updater — "Check for updates" for the installed add-in (Fred 2026-11-22).
+fb_shared.updater — "Update to latest" for the installed add-in (Fred 2026-11-22, simplified 2026-11-23: "why can't it
+just be a script that copies the file to the Fusion folder?").
 
-Pure stdlib (no adsk) so every step tests headlessly on a temp tree. The Fusion glue (the command, the dialogs, closing
-the palettes) lives in bspline-frame-builder.py and only calls in here.
+Pure stdlib (no adsk) so every step tests headlessly on a temp tree. The Fusion glue (the command, the Yes/No, closing
+the palettes) lives in bspline-frame-builder.py and only calls in here, after the user said Yes:
 
-    latest = fetch_latest()                                    # the published latest.json (small)
-    if compare_builds(read_build_info(root), latest) == 'newer':
-        ... ask the user; only on their click:
-        download_and_install(root, latest)                     # download -> SHA-256 -> stage -> back up -> swap
+    download_and_install(root)     # download the release zip -> check it is the add-in -> back up -> copy in
 
-"Newer" reuses the existing version stamp (build-info.json, VERSION-STAMP-DESIGN.md): the release writes the same
-{version, sha, branch, built_at, ...} into the zip and into latest.json; builds are ordered by ``built_at``.
+No version comparison, no checksum file: it always installs the current release zip.
 
 The same install steps are written out in installer/install-bspline-addin.cmd (PowerShell) and
 installer/install-bspline-addin.command (bash) for a machine that has no add-in yet. Keep the three in step.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import shutil
@@ -33,9 +28,7 @@ from pathlib import Path
 ADDIN_NAME = "bspline-frame-builder"
 RELEASE_BASE_URL = "https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/"
 ZIP_NAME = ADDIN_NAME + ".zip"
-SHA256_NAME = ZIP_NAME + ".sha256"
-LATEST_NAME = "latest.json"
-LATEST_URL = RELEASE_BASE_URL + LATEST_NAME
+ZIP_URL = RELEASE_BASE_URL + ZIP_NAME     # the zip the website button and both installers download
 
 # The zip's one top folder must hold these, or it isn't the add-in.
 REQUIRED_FILES = (ADDIN_NAME + ".py", ADDIN_NAME + ".manifest")
@@ -55,98 +48,17 @@ USER_AGENT = "bspline-frame-builder-updater"
 RENAME_RETRIES = 3                           # a virus scanner can hold a fresh file for a moment
 
 _RUN_ON_STARTUP_RE = re.compile(r'("runOnStartup"\s*:\s*)(true|false)')
-_SHA256_RE = re.compile(r"\b([0-9a-fA-F]{64})\b")
 
 
 class UpdateError(Exception):
-    """A plain-English failure. ``code``: offline | bad_latest | checksum | bad_zip | in_use | no_addins_dir."""
+    """A plain-English failure. ``code``: offline | bad_zip | in_use | no_addins_dir."""
 
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
 
 
-# ── the version stamp ────────────────────────────────────────────────────────────────────────────────────────────────
-def _instant(text):
-    try:
-        t = datetime.fromisoformat(str(text))
-    except (TypeError, ValueError):
-        return None
-    if t.tzinfo is None:
-        t = t.astimezone()                   # a naive stamp = this machine's local time
-    return t
-
-
-def validate_latest(latest) -> dict:
-    """Return ``latest`` if it is a usable latest.json (a build time, a SHA-256, a zip URL); else UpdateError."""
-    if not isinstance(latest, dict):
-        raise UpdateError("bad_latest", "The update information is not readable.")
-    if _instant(latest.get("built_at")) is None:
-        raise UpdateError("bad_latest", "The update information has no build time.")
-    if not _SHA256_RE.fullmatch(str(latest.get("sha256", ""))):
-        raise UpdateError("bad_latest", "The update information has no checksum.")
-    if not str(latest.get("zip_url", "")).startswith(("https://", "file:")):
-        raise UpdateError("bad_latest", "The update information has no download address.")
-    return latest
-
-
-def compare_builds(installed: dict, latest: dict) -> str:
-    """'newer' when ``latest`` is a later build than ``installed``, else 'current'.
-
-    Same commit (and the install wasn't deployed from a dirty tree) -> 'current', whatever the times say (a local deploy
-    of the released commit is stamped later than the release). An install with no stamp (sha 'unknown', i.e. a zip from
-    before the release stamped it) is always offered the release."""
-    installed = installed or {}
-    inst_sha = str(installed.get("sha", "unknown") or "unknown").lower()
-    new_sha = str(latest.get("sha", "") or "").lower()
-    if inst_sha == "unknown":
-        return "newer"
-    if new_sha and inst_sha == new_sha and not installed.get("dirty"):
-        return "current"
-    t_inst, t_new = _instant(installed.get("built_at")), _instant(latest.get("built_at"))
-    if t_inst is None:
-        return "newer"
-    if t_new is None:
-        return "current"
-    return "newer" if t_new > t_inst else "current"
-
-
-def describe_build(info: dict) -> str:
-    """One line for a dialog: '2026.11.22-1 (abc1234, built 2026-11-22 09:15)'."""
-    info = info or {}
-    sha = str(info.get("sha", "unknown") or "unknown")
-    if sha == "unknown":
-        return "an older build (no version stamp)"
-    t = _instant(info.get("built_at"))
-    when = t.strftime("%Y-%m-%d %H:%M") if t else "?"
-    version = info.get("version") or "build"
-    return f"{version} ({sha[:7]}, built {when})"
-
-
-# ── checksum + zip shape ─────────────────────────────────────────────────────────────────────────────────────────────
-def parse_sha256_text(text: str) -> str:
-    """The hex digest from a ``.sha256`` file (``sha256sum`` format: '<hex>  <name>'), lower-case."""
-    m = _SHA256_RE.search(str(text or ""))
-    if not m:
-        raise UpdateError("bad_latest", "The published checksum file is not readable.")
-    return m.group(1).lower()
-
-
-def sha256_file(path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def verify_sha256(path, expected: str):
-    got = sha256_file(path)
-    if got != str(expected).lower():
-        raise UpdateError("checksum", "The download does not match its published checksum "
-                                      "(a damaged download, or the release is being updated). Try again in a minute.")
-
-
+# ── zip shape ────────────────────────────────────────────────────────────────────────────────────────────────────────
 def validate_zip(path) -> list:
     """The zip's entry names, if it is the add-in: one top folder ``bspline-frame-builder/`` holding the entry .py and
     the .manifest, and no entry that could land outside that folder."""
@@ -210,24 +122,6 @@ def _open(url, timeout):
         if ctx is not None:
             kwargs["context"] = ctx
     return urllib.request.urlopen(req, **kwargs)
-
-
-def fetch_latest(url: str = LATEST_URL, timeout: float = 15) -> dict:
-    """The published latest.json, validated. Offline / not published yet -> UpdateError('offline' | 'bad_latest')."""
-    try:
-        with _open(url, timeout) as resp:
-            body = resp.read(1 << 20)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            raise UpdateError("bad_latest", "No update information is published yet.")
-        raise UpdateError("offline", f"The update server answered {e.code}. Try again later.")
-    except (urllib.error.URLError, OSError) as e:
-        raise UpdateError("offline", f"Could not reach the update server (are you online?): {getattr(e, 'reason', e)}")
-    try:
-        latest = json.loads(body.decode("utf-8-sig"))
-    except ValueError:
-        raise UpdateError("bad_latest", "The update information is not readable.")
-    return validate_latest(latest)
 
 
 def download(url: str, dest, progress=None, timeout: float = 60):
@@ -396,17 +290,15 @@ def install_zip(zip_path, addins_dir, *, folder_name=ADDIN_NAME, run_on_startup=
     return {"mode": mode, "backup": None if backup is None else str(backup), "removed_backups": removed}
 
 
-def download_and_install(addin_root, latest: dict, *, progress=None, now=None) -> dict:
-    """The user clicked Update: download ``latest['zip_url']`` to a temp file, verify its SHA-256 against
-    ``latest['sha256']``, then :func:`install_zip` over ``addin_root`` itself: the folder this add-in runs from,
-    whatever its name or what sits next to it (Fred 2026-11-23: no source-checkout refusal)."""
-    validate_latest(latest)
+def download_and_install(addin_root, zip_url: str = ZIP_URL, *, progress=None, now=None) -> dict:
+    """The user clicked "Update to latest" and said Yes: download the release zip to a temp file, then
+    :func:`install_zip` over ``addin_root`` itself -- the folder this add-in runs from, whatever its name or what sits
+    next to it (Fred 2026-11-23) -- with runOnStartup on, exactly as the website installers do."""
     root = Path(addin_root).resolve()
     tmp = Path(tempfile.mkdtemp(prefix="bspline-update-"))
     try:
         zpath = tmp / ZIP_NAME
-        download(latest["zip_url"], zpath, progress=progress)
-        verify_sha256(zpath, latest["sha256"])
-        return install_zip(zpath, root.parent, folder_name=root.name, now=now)
+        download(zip_url, zpath, progress=progress)
+        return install_zip(zpath, root.parent, folder_name=root.name, run_on_startup=True, now=now)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

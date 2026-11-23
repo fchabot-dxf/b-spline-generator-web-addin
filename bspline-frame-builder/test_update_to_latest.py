@@ -1,10 +1,11 @@
 """
-"Check for updates" inside the add-in (Fred 2026-11-22). bspline-frame-builder.py is loaded with a fake adsk and its
-_addin_root pointed at a temp AddIns/bspline-frame-builder; the release is a local latest.json + zip (file://).
-What it must do: never install without the user's Yes; on Yes download, verify, swap, then delete every palette object
-(the measured stale-palette trap) and say how to restart. The real Fusion run is a live check with Fred.
+"Update to latest" inside the add-in (Fred 2026-11-22, simplified 2026-11-23: "why can't it just be a script that copies
+the file to the Fusion folder?"). bspline-frame-builder.py is loaded with a fake adsk and its _addin_root pointed at a
+temp AddIns/bspline-frame-builder; the release is a local zip (file://). What it must do: never install without the
+user's Yes; on Yes download the release zip, check it, back up, copy in (runOnStartup on), delete every palette object
+(the measured stale-palette trap) and say how to restart. No version comparison, no latest.json. The real Fusion run is
+a live check with Fred.
 """
-import hashlib
 import importlib.util
 import json
 import os
@@ -38,7 +39,7 @@ def _install_fake_adsk():
 
 def _load():
     _install_fake_adsk()
-    spec = importlib.util.spec_from_file_location('bsfb_updates_under_test', os.path.join(_HERE, f'{NAME}.py'))
+    spec = importlib.util.spec_from_file_location('bsfb_update_under_test', os.path.join(_HERE, f'{NAME}.py'))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -83,78 +84,63 @@ class FakeUI:
         return Dlg()
 
 
-def _stamp(built_at, sha):
-    return {'version': '2026.11.22-1', 'sha': sha, 'branch': 'main', 'built_at': built_at, 'source_root': '', 'dirty': False}
-
-
 @pytest.fixture
 def setup(tmp_path):
     addins = tmp_path / 'AddIns'
     live = addins / NAME
     live.mkdir(parents=True)
     (live / f'{NAME}.py').write_text('# old\n', encoding='utf-8')
-    (live / f'{NAME}.manifest').write_text('{\n    "runOnStartup": true\n}\n', encoding='utf-8')
-    (live / 'build-info.json').write_text(json.dumps(_stamp('2026-11-01T09:00:00-05:00', 'old0000')), encoding='utf-8')
-    rel = tmp_path / 'release'
-    rel.mkdir()
-    z = rel / f'{NAME}.zip'
-    new = _stamp('2026-11-22T09:00:00-05:00', 'new1111')
+    (live / f'{NAME}.manifest').write_text('{\n    "runOnStartup": false\n}\n', encoding='utf-8')
+    z = tmp_path / 'release' / f'{NAME}.zip'
+    z.parent.mkdir()
     with zipfile.ZipFile(z, 'w') as zf:
         zf.writestr(f'{NAME}/{NAME}.py', '# new\n')
         zf.writestr(f'{NAME}/{NAME}.manifest', '{\n    "runOnStartup": false\n}\n')
-        zf.writestr(f'{NAME}/build-info.json', json.dumps(new))
-    latest = dict(new, zip_url=z.as_uri(), sha256=hashlib.sha256(z.read_bytes()).hexdigest(), size=z.stat().st_size)
-    (rel / 'latest.json').write_text(json.dumps(latest), encoding='utf-8')
     mod = _load()
     mod._addin_root = str(live)
     for attr, pid in (('_bs', 'fusionHybridPalette'), ('_fb_sketch', 'frameSketchBuilderPalette'),
                       ('_cam', 'CamBuilder_Palette'), ('_st', 'stampEditorPalette')):
         setattr(mod, attr, SimpleNamespace(PALETTE_ID=pid))
-    return mod, live, (rel / 'latest.json').as_uri()
+    return mod, live, z.as_uri()
 
 
 def test_no_means_nothing_is_installed(setup):
     mod, live, url = setup
     ui = FakeUI(NO)
-    assert mod._check_for_updates(ui, latest_url=url) == 'declined'
-    assert ui.messages[0][1] == 'YesNo' and 'newer build' in ui.messages[0][0]
-    assert 'new1111' in ui.messages[0][0] and 'old0000' in ui.messages[0][0]
+    assert mod._update_to_latest(ui, zip_url=url) == 'declined'
+    assert len(ui.messages) == 1 and ui.messages[0][1] == 'YesNo' and 'latest' in ui.messages[0][0]
     assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# old\n'
-    assert ui.deleted == []
+    assert ui.deleted == [] and ui.progress == []
     assert sorted(p.name for p in live.parent.iterdir()) == [NAME]
 
 
-def test_yes_installs_closes_every_palette_and_says_how_to_restart(setup):
+def test_yes_copies_the_release_in_closes_every_palette_and_says_how_to_restart(setup):
+    # no version comparison: the first (and only) question is Yes/No, even with no build-info.json anywhere
     mod, live, url = setup
     ui = FakeUI(YES)
-    assert mod._check_for_updates(ui, latest_url=url) == 'installed'
+    assert mod._update_to_latest(ui, zip_url=url) == 'installed'
+    assert ui.messages[0][1] == 'YesNo'
     assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# new\n'
-    assert json.loads((live / f'{NAME}.manifest').read_text(encoding='utf-8'))['runOnStartup'] is True   # kept
+    assert json.loads((live / f'{NAME}.manifest').read_text(encoding='utf-8'))['runOnStartup'] is True
     assert ui.deleted == ['fusionHybridPalette', 'frameSketchBuilderPalette', 'CamBuilder_Palette', 'stampEditorPalette']
     assert ui.progress[0] == 'show' and ui.progress[-1] == 'hide' and 100 in ui.progress
     done = ui.messages[-1][0]
     assert 'restart Fusion' in done and 'Stop, then Run' in done and '.bak-' in done
 
 
-def test_current_build_just_says_so(setup):
-    mod, live, url = setup
-    (live / 'build-info.json').write_text(json.dumps(_stamp('2026-11-22T09:00:00-05:00', 'new1111')), encoding='utf-8')
-    ui = FakeUI(YES)
-    assert mod._check_for_updates(ui, latest_url=url) == 'current'
-    assert len(ui.messages) == 1 and ui.messages[0][1] is None and 'newest build' in ui.messages[0][0]
-
-
-def test_offline_is_a_message_not_a_crash(setup, tmp_path):
+def test_offline_is_a_message_and_nothing_changes(setup, tmp_path):
     mod, live, _ = setup
     ui = FakeUI(YES)
-    assert mod._check_for_updates(ui, latest_url=(tmp_path / 'missing.json').as_uri()) == 'error'
-    assert 'Could not check for updates' in ui.messages[0][0]
+    assert mod._update_to_latest(ui, zip_url=(tmp_path / 'missing.zip').as_uri()) == 'error'
+    assert 'nothing was changed' in ui.messages[-1][0]
+    assert (live / f'{NAME}.py').read_text(encoding='utf-8') == '# old\n'
+    assert ui.deleted == []
 
 
 def test_the_command_is_declared_in_the_panel_table_off_the_panel_face(setup):
     mod, _, _ = setup
     cmd = next(c for c in mod._commands() if c['id'] == mod.UPDATE_COMMAND_ID)
-    assert cmd['promoted'] is False and cmd['name'] == 'Check for updates'
+    assert cmd['promoted'] is False and cmd['name'] == 'Update to latest'
     real_res = Path(_HERE) / 'resources' / 'UpdateCommand'
     assert Path(cmd['res_path']).name == 'UpdateCommand'
     for size in ('16x16.png', '32x32.png'):

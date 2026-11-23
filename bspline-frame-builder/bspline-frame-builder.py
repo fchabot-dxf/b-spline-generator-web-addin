@@ -40,9 +40,9 @@ _refresh_registered = False
 
 REFRESH_EVENT_ID   = 'BsFb_DeferredRefresh'
 RELOAD_COMMAND_ID  = 'bsplineFbReloadCommand'
-UPDATE_COMMAND_ID  = 'bsplineCheckUpdatesCommand'
+UPDATE_COMMAND_ID  = 'bsplineUpdateToLatestCommand'
 PANEL_ID           = 'bsplinePanel'
-UPDATE_TITLE       = 'bspline-frame-builder updates'
+UPDATE_TITLE       = 'Update bspline-frame-builder'
 
 # Every command definition this file owns: purged before run() registers them, removed again by stop().
 # (hybridBuilderCommand = a legacy id, purged so old installs clean up.)
@@ -475,18 +475,18 @@ def _commands():
             'handler_factory': lambda: _fb_solid.CommandCreatedHandler(),
         },
         {
-            # Fred 2026-11-22: replaces this add-in with the newest release, only after the user says Yes
+            # Fred 2026-11-23: "just a script that copies the file" -- after a Yes, the release zip replaces this add-in
             'id':              UPDATE_COMMAND_ID,
-            'name':            'Check for updates',
-            'tooltip':         'Look for a newer bspline-frame-builder build and, if you say Yes, install it',
+            'name':            'Update to latest',
+            'tooltip':         'Download the latest bspline-frame-builder release and install it over this one (asks first)',
             'res_path':        os.path.join(_addin_root, 'resources', 'UpdateCommand'),
-            'handler_factory': lambda: _CheckUpdatesCreatedHandler(),
+            'handler_factory': lambda: _UpdateCreatedHandler(),
             'promoted':        False,
         },
     ]
 
 
-# ── Check for updates (fb_shared/updater.py does the work; this is the Fusion side) ───────────────────────────────────
+# ── Update to latest (fb_shared/updater.py does the work; this is the Fusion side) ─────────────────────────────────────
 def _loaded_palette_ids():
     """The palette id of every sub-module loaded this run (each declares its own PALETTE_ID) -- derived, so a new
     palette can't be missed."""
@@ -513,29 +513,17 @@ def _close_palettes(ui):
     return closed
 
 
-def _check_for_updates(ui, latest_url=None):
-    """The 'Check for updates' click: compare the installed stamp with the published latest.json; when newer, ASK,
-    and only on Yes download + verify + install. Returns 'current' | 'declined' | 'installed' | 'error'."""
+def _update_to_latest(ui, zip_url=None):
+    """The 'Update to latest' click: ASK, and only on Yes download the release zip, check it is the add-in, back this
+    folder up and copy the new one in (the website installers' steps), close the palettes, say how to restart. No
+    version comparison. Returns 'declined' | 'installed' | 'error'."""
     if _addin_root not in sys.path:
         sys.path.insert(0, _addin_root)
     from fb_shared import updater
-    from fb_shared.build_info import read_build_info
-
-    installed = read_build_info(_addin_root)
-    try:
-        latest = updater.fetch_latest(latest_url or updater.LATEST_URL)
-    except updater.UpdateError as e:
-        ui.messageBox(f'Could not check for updates.\n\n{e}', UPDATE_TITLE)
-        return 'error'
-    if updater.compare_builds(installed, latest) != 'newer':
-        ui.messageBox('You have the newest build.\n\nInstalled: ' + updater.describe_build(installed), UPDATE_TITLE)
-        return 'current'
 
     answer = ui.messageBox(
-        'A newer build is available.\n\n'
-        f'Installed: {updater.describe_build(installed)}\n'
-        f'Newest:    {updater.describe_build(latest)}\n\n'
-        "Download and install it now? The add-in's open windows will close, so save your work in them first. "
+        'Download the latest bspline-frame-builder release and install it over this one?\n\n'
+        "The add-in's open windows will close, so save your work in them first. "
         'The current version is kept as a backup.',
         UPDATE_TITLE,
         adsk.core.MessageBoxButtonTypes.YesNoButtonType,
@@ -547,15 +535,14 @@ def _check_for_updates(ui, latest_url=None):
     try:
         progress = ui.createProgressDialog()
         progress.isCancelButtonShown = False
-        progress.show(UPDATE_TITLE, 'Downloading the newest build... %p%', 0, 100, 0)
+        progress.show(UPDATE_TITLE, 'Downloading the latest release... %p%', 0, 100, 0)
     except Exception:
         progress = None
 
     def _on_progress(done, total):
-        size = total or latest.get('size') or 0
-        if progress is not None and size:
+        if progress is not None and total:
             try:
-                progress.progressValue = min(100, int(100 * done / size))
+                progress.progressValue = min(100, int(100 * done / total))
             except Exception:
                 pass
         try:
@@ -564,7 +551,7 @@ def _check_for_updates(ui, latest_url=None):
             pass
 
     try:
-        result = updater.download_and_install(_addin_root, latest, progress=_on_progress)
+        result = updater.download_and_install(_addin_root, zip_url or updater.ZIP_URL, progress=_on_progress)
     except updater.UpdateError as e:
         if progress is not None:
             progress.hide()
@@ -582,37 +569,37 @@ def _check_for_updates(ui, latest_url=None):
     _close_palettes(ui)
     backup = os.path.basename(result['backup']) if result.get('backup') else None
     ui.messageBox(
-        f'Installed {updater.describe_build(latest)}.\n\n'
+        'Installed the latest release.\n\n'
         'To start using it, restart Fusion -- or open Utilities > Add-Ins (Shift+S), select '
         'bspline-frame-builder, click Stop, then Run.'
-        + (f'\n\nThe previous version is kept in the AddIns folder as {backup}.' if backup else ''),
+        + (f'\n\nThe previous version is kept next to it as {backup}.' if backup else ''),
         UPDATE_TITLE)
     return 'installed'
 
 
-class _CheckUpdatesExecuteHandler(adsk.core.CommandEventHandler):
+class _UpdateExecuteHandler(adsk.core.CommandEventHandler):
     def __init__(self):
         super().__init__()
 
     def notify(self, args):
         try:
-            _check_for_updates(adsk.core.Application.get().userInterface)
+            _update_to_latest(adsk.core.Application.get().userInterface)
         except Exception:
-            _log_error('check for updates failed\n' + traceback.format_exc())
+            _log_error('update to latest failed\n' + traceback.format_exc())
 
 
-class _CheckUpdatesCreatedHandler(adsk.core.CommandCreatedEventHandler):
+class _UpdateCreatedHandler(adsk.core.CommandCreatedEventHandler):
     """The button: no inputs, so the command runs its execute straight away."""
     def __init__(self):
         super().__init__()
 
     def notify(self, args):
         try:
-            on_execute = _CheckUpdatesExecuteHandler()
+            on_execute = _UpdateExecuteHandler()
             args.command.execute.add(on_execute)
             handlers.append(on_execute)
         except Exception:
-            _log_error('check for updates: command setup failed\n' + traceback.format_exc())
+            _log_error('update to latest: command setup failed\n' + traceback.format_exc())
 
 
 # ── run() ─────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
  *
  * ADDIN_INSTALLERS is the ONE table (OS -> file). The files live in the repo's installer/ folder and the Pages build
  * (deploy_cloudflare.py) serves them at the site root, so a same-origin `<a download>` saves them. Both scripts
- * download ADDIN_ZIP_URL + its .sha256 from the GitHub 'latest' release (release.py uploads them).
+ * download ADDIN_ZIP_URL from the GitHub 'latest' release (release.py uploads it).
  *
  * A double-clicked downloaded script can still meet the OS's "unknown publisher" prompt (no code signing); the
  * paste-in line (irm | iex, curl | bash) never does, so the section shows it next to each file.

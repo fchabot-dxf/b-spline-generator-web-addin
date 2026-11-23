@@ -44,7 +44,7 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
     document.getElementById('settings-btn')?.addEventListener('click', () => {
         const sec = document.getElementById('clearFusionSection');
         if (sec) sec.style.display = isFusionMode ? '' : 'none';
-        // the website's installers; inside Fusion the add-in's own "Check for updates" command does this
+        // the website's installers; inside Fusion the add-in's own "Update to latest" command does this
         const addin = document.getElementById('addinInstallSection');
         if (addin) addin.style.display = isFusionMode ? 'none' : '';
         if (!isFusionMode) renderAddinInstallSection(document.getElementById('addinInstallLinks'));

@@ -41,29 +41,27 @@ plain ZIP. No admin rights are needed: the installer writes only to your own Fus
 - Or, after downloading it: `bash ~/Downloads/install-bspline-addin.command` (a downloaded `.command` file can't be
   double-clicked: the browser drops its run permission and Gatekeeper blocks unsigned scripts).
 
-What the installer does: downloads `bspline-frame-builder.zip` from the GitHub `latest` release, checks it against the
-published `bspline-frame-builder.zip.sha256`, checks it is the add-in (one top folder `bspline-frame-builder/` with the
-`.py` and `.manifest`), moves an existing install aside to `bspline-frame-builder.bak-<date-time>` (only the newest
+What the installer does: downloads `bspline-frame-builder.zip` from the GitHub `latest` release, checks it is the add-in
+(one top folder `bspline-frame-builder/` with the `.py` and `.manifest`), moves an existing install aside to `bspline-frame-builder.bak-<date-time>` (only the newest
 backup is kept), unpacks the new one, and turns on `runOnStartup` in its manifest. Nothing else in AddIns is touched.
 Then: **restart Fusion**, or in Fusion open **Utilities > Add-Ins** (Shift+S), pick `bspline-frame-builder` and
 click **Run**.
 
 Exit codes (for support): 0 installed, 1 unexpected error, 2 download failed (offline?), 3 Fusion AddIns folder not
-found (install Fusion and start it once), 4 checksum mismatch (try again in a minute), 5 not the add-in zip,
-6 files in use (close Fusion and run it again).
+found (install Fusion and start it once), 5 not the add-in zip, 6 files in use (close Fusion and run it again).
 
-**Updating.** In Fusion, the **B-Spline Builder** panel's dropdown has **Check for updates**. It compares the installed
-build's stamp (`build-info.json`) with the published `latest.json`; when a newer build exists it asks first, then
-downloads it, verifies the SHA-256, backs up the old folder, swaps the new one in, closes the add-in's windows and tells
-you to restart Fusion (or Stop, then Run, the add-in). It never installs without your Yes. It replaces the folder the
-add-in runs from, whatever that folder is called (a source checkout included: use git there instead).
+**Updating.** In Fusion, the **B-Spline Builder** panel's dropdown has **Update to latest**. It asks Yes/No, then does
+what the installer does (downloads the release zip, checks it, backs up the old folder, copies the new one in with
+`runOnStartup` on), closes the add-in's windows and tells you to restart Fusion (or Stop, then Run, the add-in). There is
+no version check: it always installs the current release. It replaces the folder the add-in runs from, whatever that
+folder is called (a source checkout included: use git there instead).
 
-**Releasing (maintainer).** `python release.py --addin` builds the three assets in `release-out/`
-(`bspline-frame-builder.zip` with its `build-info.json` inside, `bspline-frame-builder.zip.sha256`, `latest.json`) and
-uploads them to the `latest` release, `latest.json` last. The installers live in `installer/`; the Pages build
+**Releasing (maintainer).** `python release.py --addin` builds `release-out/bspline-frame-builder.zip` (with a
+`build-info.json` stamp inside, which the palette badges show) and uploads it to the `latest` release. The installers
+live in `installer/`; the Pages build
 (`deploy_cloudflare.py --build-only`) serves them at the site root. Testing an installer elsewhere:
 `BSPLINE_ADDINS_DIR=<folder>` (or the folder as the first argument) installs there instead of Fusion's AddIns folder;
-`BSPLINE_ZIP_URL` / `BSPLINE_SHA256_URL` override the download; `BSPLINE_NO_PAUSE=1` skips the .cmd's closing pause.
+`BSPLINE_ZIP_URL` overrides the download; `BSPLINE_NO_PAUSE=1` skips the .cmd's closing pause.
 
 ## 🛠️ Installation (developers)
 

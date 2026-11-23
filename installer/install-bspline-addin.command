@@ -6,17 +6,15 @@
 #     curl -fsSL https://bspline-generator.pages.dev/install-bspline-addin.command | bash
 # Or, after downloading this file:  bash ~/Downloads/install-bspline-addin.command
 #
-# Testing: BSPLINE_ADDINS_DIR (or the first argument) installs somewhere else; BSPLINE_ZIP_URL / BSPLINE_SHA256_URL
-# override the download.
+# Testing: BSPLINE_ADDINS_DIR (or the first argument) installs somewhere else; BSPLINE_ZIP_URL overrides the download.
 # Keep these steps in step with fb_shared/updater.py and install-bspline-addin.cmd.
 # Exit codes: 0 installed | 1 unexpected error | 2 download failed (offline?) | 3 Fusion AddIns folder not found
-#             4 checksum mismatch | 5 not the add-in zip | 6 files in use (close Fusion)
+#             5 not the add-in zip | 6 files in use (close Fusion)
 
 set -u
 NAME="bspline-frame-builder"
 RELEASE_BASE="https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/"
 ZIP_URL="${BSPLINE_ZIP_URL:-${RELEASE_BASE}${NAME}.zip}"
-SHA_URL="${BSPLINE_SHA256_URL:-${ZIP_URL}.sha256}"
 if [ "${1:-}" != "" ]; then BSPLINE_ADDINS_DIR="$1"; fi
 OVERRIDE="${BSPLINE_ADDINS_DIR:-}"
 ADDINS="${BSPLINE_ADDINS_DIR:-$HOME/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns}"
@@ -48,34 +46,17 @@ if [ ! -d "$ADDINS" ]; then
   fi
 fi
 
-for u in "$ZIP_URL" "$SHA_URL"; do
-  case "$u" in https://*|file:*) ;; *) fail 2 "Refusing a non-https download: $u" ;; esac
-done
+case "$ZIP_URL" in https://*|file:*) ;; *) fail 2 "Refusing a non-https download: $ZIP_URL" ;; esac
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/bspline-install.XXXXXX")" || fail 1 "Could not make a temp folder."
 ZIP="$TMP/$NAME.zip"
-SHA="$TMP/$NAME.zip.sha256"
 
-# 2. download the zip and its published checksum
-echo "Downloading the checksum..."
-curl -fsSL --proto '=https,file' -A "bspline-frame-builder-installer" -o "$SHA" "$SHA_URL" \
-  || fail 2 "The download failed. Are you online? ($SHA_URL)"
+# 2. download the release zip
 echo "Downloading the add-in (about 40 MB)..."
 curl -fL --progress-bar --proto '=https,file' -A "bspline-frame-builder-installer" -o "$ZIP" "$ZIP_URL" \
   || fail 2 "The download failed. Are you online? ($ZIP_URL)"
 
-# 3. checksum
-WANT="$(grep -oE '[0-9a-fA-F]{64}' "$SHA" | head -1 | tr 'A-F' 'a-f')"
-[ -n "$WANT" ] || fail 4 "The published checksum file is not readable ($SHA_URL)."
-if command -v shasum >/dev/null 2>&1; then
-  GOT="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
-else
-  GOT="$(sha256sum "$ZIP" | awk '{print $1}')"
-fi
-[ "$GOT" = "$WANT" ] || fail 4 "The download does not match its published checksum (damaged download, or the release is being updated). Try again in a minute."
-echo "Checksum OK (${GOT:0:12}...)"
-
-# 4. is it the add-in? one top folder bspline-frame-builder/ with the .py + .manifest, nothing outside it
+# 3. is it the add-in? one top folder bspline-frame-builder/ with the .py + .manifest, nothing outside it
 NAMES="$(unzip -Z1 "$ZIP" 2>/dev/null)" || fail 5 "The download is not a zip file."
 while IFS= read -r n; do
   [ -z "$n" ] && continue
@@ -88,7 +69,7 @@ for req in "$NAME/$NAME.py" "$NAME/$NAME.manifest"; do
   printf '%s\n' "$NAMES" | grep -Fxq "$req" || fail 5 "The zip is missing $req."
 done
 
-# 5. extract next to the add-in (same disk, so the swap is a rename); a short staging name, as on Windows
+# 4. extract next to the add-in (same disk, so the swap is a rename); a short staging name, as on Windows
 STAMP="$(date +%Y%m%d-%H%M%S)"
 STAGING="$ADDINS/bsfb-new"
 [ -e "$STAGING" ] && rm -rf "$STAGING"
@@ -96,7 +77,7 @@ mkdir "$STAGING" || fail 1 "Could not write in $ADDINS"
 unzip -q "$ZIP" -d "$STAGING" || fail 5 "The zip could not be extracted."
 STAGED="$STAGING/$NAME"
 
-# 6. run on startup (the manifest's own key)
+# 5. run on startup (the manifest's own key)
 MF="$STAGED/$NAME.manifest"
 if grep -Eq '"runOnStartup"[[:space:]]*:[[:space:]]*(true|false)' "$MF"; then
   sed -E 's/("runOnStartup"[[:space:]]*:[[:space:]]*)(true|false)/\1true/' "$MF" > "$MF.tmp" && mv "$MF.tmp" "$MF"
@@ -105,7 +86,7 @@ else
        r = substr($0, i + 1); if (r != "") print r; d = 1; next } } print }' "$MF" > "$MF.tmp" && mv "$MF.tmp" "$MF"
 fi
 
-# 7. back up the old install, swap the new one in
+# 6. back up the old install, swap the new one in
 LIVE="$ADDINS/$NAME"
 BACKUP=""
 if [ -e "$LIVE" ]; then
@@ -121,7 +102,7 @@ if ! mv "$STAGED" "$LIVE"; then
   fail 6 "Could not move the new version into place; the old one is back. Quit Fusion and try again."
 fi
 
-# 8. keep only the newest backup
+# 7. keep only the newest backup
 KEEP=""
 [ -n "$BACKUP" ] && KEEP="$(basename "$BACKUP")"
 LAST=""

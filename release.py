@@ -14,13 +14,11 @@ Usage:
     commit message. No flags (bare) == --all == the exact original behaviour.
 
 Steps (run in this order for --all / bare):
-  1. Build the Fusion add-in release assets in release-out/:                [--addin]
-       bspline-frame-builder.zip (with build-info.json inside), its .sha256, latest.json
+  1. Build the Fusion add-in ZIP in release-out/ (build-info.json inside)   [--addin]
   2. git add -A; (auto-generate message if none given); commit; push        [--web]
        (Cloudflare Pages auto-rebuilds the web app on push to main)
-  3. gh release upload latest <asset> --clobber, for zip, .sha256, latest.json (in that order)  [--addin]
-       (the website's installers download the zip + .sha256; the add-in's
-        "Check for updates" reads latest.json)
+  3. gh release upload latest <zip> --clobber                               [--addin]
+       (the website's button + installers and the add-in's "Update to latest" download it)
   4. Refresh local Fusion 360 AddIns folder                                 [--local]
        (developer convenience; best-effort)
 
@@ -47,19 +45,14 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 ADDIN_ROOT = os.path.join(REPO_ROOT, "bspline-frame-builder")
 
-# The release's names + URLs are declared ONCE, in the updater that reads them (fb_shared/updater.py).
+# The release zip's name + URL are declared ONCE, in the updater that downloads it (fb_shared/updater.py).
 if ADDIN_ROOT not in sys.path:
     sys.path.insert(0, ADDIN_ROOT)
 from fb_shared import updater as _updater  # noqa: E402
 
-# The three release assets (Fred 2026-11-22: one-click installer + "Check for updates"), built OUTSIDE the add-in
-# folder (gitignored) so neither the next zip nor a local deploy ever picks them up. Uploaded in THIS order:
-# latest.json last, so a client that reads the new latest.json finds the new zip.
+# Built OUTSIDE the add-in folder (release-out/, gitignored) so neither the next zip nor a local deploy picks it up.
 RELEASE_DIR = os.path.join(REPO_ROOT, "release-out")
 ZIP_TARGET = os.path.join(RELEASE_DIR, _updater.ZIP_NAME)
-SHA256_TARGET = os.path.join(RELEASE_DIR, _updater.SHA256_NAME)
-LATEST_TARGET = os.path.join(RELEASE_DIR, _updater.LATEST_NAME)
-RELEASE_ASSETS = [ZIP_TARGET, SHA256_TARGET, LATEST_TARGET]
 PAGES_URL = "https://bspline-generator.pages.dev"
 PAGES_PROJECT = "bspline-generator"
 
@@ -207,35 +200,31 @@ def _load_deploy_module():
     return mod
 
 
-def release_stamp(now, prev_latest=None):
-    """The release's version stamp: the deploy's own make_build_info (same keys as build-info.json), counted per
-    release day from the published latest.json, and with source_root blanked (a public file carries no dev path;
-    compare_to_source then reads 'unknown' and the palette badge shows the plain stamp)."""
-    stamp = _load_deploy_module().make_build_info(ADDIN_ROOT, now, prev_latest)
+def release_stamp(now, prev_info=None):
+    """The release's version stamp (it rides inside the zip as build-info.json, which the palette badges read): the
+    deploy's own make_build_info, counted per day from the previous local release build, and with source_root
+    blanked (a public file carries no dev path)."""
+    stamp = _load_deploy_module().make_build_info(ADDIN_ROOT, now, prev_info)
     stamp["source_root"] = ""
     return stamp
 
 
-def _published_latest():
-    """The latest.json on the release now (to count today's releases), or None (first release / offline)."""
+def _previous_release_stamp():
+    """build-info.json inside the last zip built in release-out/ (to count today's releases), or None."""
     try:
-        return _updater.fetch_latest()
-    except _updater.UpdateError:
+        with zipfile.ZipFile(ZIP_TARGET) as zf:
+            return json.loads(zf.read(f"{_updater.ADDIN_NAME}/build-info.json"))
+    except Exception:
         return None
 
 
 def build_addin_release(addin_root, out_dir, stamp):
-    """Build the three release assets in ``out_dir``: the zip (top folder = the add-in folder's name, with
-    ``build-info.json`` = ``stamp`` written INTO the archive, never into the source tree), its ``.sha256``
-    (sha256sum format) and ``latest.json`` (= ``stamp`` + name, zip_url, sha256, size). Returns their paths in
-    upload order."""
+    """Build the release zip in ``out_dir`` (top folder = the add-in folder's name), with ``build-info.json`` =
+    ``stamp`` written INTO the archive, never into the source tree. Returns its path."""
     os.makedirs(out_dir, exist_ok=True)
     zip_path = os.path.join(out_dir, _updater.ZIP_NAME)
-    sha_path = os.path.join(out_dir, _updater.SHA256_NAME)
-    latest_path = os.path.join(out_dir, _updater.LATEST_NAME)
-    for p in (zip_path, sha_path, latest_path):
-        if os.path.exists(p):
-            os.remove(p)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
     addin_root_name = os.path.basename(os.path.normpath(addin_root))
     zip_file_count = 0
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -254,21 +243,14 @@ def build_addin_release(addin_root, out_dir, stamp):
                 zf.write(abs_path, arc_path)
                 zip_file_count += 1
         zf.writestr(f"{addin_root_name}/build-info.json", json.dumps(stamp, indent=4))
-    digest = _updater.sha256_file(zip_path)
-    with open(sha_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(f"{digest}  {_updater.ZIP_NAME}\n")
-    latest = dict(stamp, name=addin_root_name, zip_url=_updater.RELEASE_BASE_URL + _updater.ZIP_NAME,
-                  sha256=digest, size=os.path.getsize(zip_path))
-    with open(latest_path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(latest, f, indent=2)
     build_addin_release.file_count = zip_file_count
-    return [zip_path, sha_path, latest_path]
+    return zip_path
 
 
 def step_build_zip():
     global zip_summary
-    print(f"[1/4] Building distribution ZIP + .sha256 + latest.json in {RELEASE_DIR}...")
-    stamp = release_stamp(datetime.now().astimezone(), _published_latest())
+    print(f"[1/4] Building distribution ZIP at {ZIP_TARGET}...")
+    stamp = release_stamp(datetime.now().astimezone(), _previous_release_stamp())
     if stamp["sha"] == "unknown":
         print("      Warning: git did not answer; the release stamp reads sha 'unknown'.")
     build_addin_release(ADDIN_ROOT, RELEASE_DIR, stamp)
@@ -445,8 +427,7 @@ def step_gh_release():
     GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")
     if GH_CMD is None:
         print("      Warning: 'gh' CLI not found. Skipping.")
-        print("      Run manually, in this order: " + "  ".join(
-            f"gh release upload latest \"{a}\" --clobber" for a in RELEASE_ASSETS))
+        print(f"      Run manually: gh release upload latest \"{ZIP_TARGET}\" --clobber")
         release_summary = "skipped (gh not installed)"
     else:
         view_check = subprocess.run([GH_CMD, "release", "view", "latest"],
@@ -460,24 +441,16 @@ def step_gh_release():
             ], cwd=REPO_ROOT)
             if create.returncode != 0:
                 print(f"      Warning: could not create 'latest' release (exit {create.returncode}).")
-        # One upload per asset, in RELEASE_ASSETS order (latest.json last); stop at the first failure so a
-        # new latest.json never points at a zip that didn't upload.
-        failed = None
-        for asset in RELEASE_ASSETS:
-            upload = subprocess.run([
-                GH_CMD, "release", "upload", "latest", asset, "--clobber"
-            ], cwd=REPO_ROOT)
-            if upload.returncode != 0:
-                failed = (asset, upload.returncode)
-                break
-        if failed is None:
-            print("      GitHub release 'latest' updated (zip, .sha256, latest.json).")
-            release_summary = "uploaded zip + .sha256 + latest.json to 'latest'"
+        upload = subprocess.run([
+            GH_CMD, "release", "upload", "latest", ZIP_TARGET, "--clobber"
+        ], cwd=REPO_ROOT)
+        if upload.returncode == 0:
+            print("      GitHub release 'latest' updated.")
+            release_summary = "uploaded to 'latest'"
         else:
-            print(f"      Warning: gh release upload of {os.path.basename(failed[0])} exited {failed[1]}.")
-            print("      Run manually, in this order: " + "  ".join(
-                f"gh release upload latest \"{a}\" --clobber" for a in RELEASE_ASSETS))
-            release_summary = f"failed at {os.path.basename(failed[0])} (exit {failed[1]})"
+            print(f"      Warning: gh release upload exited {upload.returncode}.")
+            print(f"      Run manually: gh release upload latest \"{ZIP_TARGET}\" --clobber")
+            release_summary = f"failed (exit {upload.returncode})"
 
 
 # ----- step 4: refresh local Fusion 360 AddIns folder --------------------
