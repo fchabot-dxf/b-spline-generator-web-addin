@@ -640,23 +640,20 @@
         </div>
       </div>
 
-      <!-- 2a. LAYERS: the unified layer stack (Fred 2026-11-23, main/layer-stack.js; its place in the sidebar is
-           main/sidebar-tabs.js SIDEBAR_TABS 'layers', after Surface). Every layer is a card (Draw, Lattice, Brick, Height
-           patch, STL), dragged by its handle; the Thicken line splits them: above = part of the body, below = top only.
-           The Thicken settings (the retired THICKEN panel's body, data-job-lock="back") open from that line. -->
+      <!-- 2a. LAYERS: the unified layer stack (Fred 2026-11-23, main/layer-stack.js; SIDEBAR_TABS 'layers', after Surface).
+           Fred: the layer cards ARE sidebar panels at the branch's own level -- this section has no header and no box
+           (styles/layout-app.css .panel-layers: display contents), so its cards sit full width like Sculpt bottom. A slim
+           action row heads it; the hidden park holds the blocks the cards host while open (layer-stack.js HOSTED). -->
       <div class="panel panel-layers">
-        <div class="panel-header" id="mainLayersPanelHeader" onclick="togglePanel(this)">📑 LAYERS <span id="layerStackSummary" style="font-weight:400; opacity:0.7;"></span></div>
-        <div class="panel-body">
-          <div id="layerStackAddRow" class="layer-stack-add-row">
-            <div id="layerStackAddGrid" class="layer-stack-add-grid"></div>
-          </div>
-          <div id="layerStackList" class="layer-stack" role="list"></div>
-          <div style="display:flex; gap:6px; margin-top:4px;">
-            <button type="button" id="btnMainLayersOpenEditor" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;">Open Editor ✎</button>
-            <button type="button" id="btnMainLayersPullFusion" class="cad-btn cad-btn-secondary" style="flex:1; height:30px; font-size:12px;" title="Pull constrained sketch from Fusion">Pull Fusion 🔄</button>
-          </div>
-          <!-- the Thicken settings, parked here (hidden) while the Thicken line is closed; moved into the line when open -->
-          <div id="thickenSettingsPark" hidden>
+        <div id="layerStackActions" class="layer-stack-actions">
+          <div id="layerStackAddGrid" class="layer-stack-add-grid"></div>
+          <span id="layerStackSummary" class="layer-stack-count"></span>
+          <button type="button" id="btnMainLayersPullFusion" class="cad-btn cad-btn-secondary layer-stack-action" title="Pull constrained sketch from Fusion">Pull Fusion 🔄</button>
+        </div>
+        <div id="layerStackList" class="layer-stack" role="list"></div>
+        <div id="layerStackPark" hidden>
+          <!-- the Thicken settings (the retired THICKEN panel's body): the Thicken line hosts them while open -->
+          <div id="thickenSettingsPark">
             <div class="panel-body" id="thickenSettings" data-job-lock="back">
               <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
                 <input type="checkbox" id="thickenEnabled">
@@ -678,6 +675,66 @@
                 </div>
               </div>
             </div>
+          </div>
+          <!-- the retired BRICK panel's body (F35 item 18 (3): the brick 3D settings + the quick settings mirroring the editor's
+               Brick tab, rendered by main/brick-panel.js; ids unchanged): the Brick card hosts it while open -->
+          <div id="brickPanelBody" class="layer-hosted-body">
+          <!-- turn 207 (Fred): opens the editor on the Brick tab -- main/frame-panel.js OPEN_EDITOR_BUTTONS,
+               the same mechanism and look as the FRAME section's "Edit frame" -->
+          <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
+          <!-- Fred (2026-10-11, redesign phase 1): plain rows, no "Quick settings" title / hint; the Wall pattern and the
+               Frame bands are one chip each, the wood frame's picker (main/brick-panel.js QUICK_PICKER) -->
+          <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
+          <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
+          <div id="brickQuickSettings"></div>
+          <!-- blind-spot audit B1: what the last lay left the user must know (main/brick-panel.js BRICK_LAY_WARNINGS) -->
+          <div id="brickLayWarnings" data-brick-lay-warnings data-brick-lay-notes="frame" role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
+        <label class="cad-label">Relief</label>
+        <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
+        </div>
+
+        <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
+        <label class="cad-label">Brick top</label>
+        <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
+        </div>
+
+        <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
+        <label class="cad-label">Surface</label>
+        <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
+        <!-- F35 item 18 (Fred): Weathered's WEAR, one 0..1 slider along the declared ranges
+             (editor/brick-surface-styles.js); shown only while the surface style declares `wear` -->
+        <div id="brickSurfaceWearRow" style="display:none;">
+          <label class="cad-label">Wear <span style="opacity:0.65; font-weight:400;">(0 = crisp, 1 = worn)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="brickSurfaceWearSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
+            <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSurfaceWear" value="0.5" min="0" max="1" step="0.05"></div>
+          </div>
+        </div>
+
+        <label class="cad-label">Max Height (in)</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+          <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+        </div>
+
+        <!-- Fred 2026-10-11 (per-pattern defaults): the joint depth + Recessed / Flush are per element now -- each element
+             tab's Size & joint section in the Brick editor (#brickGroutDepthRow), no longer here -->
+          </div>
+          <!-- Vector stamping's SVG Blueprint (it fills the WHOLE active layer: per layer): a Draw card hosts it while open -->
+          <div id="stampBlueprint" class="layer-hosted-body" data-stamp-scope="layer">
+          <label class="cad-label">SVG Blueprint (whole layer)</label>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
+            <button id="btnStampChoose" class="cad-btn cad-btn-secondary" style="flex:1; font-size:11px;">Browse...</button>
+            <button id="btnStampClear" class="cad-btn cad-btn-secondary" style="width:32px; padding:0;">🗑</button>
+            <input type="file" id="stampUpload" accept=".svg" style="display:none;">
+          </div>
+          <div id="stampFileName" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">No file chosen</div>
           </div>
         </div>
       </div>
@@ -1012,103 +1069,13 @@
         <div class="panel-body hidden" id="stlLayerBody" data-job-lock="stl"></div>
       </div>
 
-      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (since F35 item 27 both the editor and the sidebar apply
-           at once): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
-           QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
-           both applied at once. The 2D layout (tools, patterns, size slider, grout width, suppression,
-           clumping, seed) stays in the editor's Brick tab. Rows rendered by main/brick-panel.js
-           (BRICK_QUICK_SETTINGS); the 3D controls keep their ids, so their bindings are unchanged. -->
-      <div class="panel panel-brick">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 BRICK</div>
-        <div class="panel-body hidden">
-          <!-- turn 207 (Fred): opens the editor on the Brick tab -- main/frame-panel.js OPEN_EDITOR_BUTTONS,
-               the same mechanism and look as the FRAME section's "Edit frame" -->
-          <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
-          <!-- Fred (2026-10-11, redesign phase 1): plain rows, no "Quick settings" title / hint; the Wall pattern and the
-               Frame bands are one chip each, the wood frame's picker (main/brick-panel.js QUICK_PICKER) -->
-          <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
-          <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
-          <div id="brickQuickSettings"></div>
-          <!-- blind-spot audit B1: what the last lay left the user must know (main/brick-panel.js BRICK_LAY_WARNINGS) -->
-          <div id="brickLayWarnings" data-brick-lay-warnings data-brick-lay-notes="frame" role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
-        <label class="cad-label">Relief</label>
-        <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
-          <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
-          <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
-        </div>
-
-        <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
-        <label class="cad-label">Brick top</label>
-        <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
-          <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
-          <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
-        </div>
-
-        <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
-        <label class="cad-label">Surface</label>
-        <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
-        <!-- F35 item 18 (Fred): Weathered's WEAR, one 0..1 slider along the declared ranges
-             (editor/brick-surface-styles.js); shown only while the surface style declares `wear` -->
-        <div id="brickSurfaceWearRow" style="display:none;">
-          <label class="cad-label">Wear <span style="opacity:0.65; font-weight:400;">(0 = crisp, 1 = worn)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="brickSurfaceWearSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
-            <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSurfaceWear" value="0.5" min="0" max="1" step="0.05"></div>
-          </div>
-        </div>
-
-        <label class="cad-label">Max Height (in)</label>
-        <div class="cad-slider-row" style="margin-bottom:12px;">
-          <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-          <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-        </div>
-
-        <!-- Fred 2026-10-11 (per-pattern defaults): the joint depth + Recessed / Flush are per element now -- each element
-             tab's Size & joint section in the Brick editor (#brickGroutDepthRow), no longer here -->
-        </div>
-      </div>
-
-      <!-- 5. Vector Stamping -->
+      <!-- 5. Vector Stamping: Open SVG Editor stays here; its layer list moved to the LAYERS stack, its per-layer SVG Blueprint
+           into each open Draw card and its stamp settings (the editor's Draw > Stamp) open in that card too (main/layer-stack.js). -->
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
         <div class="panel-body hidden">
           <button id="btnStampEdit" class="cad-btn cad-btn-secondary" style="width:100%; margin-bottom:12px;">Open SVG Editor 🎨</button>
-
-          <!-- SE10 / T26 / T29: replaces the #stampActiveLayer dropdown +
-               #stampLayerEnabled "On" checkbox with a real layer browser —
-               editor/layers.js's renderLayerList (compact:true), the SAME
-               render + handlers the SVG editor's own Layers panel uses
-               (#editorLayersList), so the two can never show different
-               layers or disagree on visibility. Eye = shown on the canvas
-               only (audit B6: a hidden layer still carves and exports, by its
-               own carve toggle); tapping a row makes it
-               active, which the Relief / Height / Tool Profile / V-Bit Angle
-               controls below keep editing (main/stamp/layer.js). T29:
-               moved above those tool settings (was below SVG Blueprint's
-               spot) since the settings apply to whichever layer is
-               selected here — picking a layer before dialing in its
-               tooling reads more naturally than the reverse order. -->
-          <!-- the layer list moved to the LAYERS stack (Fred 2026-11-23, main/layer-stack.js): each Draw / Lattice layer is a
-               card there with its stamp summary; opening a card makes it the active layer the Blueprint below fills -->
-          <div id="stampActiveLayerNote" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:6px;"></div>
-          <div class="cad-status-divider" style="margin:4px 0 6px 0;"></div>
-          <!-- DRAW-STAMP U (Fred 2026-11-22: edited in the editor, summarised here): each layer row above carries a
-               one-line read-only summary of its stamp (main/stamp/summary.js); the stamp settings themselves live in
-               the editor's Draw tab, its Stamp branch (main/draw-tree.js). SVG Blueprint stays here: it fills the
-               WHOLE layer (a layer-level action under the coming per-stroke settings). -->
-          <div id="stampSettingsWhere" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Stamp settings: Open Editor &rsaquo; Draw &rsaquo; Stamp.</div>
-
-          <div data-stamp-scope="layer">
-          <label class="cad-label">SVG Blueprint (whole layer)</label>
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
-            <button id="btnStampChoose" class="cad-btn cad-btn-secondary" style="flex:1; font-size:11px;">Browse...</button>
-            <button id="btnStampClear" class="cad-btn cad-btn-secondary" style="width:32px; padding:0;">🗑</button>
-            <input type="file" id="stampUpload" accept=".svg" style="display:none;">
-          </div>
-          <div id="stampFileName" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">No file chosen</div>
-          </div>
+          <div id="stampSettingsWhere" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Each Draw layer's stamp settings and SVG Blueprint: open its card in Layers.</div>
         </div>
       </div>
 
@@ -1726,6 +1693,9 @@
             <!-- HEIGHT-PAINTER slice 1: paint height patches on the board (main/height-panel.js) -->
             <button type="button" id="editorTabHeight" role="tab" data-editor-tab="height" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Height</button>
           </div>
+          <!-- Fred 2026-11-23: '+' = the layer stack's '+ Add layer' picker, from inside the editor (main/layer-stack.js: the same
+               LAYER_ADD_TYPES tiles, the same add; the editor then shows the new layer's tab) -->
+          <div id="editorLayerAddGrid" class="editor-layer-add-grid"></div>
         </div>
         <div class="editor-header-actions" style="display:flex; gap:8px; align-items:center;">
           <!-- T32 (Fred: undo/redo out of the left tool rail): ONE group,

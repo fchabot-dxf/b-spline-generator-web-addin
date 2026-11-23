@@ -15,7 +15,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/main/stl-panel.js';
 import { mountLayerStack } from './helpers/layer-stack-mount.js'; // the STL cards are the layer stack's (main/layer-stack.js)
 
-vi.mock('../bspline-frame-builder/b-spline-gen/html/core/history.js', () => ({ scheduleUndoSnapshot: vi.fn() }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/history.js', async (orig) => ({ ...(await orig()), scheduleUndoSnapshot: vi.fn() }));
 
 const tri = (a, b, c) => [...a, ...b, ...c];
 function pyramid() {

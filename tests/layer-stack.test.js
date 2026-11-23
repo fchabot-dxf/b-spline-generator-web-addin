@@ -21,8 +21,9 @@ import { createStlLayer } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { defaultStackKeys, effectiveOrder, orderPasses, editorLayerKey, STACK_BRICKS_KEY } from '../bspline-frame-builder/b-spline-gen/html/core/stamp/order.js';
 import {
   LAYER_TYPES, LAYER_ADD_TYPES, THICKEN_LINE_KEY, stackItems, applyStackDrop, initLayerStack, refreshLayerStack, openLayerStackItem,
-  addStackLayer, stackSequence, _resetLayerStackForTests,
+  addStackLayer, stackSequence, _resetLayerStackForTests, ADD_PICKERS,
 } from '../bspline-frame-builder/b-spline-gen/html/main/layer-stack.js';
+import { getEditorTab, setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 import { SIDEBAR_TABS, branchSections } from '../bspline-frame-builder/b-spline-gen/html/main/sidebar-tabs.js';
 import { SECTION_THEMES, SECTION_ICONS } from '../bspline-frame-builder/b-spline-gen/html/main/section-themes.js';
 import { JOB_STEP_KINDS } from '../bspline-frame-builder/b-spline-gen/html/core/job-timeline.js';
@@ -133,7 +134,7 @@ describe('the engine follows the stack order only once one is written', () => {
 });
 
 // ── the stack in the panel ────────────────────────────────────────────────────────────────────────────────────────
-const STACK_DOM = '<div id="layerStackAddRow"><div id="layerStackAddGrid"></div></div><div id="layerStackList"></div>'
+const STACK_DOM = '<div id="svgEditorModal" style="display:none"></div><div id="editorLayerAddGrid"></div><div id="layerStackAddRow"><div id="layerStackAddGrid"></div></div><div id="layerStackList"></div>'
   + '<span id="layerStackSummary"></span><div id="thickenSettingsPark" hidden><div id="thickenSettings" data-job-lock="back"><input type="checkbox" id="thickenEnabled"></div></div>';
 function mkEditor() {
   const layers = [
@@ -175,7 +176,7 @@ describe('the stack: every layer a card in stamp order, split by the Thicken lin
     }
     expect(card('stl:s2').classList.contains('layer-card-after')).toBe(true);
     expect(card('bricks').querySelector('.layer-card-title').textContent).toBe('Bricks');
-    expect($('layerStackSummary').textContent).toBe('— 8 layers');
+    expect($('layerStackSummary').textContent).toBe('8 layers');
   });
   it('a card opens inline (one at a time): a Draw card shows its stamp summary + its editor door and makes its layer active', () => {
     mount();
@@ -291,6 +292,32 @@ describe('a new file has no layers, also once its drawing is reopened (a reload,
   });
 });
 
+describe('+ Add layer from inside the editor: the SAME picker and the SAME add', () => {
+  it('both pickers are declared over the one LAYER_ADD_TYPES table, mounted by the one mountIconGrid call', () => {
+    mount();
+    expect(ADD_PICKERS.map((p) => p.grid)).toEqual(['layerStackAddGrid', 'editorLayerAddGrid']);
+    const tiles = (grid) => [...$(grid).querySelectorAll('.layer-add-option')].map((b) => [b.id.replace(/^(layerStackAdd_|editorLayerAdd_)/, ''), b.textContent]);
+    expect(tiles('editorLayerAddGrid')).toEqual(tiles('layerStackAddGrid'));
+    expect($('editorLayerAdd').classList.contains('icon-grid-picker')).toBe(true);
+    expect($('editorLayerAddBtn').textContent).toBe('＋');
+  });
+  it('the editor tile does exactly the sidebar add (a Draw layer, landed just above the line, its card open) and the editor, open, shows the Draw tab', async () => {
+    mount();
+    window.svgEditor._onChange = vi.fn();
+    $('svgEditorModal').style.display = 'flex'; // the editor is up, on another tab
+    setEditorTab('height');
+    $('editorLayerAdd_draw').click();
+    await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0));
+    const made = window.svgEditor._layers[window.svgEditor._layers.length - 1];
+    const key = `layer:${made.id}`;
+    const seq = stackSequence();
+    expect(seq[seq.indexOf(THICKEN_LINE_KEY) - 1]).toBe(key);
+    expect(card(key).classList.contains('collapsed')).toBe(false);
+    expect(window.svgEditor._activeLayer).toBe(made.id);
+    expect(getEditorTab()).toBe('artwork');
+    expect($('svgEditorModal').style.display).toBe('flex'); // it stays open
+  });
+});
 describe('the palette: the LAYERS section, the retired Thicken panel and the moved lists', () => {
   it('LAYERS is a branch after Surface: the stack (with the Thicken settings) then Sculpt bottom', () => {
     const ids = SIDEBAR_TABS.map((t) => t.id);
@@ -302,6 +329,14 @@ describe('the palette: the LAYERS section, the retired Thicken panel and the mov
     expect($('thickenSettings').getAttribute('data-job-lock')).toBe('back');
     expect(document.querySelector('.panel-thicken')).toBeNull();
     for (const id of ['mainLayersList', 'mainAddLayer', 'stampLayersList', 'stampAddLayer', 'stlList']) expect($(id), id).toBeNull();
+    // Fred 2026-11-23: the cards ARE the branch's panels -- the stack's section has no header (no second 'LAYERS' title), its
+    // slim action row comes first; 'Open Editor' retired (the 2D / 3D toggle opens the editor)
+    expect(layersPanel.querySelector(':scope > .panel-header')).toBeNull();
+    expect([...layersPanel.children].map((c) => c.id).slice(0, 2)).toEqual(['layerStackActions', 'layerStackList']);
+    expect($('layerStackActions').contains($('layerStackAddGrid'))).toBe(true);
+    expect($('btnMainLayersOpenEditor')).toBeNull();
+    expect(document.querySelector('.panel.panel-brick')).toBeNull(); // its body is the Brick card's (#brickPanelBody, parked)
+    expect($('layerStackPark').contains($('brickPanelBody')) && $('layerStackPark').contains($('stampBlueprint'))).toBe(true);
     expect(SECTION_ICONS.height && SECTION_ICONS.lattice).toBeTruthy();
   });
 });

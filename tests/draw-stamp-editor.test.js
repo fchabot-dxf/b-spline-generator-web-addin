@@ -7,7 +7,7 @@
  * main/layer-stack.js: the open Draw card). The REAL palette markup, the REAL app binders
  * (main/ui-bindings.js bindControls -> applyParam + main/stamp/*), the REAL layer list (editor/layers.js).
  */
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 // the 3D side of a stamp edit (mask raster + rebuild) is not what this file measures: stubbed, the UI path is real
@@ -59,9 +59,10 @@ const MOVED = [
   'stampTextureSuppression', 'stampTextureSuppressionSlider', 'stampEdgeFilletRadius', 'stampEdgeFilletRadiusSlider',
   'stampFilletPower', 'stampFilletPowerSlider', 'stampMetrics',
 ];
-/** What stays in the sidebar's VECTOR STAMPING panel. */
-// (its layer list + '+' moved into the LAYERS stack, Fred 2026-11-23: main/layer-stack.js; the panel names the active layer)
-const SIDEBAR_KEPT = ['btnStampEdit', 'stampActiveLayerNote', 'btnStampChoose', 'btnStampClear', 'stampUpload', 'stampFileName'];
+/** What stays in the sidebar's VECTOR STAMPING panel: Open SVG Editor (its layer list + '+' moved into the LAYERS stack, Fred
+ *  2026-11-23, main/layer-stack.js; its per-layer SVG Blueprint is hosted by an open Draw card, parked meanwhile). */
+const SIDEBAR_KEPT = ['btnStampEdit'];
+const BLUEPRINT = ['btnStampChoose', 'btnStampClear', 'stampUpload', 'stampFileName'];
 
 let editor, lines, text, start;
 // the app boots ONCE (bindControls / the tree add document listeners, as in the app); each test starts from the same
@@ -101,6 +102,10 @@ describe('the Stamp branch of the Draw tree holds every moved control', () => {
   });
   it.each(SIDEBAR_KEPT)('#%s stays in the sidebar VECTOR STAMPING panel', (id) => {
     expect(document.querySelector('.panel-stamp').contains($(id))).toBe(true);
+  });
+  it.each(BLUEPRINT)('#%s is the SVG Blueprint\'s (#stampBlueprint: a Draw card hosts it), once', (id) => {
+    expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
+    expect($('stampBlueprint').contains($(id))).toBe(true);
   });
   it('the whole-layer settings are marked as such (Transform in the editor, SVG Blueprint in the sidebar)', () => {
     expect(inStamp('stampTx').closest('[data-stamp-scope="layer"]')).not.toBeNull();
@@ -174,33 +179,63 @@ describe('selecting another editor layer shows ITS values', () => {
 });
 
 // the sidebar's layer rows moved into the LAYERS stack (Fred 2026-11-23): each Draw layer's open card shows the same line
+const card = (layer) => document.querySelector(`#layerStackList [data-stack-key="layer:${layer.id}"]`);
+const closeCards = () => { for (const c of document.querySelectorAll('#layerStackList > .layer-card:not(.collapsed)')) c.querySelector('.layer-card-name').click(); };
 describe('the layer stack: a Draw card shows its layer\'s one-line read-only summary', () => {
   beforeAll(() => { initLayerStack(); });
+  afterEach(() => closeCards()); // the hosted settings go back to the Stamp branch (the later blocks find them there)
   const summaryOf = (layer) => {
     openLayerStackItem(`layer:${layer.id}`); // opening a Draw card makes its layer the active one
-    return document.querySelector(`#layerStackList [data-stack-key="layer:${layer.id}"] .layer-card-summary`);
+    const text = card(layer)?.querySelector('.layer-card-summary')?.textContent;
+    closeCards();
+    return text;
   };
   it('each row reads its layer: "Raised 0.25 in · V-bit 90°" / "Carved 0.1 in · Ballnose"', () => {
-    expect(summaryOf(lines)?.textContent).toBe('Raised 0.25 in · V-bit 90°');
-    expect(summaryOf(text)?.textContent).toBe('Carved 0.1 in · Ballnose');
+    expect(summaryOf(lines)).toBe('Raised 0.25 in · V-bit 90°');
+    expect(summaryOf(text)).toBe('Carved 0.1 in · Ballnose');
   });
   it('updates when a moved control changes the layer, and on a layer switch', () => {
     inStamp('stampBtnReliefCarved').click();
     type('stampHeight', 0.125);
-    expect(summaryOf(lines)?.textContent).toBe('Carved 0.125 in · V-bit 90°');
+    expect(summaryOf(lines)).toBe('Carved 0.125 in · V-bit 90°');
+    setActiveLayer(editor, lines.id);
     type('stampVBitAngle', 60);
-    expect(summaryOf(lines)?.textContent).toBe('Carved 0.125 in · V-bit 60°');
+    expect(summaryOf(lines)).toBe('Carved 0.125 in · V-bit 60°');
+    setActiveLayer(editor, lines.id);
     type('stampHeight', 0);
-    expect(summaryOf(lines)?.textContent).toBe('Flat');
+    expect(summaryOf(lines)).toBe('Flat');
     setActiveLayer(editor, text.id);
-    expect(summaryOf(lines)?.textContent).toBe('Flat');
-    expect(summaryOf(text)?.textContent).toBe('Carved 0.1 in · Ballnose');
+    expect(summaryOf(lines)).toBe('Flat');
+    expect(summaryOf(text)).toBe('Carved 0.1 in · Ballnose');
   });
   it('the summary holds no control (read-only)', () => {
-    expect(summaryOf(lines)?.querySelector('input, select, button')).toBeNull();
+    openLayerStackItem(`layer:${lines.id}`);
+    expect(card(lines).querySelector('.layer-card-summary').querySelector('input, select, button')).toBeNull();
   });
 });
 
+// Fred 2026-11-23 ("are layers expandable into their full previous panel fields?"): an open Draw card holds the layer's
+// full stamp settings (the moved controls, MOVED from the Stamp branch, never copied) and its SVG Blueprint
+describe('the layer stack: an open Draw card holds that layer\'s full stamp settings', () => {
+  afterEach(() => closeCards());
+  it('opening Text\'s card: every moved control and the Blueprint inside it, once; editing Height there writes TEXT', () => {
+    openLayerStackItem(`layer:${text.id}`);
+    for (const id of [...MOVED, ...BLUEPRINT]) {
+      expect(document.querySelectorAll(`[id="${id}"]`), id).toHaveLength(1);
+      expect(card(text).contains($(id)), `${id} in Text's card`).toBe(true);
+    }
+    const h = $('stampHeight'); h.value = '0.3'; h.dispatchEvent(new Event('input', { bubbles: true })); h.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(text.depth).toBe(-0.3); // Text is Carved: the height keeps its sign
+    expect(lines.depth).toBe(start.lines.depth);
+    expect(card(text).querySelector('.layer-card-summary').textContent).toBe('Carved 0.3 in · Ballnose');
+  });
+  it('closing the card puts the settings back in the Draw tab\'s Stamp branch (and the Blueprint in its park)', () => {
+    openLayerStackItem(`layer:${lines.id}`);
+    closeCards();
+    for (const id of MOVED) expect(inStamp(id), id).not.toBeNull();
+    expect($('layerStackPark').contains($('stampBlueprint'))).toBe(true);
+  });
+});
 describe('job-timeline lock: a locked vector layer keeps its moved settings read-only', () => {
   function lockLines() {
     const steps = deriveJobSteps(jobProjectOf(editor._layers, null));

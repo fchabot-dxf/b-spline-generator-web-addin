@@ -35,9 +35,10 @@ beforeEach(() => {
 afterEach(() => root.remove());
 
 describe('the sidebar open-the-editor buttons', () => {
-  it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab, Layers panel Open Editor -> Artwork', () => {
+  it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab', () => {
     // c64a466 (2026-10-14): the main sidebar's permanent Layers panel opens the editor on the Artwork tab
-    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }, { id: 'btnMainLayersOpenEditor', tab: 'artwork' }]);
+    // (the Layers section's Open Editor retired, Fred 2026-11-23: the 2D / 3D toggle opens the editor)
+    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }]);
   });
   it('Brick editor opens the editor through btnStampEdit, on the Brick tab', async () => {
     const open = vi.fn();
@@ -58,10 +59,10 @@ describe('the sidebar open-the-editor buttons', () => {
     expect(seen?.id).toBe('openEditor'); // the stage was on screen while the editor opened
     resetLoadingSignal();
   });
-  it('the button is the first thing in the BRICK section', () => {
+  it('the button is the first thing in the Brick fields (the old BRICK panel\'s body, hosted by the layer stack\'s Brick card)', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
-    const section = html.slice(html.indexOf('<div class="panel panel-brick">'));
-    const body = section.slice(section.indexOf('<div class="panel-body hidden">') + '<div class="panel-body hidden">'.length);
+    const open = '<div id="brickPanelBody" class="layer-hosted-body">';
+    const body = html.slice(html.indexOf(open) + open.length);
     expect(body.replace(/<!--[\s\S]*?-->/g, '').trimStart()).toMatch(/^<button type="button" id="btnEditBricks"/);
   });
 });

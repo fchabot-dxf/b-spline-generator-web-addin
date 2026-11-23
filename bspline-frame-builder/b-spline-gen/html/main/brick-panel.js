@@ -1671,6 +1671,8 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   // it now runs inside that lay's stage (after the lay, before the card clears); a press before then flushes it first
   // (flushControlRequires), so no tap lands on a control that should already be greyed.
   if (_relayQueued) _requiresPending = true; else syncControlRequires();
+  // the layer stack's Brick card re-reads its summary (Relief, height) -- the same event the STL / height writes send
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('layerStackStale'));
 }
 
 /** A requires sync deferred into the staged lay (commitBrickSetting): run it now if still pending. Called by the

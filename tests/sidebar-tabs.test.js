@@ -40,17 +40,17 @@ describe('phase 5: the main sidebar tree', () => {
   it('Fred 2026-10-11 (final) + 2026-11-23 (the layer stack): four branches; Surface ends with a "2D editor" GROUP; the LAYERS branch after it', () => {
     expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'layers', 'output']);
     expect(BOARD).toEqual(['panel-stock', 'panel-frame']);
-    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-photo', 'panel-brick', 'panel-stamp']);
+    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl', 'panel-photo', 'panel-stamp']); // the Brick panel's body is the Brick card's (layer stack)
     // the stack (its Thicken line holds the retired Thicken panel's settings), then Sculpt bottom as it followed Thicken
     expect(LAYERS).toEqual(['panel-layers', 'panel-sculpt-bot']);
-    expect(groupOfSection('panel-brick')).toMatchObject({ id: 'editor', label: '2D editor' });
+    expect(groupOfSection('panel-stamp')).toMatchObject({ id: 'editor', label: '2D editor' });
     expect(groupOfSection('panel-filter')).toBeNull();
     initSidebarTabs();
     const group = $('sidebarGroup_editor');
     expect(group.parentElement.id).toBe('sidebarBranch_surface');
     expect(group.parentElement.lastElementChild).toBe(group); // after Surface's own sections
     expect(group.querySelector('.sidebar-group-head').textContent).toBe('2D editor');
-    expect([...group.querySelectorAll(':scope > .panel')].map((p) => sectionKey(p.classList))).toEqual(['panel-photo', 'panel-brick', 'panel-stamp']);
+    expect([...group.querySelectorAll(':scope > .panel')].map((p) => sectionKey(p.classList))).toEqual(['panel-photo', 'panel-stamp']);
   });
 
   it('Generate New Seed stays first and alone in the pinned bar; the branches follow in SIDEBAR_TABS order, each in its DECLARED order', () => {
@@ -95,10 +95,10 @@ describe('phase 5: the main sidebar tree', () => {
     const head = document.querySelector('[data-branch="surface"] .sidebar-branch-head');
     head.scrollIntoView = vi.fn();
     $('sidebarTab_surface').click();
-    expect(shown()).toContain('panel-brick');
+    expect(shown()).toContain('panel-stamp');
     expect(head.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     $('sidebarTab_surface').click();
-    expect(shown()).toContain('panel-brick');
+    expect(shown()).toContain('panel-stamp');
     expect(head.scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
@@ -109,16 +109,16 @@ describe('phase 5: the main sidebar tree', () => {
     const group = $('sidebarGroup_editor');
     group.scrollIntoView = vi.fn();
     setSidebarTab('decor');
-    expect(shown()).toContain('panel-brick');
+    expect(shown()).toContain('panel-stamp');
     expect(group.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     expect($('sidebarTab_decor')).toBeNull();
   });
 
   it('a group whose sections are all pinned away hides its heading; one back shows it again', () => {
     initSidebarTabs();
-    for (const k of ['panel-photo', 'panel-brick', 'panel-stamp']) toggleSidebarPin(k);
+    for (const k of ['panel-photo', 'panel-stamp']) toggleSidebarPin(k);
     expect($('sidebarGroup_editor').hidden).toBe(true);
-    toggleSidebarPin('panel-brick');
+    toggleSidebarPin('panel-stamp');
     expect($('sidebarGroup_editor').hidden).toBe(false);
   });
 
@@ -141,16 +141,16 @@ describe('phase 5: the main sidebar tree', () => {
 
   it('a pinned section moves to the top, shows whatever is folded, and goes back into its place when unpinned', () => {
     initSidebarTabs();
-    const brick = document.querySelector('.panel.panel-brick');
+    const brick = document.querySelector('.panel.panel-stamp'); // (the Vector stamping section; the Brick panel retired into the Brick card)
     const pin = brick.querySelector('.panel-header > .panel-pin');
     pin.click();
     expect(window.togglePanel).not.toHaveBeenCalled(); // the pin never folds the section
     expect(brick.parentElement.id).toBe('sidebarPinned');
     toggleSidebarBranch('board'); toggleSidebarBranch('surface'); toggleSidebarBranch('layers');
-    expect(shown()).toEqual(['panel-brick']);
+    expect(shown()).toEqual(['panel-stamp']);
     expect(pin.classList.contains('pinned')).toBe(true);
-    expect(JSON.parse(localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY))).toEqual(['panel-brick']);
-    toggleSidebarPin('panel-brick');
+    expect(JSON.parse(localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY))).toEqual(['panel-stamp']);
+    toggleSidebarPin('panel-stamp');
     expect(inBranch('surface')).toEqual(SURFACE);
     expect(brick.parentElement.id).toBe('sidebarGroup_editor');
   });
@@ -169,10 +169,10 @@ describe('phase 5: the main sidebar tree', () => {
     window.togglePanel = (h) => h.classList.toggle('collapsed');
     initSidebarTabs();
     toggleSidebarBranch('surface');
-    const header = document.querySelector('.panel.panel-brick > .panel-header');
+    const header = document.querySelector('.panel.panel-stamp > .panel-header');
     expect(header.classList.contains('collapsed')).toBe(true);
-    revealSidebarSection('panel-brick');
-    expect(shown()).toContain('panel-brick');
+    revealSidebarSection('panel-stamp');
+    expect(shown()).toContain('panel-stamp');
     expect(header.classList.contains('collapsed')).toBe(false);
     toggleSidebarPin('panel-view');
     revealSidebarSection('panel-view');

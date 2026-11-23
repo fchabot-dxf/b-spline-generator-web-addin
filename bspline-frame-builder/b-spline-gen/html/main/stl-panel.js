@@ -826,7 +826,7 @@ function syncStlCards(recs, activeEl) {
     card.classList.toggle('stl-card-open', isOpen);
     card.classList.toggle('collapsed', !isOpen);
     const pick = card.querySelector('[data-stl-pick]');
-    if (pick) { pick.setAttribute('aria-expanded', String(isOpen)); pick.title = isOpen ? 'Close its settings' : 'Open its settings'; }
+    if (pick) pick.setAttribute('aria-expanded', String(isOpen)); // its title stays the stack's: the full name
     card.querySelector('.stl-row')?.classList.toggle('stl-row-active', !!r && id === String(_active));
     const box = card.querySelector('[data-stl-enable]');
     if (box && r) box.checked = r.enabled !== false;

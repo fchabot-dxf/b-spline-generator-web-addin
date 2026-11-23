@@ -18,7 +18,7 @@
  * Thicken panel retired into the Thicken line (its settings, #thickenSettings, open from it).
  */
 import { P, scheduleSessionSave } from '../core/state.js';
-import { scheduleUndoSnapshot } from '../core/history.js';
+import { scheduleUndoSnapshot, isEditorOpen } from '../core/history.js';
 import { placementOf } from '../core/stamp/placement.js';
 import { defaultStackKeys, effectiveOrder, editorLayerKey, isBrickLayerRecord, STACK_BRICKS_KEY } from '../core/stamp/order.js';
 import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
@@ -41,7 +41,11 @@ const brickSettings = () => (P.brickSettings && typeof P.brickSettings === 'obje
 /** A heavy main/ module the stack needs only for an action (the editor door, the brick commit, the Height tab): loaded on use. */
 const lazy = { framePanel: () => import('./frame-panel.js'), brickPanel: () => import('./brick-panel.js'), heightPanel: () => import('./height-panel.js'),
   lattice: () => import('../editor/editor-lattice-pattern.js') };
-async function openEditorTab(tab) { const m = await lazy.framePanel(); return m.openEditorOn(tab); }
+/** The editor on 	ab: switched to it when the editor is already up (it stays open), else opened on it. */
+async function openEditorTab(tab) {
+  if (editorUp()) { const m = await import('./editor-tabs.js'); return m.setEditorTab(tab); }
+  const m = await lazy.framePanel(); return m.openEditorOn(tab);
+}
 const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
 
 /**
@@ -142,12 +146,25 @@ export const LAYER_TYPES = Object.freeze({
 });
 /** '+ Add layer's tiles, in Fred's order (no Photo: deferred). */
 export const LAYER_ADD_TYPES = Object.freeze(['brick', 'draw', 'lattice', 'height', 'stl']);
-/** Blocks of other panels a card shows while it is open: moved in, parked back (never copied). The STL settings are moved by
- *  their own panel (main/stl-panel.js syncStlPanel) into the open STL card; the stack only parks them before it re-renders. */
-const HOSTED = Object.freeze([
+/** Fred (2026-11-23, "are layers expandable into their full previous panel fields?"): the blocks of the old panels an OPEN
+ *  card shows, after its summary and its editor door -- MOVED in, parked back (never copied, every id stays unique).
+ *    content  the block's id;  park  where it lives while no card shows it;  hide  hide it while parked
+ *    hosts    the card types (LAYER_TYPES ids) / stack keys that show it;  none = its own panel moves it in (the STL settings:
+ *             main/stl-panel.js syncStlPanel hosts #stlActive in the open STL card; the stack only parks it on a re-render)
+ *    editorHome  its park IS its place in the 2D editor (the Draw tab's Stamp branch): while the editor is open it stays there
+ *  A Height patch card hosts none: a patch has no sidebar fields (they are all in the editor's Height tab). */
+export const HOSTED = Object.freeze([
   Object.freeze({ content: 'stlActive', park: 'stlLayerBody', hide: true }),
-  Object.freeze({ content: 'thickenSettings', park: 'thickenSettingsPark', hide: false }),
+  Object.freeze({ content: 'thickenSettings', park: 'thickenSettingsPark', hosts: Object.freeze([THICKEN_LINE_KEY]) }),
+  // the selected layer's stamp settings (Relief + Height, Tool profile, V-bit angle, Fusion geometry, Transform, Blur,
+  // Smoothing, Smooth the terrain, Edge fillet, Fillet sharpness, metrics: DRAW-STAMP U's moved controls): an open Draw /
+  // Lattice card IS the selected layer (opening it makes it active), so they edit that layer
+  Object.freeze({ content: 'stampLayerSettings', park: 'drawStampBody', hosts: Object.freeze(['draw', 'lattice']), editorHome: true }),
+  Object.freeze({ content: 'stampBlueprint', park: 'layerStackPark', hosts: Object.freeze(['draw']) }), // fills the whole layer
+  Object.freeze({ content: 'brickPanelBody', park: 'layerStackPark', hosts: Object.freeze(['brick']) }), // the old Brick panel's body
 ]);
+/** The editor modal is up (core/history.js isEditorOpen): an editorHome block stays in the editor then. */
+const editorUp = () => { try { return !!isEditorOpen(); } catch (_) { return false; } };
 
 // ── the items ──────────────────────────────────────────────────────────────────────────────────────────────────────
 /** Pure-ish: every layer of the board as { key, type, ref } in STACK ORDER (core/stamp/order.js effectiveOrder): editor
@@ -226,6 +243,7 @@ let _drag = null;      // the card being dragged: renders wait for its drop
 let _dirty = false;
 let _rendering = false;
 let _pendingAdd = null; // an STL picked from '+ Add layer' (it arrives after a download)
+let _lastSig = null;    // what the cards on screen show (refreshLayerStack: unchanged = text only, no rebuild)
 
 const el = (tag, attrs = {}, kids = []) => {
   const e = document.createElement(tag);
@@ -263,8 +281,9 @@ function cardFor(item, after) {
     el('span', { class: 'layer-card-handle', title: 'Drag to move (stamp order; across the Thicken line: body or top only)', 'aria-label': `Move ${name}`, role: 'button', text: '≡' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: T.icon }),
     T.enabled ? el('input', { type: 'checkbox', class: 'layer-card-enable', title: T.enabled.title, 'aria-label': T.enabled.title, ...(stl ? { 'data-stl-enable': item.ref.id } : {}) }) : null,
-    el('button', { type: 'button', class: `layer-card-name${stl ? ' stl-row-name' : ''}`, 'data-stack-open': item.key, 'aria-expanded': String(open),
-      ...(stl ? { 'data-stl-pick': item.ref.id } : {}), title: open ? 'Close its settings' : 'Open its settings' },
+    // one row at any width: the name truncates (ellipsis); its title is the full name + type (Fred 2026-11-23)
+    el('button', { type: 'button', class: `layer-card-name${stl ? ' stl-row-name' : ''}`, id: cardNameId(item.key), 'data-stack-open': item.key, 'aria-expanded': String(open),
+      ...(stl ? { 'data-stl-pick': item.ref.id } : {}), title: `${name} — ${T.label}${after ? ', top only' : ''}` },
     [el('span', { class: 'layer-card-title', text: name }), el('span', { class: 'layer-card-type', text: after ? `${T.label} · top only` : T.label })]),
     stl ? el('span', { class: 'stl-row-warn', 'data-stl-warn': item.ref.id, role: 'img', 'aria-label': 'Over the stock', text: '⚠', hidden: true }) : null,
     T.remove ? el('button', { type: 'button', class: 'layer-card-del stl-row-del', ...(stl ? { 'data-stl-del': item.ref.id } : {}), title: `Remove ${name}`, 'aria-label': `Remove ${name}`, text: '🗑' }) : null,
@@ -305,13 +324,28 @@ function thickenLine() {
   const head = el('div', { class: 'panel-header layer-card-head' }, [
     el('span', { class: 'layer-card-handle', title: 'Drag the line: layers above it are part of the body, below it top-only detail', 'aria-label': 'Move the Thicken line', role: 'button', text: '≡' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: SECTION_ICONS.thicken }),
-    el('button', { type: 'button', class: 'layer-card-name', 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open), title: open ? 'Close the Thicken settings' : 'Open the Thicken settings' },
+    el('button', { type: 'button', class: 'layer-card-name', id: cardNameId(THICKEN_LINE_KEY), 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open), title: 'Thicken: above the line part of the body, below it top-only detail' },
       [el('span', { class: 'layer-card-title', text: 'Thicken' }), el('span', { class: 'layer-card-state', id: 'layerStackThickenState', text: thickenState() }),
         el('span', { class: 'layer-card-type', text: 'above: part of the body · below: top only' })]),
   ]);
   card.append(head, el('div', { class: 'panel-body layer-card-body', id: 'layerStackThickenBody' }));
   return card;
 }
+/** The open card's body gets the HOSTED blocks declared for its type / key, in their declared order. */
+function hostOpen(listEl, items) {
+  const open = [...listEl.children].find((c) => !c.classList.contains('collapsed') && c.dataset.stackType !== 'stl');
+  if (!open) return;
+  const key = open.dataset.stackKey, type = key === THICKEN_LINE_KEY ? null : (items.find((i) => i.key === key) || {}).type;
+  const body = open.querySelector(':scope > .layer-card-body');
+  for (const h of HOSTED) {
+    if (!h.hosts || !(h.hosts.includes(key) || (type && h.hosts.includes(type)))) continue;
+    if (h.editorHome && editorUp()) continue; // the editor shows it now
+    const c = byId(h.content);
+    if (c && body) { body.appendChild(c); c.hidden = false; }
+  }
+}
+/** A card's name button id (the brick matrix opens a card by it): layerCardName_<key>, ':' as '_'. */
+export const cardNameId = (key) => `layerCardName_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
 const thickenState = () => (P.thickenEnabled ? `${inches(P.thickness)} in` : 'off');
 
 /** Re-reads the board and rebuilds the stack (safe any time: a load, an undo, a roster change). */
@@ -322,16 +356,29 @@ export function refreshLayerStack() {
   if (_rendering) { _dirty = true; return; }
   _rendering = true;
   try {
-    parkHosted();
     const items = stackItems();
     if (_openKey && _openKey !== THICKEN_LINE_KEY && !items.some((i) => i.key === _openKey)) _openKey = null;
-    listEl.innerHTML = '';
-    for (const i of items) if (itemPlacement(i) !== 'afterBack') listEl.appendChild(cardFor(i, false));
-    listEl.appendChild(thickenLine());
-    for (const i of items) if (itemPlacement(i) === 'afterBack') listEl.appendChild(cardFor(i, true));
-    if (_openKey === THICKEN_LINE_KEY) { const t = byId('thickenSettings'), b = byId('layerStackThickenBody'); if (t && b) b.appendChild(t); }
-    const sum = byId('layerStackSummary');
-    if (sum) sum.textContent = `— ${items.length} layer${items.length === 1 ? '' : 's'}`;
+    // the same cards as on screen (keys, names, sides, Stamp boxes, the open one, the editor up or not): only their text is
+    // refreshed -- a rebuild would move the hosted fields out from under a slider being dragged or a box being typed in
+    const sig = JSON.stringify([items.map((i) => [i.key, i.type, LAYER_TYPES[i.type].name(i), itemPlacement(i),
+      LAYER_TYPES[i.type].enabled ? !!LAYER_TYPES[i.type].enabled.get(i) : null, isOpen(i)]), _openKey, editorUp()]);
+    if (sig === _lastSig && listEl.childElementCount) {
+      for (const c of listEl.children) {
+        const it = items.find((i) => i.key === c.dataset.stackKey), line = c.querySelector(':scope > .layer-card-body > .layer-card-summary');
+        if (it && line) line.textContent = LAYER_TYPES[it.type].summary(it);
+      }
+      const st = byId('layerStackThickenState'); if (st) st.textContent = thickenState();
+    } else {
+      _lastSig = sig;
+      parkHosted();
+      listEl.innerHTML = '';
+      for (const i of items) if (itemPlacement(i) !== 'afterBack') listEl.appendChild(cardFor(i, false));
+      listEl.appendChild(thickenLine());
+      for (const i of items) if (itemPlacement(i) === 'afterBack') listEl.appendChild(cardFor(i, true));
+      hostOpen(listEl, items);
+      const sum = byId('layerStackSummary');
+      if (sum) sum.textContent = `${items.length} layer${items.length === 1 ? '' : 's'}`;
+    }
   } finally { _rendering = false; }
   syncStlPanel(); // the STL cards' state + its settings in the open one (and the job-timeline lock back on them)
   if (_dirty) { _dirty = false; refreshLayerStack(); }
@@ -417,6 +464,7 @@ function startDrag(e, handle) {
     try { handle.releasePointerCapture(pointerId); } catch (_) { /* see setPointerCapture */ }
     card.classList.remove('dragging');
     _drag = null;
+    _lastSig = null; // the cards were moved by hand: the next refresh rebuilds them in the stack's order
   };
   const up = (ev) => {
     if (ev.pointerId !== pointerId) return;
@@ -442,17 +490,36 @@ export async function addStackLayer(type) {
   return openLayerStackItem(key) ? key : null;
 }
 
-function renderAddPicker() {
-  const grid = byId('layerStackAddGrid');
-  if (!grid || grid.childElementCount) return;
-  for (const type of LAYER_ADD_TYPES) {
-    const T = LAYER_TYPES[type];
-    const b = el('button', { type: 'button', class: 'cad-btn layer-add-option', id: `layerStackAdd_${type}`, title: `Add a ${T.label} layer`, 'aria-label': `Add a ${T.label} layer` },
-      [el('span', { class: 'layer-add-icon', 'aria-hidden': 'true', text: T.icon }), el('span', { class: 'layer-add-label', text: T.label })]);
-    b.addEventListener('click', () => { addStackLayer(type); });
-    grid.appendChild(b);
+/** Where the '+ Add layer' picker is (Fred 2026-11-23: the sidebar's Layers branch, and the editor's tab row "with the same
+ *  modal"): the same LAYER_ADD_TYPES tiles, the same mountIconGrid call, the same pickAddType. `ids` = its tiles' prefix and
+ *  its picker's ids; `inEditor` = the editor stays open and then shows the new layer's tab. */
+export const ADD_PICKERS = Object.freeze([
+  Object.freeze({ grid: 'layerStackAddGrid', prefix: 'layerStackAdd_', label: '＋ Add layer', ids: Object.freeze({ wrap: 'layerStackAdd', chip: 'layerStackAddBtn' }), inEditor: false }),
+  Object.freeze({ grid: 'editorLayerAddGrid', prefix: 'editorLayerAdd_', label: '＋', ids: Object.freeze({ wrap: 'editorLayerAdd', chip: 'editorLayerAddBtn' }), inEditor: true }),
+]);
+
+/** A picker's tile picked: THE add (addStackLayer); from the editor, the editor then shows that type's tab (it stays open;
+ *  the new Draw / Lattice layer is already the active one, a new patch the Height tab's active patch). */
+export async function pickAddType(type, picker = ADD_PICKERS[0]) {
+  const key = await addStackLayer(type);
+  const tab = LAYER_TYPES[type] && LAYER_TYPES[type].editorTab;
+  if (picker.inEditor && key && tab && editorUp()) await openEditorTab(tab);
+  return key;
+}
+
+function renderAddPickers() {
+  for (const picker of ADD_PICKERS) {
+    const grid = byId(picker.grid);
+    if (!grid || grid.childElementCount) continue;
+    for (const type of LAYER_ADD_TYPES) {
+      const T = LAYER_TYPES[type];
+      const b = el('button', { type: 'button', class: 'cad-btn layer-add-option', id: `${picker.prefix}${type}`, title: `Add a ${T.label} layer`, 'aria-label': `Add a ${T.label} layer` },
+        [el('span', { class: 'layer-add-icon', 'aria-hidden': 'true', text: T.icon }), el('span', { class: 'layer-add-label', text: T.label })]);
+      b.addEventListener('click', () => { pickAddType(type, picker); });
+      grid.appendChild(b);
+    }
+    mountIconGrid(grid, { label: picker.label, ids: picker.ids });
   }
-  mountIconGrid(grid, { label: '＋ Add layer', ids: { wrap: 'layerStackAdd', chip: 'layerStackAddBtn' } });
 }
 
 /** Wire the stack. `hooks.onChange`: rebuild the 3D (a new stamp order). */
@@ -460,7 +527,7 @@ export function initLayerStack(hooks = {}) {
   _hooks = { onChange: hooks.onChange || (() => {}) };
   const listEl = byId('layerStackList');
   if (!listEl) return false;
-  renderAddPicker();
+  renderAddPickers();
   listEl.addEventListener('pointerdown', (e) => { const h = e.target.closest('.layer-card-handle'); if (h) startDrag(e, h); });
   listEl.addEventListener('click', (e) => {
     const head = e.target.closest('.layer-card-head');
@@ -486,7 +553,8 @@ export function initLayerStack(hooks = {}) {
     _docWired = true;
     const refresh = () => refreshLayerStack();
     // 'stampTargetChanged': main/stamp/summary.js STAMP_TARGET_CHANGED (a stamp setting edited: the Draw card's summary)
-    for (const ev of ['editorLayersChanged', 'stlLayersChanged', LAYER_STACK_STALE, 'brickSettingsRestored', 'editorCommit', 'stampTargetChanged']) document.addEventListener(ev, refresh);
+    // 'editorModeChanged': the editor opened (its open sets a mode): an editorHome block (HOSTED) goes back into it
+    for (const ev of ['editorLayersChanged', 'stlLayersChanged', LAYER_STACK_STALE, 'brickSettingsRestored', 'editorCommit', 'stampTargetChanged', 'editorModeChanged']) document.addEventListener(ev, refresh);
     document.addEventListener('stlCardOpened', () => { _openKey = null; refreshLayerStack(); });
     document.addEventListener('stlLayersChanged', () => {
       if (!_pendingAdd || _pendingAdd.type !== 'stl') return;
@@ -503,4 +571,4 @@ export function initLayerStack(hooks = {}) {
 let _docWired = false;
 
 /** Tests: forget the UI state. */
-export function _resetLayerStackForTests() { _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} }; }
+export function _resetLayerStackForTests() { _lastSig = null; _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} }; }

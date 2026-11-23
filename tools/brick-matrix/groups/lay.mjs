@@ -145,12 +145,12 @@ async function runLayWarnings() {
   await openEditorTab('editorTabFrame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await apply(); await heightsSettled(null);
-  await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
+  await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
   const size = async (id) => { // the Brick frame's size (the bands fit by it; per element since 2026-10-11), then the sidebar
     await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await setValue('brickSizeSelect', id, 'change'); await sleep(2500);
     await apply(); await heightsSettled(null);
-    await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
+    await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   };
   // 1. bands that cover the board: no wall, both notes say so
   await size(W.tooManySize);

@@ -16,12 +16,14 @@
 // stamping -- Decor's two joined Photo there).
 export const SIDEBAR_TABS = Object.freeze([
   Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
-  // panel-stl / panel-brick / panel-stamp keep their GLOBAL settings only: their layers are cards in the Layers stack
+  // panel-stl / panel-stamp keep their GLOBAL settings only: their layers are cards in the Layers stack; the Brick panel's
+  // body moved whole into the Brick card (main/layer-stack.js HOSTED), so that panel retired (Fred 2026-11-23)
   Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']),
-    groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-photo', 'panel-brick', 'panel-stamp']) })]) }),
+    groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-photo', 'panel-stamp']) })]) }),
   // the unified LAYER STACK (Fred 2026-11-23, main/layer-stack.js): after Surface, before Sculpt bottom and Output. The
-  // stack's section is the permanent Layers panel (c64a466, moved here from Board); the Thicken panel retired into its
-  // Thicken line; Sculpt bottom (the back) follows it as it followed Thicken.
+  // stack's section (panel-layers, moved here from Board) has no header and no box: its cards are this branch's panels,
+  // full width like Sculpt bottom (styles/layout-app.css); the Thicken panel retired into its Thicken line; Sculpt bottom
+  // (the back) follows it as it followed Thicken.
   Object.freeze({ id: 'layers', label: 'Layers', sections: Object.freeze(['panel-layers', 'panel-sculpt-bot']) }),
   Object.freeze({ id: 'output', label: 'Output', sections: Object.freeze(['panel-view', 'panel-export', 'panel-resolution']) }),
 ]);

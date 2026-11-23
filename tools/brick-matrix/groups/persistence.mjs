@@ -174,7 +174,7 @@ async function runPersistence() {
     }
     if (step.sidebar) {
       if (await editorOpen()) await apply();
-      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
       continue;
     }
     if (step.click === 'brickGenerate') { await click('brickGenerate', 1800); continue; }
