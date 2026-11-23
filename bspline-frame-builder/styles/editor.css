@@ -157,10 +157,14 @@
     }
 }
 @media (max-width: 900px) {
-    #editorToolbarTop > :empty,
-    .editor-sidebar:not(:has(> [id^="editorToolbar"]:not(:empty, [style*="display: none"], [style*="display:none"]))) {
+    #editorToolbarTop > :empty {
         display: none !important;
     }
+}
+/* the same rail rule at EVERY width (advisor 2026-11-23, after the Photo tab -- the last one with rail tools -- left with
+   the photo): measured at 1400, the empty rail kept 44 px of dead space left of the canvas on every tab */
+.editor-sidebar:not(:has(> [id^="editorToolbar"]:not(:empty, [style*="display: none"], [style*="display:none"]))) {
+    display: none !important;
 }
 
 /* T32 (Fred: undo/redo out of the left tool rail): ONE group

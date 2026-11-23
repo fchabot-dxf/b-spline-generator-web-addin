@@ -70,4 +70,20 @@ describe('the editor top bar: nothing empty takes a line', () => {
     frame.appendChild(Object.assign(document.createElement('button'), { className: 'tool-btn' }));
     expect(matchesAny(rail, gone)).toBe(false);
   });
+  it('the empty left rail takes no space at ANY width (advisor 2026-11-23: measured 44 px dead at 1400 on every tab)', () => {
+    // the rule hiding the rail is not inside a media block (the bar's spacer rule stays narrow-only)
+    const flat = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+    const media = (sel) => {
+      const at = flat.indexOf(sel);
+      expect(at, sel).toBeGreaterThan(0);
+      let depth = 0;
+      for (let i = at; i >= 0; i--) {
+        if (flat[i] === '}') depth++;
+        else if (flat[i] === '{') { if (depth === 0) { const head = flat.slice(flat.lastIndexOf('}', i) + 1, i); if (head.trim().startsWith('@')) return head.trim(); } else depth--; }
+      }
+      return null;
+    };
+    expect(media('.editor-sidebar:not(:has(> [id^="editorToolbar"]')).toBeNull();
+    expect(media('#editorToolbarTop > :empty')).toMatch(/max-width: 900px/);
+  });
 });
