@@ -266,13 +266,10 @@
       flex: 0 0 32px !important;
     }
 
-    /* Force the colorful emoji presentation on header icons. Without
-       this, characters like ⬇ and 🧩 can fall back to a monochrome
-       glyph from Segoe UI / Tahoma instead of the color emoji form. */
+    /* Fred 2026-11-22 (iPad, Chrome on iPadOS = WebKit): a forced emoji font stack + font-variant-emoji here drew the
+       header icons blank / as dark blocks, while the panel-header emoji (plain text, no font rule) render fine -- so the
+       header icons are plain text too. A text-default code point carries U+FE0F in the markup (the settings gear). */
     .cad-nav-btn > span {
-      font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji",
-                   "Segoe UI Symbol", sans-serif;
-      font-variant-emoji: emoji;
       line-height: 1;
     }
 
