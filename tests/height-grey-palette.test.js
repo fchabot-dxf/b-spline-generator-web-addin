@@ -16,7 +16,7 @@ import { decodedRaster, f16Round } from '../bspline-frame-builder/b-spline-gen/h
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   initHeightPanel, newHeightPatch, activeHeightLayer, _resetHeightPanelForTests, setHeightField, setHeightTool, heightTool, heightBrush,
-  paintHeightStroke, fillHeight, selectHeightRect, clearHeightSelection, HEIGHT_TOOLS, HEIGHT_TOOL_CONTROLS, heightToolSettings, pickHeightGrey,
+  paintHeightStroke, fillHeight, selectHeightRect, clearHeightSelection, HEIGHT_TOOLS, HEIGHT_TOOL_CONTROLS, heightToolSettings, pickHeightGrey, addPaintLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/main/height-panel.js';
 import { heightBrushHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-height-tool.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -44,6 +44,37 @@ describe('core', () => {
     expect(at(0)[0]).toBeLessThan(48);
     const mid = shadeRaster(Float32Array.from([0, 0]), 2, 1, 2, 1, 100, 100, undefined, undefined, undefined, undefined, undefined, { look: 'grey', mapping: { zero: 'mid', whiteIn: 0.25, darkIn: 0.25 } });
     expect(mid[0]).toBeGreaterThan(127); expect(mid[0]).toBeLessThan(160); // Mid-grey = 0: the zero grey is mid-grey
+  });
+});
+
+describe('the greyscale view shows the active layer by default; the eyedropper follows it', () => {
+  const saved = {};
+  let ed;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    Object.assign(saved, { hl: P.heightLayers, w: P.widthIn, h: P.heightIn });
+    P.widthIn = 2; P.heightIn = 2; P.heightLayers = DEFAULT.heightLayers;
+    document.body.innerHTML = '<div id="heightPanelBody"></div><div id="editorToolbarHeight"></div>';
+    _resetHeightPanelForTests();
+    ed = window.svgEditor = { _undoStack: [], _currentMode: 'select', setMode(m) { this._currentMode = m; }, pushState() { this._undoStack.push({}); }, _notifyChange() {} };
+    initHeightPanel({});
+    setEditorTab('height');
+  });
+  afterEach(() => { P.heightLayers = saved.hl; P.widthIn = saved.w; P.heightIn = saved.h; delete window.svgEditor; setEditorTab('artwork'); vi.useRealTimers(); });
+  it('Show: This layer (default) | All layers; the eyedropper reads this layer, then the composite', async () => {
+    const show = HEIGHT_TOOL_CONTROLS.find((x) => x.id === 'viewShow');
+    expect(show.options.map((o) => o[0])).toEqual(['layer', 'all']);
+    expect(heightToolSettings('view').show).toBe('layer');
+    await newHeightPatch();
+    await fillHeight({ heightIn: 0.1 });             // the base layer
+    await addPaintLayer();
+    setHeightField('layerBlend', 'add');
+    await fillHeight({ heightIn: 0.05 });            // the active layer, added on top: the composite is 0.15
+    const eyedrop = async () => { setHeightTool('eyedropper'); heightBrushHandler.start(ed, { x: 1, y: 1 }, {}); await heightBrushHandler.finish(ed); return heightBrush().targetIn; };
+    setHeightField('viewLook', 'grey');
+    expect(await eyedrop()).toBe(f16Round(0.05));
+    setHeightField('viewShow', 'all');
+    expect(await eyedrop()).toBeCloseTo(0.15, 3);
   });
 });
 
@@ -125,7 +156,9 @@ describe('the panel', () => {
   it('one Sample setting for the wand and the eyedropper (Active layer | Whole board)', () => {
     const c = HEIGHT_TOOL_CONTROLS.find((x) => x.id === 'sampleFrom');
     expect(c.group).toBe('sample');
-    expect(c.options.map((o) => o[0])).toEqual(['layer', 'board']);
+    // + 'view' (the default: as the greyscale view's Show) and 'patch' (all the patch's layers)
+    expect(c.options.map((o) => o[0])).toEqual(['view', 'layer', 'patch', 'board']);
+    expect(heightToolSettings('sample').from).toBe('view');
     expect(HEIGHT_TOOLS.find((t) => t.id === 'wand').leads).toContain('sample');
     expect(HEIGHT_TOOL_CONTROLS.some((x) => x.id === 'wandSample')).toBe(false);
   });

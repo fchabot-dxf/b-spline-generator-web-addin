@@ -160,8 +160,9 @@ export const TOOL_DEFAULTS = Object.freeze({
   select: Object.freeze({ featherIn: 0.05, combine: 'replace', featherProfile: 'smooth', featherCurve: BRUSH_DEFAULTS.customCurve }),
   wand: Object.freeze({ toleranceIn: 0.01, contiguous: true }),
   // slice 5: where the wand and the eyedropper read heights (one setting for both); the canvas look (HEIGHT_LOOKS)
-  sample: Object.freeze({ from: 'layer' }),
-  view: Object.freeze({ look: 'lit' }),
+  // sample 'view' = as the Greyscale view shows (This layer -> the active layer, All layers -> the patch's composite)
+  sample: Object.freeze({ from: 'view' }),
+  view: Object.freeze({ look: 'lit', show: 'layer' }),
   gradient: GRADIENT_DEFAULTS,
   fill: FILL_DEFAULTS,
   file: Object.freeze({ asNewPatch: false }),
@@ -222,8 +223,12 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'wandContiguous', group: 'wand', target: 'wand', kind: 'check', path: ['contiguous'], label: 'Contiguous (only the connected area)' },
   // slice 5: ONE Sample setting for the wand and the eyedropper (was the wand's own 'wandSample' in slice 4)
   { id: 'sampleFrom', group: 'sample', target: 'sample', kind: 'choice', path: ['from'], label: 'Sample',
-    options: [['layer', 'Active layer', 'The heights of the layer the tools edit'], ['board', 'Whole board', 'The board as last built (terrain, reliefs, every layer), on this patch']] },
+    options: [['view', 'As the view', 'The Show choice: this layer, or all the patch\'s layers'], ['layer', 'Active layer', 'The heights of the layer the tools edit'],
+      ['patch', 'All layers', 'This patch\'s layers together (its composite)'], ['board', 'Whole board', 'The board as last built (terrain, reliefs, every layer), on this patch']] },
   // slice 5: the canvas look (core/height/shade.js HEIGHT_LOOKS)
+  // the greyscale view shows what you paint: the ACTIVE layer, or all the patch's layers (the composite); Lit always the composite
+  { id: 'viewShow', group: 'view', target: 'view', kind: 'choice', path: ['show'], label: 'Show', showWhen: (b, p, ctx) => !!ctx && ctx.tools.view.look === 'grey',
+    options: [['layer', 'This layer', 'The layer the tools edit (the picked grey matches what you see)'], ['all', 'All layers', 'The patch\'s layers together']] },
   { id: 'viewLook', group: 'view', target: 'view', kind: 'choice', path: ['look'], label: 'Patches',
     options: Object.entries(HEIGHT_LOOKS).map(([k, l]) => [k, l.label, l.title]) },
   // slice 5 (Fred 2026-11-23: "black as carve and white as raise"): the palette's grey mapping is FIXED mid-grey = 0 with
@@ -631,7 +636,9 @@ function cancelSelect() { if (_drag) { _drag = null; syncHeightOverlay(); } }
  *  layer's through its live mapping), or the board as last built (lastResult, resampled onto the patch), or null (not ready:
  *  a decoding layer). */
 function sampleValues(rec) {
-  if (_tools.sample.from === 'board') {
+  const from = _tools.sample.from === 'view' ? (_tools.view.show === 'all' ? 'patch' : 'layer') : _tools.sample.from;
+  if (from === 'patch') return liveComposite(rec);
+  if (from === 'board') {
     const lr = lastResult;
     if (lr && lr.heights && lr.nx > 1 && lr.nz > 1) return boardHeightsOnPatch(lr.heights, lr.nx, lr.nz, board(), placed(rec));
     status('The board is not built yet: reading the active layer.');
@@ -1287,14 +1294,19 @@ function pictureOf(rec, data, reuse = null) {
   cv.ctx.putImageData(img, 0, 0);
   return { url: cv.c.toDataURL('image/png'), cv };
 }
+/** True while the greyscale view shows the ACTIVE layer of each patch (View: Greyscale, Show: This layer). */
+const viewsLayer = () => _tools.view.look === 'grey' && _tools.view.show !== 'all';
+/** A layer's stored heights (an image layer's through its live mapping), or undefined while it decodes. */
+function storedLayerHeights(layer) { const d = layer && layer.raster ? decodedRaster(layer.raster) : undefined; return d && layerHeights(layer, d); }
 function stillImageOf(rec) {
-  const ck = compositeKey(rec); // a slice-1 patch: its raster's h, as before
+  const layer = viewsLayer() ? layerOf(rec) : null;
+  const ck = layer ? (layer.raster && `layer:${layer.raster.h}:${layer.kind === 'image' ? JSON.stringify(layer.mapping) : ''}`) : compositeKey(rec); // a slice-1 patch: its raster's h, as before
   // the picture also depends on the View's look (+ the grey mapping when greyscale)
   const h = ck && (_tools.view.look === 'lit' ? ck : `${ck}|${_tools.view.look}|${JSON.stringify(greyMapOf(rec))}`);
   if (!h) return null;
   if (_images.has(h)) { const u = _images.get(h); _images.delete(h); _images.set(h, u); return u; }
-  const d = patchComposite(rec);
-  if (!d) { ensurePatchDecoded(rec).then(() => syncHeightOverlay(), () => {}); return null; }
+  const d = layer ? storedLayerHeights(layer) : patchComposite(rec);
+  if (!d) { (layer ? ensureRasterDecoded(layer.raster) : ensurePatchDecoded(rec)).then(() => syncHeightOverlay(), () => {}); return null; }
   const p = pictureOf(rec, d);
   if (!p) return null;
   _images.set(h, p.url);
@@ -1318,7 +1330,9 @@ function liveRedraw() {
     _live.frame = 0;
     const rec = _work && find(_work.id);
     if (!rec || !_g) return;
-    const p = pictureOf(rec, liveComposite(rec), _live.id === rec.id ? _live.canvas : null);
+    // the greyscale view of the active layer: the working heights themselves (an image layer's through its mapping)
+    const data = viewsLayer() ? (_work.kind === 'image' ? layerHeights(layerOf(rec), _work.data) : _work.data) : liveComposite(rec);
+    const p = pictureOf(rec, data, _live.id === rec.id ? _live.canvas : null);
     _live.id = rec.id;
     _live.canvas = p ? p.cv : null;
     const img = _g.querySelector(`[data-height-patch="${rec.id}"] image`);

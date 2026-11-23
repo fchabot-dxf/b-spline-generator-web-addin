@@ -352,3 +352,7 @@ bytes measured on height-painter-4 @ 1763a9a5 before the slice-5 code; the pass 
   Alt while painting flips it once more for that stroke (Alt alone = inverted; Invert + Alt = normal; Alt now also
   inverts Set, where slice 3b's Alt only swapped Raise / Lower). Applied in ONE place, the stroke's setup
   (main/height-panel.js strokeBrush); the brush settings themselves are never rewritten.
+- **Greyscale shows the active layer** by default (View > Show: This layer | All layers; coordinator 2026-11-23): the
+  picked grey matches what you paint. The Sample choice gains 'As the view' (the default: this layer or the patch's composite,
+  as Show says) and 'All layers' (the composite) beside Active layer and Whole board; the wand and the eyedropper share it.
+  The Lit view always shows the composite, unchanged.
