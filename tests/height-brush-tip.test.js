@@ -7,7 +7,7 @@
  * chisel = across the blade only (square ends). The round byte-identity pin is tests/height-brush-tip-pin.test.js.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createStroke, BRUSH_DEFAULTS, BRUSH_TIPS, BRUSH_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/height/brush.js';
+import { createStroke, BRUSH_DEFAULTS, BRUSH_TIPS } from '../bspline-frame-builder/b-spline-gen/html/core/height/brush.js';
 import { f16Round, decodedRaster } from '../bspline-frame-builder/b-spline-gen/html/core/height/raster.js';
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
@@ -127,16 +127,18 @@ describe('the panel', () => {
 
   it('the tip controls are declared (brush target, in the slice-2 tool table) and render', () => {
     const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.target === 'brush').map((c) => c.id);
-    expect(ids).toEqual(['buildUp', 'tip', 'roundness', 'angle', 'followStroke']); // + buildUp (slice 3b)
-    expect(HEIGHT_CONTROLS.some((c) => c.id === 'tip')).toBe(false); // the pinned slice-1 table is unchanged
+    // Fred 2026-11-22: no presets -- the Tip row moved to the top of the Brush section (HEIGHT_CONTROLS, after Mode)
+    expect(ids).toEqual(['buildUp', 'roundness', 'angle', 'followStroke']);
+    expect(HEIGHT_CONTROLS.some((c) => c.id === 'tip')).toBe(true);
     for (const id of ['roundness', 'angle', 'followStroke']) expect(document.getElementById(`height_${id}`), id).toBeTruthy();
     expect(document.querySelectorAll('[data-height-choice^="tip:"]').length).toBe(3);
     setHeightField('tip', 'square'); setHeightField('roundness', 0.4); setHeightField('angle', 30); setHeightField('followStroke', true);
     expect(heightBrush()).toMatchObject({ tip: 'square', roundness: 0.4, angle: 30, followStroke: true });
   });
-  it('the Bevel preset (a picker tile): square tip, linear falloff, hardness 0.3; a dab of it is a chamfer in the stored raster', async () => {
-    expect(BRUSH_PRESETS.bevel.brush).toMatchObject({ tip: 'square', falloff: 'linear', hardness: 0.3 }); // slice 3b: the picker's table (Fred 2026-11-22)
-    document.getElementById('heightBrushPreset_bevel').click();
+  // Fred 2026-11-22: no presets -- a bevel is Square + Linear (+ hardness 0.3), picked in the Tip and Falloff rows
+  it('a bevel by hand: square tip, linear falloff, hardness 0.3; a dab of it is a chamfer in the stored raster', async () => {
+    document.querySelector('[data-height-choice="tip:square"]').click(); document.querySelector('[data-height-choice="falloff:linear"]').click();
+    setHeightField('hardness', 0.3);
     expect(heightBrush()).toMatchObject({ tip: 'square', falloff: 'linear', hardness: 0.3 });
     await newHeightPatch(); // 200 x 200
     await paintHeightStroke([[0, 0]], { mode: 'set', targetIn: 0.2, sizeIn: 0.6 }); // the dab at pixel (99.5, 99.5)

@@ -57,7 +57,7 @@ describe('the panel declares the Falloff choice', () => {
     const c = HEIGHT_CONTROLS.find((x) => x.id === 'falloff');
     expect(c).toMatchObject({ group: 'brush', target: 'brush', kind: 'choice', path: ['falloff'] });
     expect(c.options.map(([k]) => k)).toEqual(Object.keys(BRUSH_FALLOFFS));
-    expect(ids.indexOf('falloff')).toBe(ids.indexOf('hardness') + 1);
+    expect(ids.indexOf('falloff')).toBe(ids.indexOf('tip') + 1); // Fred 2026-11-22: no presets -- Falloff right after Tip, above size / hardness
   });
 });
 
