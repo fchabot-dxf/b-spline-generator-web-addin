@@ -11,6 +11,7 @@
  *      raise  base + a * amount          lower  base - a * amount
  *      set    base (1 - a) + target a    erase  base (1 - a)          (0 = transparent: no effect on the board)
  *      smooth base (1 - a) + blur a      (blur = the box mean of the stroke-start heights around the pixel)
+ *      erase with b.eraseIn = Q (the Height Eraser): base toward 0 by a max(Q, |base|), never past 0 (see eraseQ below)
  *    so a SECOND stroke starts from what is there: set moves toward the value by the opacity again, raise / lower stack.
  * Units: sizes in inches; pixel (c, r) has its centre at (c, r); `pxPerInX` / `pxPerInY` say how many pixels an inch is
  * (a stretched patch has two). Only the pixels under a dab are read or written.
@@ -105,6 +106,13 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotat
   const plain = tip === BRUSH_TIPS.round && kTip === 1; // a circle turns into itself: the slice-1 dab
   const follow = !!b.followStroke;
   const buildUp = b.buildUp !== false; // absent = slice 1
+  // the Eraser's SUBTRACT (Fred 2026-11-23, "soft but accurate"): b.eraseIn = Q, the height the brush paints at full
+  // coverage (main/height-panel.js ERASE_SCALE: Raise / Lower -> Amount, Set -> |target|, Smooth -> 0). A pixel moves
+  // toward 0 by a x max(Q, |v|) (v = its height at the stroke's start), never past 0: the same brush over the same path
+  // removes its own stroke with no rim (to the Float16 storage), and a height above Q (a Fill, an import) goes like a x |v|,
+  // the hard centre to 0 in one pass. Only partly undone: a Set stroke over other paint, a Smooth stroke (the heights before
+  // them aren't stored). Absent (a direct createStroke caller) = the slice-1 multiply, v (1 - a).
+  const eraseQ = Number.isFinite(b.eraseIn) ? Math.abs(b.eraseIn) : null;
   const angle0 = (((Number.isFinite(b.angle) ? b.angle : 0) - (follow ? 0 : rotationDeg)) * Math.PI) / 180; // in the raster frame
   let sat = null, kSmooth = 0;
   let last = null;       // { x, y, p }
@@ -162,7 +170,7 @@ export function createStroke(raster, b, { pxPerInX, pxPerInY, mask = null, rotat
         if (mode === 'raise') data[k] = h + a * b.amountIn;           // a < 0: the opposite (a moat)
         else if (mode === 'lower') data[k] = h - a * b.amountIn;
         else if (mode === 'set') data[k] = h * (1 - aa) + b.targetIn * a; // a < 0: toward -|a| T
-        else if (mode === 'erase') data[k] = h * (1 - aa);
+        else if (mode === 'erase') data[k] = eraseQ === null ? h * (1 - aa) : Math.sign(h) * Math.max(0, Math.abs(h) - aa * Math.max(eraseQ, Math.abs(h)));
         else if (mode === 'smooth') data[k] = h * (1 - aa) + blurAt(c, r) * aa;
         touched = true;
       }

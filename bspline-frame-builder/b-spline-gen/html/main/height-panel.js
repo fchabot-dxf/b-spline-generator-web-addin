@@ -464,6 +464,8 @@ function cancelStroke() {
   _stroke = null;
   syncHeightOverlay();
 }
+/** The Eraser's scale Q per brush mode (Fred 2026-11-23): the height that mode paints at full coverage. Absent (Smooth) = 0. */
+export const ERASE_SCALE = Object.freeze({ raise: (b) => b.amountIn, lower: (b) => b.amountIn, set: (b) => Math.abs(b.targetIn) });
 /** True for a HEIGHT_TOOLS row that paints with the brush (the Brush, the Eraser): they share its picker and settings. */
 function usesBrush(toolId) { const t = HEIGHT_TOOLS.find((x) => x.id === toolId); return !!(t && t.brush); }
 /** The brush a stroke of tool `toolId` paints with -- the ONE place the sign is applied: the shared brush; the tool's own mode
@@ -472,6 +474,8 @@ function usesBrush(toolId) { const t = HEIGHT_TOOLS.find((x) => x.id === toolId)
 function strokeBrush(toolId, e) {
   const t = HEIGHT_TOOLS.find((x) => x.id === toolId);
   const own = t && t.brush && t.brush.mode;
+  // the Eraser subtracts what the brush paints at full coverage in its current mode (core/height/brush.js eraseIn)
+  if (own === 'erase') return { ..._brush, mode: own, eraseIn: ERASE_SCALE[_brush.mode] ? ERASE_SCALE[_brush.mode](_brush) : 0 };
   if (own) return own === _brush.mode ? _brush : { ..._brush, mode: own };
   const inverted = !!_brush.invert !== !!(e && e.altKey);
   if (!inverted) return _brush;
