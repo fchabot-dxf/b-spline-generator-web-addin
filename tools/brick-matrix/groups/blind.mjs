@@ -43,7 +43,8 @@ export const BLIND_BUDGET = {
     // seat A's re-time 2026-10-09 (smoothRadius 1944 ms "blind" on the photo board): the drag's rebuild starts after the
     // drag + its debounce, ~0.85 s past t0 -- a settle counting quiet from t0 ended the row before it (seat D, MEASURED)
     { name: 'Surface: smoothing slider drag', sidebar: 'surface', act: { drag: 'smoothRadiusSlider', values: [2, 3, 4, 5] } },
-    { name: 'Wall Generate, the first lay', open: 'editorTabBrick', pre: ['brickTool_wall'], act: { tap: 'brickGenerate' }, fixedBy: '200ad4c' },
+    // the layer stack: a fresh board has no Brick layer, so its tools (the Brick card's body) are not in the page until one is added
+    { name: 'Wall Generate, the first lay', sidebar: 'layers', preSidebar: ['layerStackAddBtn', 'layerStackAdd_brick'], open: 'editorTabBrick', pre: ['brickTool_wall'], act: { tap: 'brickGenerate' }, fixedBy: '200ad4c' },
     { name: 'Brush stroke', pre: ['brickTool_brush'], act: { stroke: [[0.22, 0.45], [0.78, 0.5]] }, fixedBy: '12718cf' },
     { name: 'Raised brush stroke', pre: ['brickTool_raisedBrush', 'brickRaisedMode_bricks'], act: { stroke: [[0.22, 0.62], [0.78, 0.64]] }, fixedBy: '12718cf' },
     { name: 'Grout cut stroke', pre: ['brickRaisedMode_grout'], act: { stroke: [[0.3, 0.2], [0.7, 0.75]] }, post: ['brickRaisedMode_bricks'], fixedBy: '12718cf' },
@@ -171,9 +172,11 @@ async function runBlindBudget() {
         await tap('#sidebarTab_' + row.sidebar); await sleep(800);
         await js(`(async () => { const root = document.querySelector('.cad-sidebar'); if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 150)); } } return 1; })()`);
       }
+      for (const id of row.preSidebar || []) { await tap('#' + id); await sleep(1500); }
       if (row.open) {
         await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('viewMode_2d').click();
           for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250)); return 1; })()`);
+        await sleep(2500); // the opening card (item 41) is off the tab strip before the tab is tapped
         await tap('#' + row.open); await sleep(1500);
       }
       let ready = true;
