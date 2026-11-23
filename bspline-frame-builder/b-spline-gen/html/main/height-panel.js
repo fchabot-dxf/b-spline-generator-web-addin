@@ -78,6 +78,10 @@ function falloffIcon(key) {
 const sameCurve = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
 
 export const HEIGHT_CONTROLS = Object.freeze([
+  // slice 5 (Fred 2026-11-23): INVERT -- the brush paints the opposite (Raise <-> Lower, Set T paints -T; Smooth / the Eraser
+  // unaffected); applied once, at the stroke's setup (strokeBrush); Alt while painting flips it once more for that stroke
+  { id: 'invert', group: 'brush', target: 'brush', kind: 'choice', path: ['invert'], label: 'Paint', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
+    options: [[false, 'Normal', 'Paint as set'], [true, '⇅ Inverted', 'Paint the opposite: Raise <-> Lower, a Set height T paints -T (Alt flips it for one stroke)']] },
   // Fred 2026-11-22 (slice 3b): ONE Brush tool on the rail; its modes are this row in the panel, and erase is the Eraser tool
   { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     options: BRUSH_MODES.filter((m) => m !== 'erase').map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
@@ -94,7 +98,9 @@ export const HEIGHT_CONTROLS = Object.freeze([
     alsoSet: (prev, next, brush) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(brush.customCurve, BRUSH_DEFAULTS.customCurve)
       ? { customCurve: curvePointsFromProfile(prev, 6) } : null) },
   // Fred 2026-11-22: a small widget to design a custom falloff (points [t, value]; t 0 = the hardness edge, 1 = the rim)
-  { id: 'customCurve', group: 'brush', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', showWhen: (brush) => brush.falloff === 'custom' },
+  // slice 5 (Fred 2026-11-23): its values run -1..1 (valueRange; the part below 0 paints the opposite: a moat round a bump).
+  // A curve control without valueRange keeps the box's 0..1 (the gradient's and the feather's curves).
+  { id: 'customCurve', group: 'brush', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', valueRange: [-1, 1], showWhen: (brush) => brush.falloff === 'custom' },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
@@ -364,13 +370,18 @@ function cancelStroke() {
 }
 /** True for a HEIGHT_TOOLS row that paints with the brush (the Brush, the Eraser): they share its picker and settings. */
 function usesBrush(toolId) { const t = HEIGHT_TOOLS.find((x) => x.id === toolId); return !!(t && t.brush); }
-/** The brush a stroke of tool `toolId` paints with: the shared brush, the tool's own mode (the Eraser's 'erase'), and with
- *  Alt held the Brush's BRUSH_ALT_MODE flip (raise <-> lower; set / smooth unchanged). */
+/** The brush a stroke of tool `toolId` paints with -- the ONE place the sign is applied: the shared brush; the tool's own mode
+ *  (the Eraser's 'erase', never inverted); else, when Invert XOR Alt (slice 5), the opposite: BRUSH_ALT_MODE's raise <-> lower,
+ *  a Set target T -> -T (Smooth unchanged). The brush's own settings are never rewritten. */
 function strokeBrush(toolId, e) {
   const t = HEIGHT_TOOLS.find((x) => x.id === toolId);
-  const mode = (t && t.brush && t.brush.mode) || _brush.mode;
-  const flipped = e && e.altKey && !(t && t.brush && t.brush.mode) ? BRUSH_ALT_MODE[mode] : null;
-  return mode === _brush.mode && !flipped ? _brush : { ..._brush, mode: flipped || mode };
+  const own = t && t.brush && t.brush.mode;
+  if (own) return own === _brush.mode ? _brush : { ..._brush, mode: own };
+  const inverted = !!_brush.invert !== !!(e && e.altKey);
+  if (!inverted) return _brush;
+  if (BRUSH_ALT_MODE[_brush.mode]) return { ..._brush, mode: BRUSH_ALT_MODE[_brush.mode] };
+  if (_brush.mode === 'set') return { ..._brush, targetIn: -_brush.targetIn };
+  return _brush;
 }
 function beginStroke(pt, pressure, brush = _brush) {
   cancelStroke(); // a stroke the editor abandoned (a pinch, a tool switch) is put back, never half-committed
@@ -486,7 +497,7 @@ export function paintHeightStroke(points, brush = {}) {
   _brush = { ..._brush, ...brush };
   try {
     const pt = ([X, Y]) => ({ x: X + P.widthIn / 2, y: P.heightIn / 2 - Y });
-    if (!points.length || !beginStroke(pt(points[0]), points[0][2] ?? 1)) return _chain;
+    if (!points.length || !beginStroke(pt(points[0]), points[0][2] ?? 1, strokeBrush('brush', null))) return _chain;
     for (const q of points.slice(1)) moveStroke(pt(q), q[2] ?? 1);
     return endStroke();
   } finally { _brush = was; }
@@ -681,7 +692,7 @@ function eyedropAt(pt) {
  *  swatch matching the target highlighted, the ramp's marker at the target's grey, the readout. */
 function syncGreyPalette() {
   if (typeof document === 'undefined') return;
-  const m = greyMapOf(activeHeightLayer()), target = _brush.targetIn, tg = heightToGrey(target, m);
+  const m = greyMapOf(activeHeightLayer()), target = _brush.invert ? -_brush.targetIn : _brush.targetIn, tg = heightToGrey(target, m); // what a Set stroke paints
   for (const b of document.querySelectorAll('[data-height-grey]')) {
     const pct = Number(b.getAttribute('data-height-grey')), hIn = mapImageValue(pct / 100, m);
     const lbl = b.querySelector('.height-grey-in');
@@ -691,7 +702,7 @@ function syncGreyPalette() {
   const mk = byId('heightGreyMarker');
   if (mk) mk.style.left = `${(100 * Math.min(1, Math.max(0, tg))).toFixed(2)}%`;
   const rd = byId('heightGreyReadout');
-  if (rd) rd.textContent = `Set target ${target.toFixed(3)} in = ${Math.round(100 * tg)} % grey${tg < 0 || tg > 1 ? ' (past the mapping)' : ''}`;
+  if (rd) rd.textContent = `Set paints ${target.toFixed(3)} in = ${Math.round(100 * tg)} % grey${_brush.invert ? ' (inverted)' : ''}${tg < 0 || tg > 1 ? ' (past the Range)' : ''}`;
 }
 
 /** The selection's outline on patch node `node` (image pixel coordinates -> the patch's own box), marching ants. */
@@ -1201,7 +1212,7 @@ export function setHeightField(controlId, value, { commit = true } = {}) {
     v = ok ? value.map((p) => [p[0], p[1]]).sort((a, b) => a[0] - b[0]) : undefined;
   }
   if (v === undefined) return false;
-  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncTipGroup(); drawCursor(); return true; }
+  if (c.target === 'brush') { _brush = { ..._brush, ...(c.alsoSet ? c.alsoSet(_brush[c.path[0]], v, _brush) : null), [c.path[0]]: v }; syncTipGroup(); syncGreyPalette(); drawCursor(); return true; }
   if (_tools[c.target]) { // a tool's UI state
     const st = _tools[c.target];
     _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
@@ -1429,28 +1440,33 @@ const cad = (text) => el('label', { class: 'cad-label', text });
 // rewritten on load.
 const CURVE_BOX = Object.freeze({ w: 160, h: 100, x0: 14, x1: 150, yZero: 84, yTop: 8, vMax: 1, hitR: 14, dotR: 5, tGap: 0.005, minGap: 0.01, longPressMs: 600, moveSlop: 4 });
 const curveX = (t) => CURVE_BOX.x0 + t * (CURVE_BOX.x1 - CURVE_BOX.x0);
-const curveY = (v) => CURVE_BOX.yZero - (v / CURVE_BOX.vMax) * (CURVE_BOX.yZero - CURVE_BOX.yTop);
+// slice 5 (Fred 2026-11-23): a control's valueRange [lo, hi] (the brush's custom curve: -1..1, a zero line through the middle);
+// none = 0..1 as before. The box's bottom (yZero) is lo, its top (yTop) hi; a drag or a tap stops there.
+const rangeOf = (c) => (c && Array.isArray(c.valueRange) ? c.valueRange : [0, CURVE_BOX.vMax]);
+const curveY = (v, [lo, hi] = [0, CURVE_BOX.vMax]) => CURVE_BOX.yZero - ((v - lo) / (hi - lo)) * (CURVE_BOX.yZero - CURVE_BOX.yTop);
 const curveT = (x) => (x - CURVE_BOX.x0) / (CURVE_BOX.x1 - CURVE_BOX.x0);
-const curveV = (y) => Math.min(CURVE_BOX.vMax, Math.max(0, ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * CURVE_BOX.vMax)); // Fred: the box's 0..1
+const curveV = (y, [lo, hi] = [0, CURVE_BOX.vMax]) => Math.min(hi, Math.max(lo, lo + ((CURVE_BOX.yZero - y) / (CURVE_BOX.yZero - CURVE_BOX.yTop)) * (hi - lo))); // Fred: the box's range
 let _curveLive = null; // { id, pts }: the points of curve control `id` being dragged (drawn live; written once on release)
 
-function paintCurve(svg, pts) {
+function paintCurve(svg, pts, rg = [0, CURVE_BOX.vMax]) {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const B = CURVE_BOX, ink = HEIGHT_VIEW.outline;
+  const Y = (v) => curveY(v, rg);
   const line = (x1, y1, x2, y2, extra = {}) => svgEl('line', { x1, y1, x2, y2, stroke: 'currentColor', 'stroke-opacity': 0.25, 'stroke-width': 1, ...extra }, svg);
   line(B.x0, B.yTop, B.x0, B.yZero); line(B.x1, B.yTop, B.x1, B.yZero);
-  line(B.x0, B.yZero, B.x1, B.yZero); line(B.x0, curveY(1), B.x1, curveY(1), { 'stroke-dasharray': '3 3' });
+  line(B.x0, B.yZero, B.x1, B.yZero); line(B.x0, Y(1), B.x1, Y(1), { 'stroke-dasharray': '3 3' });
+  if (rg[0] < 0) line(B.x0, Y(0), B.x1, Y(0), { 'stroke-opacity': 0.6 }); // the zero line: below it the brush paints the opposite
   for (const [x, anchor, text] of [[B.x0, 'start', 'hard core'], [B.x1, 'end', 'rim']]) {
     const t = svgEl('text', { x, y: B.h - 3, 'text-anchor': anchor, 'font-size': 8, fill: 'currentColor', 'fill-opacity': 0.6 }, svg);
     t.textContent = text;
   }
   const f = curveFromPoints(pts), N = 48, d = [];
-  for (let i = 0; i <= N; i++) { const t = i / N; d.push(`${i ? 'L' : 'M'}${curveX(t).toFixed(2)} ${curveY(f(t)).toFixed(2)}`); }
+  for (let i = 0; i <= N; i++) { const t = i / N; d.push(`${i ? 'L' : 'M'}${curveX(t).toFixed(2)} ${Y(f(t)).toFixed(2)}`); }
   svgEl('path', { d: d.join(' '), fill: 'none', stroke: ink, 'stroke-width': 2 }, svg);
   pts.forEach(([t, v], i) => {
     const g = svgEl('g', { 'data-curve-handle': i, style: 'cursor:grab' }, svg);
-    svgEl('circle', { 'data-curve-hit': '', cx: curveX(t), cy: curveY(v), r: B.hitR, fill: 'transparent' }, g); // the touch target: 28 px across
-    svgEl('circle', { cx: curveX(t), cy: curveY(v), r: B.dotR, fill: '#fff', stroke: ink, 'stroke-width': 2 }, g);
+    svgEl('circle', { 'data-curve-hit': '', cx: curveX(t), cy: Y(v), r: B.hitR, fill: 'transparent' }, g); // the touch target: 28 px across
+    svgEl('circle', { cx: curveX(t), cy: Y(v), r: B.dotR, fill: '#fff', stroke: ink, 'stroke-width': 2 }, g);
   });
 }
 
@@ -1460,7 +1476,7 @@ const curvePointsNow = (c) => {
   const v = getPath(controlSource(c, activeHeightLayer()) || {}, c.path);
   return Array.isArray(v) ? v : BRUSH_DEFAULTS.customCurve;
 };
-function drawCurveControl(c) { const s = byId(`height_${c.id}`)?.querySelector('svg'); if (s) paintCurve(s, curvePointsNow(c)); }
+function drawCurveControl(c) { const s = byId(`height_${c.id}`)?.querySelector('svg'); if (s) paintCurve(s, curvePointsNow(c), rangeOf(c)); }
 
 function wireCurve(c) {
   const box = byId(`height_${c.id}`), svg = box && box.querySelector('svg');
@@ -1489,20 +1505,20 @@ function wireCurve(c) {
     const i = drag.i, pts = drag.pts, last = pts.length - 1;
     let t = pts[i][0];
     if (i > 0 && i < last) t = Math.min(pts[i + 1][0] - B.tGap, Math.max(pts[i - 1][0] + B.tGap, curveT(x))); // keeps the curve a function
-    pts[i] = [t, curveV(y)];
+    pts[i] = [t, curveV(y, rangeOf(c))];
     _curveLive = { id: c.id, pts };
-    paintCurve(svg, pts);
+    paintCurve(svg, pts, rangeOf(c));
   });
   const end = (e, cancelled) => {
     if (!drag) return;
     clearTimer();
     const d = drag; drag = null;
-    if (cancelled) { _curveLive = null; paintCurve(svg, curvePointsNow(c)); return; }
+    if (cancelled) { _curveLive = null; paintCurve(svg, curvePointsNow(c), rangeOf(c)); return; }
     if (d.i >= 0) { if (d.moved && _curveLive) write(_curveLive.pts); else _curveLive = null; return; }
     if (d.moved) return; // a swipe over the empty area is not a tap
     const t = curveT(d.x), pts = curvePointsNow(c);
     if (!(t > 0 && t < 1) || pts.some((p) => Math.abs(p[0] - t) < B.minGap)) return;
-    write([...pts, [t, curveV(d.y)]]);
+    write([...pts, [t, curveV(d.y, rangeOf(c))]]);
   };
   svg.addEventListener('pointerup', (e) => end(e, false));
   svg.addEventListener('pointercancel', (e) => end(e, true));
@@ -1515,7 +1531,7 @@ function renderControl(c) {
     svg.setAttribute('viewBox', `0 0 ${CURVE_BOX.w} ${CURVE_BOX.h}`);
     svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Falloff curve: drag a point, tap to add one, double-click to remove one');
     svg.style.cssText = 'width:100%; height:auto; display:block; touch-action:none; user-select:none; margin-bottom:10px;';
-    paintCurve(svg, curvePointsNow(c));
+    paintCurve(svg, curvePointsNow(c), rangeOf(c));
     const box = el('div', { id: `height_${c.id}` }, [cad(c.label)]);
     box.appendChild(svg);
     return box;
