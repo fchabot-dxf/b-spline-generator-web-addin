@@ -13,7 +13,10 @@
  * armed tool's branch while that branch declares it, else in its HOME: the first free branch declaring it, else the first
  * branch declaring it (derived, never typed). `armedOnly`: a tool branch shows only while its tool is armed (the tool row
  * above the tree is the picker; ten folded tool headers would repeat it).
+ * Each card is tinted as main/section-themes.js EDITOR_CARD_THEMES declares for the tree `id` (Fred 2026-11-24, option A).
  */
+import { themeEditorCard } from './section-themes.js';
+
 export function createDrawerTree({ id, branches, openKey, defaultOpen = [], branchDomId, armedOnly = false }) {
   const state = { doc: null, open: null, folded: new Set(), armed: null };
   const shared = (() => {
@@ -68,6 +71,7 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
         shell.id = branchDomId(b.id);
         shell.className = 'drawer-branch';
         shell.dataset.branch = b.id;
+        themeEditorCard(shell, id, b.id, !!b.armsTool);
         const head = doc.createElement('button');
         head.type = 'button';
         head.id = b.headerId || `${branchDomId(b.id)}_head`;

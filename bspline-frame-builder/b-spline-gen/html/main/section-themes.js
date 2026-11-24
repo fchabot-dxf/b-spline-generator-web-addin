@@ -79,6 +79,20 @@ export const BRICK_SECTION_THEMES = Object.freeze({
   'brick-surround': { hue: 115 },
 });
 
+/** EDITOR CARDS, one style (Fred 2026-11-24, option A): every 2D-editor collapse-tree card (main/drawer-tree.js
+ *  .drawer-branch) wears the sidebar's coloured panel look -- header, stripe, body -- in SHADES of the colour its tab's
+ *  layer has in the layer stack (main/layer-stack.js LAYER_TYPES[...].theme), so the colour also says which layer you
+ *  are editing. Calm: one hue per tab, the cards told apart by a lightness step only.
+ *    tree id -> { theme: a SECTION_THEMES id, tool: the shade of any TOOL card (armsTool), shades: { branch id: shade } }
+ *  A branch not listed takes shade 0. The Brick cards' coloured KIND sections inside them are unchanged. */
+export const EDITOR_CARD_THEMES = Object.freeze({
+  drawDrawerTree: Object.freeze({ theme: 'stamp', tool: 0, shades: Object.freeze({ general: 1, layers: 2, stamp: 3 }) }),
+  latticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
+  shapeLatticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, contour: 1, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
+  brickDrawerTree: Object.freeze({ theme: 'brick', tool: 0, shades: Object.freeze({ general: 2, layers: 3 }) }),
+  heightDrawerTree: Object.freeze({ theme: 'height', tool: 0, shades: Object.freeze({ patch: 1, view: 2, stamp: 3, selection: 1, place: 2, file: 3 }) }),
+});
+
 /** Derivation rules (HSL), one per token and theme. `shade` shifts lightness by SHADE_STEP per step. */
 export const THEME_RULES = Object.freeze({
   light: { body: { s: 60, l: 97 }, header: { s: 55, l: 90 }, stripe: { s: 60, l: 52 }, text: { s: 45, l: 28 } },
@@ -86,12 +100,13 @@ export const THEME_RULES = Object.freeze({
 });
 const SHADE_STEP = { light: -1.2, dark: 1.2 };
 
-/** { body, header, stripe, text } CSS colours for a theme id (or an editor section id) in 'light' | 'dark'. */
-export function themeTokens(id, mode = 'light') {
+/** { body, header, stripe, text } CSS colours for a theme id (or an editor section id) in 'light' | 'dark'; `shadeOverride`
+ *  (an editor card's step, EDITOR_CARD_THEMES) replaces the editor section's own shade. */
+export function themeTokens(id, mode = 'light', shadeOverride = null) {
   const editor = EDITOR_SECTION_THEMES[id];
   const theme = SECTION_THEMES[editor ? editor.theme : id] || BRICK_SECTION_THEMES[id];
   if (!theme) return null;
-  const shade = (editor && editor.shade) || 0;
+  const shade = shadeOverride != null ? shadeOverride : (editor && editor.shade) || 0;
   const rules = THEME_RULES[mode] || THEME_RULES.light;
   const hsl = ({ s, l }, dl = 0) => `hsl(${theme.hue} ${s}% ${Math.max(0, Math.min(100, l + dl))}%)`;
   const dl = shade * SHADE_STEP[mode];
@@ -99,9 +114,9 @@ export function themeTokens(id, mode = 'light') {
 }
 
 const TOKENS = ['body', 'header', 'stripe', 'text'];
-function _writeTokens(el, id) {
+function _writeTokens(el, id, shade = null) {
   for (const mode of ['light', 'dark']) {
-    const k = themeTokens(id, mode);
+    const k = themeTokens(id, mode, shade);
     for (const t of TOKENS) el.style.setProperty(`--section-${t}${mode === 'dark' ? '-dark' : ''}`, k[t]);
   }
 }
@@ -130,6 +145,24 @@ export function themeSectionEl(el, id) {
   if (!el || !SECTION_THEMES[id]) return false;
   _writeTokens(el, id);
   el.classList.add('section-themed');
+  return true;
+}
+
+/** EDITOR_CARD_THEMES' { theme, shade } for a card of tree `treeId` (null: the tree is not declared). */
+export function editorCardTheme(treeId, branchId, isTool = false) {
+  const t = EDITOR_CARD_THEMES[treeId];
+  if (!t) return null;
+  const shade = isTool ? t.tool : (t.shades[branchId] ?? 0);
+  return { theme: t.theme, shade };
+}
+
+/** Tint ONE editor card (main/drawer-tree.js builds them at runtime) as EDITOR_CARD_THEMES declares: the same tokens as
+ *  a sidebar section + `section-themed-card` (styles/editor.css). */
+export function themeEditorCard(el, treeId, branchId, isTool = false) {
+  const t = editorCardTheme(treeId, branchId, isTool);
+  if (!el || !t || !SECTION_THEMES[t.theme]) return false;
+  _writeTokens(el, t.theme, t.shade);
+  el.classList.add('section-themed-card');
   return true;
 }
 

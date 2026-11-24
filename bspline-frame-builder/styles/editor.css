@@ -2155,6 +2155,24 @@
 .drawer-branch-body[hidden] {
     display: none;
 }
+/* EDITOR CARDS, one style (Fred 2026-11-24, option A): a card tinted by main/section-themes.js themeEditorCard
+   (EDITOR_CARD_THEMES: its tab's layer colour, a shade per card) takes the sidebar section look from the --section-*
+   tokens -- nothing here names a colour. The stripe stays THIN here (Fred): the sidebar's stripe-to-the-edge
+   (.cad-sidebar .section-themed, --panel-edge-gap) is scoped to the sidebar and not used. The header's own radius
+   follows the card's inner corners (8 px outer minus the 4 px stripe / 1 px border); no overflow clip on the card --
+   it would cut off a field that already runs past a narrow panel (measured: Lattice > Rails' Count stepper, desktop). */
+.drawer-branch.section-themed-card {
+    background: var(--section-body);
+    border-left: 4px solid var(--section-stripe);
+}
+.drawer-branch.section-themed-card > .drawer-branch-head {
+    background: var(--section-header);
+    color: var(--section-text);
+    border-radius: 4px 7px 7px 4px / 7px;
+}
+.drawer-branch.section-themed-card.open > .drawer-branch-head {
+    border-radius: 4px 7px 0 0 / 7px 7px 0 0;
+}
 /* a one-section branch's own bold title: the branch header says it (editor/lattice-side-column.js) */
 .drawer-host-title { display: none !important; }
 /* the Layers block inside a tree: its branch folds it -- the label's own fold (UI3) would be a second control */
