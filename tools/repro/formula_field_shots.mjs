@@ -138,7 +138,7 @@ const latticeState = async () => JSON.parse(await evalJS(`(()=>{ const e=window.
   const f=document.getElementById('latticeSizeWidth');
   return JSON.stringify({ value: f.value, sizeWidth: layer && layer.pattern && layer.pattern.size.width,
     preview: document.querySelector('.formula-preview')?.textContent || '' }); })()`));
-await evalJS(`document.getElementById('btnStampEdit')?.click()`); await sleep(2500);
+await evalJS(`document.getElementById('viewMode_2d')?.click()`); await sleep(2500);
 await evalJS(`document.getElementById('toolLattice')?.click()`); await sleep(800);
 const l0 = await latticeState();
 checks.latticeInitial = l0;

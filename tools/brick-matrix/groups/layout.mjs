@@ -283,7 +283,7 @@ async function runBoardFollows() {
     e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }
     await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   await setBoard(B.from);
-  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
+  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('viewMode_2d').click();
     for (let i = 0; i < 60 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
     await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   await setBoard(B.to);
@@ -481,7 +481,7 @@ async function runFitEdgeHandles() {
       await send('Page.reload', {}); await waitApp();
       // the editor opened straight onto the Frame tab (the route that measured the overflow: through the Brick tab first
       // the board fitted inside the screen even before the change -- the row then proved nothing)
-      await js(`(async () => { const m = document.getElementById('svgEditorModal'); document.getElementById('btnStampEdit').click();
+      await js(`(async () => { const m = document.getElementById('svgEditorModal'); document.getElementById('viewMode_2d').click();
         for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
         return 1; })()`);
       await click('editorTabFrame', 1500);

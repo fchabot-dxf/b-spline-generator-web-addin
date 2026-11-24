@@ -24,6 +24,7 @@ import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
+import { openEditorSession } from './stamp/svg-source.js';
 import { setEditorTab as switchEditorTab, getEditorTab, EDITOR_TABS } from './editor-tabs.js';
 import { setHistoryRoute, updateHistoryButtons } from '../editor/editor-ui.js';
 import { AppState } from './app-state.js';
@@ -366,13 +367,11 @@ function _syncTemplateSelect(sel, templateId) {
   refreshIconSelect(sel); // advisor turn 203: the icon dropdown over it follows a programmatic value too
 }
 
-let _openEditorOn = null;
-/** Open the editor (btnStampEdit's own path) on `tab` -- the sidebar buttons below and the viewport's [2D]
+/** Open the editor (main/stamp/svg-source.js openEditorSession) on `tab` -- the sidebar buttons below and the viewport's [2D]
  *  (main/view-mode-toggle.js) all go through here. */
 export function openEditorOn(tab) {
-  _openEditorOn = tab;
   // item 41: opening rebuilds the editor document (~1 s blocked at 900 px / CPU x4): its stage paints first
-  return withLoadingStageShownFirst('openEditor', () => $('btnStampEdit')?.click());
+  return withLoadingStageShownFirst('openEditor', () => { openEditorSession(); setEditorTab(tab || 'artwork'); });
 }
 export const OPEN_EDITOR_BUTTONS = Object.freeze([
   { id: 'btnEditFrameShape', tab: 'frame' },
@@ -1072,9 +1071,6 @@ export function initFramePanel() {
   $('editorTabFrame')?.addEventListener('click', () => setEditorTab('frame'));
   $('editorTabArtwork')?.addEventListener('click', () => setEditorTab('artwork'));
   $('editorTabLattice')?.addEventListener('click', () => setEditorTab('lattice')); // redesign phase 2
-  // Two doors, one room: "Edit frame shape" opens the editor on the Frame tab,
-  // "Open SVG Editor" (the same button) on the Artwork tab.
-  $('btnStampEdit')?.addEventListener('click', () => { setEditorTab(_openEditorOn || 'artwork'); _openEditorOn = null; });
 
   tplSel.addEventListener('change', () => editFrame({ templateId: tplSel.value || null, params: {} }));
   woodSel.addEventListener('change', () => editFrame({ appearance: woodSel.value }));
@@ -1110,8 +1106,7 @@ export function initFramePanel() {
     $(g.sizeW)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, w: v })));
     $(g.sizeH)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, h: v })));
   }
-  // The sidebar sections' open-the-editor buttons, declared: each opens the SAME editor (btnStampEdit's own
-  // path) on its own tab. Turn 207 (Fred): the BRICK section's "Brick editor" joins the Frame section's.
+  // The sidebar sections' open-the-editor buttons, declared: each opens the SAME editor (openEditorOn) on its own tab. Turn 207 (Fred): the BRICK section's "Brick editor" joins the Frame section's.
   for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => openEditorOn(tab));
   _wireHandleDrag();
   _wireWindowDrag();

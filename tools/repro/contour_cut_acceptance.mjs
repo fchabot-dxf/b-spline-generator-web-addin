@@ -93,7 +93,7 @@ await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 await send('Page.navigate', { url: URL }); await sleep(9000);
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-  document.getElementById('btnStampEdit').click(); await W(2500);
+  document.getElementById('viewMode_2d').click(); await W(2500);
   document.getElementById('toolShapeLattice').click(); await W(800);
   document.getElementById('shapePresetHourglass')?.click(); await W(400);
   document.getElementById('shapeLatticeGenerate').click(); await W(2500); })()`);

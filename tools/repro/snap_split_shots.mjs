@@ -42,7 +42,7 @@ if (MODE === 'mobile') {
 }
 await send('Page.navigate', { url: URL }); await sleep(9000);
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-  document.getElementById('btnStampEdit').click(); await W(2500);
+  document.getElementById('viewMode_2d').click(); await W(2500);
   document.getElementById('toolLattice').click(); await W(800);
   const input = document.getElementById('latticeRailsSpacing');
   if (input) { input.value = '0.6'; input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); }

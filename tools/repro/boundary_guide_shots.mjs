@@ -82,7 +82,7 @@ async function run(tool) {
     try { for (const d of (await indexedDB.databases())) indexedDB.deleteDatabase(d.name); } catch {} })()`);
   await send('Page.navigate', { url: URL }); await sleep(9000);
   await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-    document.getElementById('btnStampEdit').click(); await W(2500);
+    document.getElementById('viewMode_2d').click(); await W(2500);
     document.getElementById('${t.btn}').click(); await W(800);
   })()`);
   const before = JSON.parse(await evalJS(guideInfo));

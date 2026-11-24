@@ -148,7 +148,7 @@ async function runBrickLayers() {
   const s5a = await layersRead();
   await sleep(1500);
   await send('Page.reload', {}); await waitApp();
-  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   const s5 = await layersRead();
   const carveOf = (s, id) => (s.layers.find((l) => l.id === id) || {}).carve;

@@ -92,9 +92,9 @@ async function run(tag, metrics, touchOn) {
   let opened = false;
   for (let attempt = 0; attempt < 4; attempt++) {
     const v = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-      for (let i = 0; i < 60 && !document.getElementById('btnStampEdit'); i++) await W(250); await W(1500);
+      for (let i = 0; i < 60 && !document.getElementById('viewMode_2d'); i++) await W(250); await W(1500);
       const shown = () => { const m = document.getElementById('svgEditorModal'); return !!m && getComputedStyle(m).display !== 'none'; };
-      for (const id of ['btnStampEdit', 'btnMainLayersOpenEditor']) {
+      for (const id of ['viewMode_2d', 'btnMainLayersOpenEditor']) {
         if (shown()) break;
         document.getElementById(id)?.click();
         for (let i = 0; i < 60 && !shown(); i++) await W(250);

@@ -186,7 +186,7 @@ const boardStep = BOARD ? `
     w.value = '${BOARD_W}'; w.dispatchEvent(new Event('change'));
     h.value = '${BOARD_H}'; h.dispatchEvent(new Event('change')); await W(500); }` : '';
 const built = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-  document.getElementById('btnStampEdit').click(); await W(2500);
+  document.getElementById('viewMode_2d').click(); await W(2500);
   ${boardStep}
   ${steps}
   return document.querySelectorAll('[data-lattice]').length;

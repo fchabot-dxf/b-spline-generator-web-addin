@@ -81,7 +81,7 @@ const report = { tag: TAG, spacing: SPACING };
 report.open = JSON.parse(await evalJS(`(async()=>{
   window.__perfLog = []; window.__bgDraws = 0;
   const t0 = performance.now();
-  document.getElementById('btnStampEdit').click();
+  document.getElementById('viewMode_2d').click();
   const idleMs = await window.__idle();
   return JSON.stringify({ ms: Math.round(performance.now() - t0 - 1500), backdropDraws: window.__bgDraws,
     remasks: window.__perfLog.filter((e) => e.step === 'remask').length });

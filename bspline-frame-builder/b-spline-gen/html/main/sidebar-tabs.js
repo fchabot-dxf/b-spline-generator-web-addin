@@ -12,14 +12,14 @@
  */
 // A branch's ORDER on screen is declared, never the page's markup order: its own `sections`, then each of its `groups`
 // (a sub-heading inside the branch with its own sections). Fred 2026-10-11 (final): three branches; Surface holds the
-// sections edited in place, then a "2D editor" group with the ones that open the 2D editor (Vector stamping; Photo left
-// with the photo, Fred 2026-11-23).
+// sections edited in place. The "2D editor" group (Vector stamping, an Open-editor button + a pointer note) retired, Fred
+// 2026-11-23: the 2D / 3D toggle opens the editor, each Draw card holds its stamp settings. No branch declares a group now;
+// the mechanism (groups, groupOfSection) stays for the next one.
 export const SIDEBAR_TABS = Object.freeze([
   Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
-  // panel-stl / panel-stamp keep their GLOBAL settings only: their layers are cards in the Layers stack; the Brick panel's
+  // panel-stl keeps its GLOBAL settings only: their layers are cards in the Layers stack; the Brick panel's
   // body moved whole into the Brick card (main/layer-stack.js HOSTED), so that panel retired (Fred 2026-11-23)
-  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']),
-    groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-stamp']) })]) }),
+  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']) }),
   // the unified LAYER STACK (Fred 2026-11-23, main/layer-stack.js): after Surface, before Sculpt bottom and Output. The
   // stack's section (panel-layers, moved here from Board) has no header and no box: its cards are this branch's panels,
   // full width like Sculpt bottom (styles/layout-app.css); the Thicken panel retired into its Thicken line; Sculpt bottom
@@ -32,8 +32,8 @@ export const branchSections = (t) => [...t.sections, ...(t.groups || []).flatMap
 /** Pure: the group (within its branch) a section key sits in, or null. */
 export const groupOfSection = (key) => SIDEBAR_TABS.flatMap((t) => t.groups || []).find((g) => g.sections.includes(key)) || null;
 // a retired branch id -> where it lives now (setSidebarTab, a device's saved open set, the old tab key): Decor is
-// Surface, scrolled to its 2D editor group
-export const SIDEBAR_TAB_ALIASES = Object.freeze({ decor: Object.freeze({ tab: 'surface', group: 'editor' }) });
+// Surface (its 2D editor group retired 2026-11-23: an old saved 'decor' state still resolves, to the branch)
+export const SIDEBAR_TAB_ALIASES = Object.freeze({ decor: Object.freeze({ tab: 'surface' }) });
 export const SIDEBAR_UNLISTED_TAB = 'surface';
 // the mockup's first look: Board and Surface open, Output folded; the Layers stack open too (Fred 2026-11-23)
 export const SIDEBAR_DEFAULT_OPEN = Object.freeze(['board', 'surface', 'layers']);

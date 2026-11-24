@@ -31,12 +31,50 @@ function validateSvgContent(text) {
   return null;
 }
 
+/** Open the SVG editor modal with the project's unified document -- THE open-the-editor path (the sidebar's Open SVG Editor
+ *  button retired with the Vector stamping panel, Fred 2026-11-23): main/frame-panel.js openEditorOn calls it, then picks the tab.
+ *  Snapshot first so Cancel can actually restore. */
+export function openEditorSession() {
+  const modal = document.getElementById('svgEditorModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  // the layer stack (Fred 2026-11-23, a new file has no layers): the session's snapshot and its document no longer wait for
+  // a "current layer" -- with none (a new project), Cancel kept the first stroke (measured). The snapshot is the DOCUMENT.
+  {
+    // SE3a: snapshot the unified document BEFORE this session, not the
+    // active editor layer's own fields (ctx.activeLayer() returns an
+    // EDITOR layer here — id/name/tooling, no `.svg` — so capturing
+    // currentLayer.svg was always undefined; see editorRestoreSvg's
+    // own comment for the same RO1 history).
+    SvgEditorSnapshot.active = true;
+    SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
+    SvgEditorSnapshot.brickSettings = P.brickSettings ? JSON.parse(JSON.stringify(P.brickSettings)) : null;
+    SvgEditorSnapshot.frame = P.frame ? JSON.parse(JSON.stringify(P.frame)) : null; // audit B9: Cancel restores it
+    SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // F35 item 25: [3D] closes unchanged sessions
+  }
+  if (window.svgEditor) {
+    // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:
+    // in the unified model ctx.activeLayer() returns an EDITOR layer with no
+    // `.svg`, so the old code passed undefined and reopened blank (RO1).
+    const targetSvg = editorRestoreSvg();
+    const currentSvg = typeof window.svgEditor.save === 'function' ? window.svgEditor.save() : null;
+    if (!currentSvg || currentSvg !== targetSvg || !window.svgEditor._undoStack?.length || window.svgEditor._mW !== P.widthIn || window.svgEditor._mH !== P.heightIn) {
+      window.svgEditor.open(targetSvg, P.widthIn, P.heightIn);
+    } else {
+      window.svgEditor.sync3DBackground?.();
+      window.svgEditor.fitView?.();
+      window.svgEditor.updateHistoryButtons?.();
+    }
+  }
+  // workflow audit #1: open on the last working tool (or Select), never the Pen
+  if (window.svgEditor && typeof window.svgEditor.setMode === 'function') window.svgEditor.setMode(openingMode());
+}
+
 export function initSvgSource(ctx, layerModule) {
   const fileNameSpan = document.getElementById('stampFileName');
   const btnChoose = document.getElementById('btnStampChoose');
   const upload = document.getElementById('stampUpload');
   const btnClear = document.getElementById('btnStampClear');
-  const btnEdit = document.getElementById('btnStampEdit');
 
   // Browse → file picker → read → validate → import into the active
   // editor layer (Step 3 of the unification).
@@ -127,46 +165,6 @@ export function initSvgSource(ctx, layerModule) {
         if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
         if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
       });
-    });
-  }
-
-  // Edit → open the SVG editor modal with the active layer's SVG.
-  // Snapshot first so Cancel can actually restore.
-  if (btnEdit) {
-    btnEdit.addEventListener('click', () => {
-      const modal = document.getElementById('svgEditorModal');
-      if (!modal) return;
-      modal.style.display = 'flex';
-      // the layer stack (Fred 2026-11-23, a new file has no layers): the session's snapshot and its document no longer wait for
-      // a "current layer" -- with none (a new project), Cancel kept the first stroke (measured). The snapshot is the DOCUMENT.
-      {
-        // SE3a: snapshot the unified document BEFORE this session, not the
-        // active editor layer's own fields (ctx.activeLayer() returns an
-        // EDITOR layer here — id/name/tooling, no `.svg` — so capturing
-        // currentLayer.svg was always undefined; see editorRestoreSvg's
-        // own comment for the same RO1 history).
-        SvgEditorSnapshot.active = true;
-        SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
-        SvgEditorSnapshot.brickSettings = P.brickSettings ? JSON.parse(JSON.stringify(P.brickSettings)) : null;
-        SvgEditorSnapshot.frame = P.frame ? JSON.parse(JSON.stringify(P.frame)) : null; // audit B9: Cancel restores it
-        SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // F35 item 25: [3D] closes unchanged sessions
-      }
-      if (window.svgEditor) {
-        // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:
-        // in the unified model ctx.activeLayer() returns an EDITOR layer with no
-        // `.svg`, so the old code passed undefined and reopened blank (RO1).
-        const targetSvg = editorRestoreSvg();
-        const currentSvg = typeof window.svgEditor.save === 'function' ? window.svgEditor.save() : null;
-        if (!currentSvg || currentSvg !== targetSvg || !window.svgEditor._undoStack?.length || window.svgEditor._mW !== P.widthIn || window.svgEditor._mH !== P.heightIn) {
-          window.svgEditor.open(targetSvg, P.widthIn, P.heightIn);
-        } else {
-          window.svgEditor.sync3DBackground?.();
-          window.svgEditor.fitView?.();
-          window.svgEditor.updateHistoryButtons?.();
-        }
-      }
-      // workflow audit #1: open on the last working tool (or Select), never the Pen
-      if (window.svgEditor && typeof window.svgEditor.setMode === 'function') window.svgEditor.setMode(openingMode());
     });
   }
 

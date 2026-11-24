@@ -45,7 +45,7 @@ try {
   }
   await send('Page.navigate', { url: URL }); await sleep(9000);
   const opened = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
-    document.getElementById('btnStampEdit').click(); await W(3500);
+    document.getElementById('viewMode_2d').click(); await W(3500);
     document.getElementById('editorTabHeight').click(); await W(500);
     document.getElementById('heightNew').click(); await W(1500);
     const ed = window.svgEditor;

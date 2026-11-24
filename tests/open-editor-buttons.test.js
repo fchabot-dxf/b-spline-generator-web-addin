@@ -1,7 +1,8 @@
 /**
  * Turn 207 (Fred): a "Brick editor" button at the TOP of the main sidebar's BRICK section opens the editor on
  * the Brick tab -- declared with the FRAME section's "Edit frame" in main/frame-panel.js OPEN_EDITOR_BUTTONS,
- * both through the same path (btnStampEdit's own open, on the declared tab).
+ * both through the same path (openEditorOn -> svg-source.js openEditorSession, on the declared tab). The sidebar's Open SVG
+ * Editor button (#btnStampEdit) retired with the Vector stamping panel (Fred 2026-11-23): no element is needed to open it.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -16,7 +17,7 @@ const FIXTURE = `
   <select id="frameTemplate"></select>
   <div id="frameSettings"><div id="frameThicknessRow"><input id="frameThickness" type="number"></div><input id="frameBottomZ"><input id="frameTrimOffset" type="number"><select id="frameAppearance"></select>
     <div id="frameFitWarning"></div><button id="btnEditFrameShape"></button></div>
-  <button id="btnStampEdit"></button><button id="btnEditBricks"></button>
+  <div id="svgEditorModal" style="display:none"></div><button id="btnEditBricks"></button>
   <button id="editorTabFrame"></button><button id="editorTabArtwork" class="active"></button><button id="editorTabBrick"></button>
   <div id="editorFrameShield" style="display:none"></div>
   <aside id="editorFramePanel" style="display:none"><select id="editorFrameTemplate"></select></aside>
@@ -40,18 +41,20 @@ describe('the sidebar open-the-editor buttons', () => {
     // (the Layers section's Open Editor retired, Fred 2026-11-23: the 2D / 3D toggle opens the editor)
     expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }]);
   });
-  it('openEditorOn(\'brick\') (the layer stack Brick card\'s door) opens the editor through btnStampEdit, on the Brick tab', async () => {
+  it('openEditorOn brick (the layer stack Brick card door, the [2D] toggle) opens the editor with NO #btnStampEdit in the page, on the Brick tab', async () => {
+    expect(document.getElementById('btnStampEdit')).toBeNull();
     const open = vi.fn();
-    document.getElementById('btnStampEdit').addEventListener('click', open);
+    window.svgEditor = { _layers: [], _activeLayer: null, open };
     openEditorOn('brick');
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1)); // item 41: its loading stage paints first
+    expect(document.getElementById('svgEditorModal').style.display).toBe('flex');
     expect(getEditorTab()).toBe('brick');
   });
   it('item 41: opening shows its loading stage FIRST -- the open itself runs after the paint', async () => {
     resetLoadingSignal();
     setPaintScheduler(null); // the real paint step (the suite's is immediate)
     let seen = 'not opened';
-    document.getElementById('btnStampEdit').addEventListener('click', () => { seen = currentLoadingStage(); });
+    window.svgEditor = { _layers: [], _activeLayer: null, open() { seen = currentLoadingStage(); } };
     openEditorOn('brick');
     expect(currentLoadingStage()).toEqual({ id: 'openEditor', text: 'Refreshing - opening the editor', surface: 'pill' });
     expect(seen).toBe('not opened');

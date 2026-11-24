@@ -219,7 +219,7 @@ if (MODE === 'drape-align') {
   process.exit(0);
 }
 
-await evalJS(`document.getElementById('btnStampEdit').click(); true`);
+await evalJS(`document.getElementById('viewMode_2d').click(); true`);
 await sleep(2500);
 report.modalOpen = await evalJS(`getComputedStyle(document.getElementById('svgEditorModal')).display`);
 // SE7c: the modal renders in normal document flow below the palette
