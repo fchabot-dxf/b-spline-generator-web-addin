@@ -833,6 +833,8 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 /* TERRAIN SHAPE's rows that its Flat (no hills) switch no longer reads (main/terrain-shape-flat.js SHAPE_FLAT_ROWS) --
    the greyed look the photo section's off rows had */
 .shape-flat-greyed { opacity: 0.45; }
+/* the one line under a row Back: Flat greys (main/back-flat-ui.js BACK_FLAT_ROWS), at full strength */
+.back-flat-note { font-size: 11px; color: #8a5a00; padding: 4px 12px 6px; }
 
 /* The JOB TIMELINE strip (Fred 2026-10-14, main/job-timeline-strip.js; mockups shots/seatD/timeline/): along the bottom
    of each canvas (the 3D view; the 2D editor above the phone drawer). A chip per step in the kind's colour

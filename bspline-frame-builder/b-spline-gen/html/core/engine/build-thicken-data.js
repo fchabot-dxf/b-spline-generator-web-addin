@@ -52,13 +52,17 @@ const PINK  = [1.0,   0.4,   0.7];   // self-intersection (bottom only)
 const BLUE  = [0.5,   0.8,   1.0];   // thin
 
 /** Fred 2026-11-23 ("divide this in two settings"), the FILL FLOOR: on a terrainFit 'fill' board the whole body stays inside
- *  the stock 0..carveZ -- the terrain's lowest point maps to the body's bottom clearance under it (core/terrain.js reads it as
- *  params.terrainFloorIn): P.thickness while the back is the shell offset DOWN from the top (Thicken on, not 'up', Back
- *  'shell': the shell's bottom then lands at about 0); 0 otherwise (Thicken off, up, or Back 'flat': the flat bottom IS 0).
- *  A legacy board (no fill) has no floor. The heights stage gets it through this one rule (core/engine/rebuild.js). */
+ *  the stock 0..carveZ -- the terrain's lowest point maps to the wood left under the deepest valley (core/terrain.js reads it
+ *  as params.terrainFloorIn): P.thickness while Thicken is on and DOWN, whichever the Back -- Shell: the shell's bottom then
+ *  lands at about 0 (its geometric offset at +0.005 in on Fred's board; the back as built, after the thin fill and the 0.3 in
+ *  smoothing, dips to -0.026 in at 0.125 in -- kept as is, Fred 2026-11-23); Flat: the valley floor stays `thickness` above the
+ *  flat bottom at 0. 0 with Thicken off or up. A TINY carve depth (carveZ <= that floor, Fred OK 2026-11-23) takes 0: the
+ *  relief fills 0..carveZ and the back sits under it as on a legacy board -- never an inverted terrain. A legacy board (no
+ *  fill) has no floor. The heights stage gets it through this one rule (core/engine/rebuild.js). */
 export function fillFloorIn(p) {
-  if (!p || p.terrainFit !== 'fill') return 0;
-  return p.thickenEnabled && p.thickenDir !== 'up' && p.backMode !== 'flat' ? (Number(p.thickness) || 0) : 0;
+  if (!p || p.terrainFit !== 'fill' || !p.thickenEnabled || p.thickenDir === 'up') return 0;
+  const t = Number(p.thickness) || 0;
+  return Number(p.carveZ) > t ? t : 0;
 }
 
 export function buildThickenData(heights, nx, nz, params, opts = {}) {

@@ -201,6 +201,26 @@ describe('applySnapshot -- save audit #1 / #5', () => {
     await applySnapshot({ P: { widthIn: 10, terrainFit: 'fill' } }, null, { source: 'undo' });
     expect(P.terrainFit).toBe('fill'); // an undo restores its own snapshot's value
   });
+
+  it("Back: Flat (Fred 2026-11-23): an undo and a load re-show what no longer acts (main/back-flat-ui.js) and the Thicken label", async () => {
+    const shell = '<div class="panel panel-sculpt-bot"><div class="panel-header" data-back-flat-row="sculptBottom">SCULPT BOTTOM</div>'
+      + '<div data-back-flat-note="sculptBottom" hidden></div><div class="panel-body" data-back-flat-row="sculptBottom"></div></div>';
+    const host = document.createElement('div');
+    host.innerHTML = shell;
+    document.body.appendChild(host);
+    let synced = 0;
+    const onSync = () => { synced++; };
+    document.addEventListener('thickenSettingsSynced', onSync);
+    try {
+      await applySnapshot({ P: { widthIn: 10, backMode: 'flat' } }, null, { source: 'undo' });
+      expect(host.querySelector('.panel-header').classList.contains('shape-flat-greyed')).toBe(true);
+      expect(host.querySelector('[data-back-flat-note]').hidden).toBe(false);
+      await applySnapshot({ P: { widthIn: 10, backMode: 'shell' } }, null, { source: 'load' });
+      expect(host.querySelector('.panel-header').classList.contains('shape-flat-greyed')).toBe(false);
+      expect(host.querySelector('[data-back-flat-note]').hidden).toBe(true);
+      expect(synced).toBeGreaterThanOrEqual(2); // the Thicken line's label listens to it (tests/back-flat-ui.test.js)
+    } finally { document.removeEventListener('thickenSettingsSynced', onSync); host.remove(); }
+  });
 });
 
 describe('audit v2 N2: a load or a global undo announces that P.brickSettings was replaced', () => {

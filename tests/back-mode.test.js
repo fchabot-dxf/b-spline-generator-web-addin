@@ -30,15 +30,40 @@ function board(o = {}, nx = 141, nz = 181) {
 }
 
 describe('A) the fill floor: the body stays inside the stock 0..carveZ', () => {
-  it('the floor: P.thickness with Thicken on + down + Shell; 0 otherwise; 0 on a legacy board', () => {
+  it('the floor: P.thickness with Thicken on + down (Shell or Flat: the wood left under the deepest valley); 0 otherwise', () => {
     expect(fillFloorIn(BASE)).toBe(0.125);
     expect(fillFloorIn({ ...BASE, thickness: 0.3 })).toBe(0.3);
+    expect(fillFloorIn({ ...BASE, backMode: 'flat' })).toBe(0.125); // phase 4 (Fred): Flat keeps the thickness under the valley
     expect(fillFloorIn({ ...BASE, thickenEnabled: false })).toBe(0);
     expect(fillFloorIn({ ...BASE, thickenDir: 'up' })).toBe(0);
-    expect(fillFloorIn({ ...BASE, backMode: 'flat' })).toBe(0);
     expect(fillFloorIn({ ...BASE, terrainFit: 'legacy' })).toBe(0);
     expect(fillFloorIn({ ...BASE, terrainFit: undefined })).toBe(0);
   });
+  it('a tiny carve depth (carveZ <= the floor): floor 0 -- the relief fills 0..carveZ, never inverted (Fred 2026-11-23)', () => {
+    expect(fillFloorIn({ ...BASE, carveZ: 0.1 })).toBe(0);
+    expect(fillFloorIn({ ...BASE, carveZ: 0.125 })).toBe(0);
+    expect(fillFloorIn({ ...BASE, carveZ: 0.13 })).toBe(0.125);
+    expect(fillFloorIn({ ...BASE, carveZ: 0.1, backMode: 'flat' })).toBe(0);
+  });
+  for (const backMode of ['shell', 'flat']) {
+    it(`a tiny carve depth (0.1, Thicken 0.125, ${backMode}): a healthy body -- finite, the back never above the top, the STEP written`, () => {
+      const nx = 71, nz = 91;
+      const { heights, back } = board({ carveZ: 0.1, backMode }, nx, nz);
+      const [lo, hi] = range(heights);
+      expect(lo).toBeGreaterThanOrEqual(0);
+      expect(hi).toBeLessThanOrEqual(0.1);
+      expect(hi - lo).toBeGreaterThan(0.09); // not inverted: the relief fills 0..carveZ
+      let crossing = 0;
+      for (let k = 0; k < nx * nz; k++) {
+        expect(Number.isFinite(heights[k]) && Number.isFinite(back[k * 3 + 2])).toBe(true);
+        if (back[k * 3 + 2] > heights[k]) crossing++;
+      }
+      expect(crossing).toBe(0);
+      const step = generateThickenedStep(heights, back, { widthIn: 7, heightIn: 9, nx, nz, options: { stamped: true } }, heights);
+      expect(step).toMatch(/B_SPLINE_SURFACE_WITH_KNOTS\('panel Bottom'/);
+      expect(step).not.toMatch(/NaN|Infinity/);
+    });
+  }
   it('Shell: the terrain spans thickness..carveZ (a dense grid), and the shell bottom lands at about 0', () => {
     const p = { ...BASE };
     const [lo, hi] = range(generateHeightmap({ ...p, nx: 961, nz: 961, terrainFloorIn: fillFloorIn(p) }).heights);
@@ -100,7 +125,7 @@ describe('B) Back: Shell / Flat', () => {
     const absent = buildThickenData(heights, 141, 181, { ...BASE, backMode: undefined }, {}).data.offsetPts;
     expect(same(shell, absent)).toBe(true);
   });
-  it('Flat: the back is the board grid at z = 0, every point; the terrain spans 0..carveZ', () => {
+  it('Flat: the back is the board grid at z = 0, every point; the terrain spans thickness..carveZ (wood under the valley)', () => {
     const { heights, back } = board({ backMode: 'flat' });
     for (let k = 0; k < 141 * 181; k++) {
       expect(back[k * 3 + 2]).toBe(0);
@@ -108,8 +133,8 @@ describe('B) Back: Shell / Flat', () => {
       expect(back[k * 3 + 1]).toBeCloseTo(-4.5 + Math.floor(k / 141) * 9 / 180, 6);
     }
     const [lo, hi] = range(heights);
-    expect(lo).toBeGreaterThanOrEqual(0);
-    expect(lo).toBeLessThan(0.02 * 0.9);
+    expect(lo).toBeGreaterThanOrEqual(0.125);
+    expect(lo).toBeLessThan(0.125 + 0.02 * 0.9);
     expect(hi).toBeLessThanOrEqual(0.9);
   });
   it('Flat on a legacy board: the same flat back at z = 0 under the old terrain', () => {
