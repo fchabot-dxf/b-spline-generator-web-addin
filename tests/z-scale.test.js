@@ -17,7 +17,7 @@ const THREE = {
   LineSegments: class extends Obj { constructor(g, m) { super(); this.geometry = g; this.material = m; } },
   BufferGeometry: class { setAttribute(n, a) { this[n] = a; } dispose() {} },
   Float32BufferAttribute: class { constructor(a) { this.array = a; } },
-  LineBasicMaterial: class { dispose() {} }, SpriteMaterial: class { constructor(o) { this.map = o.map; } dispose() {} },
+  LineBasicMaterial: class { constructor(o) { Object.assign(this, o); } dispose() {} }, SpriteMaterial: class { constructor(o) { this.map = o.map; } dispose() {} },
   CanvasTexture: class { dispose() {} },
 };
 function labelsOf(group) { return group.children.filter(c => c.userData && 'text' in c.userData).map(c => c.userData.text); }
@@ -85,10 +85,18 @@ describe('ZScale group visibility', () => {
     z.setView(dirOf(0, 90)); z.setView(dirOf(3, 90)); expect(z.group.visible).toBe(false);
     z.setView(dirOf(0, 0.05)); expect(z.group.visible).toBe(false);
   });
-  it('the ruler sits at the near-left corner of each side view', () => {
+  it('the ruler stands at the origin X 0 / Y 0 in all four side views', () => {
     const z = make();
-    z.setView(dirOf(0, 90));   expect([z.group.position.x, z.group.position.y]).toEqual([-5, -4]);
-    z.setView(dirOf(90, 90));  expect([z.group.position.x, z.group.position.y]).toEqual([5, -4]);
+    for (const [t, p] of [[0, 90], [180, 90], [90, 90], [-90, 90]]) {
+      z.setView(dirOf(t, p)); expect([z.group.position.x, z.group.position.y]).toEqual([0, 0]);
+    }
+  });
+  it('line, ticks and labels draw on top of the model (no depth test, high render order)', () => {
+    const z = make();
+    expect(z.group.children.length).toBeGreaterThan(2);
+    for (const c of z.group.children) expect(c.renderOrder).toBeGreaterThanOrEqual(1000);
+    const line = z.group.children.find(c => c.geometry);
+    expect(line.material.depthTest).toBe(false);
   });
   it('labels span min..max and include 0', () => {
     const z = make();

@@ -4,8 +4,8 @@
  *
  * Scene axes: X right, Y away, Z up. The camera looks along its world direction; a side view is that direction
  * lying along +-X or +-Y with no vertical part. `screenRight` is the scene direction that points to the right of
- * the screen in that view, so the ruler (built on the screen-left side of the model's near corner) reads beside
- * the model and never through it.
+ * the screen in that view, so the ruler stands at X 0 / Y 0 and is drawn ON TOP of the model (depthTest off, high renderOrder); its ticks and
+ * labels lie on the screen-left of the line.
  */
 
 /** How far off an exact side view the camera may be and still count as it (degrees). */
@@ -13,15 +13,18 @@ export const SIDE_VIEW_TOLERANCE_DEG = 0.5;
 
 /**
  * The four exact side views. `dir` = camera view direction (world); `rot` = Z rotation taking the ruler's local
- * +X (screen right) onto the scene direction that is screen-right in that view; `corner(W,H)` = the near, left
- * corner of the board as seen from that side.
+ * +X (screen right) onto the scene direction that is screen-right in that view; `origin` = where the ruler
+ * stands: the grid's zero (X 0, Y 0), through the middle of the model, so it is drawn on top.
  */
 export const SIDE_VIEWS = {
-  front: { dir: [0, 1, 0],  rot: 0,             corner: (W, H) => [-W / 2, -H / 2] },
-  back:  { dir: [0, -1, 0], rot: Math.PI,       corner: (W, H) => [ W / 2,  H / 2] },
-  right: { dir: [-1, 0, 0], rot: Math.PI / 2,   corner: (W, H) => [ W / 2, -H / 2] },
-  left:  { dir: [1, 0, 0],  rot: -Math.PI / 2,  corner: (W, H) => [-W / 2,  H / 2] },
+  front: { dir: [0, 1, 0],  rot: 0,             origin: [0, 0] },
+  back:  { dir: [0, -1, 0], rot: Math.PI,       origin: [0, 0] },
+  right: { dir: [-1, 0, 0], rot: Math.PI / 2,   origin: [0, 0] },
+  left:  { dir: [1, 0, 0],  rot: -Math.PI / 2,  origin: [0, 0] },
 };
+
+/** Draw order of the ruler's line, ticks and labels: after everything else. */
+export const Z_SCALE_RENDER_ORDER = 1000;
 
 /** Tick step by the ruler's span (inches): the first row whose upTo is >= span. A number goes on every `labelEvery`-th
  *  tick, so two labels are never closer than ~0.2" (the label is ~0.17" tall in the scene). */
@@ -94,18 +97,19 @@ export class ZScale {
     const THREE = this._THREE;
     const ticks = zTicks(minZ, maxZ);
     const lo = Math.min(minZ, 0), hi = Math.max(maxZ, 0);
-    const X = -0.3; // the ruler line, outside the board's corner (local -X = screen left)
+    const X = 0; // the ruler line at the origin; ticks + labels go to local -X = screen left
     const v = [X, 0, lo, X, 0, hi];
-    for (const t of ticks) v.push(X, 0, t, X + 0.15, 0, t);
+    for (const t of ticks) v.push(X - 0.15, 0, t, X, 0, t);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
-    this._group.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x7a7a7a, transparent: true, opacity: 0.9 })));
+    this._group.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x7a7a7a, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false })));
     for (const t of zLabelled(minZ, maxZ)) {
       const s = this._makeSprite(zLabel(t));
-      s.position.set(X - 0.4, 0, t);
+      s.position.set(X - 0.5, 0, t);
       s.scale.set(0.6, 0.3, 1);
       this._group.add(s);
     }
+    for (const c of this._group.children) c.renderOrder = Z_SCALE_RENDER_ORDER; // on top of the model
   }
 
   /** Show for an exact side view (and place the ruler for it), hide otherwise. @returns the view name or null */
@@ -115,7 +119,7 @@ export class ZScale {
     g.visible = !!name && this._built !== null;
     if (name) {
       const sv = SIDE_VIEWS[name];
-      const [cx, cy] = sv.corner(this._W, this._H);
+      const [cx, cy] = sv.origin;
       g.position.set(cx, cy, 0);
       g.rotation.z = sv.rot;
     }
