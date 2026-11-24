@@ -4,7 +4,7 @@
  * (main/draw-tree.js) on the shared mechanism (main/drawer-tree.js). Its branches' content comes in through the Draw
  * tab's declared panelHosts, so another tab (Brick: the Layers) can borrow it and give it back. The REAL palette body.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 import { initArtTabs, ART_TABS } from '../bspline-frame-builder/b-spline-gen/html/main/art-tabs.js';
@@ -46,10 +46,7 @@ describe('the Draw tree', () => {
     expect(open('layers')).toBe(false);
     expect(JSON.parse(localStorage.getItem(DRAW_TREE_OPEN_KEY))).not.toContain('layers');
   });
-  it('a tool branch is the tool\'s: the Text header arms the Text tool; the text mode opens it, another mode folds it', () => {
-    const click = vi.fn(); $('toolText').addEventListener('click', click);
-    branch('text').querySelector('.drawer-branch-head').click();
-    expect(click).toHaveBeenCalled();
+  it('a tool branch is the tool\'s: the text mode opens it, another mode folds it', () => {
     setMode('text');
     expect(open('text')).toBe(true);
     setMode('select');
@@ -60,6 +57,23 @@ describe('the Draw tree', () => {
     expect($('brickLayersSlot').contains($('editorLayersList'))).toBe(true);
     setEditorTab('artwork');
     expect(inBranch('layers', 'editorLayersList')).toBe(true);
+  });
+  // Fred 2026-11-24 (tool-row duplicates, the Brick tab's fix applied here): the Text / Expand cards repeated the tool
+  // rail's Text / Expand buttons -- now only the ARMED tool's card shows; General, Layers, Stamp as before
+  it('only the armed tool\'s card shows: Pen / Select / the other tools show none, Text and Expand each their own (open, titled)', () => {
+    const shown = () => [...$('drawDrawerTree').querySelectorAll(':scope > .drawer-branch')].filter((s) => s.style.display !== 'none').map((s) => s.dataset.branch);
+    const free = DRAW_DRAWER_TREE.filter((b) => !b.armsTool).map((b) => b.id);
+    expect(free).toEqual(['general', 'layers', 'stamp']);
+    for (const m of ['select', 'draw', 'node', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe']) {
+      setMode(m);
+      expect(shown(), m).toEqual(free);
+    }
+    for (const b of DRAW_DRAWER_TREE.filter((x) => x.armsTool)) {
+      setMode(b.armsTool);
+      expect(shown(), b.id).toEqual(DRAW_DRAWER_TREE.filter((x) => !x.armsTool || x.id === b.id).map((x) => x.id));
+      expect(open(b.id), b.id).toBe(true);
+      expect(branch(b.id).querySelector('.drawer-branch-title').textContent, b.id).toBe(b.title);
+    }
   });
   it('the tree shows on the Draw tab only', () => {
     setEditorTab('lattice');
