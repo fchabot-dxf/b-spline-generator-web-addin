@@ -76,7 +76,10 @@ export const SHARED_ROWS = Object.freeze((() => {
  *  header: a caret, the title, a short `summary`. `armsTool` (advisor 2026-10-14, pick A): an ELEMENT branch opens by
  *  arming its tool -- an accordion in step with the tool row, because an element's settings (the shared rows above:
  *  Bricks, Joint) follow the ARMED tool; the free branches (General, Layers) fold on their own and are remembered per
- *  device. `headerId`: the header keeps a retired control's id (the General tab's), for the brick matrix. */
+ *  device. `headerId`: the header keeps a retired control's id (the General tab's), for the brick matrix.
+ *  Fred 2026-11-24 (phone: the tool row and the element headers below it were the same choices twice): `armedOnly` --
+ *  below the tool row only the ARMED tool's card shows (its title the row's label), plus General and Layers, like the
+ *  Height tab. Scissors (no settings) shows no element card; Stripe keeps Brush's (its tabOf). */
 const branch = (id, title, summary, hosts, extra = {}) => Object.freeze({ id, title, summary, hosts: Object.freeze(hosts), ...extra });
 export const BRICK_DRAWER_TREE = Object.freeze([
   branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall' }),
@@ -93,7 +96,7 @@ export const brickBranchDomId = (id) => `brickBranch_${id}`;
 
 // the tree itself: main/drawer-tree.js (one mechanism for the Brick, Draw and Lattice trees)
 export const BRICK_TREE = createDrawerTree({ id: 'brickDrawerTree', branches: BRICK_DRAWER_TREE, openKey: BRICK_TREE_OPEN_KEY,
-  defaultOpen: BRICK_TREE_DEFAULT_OPEN, branchDomId: brickBranchDomId });
+  defaultOpen: BRICK_TREE_DEFAULT_OPEN, branchDomId: brickBranchDomId, armedOnly: true });
 /** Builds the Brick tree inside `container`; `onArm(toolId)` arms a tool (brick-panel.js selectTool). */
 export const buildBrickDrawerTree = (container, onArm, doc) => BRICK_TREE.build(container, onArm, doc);
 /** Opens branch `id` (an element branch only when its tool is armed) and scrolls it into view. */
