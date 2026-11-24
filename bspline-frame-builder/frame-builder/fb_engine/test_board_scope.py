@@ -187,7 +187,7 @@ def test_a_boards_trim_cut_is_built_from_the_root_with_a_root_context_profile(mo
     prof = types.SimpleNamespace(area=1.0, createForAssemblyContext=lambda occ: ("proxy of profile in", occ))
     eng = extrusion_engine.ExtrusionEngine.__new__(extrusion_engine.ExtrusionEngine)
     eng.log = types.SimpleNamespace(log=lambda *a, **k: None)
-    plan = {"kind": "SURROUND", "name": None, "start": "0 in", "extent": ("throughBodiesSymmetric", 1.0), "taper": "0 deg"}
+    plan = {"kind": "SURROUND", "name": None, "start": "0 in", "extent": ("cutThroughPanel",), "taper": "0 deg"}
     eng._extrude_one_profile(Extrudes("frame"), prof, plan, 4, "t1", None, "Frame_2", cut_context=(Extrudes("root"), "frame-occ"))
     assert calls == [("root", ("proxy of profile in", "frame-occ"))]
     calls.clear()

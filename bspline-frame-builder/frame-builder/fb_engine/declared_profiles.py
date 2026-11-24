@@ -179,11 +179,11 @@ def extrude_plan(feature, body_name, start_param_expr):
     """The extrude a declared feature asks for. ``start_param_expr`` is the
     value of the FRAME_BOTTOM_PARAM the coordinator synced (a feature whose
     `start` names a parameter starts at that parameter)."""
-    from fb_engine.frame_definition import FRAME_BOTTOM_PARAM, CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN
+    from fb_engine.frame_definition import FRAME_BOTTOM_PARAM, CUT_THROUGH_EXTENT
     start = feature.get("start", "0 in")
     extent = feature["extent"]
-    if extent == CUT_THROUGH_EXTENT:  # a cut through the panel: both sides, past every body + the declared margin
-        extent_plan = (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
+    if extent == CUT_THROUGH_EXTENT:  # a cut through the panel: HOW is the back mode's (CUT_THROUGH_BY_BACK_MODE)
+        extent_plan = (CUT_THROUGH_EXTENT,)
     elif extent == "throughAll":
         extent_plan = (extent,)
     else:

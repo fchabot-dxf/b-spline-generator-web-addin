@@ -49,6 +49,7 @@ from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
 from fb_engine.board_scope import BoardScope, naming, board_params, fusion_expr, FRAME_SEND_PARAMS
 from fb_engine.frame_bars import bars_of
+from fb_engine.back_mode import back_mode_of, stamp_back_mode
 from fb_engine.parameter_schema import ParameterSchema as _Schema
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
@@ -376,6 +377,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             if not frames:
                 raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
             result["frame"] = frames[-1].name
+            # the board's back mode picks how the trim / window cut reaches past the panel (fb_engine/back_mode.py);
+            # stamped before the solid build, which reads it from the component. Shell / absent: no stamp (as before)
+            back_mode = back_mode_of(payload)
+            if stamp_back_mode(frames[-1], back_mode, log):
+                log(f"SEND FRAME: back mode '{back_mode}' stamped on '{frames[-1].name}'")
             early_face_valid = getattr(face, "isValid", True)
             core_body = find_core_body()
             face = underside_face(core_body) if core_body is not None else None

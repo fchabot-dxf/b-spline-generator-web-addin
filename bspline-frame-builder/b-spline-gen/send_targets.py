@@ -29,6 +29,18 @@ def send_frame_error(frame_result):
     return frame_result.get("error") or "The frame was not built."
 
 
+def frame_payload_of(data):
+    """The Send's frame payload (`data['frame']`, None when the Send carries no frame) with the board's back mode on it:
+    `backMode` from the Send's params (the Thicken line's Back: Shell / Flat), which picks how the frame's trim / window
+    cut reaches past the panel (fb_engine/back_mode.py). A frame payload that already names one keeps it; no back mode
+    in the params = none added (the frame builder reads absent as shell, as before)."""
+    frame = (data or {}).get("frame")
+    if not frame or "backMode" in frame:
+        return frame
+    back = ((data or {}).get("params") or {}).get("backMode")
+    return dict(frame, backMode=back) if back is not None else frame
+
+
 def send_target_of(data):
     """The payload's declared target (absent = replace, today's Send); an unknown one is refused (ValueError)."""
     target = (data or {}).get("target") or DEFAULT_SEND_TARGET

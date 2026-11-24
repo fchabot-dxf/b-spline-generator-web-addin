@@ -6,10 +6,11 @@ trimmed the Stamped panel exactly to the frame (bbox -3.458..3.361 -> +-3.25).
 
 2026-11-24 (live check of Back: Flat): through all on BOTH sides then refused the cut on a panel with a flat bottom
 ("Cannot complete extrusion" / "Cannot extend extrusion to object" / a no-op; Bars On and Off; base 0 and 0.25 in below),
-while a fixed distance on both sides cut it exactly. The trim and the window cut now declare ONE rule,
-frame_definition.CUT_THROUGH_EXTENT: a symmetric fixed distance about the sketch plane, each side reaching the farthest
-bounding-box corner of every body (along the plane normal) plus CUT_THROUGH_MARGIN_IN. Here the extrusion engine is
-pinned to build exactly that (and the bars to stay one-sided).
+while a fixed distance on both sides cut it exactly -- but a fixed distance is not bit-identical to through all around a
+shell board's inset-window hole. So the trim and the window cut declare frame_definition.CUT_THROUGH_EXTENT and the
+extruder reads HOW from CUT_THROUGH_BY_BACK_MODE: shell (and absent) = through all on both sides, as every board was
+built; flat = a symmetric fixed distance, each side reaching the farthest bounding-box corner of every body (along the
+plane normal) plus the margin. Here the extrusion engine is pinned to build exactly that (and the bars to stay one-sided).
 
 Same adsk-stub idiom as test_trim_cut_paint.py, with the few enums / definitions the engine reads.
 """
@@ -31,9 +32,10 @@ import pytest  # noqa: E402
 from fb_engine import extrusion_engine  # noqa: E402
 from fb_engine import declared_profiles as dp  # noqa: E402
 from fb_engine.frame_definition import (COMMON_FRAME_FEATURES, WINDOW_CUT_FEATURE, CUT_THROUGH_EXTENT,  # noqa: E402
-                                        CUT_THROUGH_MARGIN_IN)
+                                        CUT_THROUGH_BY_BACK_MODE, DEFAULT_BACK_MODE, cut_through_rule)
 
 P = lambda x, y, z: types.SimpleNamespace(x=x, y=y, z=z)  # noqa: E731
+THROUGH_ALL_BOTH_SIDES = [("two", ("throughAll", "throughAll", "0 deg", "0 deg"))]  # the rule every board was built with
 
 
 @pytest.fixture
@@ -92,31 +94,43 @@ FLAT_PLINTH = _design(occurrence_bodies=[[_body(-0.635, 3.756)], [_body(-2.54, -
 PLANE_Z0 = types.SimpleNamespace(area=1.0, plane=types.SimpleNamespace(origin=P(0, 0, 0), normal=P(0, 0, 1)))
 
 
-def _engine(design=FLAT_PLINTH):
+def _engine(design=FLAT_PLINTH, back_mode=None):
     e = extrusion_engine.ExtrusionEngine.__new__(extrusion_engine.ExtrusionEngine)
     e.log = types.SimpleNamespace(log=lambda *a, **k: None)
     e.design = design
+    e.back_mode = back_mode
     return e
 
 
-def _build(feature, body_name=None, prof=PLANE_Z0, design=FLAT_PLINTH):
+def _build(feature, body_name=None, prof=PLANE_Z0, design=FLAT_PLINTH, back_mode=None):
     ex = _Extrudes()
     plan = dp.extrude_plan(feature, body_name, "frame_height_offset")
-    _engine(design)._extrude_one_profile(ex, prof, plan, 0, "t1", "FACE", "Frame_1")
+    _engine(design, back_mode)._extrude_one_profile(ex, prof, plan, 0, "t1", "FACE", "Frame_1")
     return ex.inputs[0]
 
 
 TRIM = [f for f in COMMON_FRAME_FEATURES if f["id"] == "trim"][0]
 
 
-def test_the_trim_and_the_window_cut_declare_the_one_cut_through_rule():
+def test_the_trim_and_the_window_cut_declare_the_cut_through_extent_and_its_table():
     assert TRIM["extent"] == CUT_THROUGH_EXTENT and WINDOW_CUT_FEATURE["extent"] == CUT_THROUGH_EXTENT
-    assert CUT_THROUGH_MARGIN_IN == 1.0
-    assert dp.extrude_plan(TRIM, None, "x")["extent"] == (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
+    assert dp.extrude_plan(TRIM, None, "x")["extent"] == (CUT_THROUGH_EXTENT,)
+    assert DEFAULT_BACK_MODE == "shell"
+    assert CUT_THROUGH_BY_BACK_MODE == {"shell": {"extent": "throughAllBothSides"},
+                                        "flat": {"extent": "symmetricPastBodies", "marginIn": 1.0}}
+    assert cut_through_rule(None) is cut_through_rule("shell") is cut_through_rule("bogus")
 
 
-def test_the_trim_cut_is_symmetric_past_the_farthest_body_plus_the_margin(fake_adsk):
-    i = _build(TRIM)
+@pytest.mark.parametrize("back_mode", ["shell", None])
+def test_a_shell_board_or_one_without_a_back_mode_trims_through_all_on_both_sides(fake_adsk, back_mode):
+    i = _build(TRIM, back_mode=back_mode)
+    assert i.op == "cut" and i.isParticipantsAutomated is True
+    assert i.calls == THROUGH_ALL_BOTH_SIDES  # saved boards: exactly the old cut
+    assert _build(WINDOW_CUT_FEATURE, back_mode=back_mode).calls == THROUGH_ALL_BOTH_SIDES
+
+
+def test_a_flat_board_trims_symmetric_past_the_farthest_body_plus_the_margin(fake_adsk):
+    i = _build(TRIM, back_mode="flat")
     assert i.op == "cut" and i.isParticipantsAutomated is True
     # farthest corner from z 0: the panel top, 3.756 cm; each side = 3.756 + 2.54 (1 in); full length = twice that
     [(kind, (dist, full_length, taper))] = i.calls
@@ -124,27 +138,37 @@ def test_the_trim_cut_is_symmetric_past_the_farthest_body_plus_the_margin(fake_a
     assert dist[0] == "real cm" and dist[1] == pytest.approx(2 * (3.756 + 2.54))
 
 
-def test_the_reach_is_measured_from_the_sketch_plane_along_its_normal(fake_adsk):
+def test_the_flat_reach_is_measured_from_the_sketch_plane_along_its_normal(fake_adsk):
     # the plane 1 cm up: the bars' bottom (-2.54) is now the farthest, 3.54 cm away; a tilted normal is normalised
     up = types.SimpleNamespace(area=1.0, plane=types.SimpleNamespace(origin=P(0, 0, 1), normal=P(0, 0, 2)))
-    [(_, (dist, _, _))] = _build(TRIM, prof=up).calls
+    [(_, (dist, _, _))] = _build(TRIM, prof=up, back_mode="flat").calls
     assert dist[1] == pytest.approx(2 * (3.54 + 2.54))
     # a root body and a body under an occurrence both count (a through-all reached every body)
     d = _design(root_bodies=[_body(-20, 0)], occurrence_bodies=[[_body(0, 1)]])
-    [(_, (dist, _, _))] = _build(TRIM, design=d).calls
+    [(_, (dist, _, _))] = _build(TRIM, design=d, back_mode="flat").calls
     assert dist[1] == pytest.approx(2 * (20 + 2.54))
 
 
-def test_the_window_cut_is_the_same_symmetric_cut(fake_adsk):
-    [(kind, (dist, full_length, _))] = _build(WINDOW_CUT_FEATURE).calls
+def test_a_flat_boards_window_cut_is_the_same_symmetric_cut(fake_adsk):
+    [(kind, (dist, full_length, _))] = _build(WINDOW_CUT_FEATURE, back_mode="flat").calls
     assert kind == "symmetric" and full_length is True and dist[1] == pytest.approx(2 * (3.756 + 2.54))
+
+
+def test_extrude_profiles_takes_the_back_mode_for_its_cuts(fake_adsk):
+    e = _engine()
+    sketch = types.SimpleNamespace(name="T1_3", profiles=types.SimpleNamespace(count=0))
+    e.extrude_profiles(types.SimpleNamespace(name="Frame_1"), sketch, "t1", None, "-1 in", "0 in", back_mode="flat")
+    assert e.back_mode == "flat"
+    e.extrude_profiles(types.SimpleNamespace(name="Frame_1"), sketch, "t1", None, "-1 in", "0 in")
+    assert e.back_mode is None  # not given = shell
 
 
 def test_the_bars_stay_one_sided_to_the_panel_underside(fake_adsk):
     bars = [f for f in COMMON_FRAME_FEATURES if f["id"] == "bars"][0]
-    i = _build(bars, "frame_top")
-    assert i.op == "new" and len(i.calls) == 1 and i.calls[0][0] == "one"
-    assert i.calls[0][1][0] == ("toEntity", "0 in") and i.calls[0][1][1] == "+"
+    for back_mode in (None, "shell", "flat"):
+        i = _build(bars, "frame_top", back_mode=back_mode)
+        assert i.op == "new" and len(i.calls) == 1 and i.calls[0][0] == "one"
+        assert i.calls[0][1][0] == ("toEntity", "0 in") and i.calls[0][1][1] == "+"
 
 
 def test_the_bounding_box_path_trims_with_the_same_rule(fake_adsk, monkeypatch):
@@ -153,4 +177,4 @@ def test_the_bounding_box_path_trims_with_the_same_rule(fake_adsk, monkeypatch):
     monkeypatch.setattr(e, "_profile_label", lambda p, i: "x", raising=False)
     sketch = types.SimpleNamespace(profiles=types.SimpleNamespace(count=1, item=lambda i: types.SimpleNamespace(area=1.0)))
     [(prof, plan, i)] = e._collect_profiles(sketch, "-1 in", "0 in")
-    assert plan["extent"] == (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
+    assert plan["extent"] == (CUT_THROUGH_EXTENT,)

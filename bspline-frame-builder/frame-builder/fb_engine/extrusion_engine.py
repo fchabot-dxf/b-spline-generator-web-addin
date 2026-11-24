@@ -19,7 +19,7 @@ import adsk.core, adsk.fusion, traceback
 from fb_engine.timeline_order import FRAME_MEMBER_ATTR
 from fb_engine import declared_profiles
 from fb_engine.board_scope import fusion_name, fusion_expr  # Send targets S2b: the Fusion boundary
-from fb_engine.frame_definition import CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN
+from fb_engine.frame_definition import CUT_THROUGH_EXTENT, cut_through_rule
 
 CM_PER_IN = 2.54  # Fusion's internal length unit is the cm
 
@@ -40,7 +40,7 @@ class ExtrusionEngine:
     # Public entry point
     # ------------------------------------------------------------------
     def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None,
-                         cut_context=None, bars=True):
+                         cut_context=None, back_mode=None, bars=True):
         """Extrude every closed frame-bar profile in the shape-outline
         sketch and apply the SURROUND trim cut.
 
@@ -56,7 +56,11 @@ class ExtrusionEngine:
 
         ``bars`` False (Bars Off, fb_engine/frame_bars.py): every BAR plan (main and window bars) is dropped; the
         SURROUND trim and the window hole cut are built as always.
+
+        ``back_mode`` (fb_engine/back_mode.py, the frame component's stamp): how a cut through the panel reaches past it
+        -- frame_definition.CUT_THROUGH_BY_BACK_MODE; None = shell (through all on both sides, as every board before).
         """
+        self.back_mode = back_mode
         # the bodies the SURROUND cuts actually modified (_finalize_feature) -- the coordinator restores each one's
         # own paint: the to_face body is not always the cut's target (measured live 2026-10-07)
         self.cut_bodies = []
@@ -147,7 +151,7 @@ class ExtrusionEngine:
                         "start": start_offset_expr, "extent": ("toFace", end_offset_expr), "taper": "0 deg"}
             else:
                 plan = {"kind": "SURROUND", "name": None, "start": "0 in",
-                        "extent": (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN), "taper": "0 deg"}  # as the declared trim
+                        "extent": (CUT_THROUGH_EXTENT,), "taper": "0 deg"}  # as the declared trim
             candidates.append((prof, plan, i))
 
         # SURROUND is the trim cut -- must run last so the bars exist
@@ -206,12 +210,18 @@ class ExtrusionEngine:
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
             taper = adsk.core.ValueInput.createByString(fusion_expr(plan["taper"]))
             if plan["extent"][0] == CUT_THROUGH_EXTENT:
-                # the trim / window cut (frame_definition.CUT_THROUGH_EXTENT): a symmetric fixed distance about the
-                # sketch plane, each side past every body + the declared margin (through all on both sides refused
-                # a flat-bottom panel, measured 2026-11-24)
-                each_side_cm = self._cut_reach_cm(prof) + float(plan["extent"][1]) * CM_PER_IN
-                ext_in.setSymmetricExtent(adsk.core.ValueInput.createByReal(2 * each_side_cm), True, taper)
-                self.log.log(f"    CUT THROUGH: {each_side_cm / CM_PER_IN:.3f} in each side of the sketch plane")
+                # the trim / window cut: how it reaches past the panel is the back mode's row of the declared table
+                # (frame_definition.CUT_THROUGH_BY_BACK_MODE)
+                back_mode = getattr(self, 'back_mode', None)
+                rule = cut_through_rule(back_mode)
+                if rule["extent"] == "symmetricPastBodies":
+                    each_side_cm = self._cut_reach_cm(prof) + float(rule["marginIn"]) * CM_PER_IN
+                    ext_in.setSymmetricExtent(adsk.core.ValueInput.createByReal(2 * each_side_cm), True, taper)
+                    self.log.log(f"    CUT THROUGH ({back_mode}): {each_side_cm / CM_PER_IN:.3f} in each side of the sketch plane")
+                else:  # throughAllBothSides: the panel's underside can dip below the sketch plane (measured 2026-10-09)
+                    ext_in.setTwoSidesExtent(adsk.fusion.ThroughAllExtentDefinition.create(),
+                                             adsk.fusion.ThroughAllExtentDefinition.create(), taper, taper)
+                    self.log.log(f"    CUT THROUGH ({back_mode or 'shell'}): through all, both sides of the sketch plane")
             else:
                 if plan["extent"][0] == "toFace":
                     extent_def = adsk.fusion.ToEntityExtentDefinition.create(

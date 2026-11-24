@@ -25,7 +25,7 @@ from param_ownership import compute_stale_params
 from panel_finish import apply_panel_finish
 from pull_frame_shape import read_frame_shape  # noqa: E402
 from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
-                          new_board_offset_in, BOARD_SPACING_IN, send_frame_error)
+                          new_board_offset_in, BOARD_SPACING_IN, send_frame_error, frame_payload_of)
 from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
                                    BoardNamer, lattice_layer_prefix, naming)
 
@@ -2818,7 +2818,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # Fred ("lets try to send bspline and frame at same time" / "no send frame"): the frame is built by
                 # the same Send, right after the body it extrudes to -- before importing_done, so the palette does
                 # not hide until both are done. Its result reaches the palette as frame_result, as before.
-                frame_payload = data.get('frame')
+                frame_payload = frame_payload_of(data)  # + the board's backMode: how the trim / window cut reaches
                 if frame_payload:
                     _send_stage('fusionFrame')
                     _send_progress('Building the frame...')

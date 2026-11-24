@@ -10,6 +10,7 @@ from fb_engine.extrusion_engine import ExtrusionEngine
 from fb_engine import timeline_order
 from fb_engine.joined_miters import JOINED_MITERS_ATTR
 from fb_engine.frame_bars import bars_on_comp
+from fb_engine.back_mode import back_mode_on_comp
 from fb_engine.board_scope import board_params, fusion_expr  # Send targets S2b: the Fusion boundary
 
 # F14 (S6): the template a frame component was built from (stamped by
@@ -159,11 +160,13 @@ class SolidCoordinator:
             bars = bars_on_comp(comp)  # Bars Off (fb_engine/frame_bars.py): stamped by the sketch build
             if not bars:
                 self.log.log(f"BARS OFF: '{comp.name}': the trim cut only, no bar bodies")
+            back_mode = back_mode_on_comp(comp)  # how the trim / window cut reaches past the panel (fb_engine/back_mode.py)
+            self.log.log(f"BACK MODE: '{comp.name}': {back_mode}")
             bodies = self.extrusion_engine.extrude_profiles(
                 comp, sketch, prefix, self.to_face, start_expr, self.offset_expr,
                 declared=self._declared_frame(comp),
                 cut_context=scope.cut_context(comp) if scope is not None else None,
-                bars=bars,
+                bars=bars, back_mode=back_mode,
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
             self.failures.extend(getattr(self.extrusion_engine, 'failed', None) or [])

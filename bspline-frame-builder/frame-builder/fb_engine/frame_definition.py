@@ -108,15 +108,29 @@ EXTRUSION_SETTINGS = (
 BAR_NAME_RULE = re.compile(r"^frame_(?:window_(?:top|right|bottom|left)|(?:top|bottom|right|left)(?:_[1-9][0-9]*)?)$")
 
 
-# A CUT THROUGH THE PANEL (the trim, the inset window's hole; 2026-11-24, measured live on Back: Flat boards): Fusion's
-# through-all extent on BOTH sides of the sketch plane refused the cut on a panel with a flat bottom -- "Cannot complete
-# extrusion" / "Cannot extend extrusion to object" / a no-op, with Bars On or Off, at base 0 and 0.25 in below -- while
-# a FIXED distance on both sides cut it exactly. So every such cut is ONE declared rule: a symmetric fixed distance about
-# its sketch plane, each side reaching the farthest corner of every body's bounding box (measured along the plane
-# normal at build time, fb_engine/extrusion_engine.py) plus this margin -- past every body, so it removes exactly what
-# a through-all removed.
-CUT_THROUGH_EXTENT = "throughBodiesSymmetric"
+# A CUT THROUGH THE PANEL (the trim, the inset window's hole) declares CUT_THROUGH_EXTENT; HOW it cuts is read from
+# CUT_THROUGH_BY_BACK_MODE by the board's Back mode (the Thicken line's Back: Shell / Flat, P.backMode; stamped on the
+# frame component by fb_engine/back_mode.py), in the one extruder path (fb_engine/extrusion_engine.py).
+#   shell (and a board with no back mode): through all on BOTH sides of the sketch plane -- the rule every board was
+#           built with; MEASURED 2026-11-24 bit-identical to it (volume, area, every face).
+#   flat:   a symmetric FIXED distance about the sketch plane, each side reaching the farthest bounding-box corner of
+#           every body (along the plane normal) + marginIn. MEASURED live 2026-11-24: through all on both sides refused
+#           a flat-bottom panel ("Cannot complete extrusion" / "Cannot extend extrusion to object" / a no-op; Bars On
+#           and Off; base 0 and 0.25 in below) while the fixed distance cut it exactly. On a shell it is NOT bit-identical
+#           around an inset window's hole (~0.0005 in on its edge; to-object / to-face extents refuse the ring profile),
+#           hence the table rather than one rule for every board (advisor, saved boards unchanged).
+CUT_THROUGH_EXTENT = "cutThroughPanel"
 CUT_THROUGH_MARGIN_IN = 1.0
+DEFAULT_BACK_MODE = "shell"
+CUT_THROUGH_BY_BACK_MODE = {
+    "shell": {"extent": "throughAllBothSides"},
+    "flat": {"extent": "symmetricPastBodies", "marginIn": CUT_THROUGH_MARGIN_IN},
+}
+
+
+def cut_through_rule(back_mode):
+    """The CUT_THROUGH_BY_BACK_MODE row for `back_mode`; absent / unknown = DEFAULT_BACK_MODE (every board before)."""
+    return CUT_THROUGH_BY_BACK_MODE.get(back_mode) or CUT_THROUGH_BY_BACK_MODE[DEFAULT_BACK_MODE]
 
 # The features every current template builds from sketch 3. The extruder
 # reads these (F14 S6: fb_engine/declared_profiles.py); the regions named here
@@ -130,7 +144,7 @@ COMMON_FRAME_FEATURES = (
     # 2026-10-09 (seat A, measured live: Fred's "edge not good"): the thickened panel's underside dips BELOW the
     # sketch plane (z 0) -- a one-sided through-all left every bit of panel under it outside the outline (a deck over
     # the waist notch, a lip over the frame, claude_10's sawtooth). Both sides: nothing outside survives. 2026-11-24:
-    # both sides by a fixed distance past every body (CUT_THROUGH_EXTENT above), not through all.
+    # how far each side reaches is the back mode's (CUT_THROUGH_BY_BACK_MODE above).
     {"id": "trim", "op": "cut", "region": "surround-minus-outline", "start": "0 in",
      "extent": CUT_THROUGH_EXTENT, "taper": "0 deg"},
 )

@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
-from send_targets import send_frame_error  # noqa: E402
+from send_targets import send_frame_error, frame_payload_of  # noqa: E402
 
 _GEN = open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'b-spline-gen.py'), encoding='utf-8').read()
 
@@ -22,6 +22,17 @@ def test_a_failed_frame_result_gives_its_error():
 def test_an_ok_frame_or_no_frame_gives_none():
     assert send_frame_error({'ok': True, 'error': None}) is None
     assert send_frame_error(None) is None
+
+
+def test_the_frame_payload_carries_the_boards_back_mode():
+    # 2026-11-24 (advisor): the back mode picks how the frame's trim / window cut reaches past the panel
+    frame = {'templateId': 'template_1', 'bars': False}
+    assert frame_payload_of({'frame': frame, 'params': {'backMode': 'flat'}}) == dict(frame, backMode='flat')
+    assert frame_payload_of({'frame': frame, 'params': {'backMode': 'shell'}})['backMode'] == 'shell'
+    assert frame_payload_of({'frame': frame, 'params': {}}) == frame  # no back mode: none added (read as shell)
+    assert frame_payload_of({'frame': None, 'params': {'backMode': 'flat'}}) is None  # no frame on this Send
+    assert frame_payload_of({'frame': dict(frame, backMode='shell'), 'params': {'backMode': 'flat'}})['backMode'] == 'shell'
+    assert 'frame_payload = frame_payload_of(data)' in _GEN
 
 
 def test_the_send_puts_the_frame_error_on_its_success_reply():
