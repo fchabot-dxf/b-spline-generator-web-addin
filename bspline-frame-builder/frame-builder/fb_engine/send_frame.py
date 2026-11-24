@@ -49,6 +49,7 @@ from fb_engine.parameter_schema import PANEL_LIP_PARAM, ParameterSchema
 from fb_engine.timeline_order import mark_before_inlay, restore_marker_position
 from fb_engine.board_scope import BoardScope, naming, board_params, fusion_expr, FRAME_SEND_PARAMS
 from fb_engine.frame_bars import bars_of
+from fb_engine.back_mode import back_mode_of, stamp_back_mode
 from fb_engine.parameter_schema import ParameterSchema as _Schema
 
 FRAME_TYPE_ATTR = ("FrameBuilder", "ComponentType")   # value "Frame" (frame_engine._create_incremental_component)
@@ -292,8 +293,8 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     build + reorder was invalid by the time the bars extruded to it
     ("InternalValidationError : face" on every bar, 0 bars built), so the target
     face is resolved fresh at the moment it is used.
-    Returns {ok, error, deleted, frame, fit, seeds}; never raises for a
-    user-facing reason (it is reported as `error`).
+    Returns {ok, error, deleted, frame, fit, seeds} (+ `failed`: [{feature, error}] when the solid build could not build
+    a declared feature -- then ok is False); never raises for a user-facing reason (it is reported as `error`).
 
     `scope` (fb_engine.board_scope.BoardScope, Send targets 2026-10-14): the board this frame belongs to -- the frame
     deleted, built into, found again and put before ITS inlay is that board's only. None = the legacy root board
@@ -376,6 +377,11 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             if not frames:
                 raise SendFrameError("The frame sketch build created no frame (see the Frame Builder log).")
             result["frame"] = frames[-1].name
+            # the board's back mode picks how the trim / window cut reaches past the panel (fb_engine/back_mode.py);
+            # stamped before the solid build, which reads it from the component. Shell / absent: no stamp (as before)
+            back_mode = back_mode_of(payload)
+            if stamp_back_mode(frames[-1], back_mode, log):
+                log(f"SEND FRAME: back mode '{back_mode}' stamped on '{frames[-1].name}'")
             early_face_valid = getattr(face, "isValid", True)
             core_body = find_core_body()
             face = underside_face(core_body) if core_body is not None else None
@@ -386,10 +392,14 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
             # a design with boards: the solid build is told its frame + scope (its discovery takes the FIRST tagged
             # frame); a legacy-only design calls it exactly as before
             board_kw = {"frame_comp": frames[-1], "scope": scope} if (scope.is_board or scope.has_boards()) else {}
-            build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
-                        appearance_name=payload.get("appearance"), external_logger=logger, **board_kw)
+            failed = build_solid(to_face=face, start_offset_expr=f"{float(z)} in" if z is not None else DEFAULT_FRAME_BOTTOM_EXPR,
+                                 appearance_name=payload.get("appearance"), external_logger=logger, **board_kw) or []
         finally:
             restore_marker_position(design, prior_marker, logger)
+        if failed:  # 2026-11-24: a feature Fusion refused (the trim cut, a bar) is the Send's answer, not a log line
+            result["failed"] = list(failed)
+            raise SendFrameError("The frame was not fully built in Fusion: "
+                                 + "; ".join(f"{f['feature']}: {f['error']}" for f in failed))
         if seeds and not applied:
             log(f"SEND FRAME: {len(seeds)} seed(s) sent but not applied: {SEEDS_NOT_APPLIED}", "WARNING")
         result["ok"] = True

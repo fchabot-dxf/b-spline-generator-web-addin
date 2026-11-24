@@ -49,7 +49,7 @@ import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { receiveEditPasswordFromFusion } from './edit-password.js';
-import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } from './frame-panel.js';
+import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel, importSuccessStatus } from './frame-panel.js';
 import { onSketchPulled } from './pull-sketch.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
@@ -272,7 +272,8 @@ export function handleFusionHandshake(ev) {
     if (action === 'import_success') {
         releaseHeldStage(); // item 70: Fusion's stages end; the button was held until now
         setFusionActionState(FUSION_IDLE_LABEL, false);
-        setFusionStatus('Imported into Fusion ✓', 'ok');
+        const s = importSuccessStatus(ev.detail.data); // a frame that failed rides on this reply (frameError)
+        setFusionStatus(s.text, s.kind);
         return;
     }
     // workflow audit #15: a failed Send reports at once (the palette used to wait out its whole poll)

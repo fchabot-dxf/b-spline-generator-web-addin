@@ -101,7 +101,8 @@ def test_the_plan_reads_start_extent_and_op_from_the_declaration():
     assert p == {"kind": "BAR", "name": "frame_top", "start": "frame_height_offset",
                  "extent": ("toFace", "0 in"), "taper": "0 deg", "order": "bars"}
     assert dp.extrude_plan(trim, None, "frame_height_offset") == {
-        "kind": "SURROUND", "name": None, "start": "0 in", "extent": ("throughAllBothSides",),  # both sides of the plane (2026-10-09)
+        # both sides of the plane (2026-10-09); how far is the back mode's (CUT_THROUGH_BY_BACK_MODE, 2026-11-24)
+        "kind": "SURROUND", "name": None, "start": "0 in", "extent": ("cutThroughPanel",),
         "taper": "0 deg", "order": "trim"}
     # a template declaring another start / offset is honoured, not overridden
     other = dict(bars, start="0.5 in", extent={"toFace": "core.underside", "offset": "0.1 in"})
