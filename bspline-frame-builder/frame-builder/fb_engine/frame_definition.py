@@ -108,6 +108,16 @@ EXTRUSION_SETTINGS = (
 BAR_NAME_RULE = re.compile(r"^frame_(?:window_(?:top|right|bottom|left)|(?:top|bottom|right|left)(?:_[1-9][0-9]*)?)$")
 
 
+# A CUT THROUGH THE PANEL (the trim, the inset window's hole; 2026-11-24, measured live on Back: Flat boards): Fusion's
+# through-all extent on BOTH sides of the sketch plane refused the cut on a panel with a flat bottom -- "Cannot complete
+# extrusion" / "Cannot extend extrusion to object" / a no-op, with Bars On or Off, at base 0 and 0.25 in below -- while
+# a FIXED distance on both sides cut it exactly. So every such cut is ONE declared rule: a symmetric fixed distance about
+# its sketch plane, each side reaching the farthest corner of every body's bounding box (measured along the plane
+# normal at build time, fb_engine/extrusion_engine.py) plus this margin -- past every body, so it removes exactly what
+# a through-all removed.
+CUT_THROUGH_EXTENT = "throughBodiesSymmetric"
+CUT_THROUGH_MARGIN_IN = 1.0
+
 # The features every current template builds from sketch 3. The extruder
 # reads these (F14 S6: fb_engine/declared_profiles.py); the regions named here
 # are each template's own FRAME_REGIONS. `bodyNames` follow the `miters` order
@@ -119,9 +129,10 @@ COMMON_FRAME_FEATURES = (
      "bodyNames": ["frame_top", "frame_right", "frame_bottom", "frame_left"]},
     # 2026-10-09 (seat A, measured live: Fred's "edge not good"): the thickened panel's underside dips BELOW the
     # sketch plane (z 0) -- a one-sided through-all left every bit of panel under it outside the outline (a deck over
-    # the waist notch, a lip over the frame, claude_10's sawtooth). Both sides: nothing outside survives.
+    # the waist notch, a lip over the frame, claude_10's sawtooth). Both sides: nothing outside survives. 2026-11-24:
+    # both sides by a fixed distance past every body (CUT_THROUGH_EXTENT above), not through all.
     {"id": "trim", "op": "cut", "region": "surround-minus-outline", "start": "0 in",
-     "extent": "throughAllBothSides", "taper": "0 deg"},
+     "extent": CUT_THROUGH_EXTENT, "taper": "0 deg"},
 )
 
 # T82 item 6: the inset window's own bars + hole cut (fb_engine/inset_window.py). Appended UNCONDITIONALLY
@@ -136,7 +147,7 @@ WINDOW_BARS_FEATURE = {
 }
 WINDOW_CUT_FEATURE = {
     "id": "window_cut", "op": "cut", "region": "window-hole", "start": "0 in",
-    "extent": "throughAllBothSides", "taper": "0 deg",  # the same reason as the trim: a hole THROUGH the panel
+    "extent": CUT_THROUGH_EXTENT, "taper": "0 deg",  # the same rule as the trim: a hole THROUGH the panel
 }
 
 

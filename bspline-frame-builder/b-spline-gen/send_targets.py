@@ -20,6 +20,15 @@ DEFAULT_SEND_TARGET = "replace"
 BOARD_SPACING_IN = 2.0  # the gap between a new board and the right-most content already in the design
 
 
+def send_frame_error(frame_result):
+    """The Send's frame failure for its import_success reply (`frameError`), or None: the error of a frame result that is
+    not ok (fb_engine.send_frame: a refused Send, or a declared feature Fusion could not build). 2026-11-24: posted only
+    as frame_result, the failure was painted over at once by the success line."""
+    if not frame_result or frame_result.get("ok"):
+        return None
+    return frame_result.get("error") or "The frame was not built."
+
+
 def send_target_of(data):
     """The payload's declared target (absent = replace, today's Send); an unknown one is refused (ValueError)."""
     target = (data or {}).get("target") or DEFAULT_SEND_TARGET

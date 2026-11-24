@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "a509ddb9218ac8a78b9e24fff170497de3b73a3b427f6f7701d328f72bce5a3a",
+  "sourceHash": "e838e3943a386ee3bef7413adb51e3af0a163d8118714fb6ed9db7e961ed0a14",
   "templates": [
     {
       "features": [
@@ -94,7 +94,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -1691,7 +1691,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -3395,7 +3395,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -4615,7 +4615,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -6230,7 +6230,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -7417,7 +7417,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -8904,7 +8904,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -10091,7 +10091,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -11302,7 +11302,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -12846,7 +12846,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -14559,7 +14559,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -16276,7 +16276,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -17448,7 +17448,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -18208,7 +18208,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -19838,7 +19838,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -21477,7 +21477,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -23360,7 +23360,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -24408,7 +24408,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -25837,7 +25837,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -27286,7 +27286,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAllBothSides",
+          "extent": "throughBodiesSymmetric",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",

@@ -475,6 +475,16 @@ export function onFrameResult(data) {
   return r;
 }
 
+/** The status line for the Send's import_success reply: { text, kind }. 2026-11-24: a frame Fusion could not build
+ *  rides on that reply as `frameError` (b-spline-gen.py, send_targets.send_frame_error) -- its own frame_result warning
+ *  was painted over at once by "Imported into Fusion". */
+export function importSuccessStatus(data) {
+  let d = {};
+  try { d = typeof data === 'string' ? JSON.parse(data || '{}') : (data || {}); } catch (_) { d = {}; }
+  if (d.frameError) return { text: `Imported into Fusion, but the frame failed: ${d.frameError}`, kind: 'warn' };
+  return { text: 'Imported into Fusion ✓', kind: 'ok' };
+}
+
 /** Push the current record into the section (and the editor, if open). */
 export function syncFramePanel() {
   const rec = getFrameRecord();

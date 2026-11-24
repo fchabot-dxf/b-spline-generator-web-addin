@@ -179,14 +179,20 @@ def extrude_plan(feature, body_name, start_param_expr):
     """The extrude a declared feature asks for. ``start_param_expr`` is the
     value of the FRAME_BOTTOM_PARAM the coordinator synced (a feature whose
     `start` names a parameter starts at that parameter)."""
-    from fb_engine.frame_definition import FRAME_BOTTOM_PARAM
+    from fb_engine.frame_definition import FRAME_BOTTOM_PARAM, CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN
     start = feature.get("start", "0 in")
     extent = feature["extent"]
+    if extent == CUT_THROUGH_EXTENT:  # a cut through the panel: both sides, past every body + the declared margin
+        extent_plan = (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
+    elif extent == "throughAll":
+        extent_plan = (extent,)
+    else:
+        extent_plan = ("toFace", extent.get("offset", "0 in"))
     return {
         "kind": "SURROUND" if feature["op"] == "cut" else "BAR",
         "name": body_name,
         "start": start_param_expr if start == FRAME_BOTTOM_PARAM else start,
-        "extent": (extent,) if extent in ("throughAll", "throughAllBothSides") else ("toFace", extent.get("offset", "0 in")),
+        "extent": extent_plan,
         "taper": feature.get("taper", "0 deg"),
         "order": feature["id"],
     }

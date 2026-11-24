@@ -25,7 +25,7 @@ from param_ownership import compute_stale_params
 from panel_finish import apply_panel_finish
 from pull_frame_shape import read_frame_shape  # noqa: E402
 from send_targets import (send_target_of, board_of, locked_of, is_locked, find_board_component,  # noqa: E402
-                          new_board_offset_in, BOARD_SPACING_IN)
+                          new_board_offset_in, BOARD_SPACING_IN, send_frame_error)
 from fb_engine.board_scope import (BoardScope, BOARD_ATTR, tagged_board_components,  # noqa: E402
                                    BoardNamer, lattice_layer_prefix, naming)
 
@@ -2348,6 +2348,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 pal.sendInfoToHTML('frame_result', json.dumps(result, default=str))
         except Exception as e:
             _log(f'SEND FRAME could not report back: {e}')
+        return result
 
     def _handle_generate(self, data, step_text=None):
         """
@@ -2371,6 +2372,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         Log tags: [MULTI-VARIANT] and [SINGLE-STEP] for easy grep.
         """
         global importing_done, last_imported_occurrences, _import_success_at
+        frame_error = None  # the frame's failure, if any, rides on import_success (send_frame_error)
         try:
             is_preview = data.get('isPreview', False)
             if not is_preview:
@@ -2820,13 +2822,20 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if frame_payload:
                     _send_stage('fusionFrame')
                     _send_progress('Building the frame...')
-                    self._handle_send_frame(frame_payload, scope)
+                    frame_result = self._handle_send_frame(frame_payload, scope)
+                    frame_error = send_frame_error(frame_result)
+                    if frame_error:
+                        _log(f'SEND: the frame failed -- {frame_error}')
                 importing_done = True
                 _send_stage('fusionFinalize', is_preview)
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')
 
             done = {} if is_preview else {'target': target, 'boardId': board['id'] if (scope is not None and scope.is_board) else None}
+            if frame_error:
+                # 2026-11-24: the frame's failure travels WITH the success reply -- posted alone (frame_result) it was
+                # painted over at once by this reply's "Imported into Fusion" line (main.js)
+                done['frameError'] = frame_error
             if _post_to_palette('import_success', done):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
                 _import_success_at = time.monotonic()
             if not is_preview:

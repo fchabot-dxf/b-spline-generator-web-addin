@@ -34,7 +34,8 @@ def build_solid_logic_v3(comp_name=None, to_face=None,
                       frame_comp=None,
                       scope=None):
     """
-    Public entry point (v3) for the frame synthesis operation.
+    Public entry point (v3) for the frame synthesis operation. Returns the features it could not build:
+    [{"feature", "error"}] ([] = all built) -- fb_engine.send_frame reports them (ok: false).
     """
     coordinator = SolidCoordinator(
         to_face,
@@ -48,6 +49,7 @@ def build_solid_logic_v3(comp_name=None, to_face=None,
     coordinator.frame_comp, coordinator.scope = frame_comp, scope
     coordinator.log.log(f"--- SOLID V3 ENTRY POINT TRIGGERED (FB_VERSION: {FB_VERSION}) ---")
     coordinator.run(comp_name)
+    return list(coordinator.failures)
 
 class SolidCoordinator:
     def __init__(self, to_face=None, start_offset_expr="0 in", appearance_name=None,
@@ -64,6 +66,7 @@ class SolidCoordinator:
 
         self.to_face = to_face
         self.start_offset_expr = start_offset_expr
+        self.failures = []  # what run() could not build: [{"feature", "error"}] (build_solid_logic_v3 returns it)
         self.appearance_name = appearance_name
         self.offset_expr = "0 in" # Flush fit
 
@@ -116,6 +119,7 @@ class SolidCoordinator:
         The orchestrated sequence of frame synthesis.
         """
         start_time = time.time()
+        self.failures = []
         try:
             self.log.session_start(f"SOLID COORDINATOR (v{FB_VERSION}): Synthesis Started")
             self.log.log(f"SOLID BUILD: comp_name='{comp_name}'")
@@ -125,11 +129,13 @@ class SolidCoordinator:
             comp = self._resolve_component(comp_name)
             if not comp:
                 self.log.log("ABORT: No target component found", "ERROR")
+                self.failures.append({"feature": "frame component", "error": "no target component found"})
                 return
 
             sketch, prefix = self._find_sketch(comp)
             if not sketch:
                 self.log.log(f"ABORT: No frame-outline sketch found in '{comp.name}'", "ERROR")
+                self.failures.append({"feature": "frame sketch", "error": f"no frame-outline sketch in '{comp.name}'"})
                 return
 
             self.log.log(f"DISCOVERY: component='{comp.name}' sketch='{sketch.name}' prefix='{prefix}'")
@@ -160,6 +166,9 @@ class SolidCoordinator:
                 bars=bars,
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
+            self.failures.extend(getattr(self.extrusion_engine, 'failed', None) or [])
+            for f in self.failures:
+                self.log.log(f"REQUIRED FEATURE NOT BUILT: {f['feature']}: {f['error']}", "ERROR")
 
             # 4. SURGICAL CLEANUP — strategy restores the captured paint and
             # clears Fusion's grey-steel face overrides on the cut faces.
@@ -186,10 +195,12 @@ class SolidCoordinator:
             # sits before the inlay (measured live in F2: without this they
             # stayed after it).
             timeline_order.ensure_frame_before_inlay(self.design, comp.name, self.log, getattr(self, 'scope', None))
-            self.log.log(f"SOLID SYNTHESIS FINISHED OK (Total: {time.time() - start_time:.2f}s)")
+            outcome = f"WITH {len(self.failures)} FEATURE(S) NOT BUILT" if self.failures else "OK"
+            self.log.log(f"SOLID SYNTHESIS FINISHED {outcome} (Total: {time.time() - start_time:.2f}s)")
 
-        except Exception:
+        except Exception as e:
             self.log.log(f"COORDINATOR CRASH:\n{traceback.format_exc()}", "ERROR")
+            self.failures.append({"feature": "solid build", "error": f"crashed: {e}"})
 
     def _joined_miters_of(self, comp):
         """F31 item 2c: the joined-joint ids stamped onto `comp` (frame_engine.run_sketch_only,

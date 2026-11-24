@@ -2,8 +2,14 @@
 (t1_TRIM_CUT, t16_TRIM_CUT) extruded through all on ONE side of its sketch plane (z 0) -- the thickened panel's
 underside dips below it (claude_1 to -0.22 in), and every bit of panel under the plane outside the frame outline stayed:
 a deck over the waist notch, a lip over the frame, claude_10's sawtooth. Editing that one cut to two-sided through all
-trimmed the Stamped panel exactly to the frame (bbox -3.458..3.361 -> +-3.25). The trim and the window cut now declare
-"throughAllBothSides"; here the extrusion engine is pinned to build exactly that (and the bars to stay one-sided).
+trimmed the Stamped panel exactly to the frame (bbox -3.458..3.361 -> +-3.25).
+
+2026-11-24 (live check of Back: Flat): through all on BOTH sides then refused the cut on a panel with a flat bottom
+("Cannot complete extrusion" / "Cannot extend extrusion to object" / a no-op; Bars On and Off; base 0 and 0.25 in below),
+while a fixed distance on both sides cut it exactly. The trim and the window cut now declare ONE rule,
+frame_definition.CUT_THROUGH_EXTENT: a symmetric fixed distance about the sketch plane, each side reaching the farthest
+bounding-box corner of every body (along the plane normal) plus CUT_THROUGH_MARGIN_IN. Here the extrusion engine is
+pinned to build exactly that (and the bars to stay one-sided).
 
 Same adsk-stub idiom as test_trim_cut_paint.py, with the few enums / definitions the engine reads.
 """
@@ -24,7 +30,10 @@ if "adsk" not in sys.modules:
 import pytest  # noqa: E402
 from fb_engine import extrusion_engine  # noqa: E402
 from fb_engine import declared_profiles as dp  # noqa: E402
-from fb_engine.frame_definition import COMMON_FRAME_FEATURES, WINDOW_CUT_FEATURE  # noqa: E402
+from fb_engine.frame_definition import (COMMON_FRAME_FEATURES, WINDOW_CUT_FEATURE, CUT_THROUGH_EXTENT,  # noqa: E402
+                                        CUT_THROUGH_MARGIN_IN)
+
+P = lambda x, y, z: types.SimpleNamespace(x=x, y=y, z=z)  # noqa: E731
 
 
 @pytest.fixture
@@ -36,7 +45,7 @@ def fake_adsk(monkeypatch):
     monkeypatch.setattr(fusion, "ThroughAllExtentDefinition", types.SimpleNamespace(create=lambda: "throughAll"), raising=False)
     monkeypatch.setattr(fusion, "ToEntityExtentDefinition", types.SimpleNamespace(create=lambda f, c, off: ("toEntity", off)), raising=False)
     monkeypatch.setattr(fusion, "OffsetStartDefinition", types.SimpleNamespace(create=lambda v: ("offsetStart", v)), raising=False)
-    monkeypatch.setattr(core, "ValueInput", types.SimpleNamespace(createByString=lambda s: s), raising=False)
+    monkeypatch.setattr(core, "ValueInput", types.SimpleNamespace(createByString=lambda s: s, createByReal=lambda v: ("real cm", v)), raising=False)
     return a
 
 
@@ -52,6 +61,9 @@ class _Input:
     def setTwoSidesExtent(self, *a):
         self.calls.append(("two", a))
 
+    def setSymmetricExtent(self, *a):
+        self.calls.append(("symmetric", a))
+
 
 class _Extrudes:
     def __init__(self):
@@ -65,34 +77,67 @@ class _Extrudes:
         return types.SimpleNamespace(name="", bodies=[], faces=[], attributes=types.SimpleNamespace(add=lambda *a: None))
 
 
-def _engine():
+def _body(zmin, zmax, x=(-8.89, 8.89), y=(-11.43, 11.43)):
+    """A body's root-context bounding box (cm), as Fusion reports it."""
+    return types.SimpleNamespace(boundingBox=types.SimpleNamespace(minPoint=P(x[0], y[0], zmin), maxPoint=P(x[1], y[1], zmax)))
+
+
+def _design(root_bodies=(), occurrence_bodies=()):
+    occs = [types.SimpleNamespace(bRepBodies=list(bs)) for bs in occurrence_bodies]
+    return types.SimpleNamespace(rootComponent=types.SimpleNamespace(bRepBodies=list(root_bodies), allOccurrences=occs))
+
+
+# the live T1 7x9 Back: Flat board, base 0.25 in below (case f): panel z -0.25 .. 1.4788 in, bars z -1 .. -0.25 in
+FLAT_PLINTH = _design(occurrence_bodies=[[_body(-0.635, 3.756)], [_body(-2.54, -0.635, x=(-8.255, -3.713))]])
+PLANE_Z0 = types.SimpleNamespace(area=1.0, plane=types.SimpleNamespace(origin=P(0, 0, 0), normal=P(0, 0, 1)))
+
+
+def _engine(design=FLAT_PLINTH):
     e = extrusion_engine.ExtrusionEngine.__new__(extrusion_engine.ExtrusionEngine)
     e.log = types.SimpleNamespace(log=lambda *a, **k: None)
+    e.design = design
     return e
 
 
-def _build(feature, body_name=None):
+def _build(feature, body_name=None, prof=PLANE_Z0, design=FLAT_PLINTH):
     ex = _Extrudes()
     plan = dp.extrude_plan(feature, body_name, "frame_height_offset")
-    _engine()._extrude_one_profile(ex, types.SimpleNamespace(area=1.0), plan, 0, "t1", "FACE", "Frame_1")
+    _engine(design)._extrude_one_profile(ex, prof, plan, 0, "t1", "FACE", "Frame_1")
     return ex.inputs[0]
 
 
-def test_the_trim_and_the_window_cut_are_declared_through_all_on_both_sides():
-    trim = [f for f in COMMON_FRAME_FEATURES if f["id"] == "trim"][0]
-    assert trim["extent"] == "throughAllBothSides" and WINDOW_CUT_FEATURE["extent"] == "throughAllBothSides"
+TRIM = [f for f in COMMON_FRAME_FEATURES if f["id"] == "trim"][0]
 
 
-def test_the_trim_cut_is_built_two_sided_through_all(fake_adsk):
-    trim = [f for f in COMMON_FRAME_FEATURES if f["id"] == "trim"][0]
-    i = _build(trim)
+def test_the_trim_and_the_window_cut_declare_the_one_cut_through_rule():
+    assert TRIM["extent"] == CUT_THROUGH_EXTENT and WINDOW_CUT_FEATURE["extent"] == CUT_THROUGH_EXTENT
+    assert CUT_THROUGH_MARGIN_IN == 1.0
+    assert dp.extrude_plan(TRIM, None, "x")["extent"] == (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
+
+
+def test_the_trim_cut_is_symmetric_past_the_farthest_body_plus_the_margin(fake_adsk):
+    i = _build(TRIM)
     assert i.op == "cut" and i.isParticipantsAutomated is True
-    assert i.calls == [("two", ("throughAll", "throughAll", "0 deg", "0 deg"))]
+    # farthest corner from z 0: the panel top, 3.756 cm; each side = 3.756 + 2.54 (1 in); full length = twice that
+    [(kind, (dist, full_length, taper))] = i.calls
+    assert kind == "symmetric" and full_length is True and taper == "0 deg"
+    assert dist[0] == "real cm" and dist[1] == pytest.approx(2 * (3.756 + 2.54))
 
 
-def test_the_window_cut_is_built_two_sided_through_all(fake_adsk):
-    i = _build(WINDOW_CUT_FEATURE)
-    assert i.calls == [("two", ("throughAll", "throughAll", "0 deg", "0 deg"))]
+def test_the_reach_is_measured_from_the_sketch_plane_along_its_normal(fake_adsk):
+    # the plane 1 cm up: the bars' bottom (-2.54) is now the farthest, 3.54 cm away; a tilted normal is normalised
+    up = types.SimpleNamespace(area=1.0, plane=types.SimpleNamespace(origin=P(0, 0, 1), normal=P(0, 0, 2)))
+    [(_, (dist, _, _))] = _build(TRIM, prof=up).calls
+    assert dist[1] == pytest.approx(2 * (3.54 + 2.54))
+    # a root body and a body under an occurrence both count (a through-all reached every body)
+    d = _design(root_bodies=[_body(-20, 0)], occurrence_bodies=[[_body(0, 1)]])
+    [(_, (dist, _, _))] = _build(TRIM, design=d).calls
+    assert dist[1] == pytest.approx(2 * (20 + 2.54))
+
+
+def test_the_window_cut_is_the_same_symmetric_cut(fake_adsk):
+    [(kind, (dist, full_length, _))] = _build(WINDOW_CUT_FEATURE).calls
+    assert kind == "symmetric" and full_length is True and dist[1] == pytest.approx(2 * (3.756 + 2.54))
 
 
 def test_the_bars_stay_one_sided_to_the_panel_underside(fake_adsk):
@@ -102,10 +147,10 @@ def test_the_bars_stay_one_sided_to_the_panel_underside(fake_adsk):
     assert i.calls[0][1][0] == ("toEntity", "0 in") and i.calls[0][1][1] == "+"
 
 
-def test_the_bounding_box_path_trims_both_sides_too(fake_adsk, monkeypatch):
+def test_the_bounding_box_path_trims_with_the_same_rule(fake_adsk, monkeypatch):
     e = _engine()
     monkeypatch.setattr(e, "_classify_profile", lambda p: "SURROUND", raising=False)
     monkeypatch.setattr(e, "_profile_label", lambda p, i: "x", raising=False)
     sketch = types.SimpleNamespace(profiles=types.SimpleNamespace(count=1, item=lambda i: types.SimpleNamespace(area=1.0)))
     [(prof, plan, i)] = e._collect_profiles(sketch, "-1 in", "0 in")
-    assert plan["extent"] == ("throughAllBothSides",)
+    assert plan["extent"] == (CUT_THROUGH_EXTENT, CUT_THROUGH_MARGIN_IN)
