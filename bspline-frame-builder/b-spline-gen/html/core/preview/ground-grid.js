@@ -8,6 +8,8 @@
  * extent hasn't changed.
  */
 
+import { ZScale } from './z-scale.js';
+
 export class GroundGrid {
   constructor(scene) {
     const THREE = window.THREE;
@@ -18,7 +20,15 @@ export class GroundGrid {
     scene.add(this._group);
     this._currentKey = null;
     this._show = true;
+    // the vertical Z ruler -- exact side views only; its own group so a grid rebuild leaves it alone
+    this._zScale = new ZScale(THREE, scene, t => this._makeAxisNumberSprite(t));
   }
+
+  /** The board's size + Z extent (every rebuild); the ruler is rebuilt only when the extent changes. */
+  setZExtent(W, H, minZ, maxZ) { this._zScale.setExtent(W, H, minZ, maxZ); }
+
+  /** Camera view direction {x,y,z}: shows the Z ruler in an exact side view, hides it otherwise. @returns the view or null */
+  setViewDirection(dir) { return this._zScale.setView(dir && this._show ? dir : null); }
 
   setVisible(v) {
     this._show = !!v;
@@ -91,6 +101,7 @@ export class GroundGrid {
   }
 
   dispose() {
+    this._zScale.dispose();
     this._clear();
     if (this._group.parent) this._group.parent.remove(this._group);
   }

@@ -149,7 +149,7 @@ const THREE = new Proxy({}, {
 function mockPreview() {
   const scene = [];
   return {
-    _THREE: THREE, _dispose() {}, _groundGrid: { update() {} }, _sculpt: { getConfig: () => null, reapplySelection() {} },
+    _THREE: THREE, _dispose() {}, _groundGrid: { update() {}, setZExtent() {} }, _syncZScale() {}, _sculpt: { getConfig: () => null, reapplySelection() {} },
     _scene: { add: (o) => scene.push(o) }, _orbit: { setTargetZ() {}, fitToStock() {} }, _resize() {}, _leaders: { setData() {} },
     _applyFrame() { this.frameGrid = this._lastGrid; }, _visibleWorstPts() { return this._worstPts; }, _rebuildDrapeMesh() {},
     _curvesVisible: false, _lastW: 0, _lastH: 0, _solidMeshes: [], scene,

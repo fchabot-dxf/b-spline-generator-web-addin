@@ -37,6 +37,7 @@ import { DRAPE_TEXTURE_FLIPY } from './drape-svg.js';
 import { ViewCube } from './view-cube.js';
 import { shaderChecksOn } from '../render-debug.js';
 import { GroundGrid } from './ground-grid.js';
+import { viewDirOf } from './z-scale.js';
 import { LeaderLineOverlay } from './leader-lines.js';
 import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh.js';
 import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
@@ -249,6 +250,8 @@ export class TerrainPreview {
     // Track terrain centre Z so the orbit target follows height changes.
     const midZ = (minZ + maxZ) / 2;
     this._orbit.setTargetZ(midZ);
+    this._groundGrid.setZExtent(W, H, minZ, maxZ);
+    this._syncZScale();
 
     if (W !== this._lastW || H !== this._lastH || this._lastW === 0) {
       const isFirstRun = (this._lastW === 0);
@@ -887,6 +890,12 @@ export class TerrainPreview {
     el.addEventListener('touchcancel', () => this._stlGizmo.cancel()); // a lost touch: the STL drag goes back, nothing is written
   }
 
+  /** Z ruler: on only while the camera sits in an exact side view (z-scale.js exactSideView). */
+  _syncZScale() {
+    const q = this._camera.quaternion;
+    if (q) this._groundGrid.setViewDirection(viewDirOf(q));
+  }
+
   _startLoop() {
     let firstFrame = true;
     const loop = () => {
@@ -895,6 +904,7 @@ export class TerrainPreview {
       if (this._stlGizmo?.sync()) this._needsRender = true; // the STL handles: shown / hidden (lock, sculpt) / rescaled with the zoom
 
       if (this._needsRender) {
+        this._syncZScale();
         if (this._viewCube) {
           this._viewCube.sync(this._camera);
           this._viewCube.render();
