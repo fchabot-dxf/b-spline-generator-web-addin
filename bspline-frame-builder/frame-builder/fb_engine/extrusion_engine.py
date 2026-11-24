@@ -37,7 +37,7 @@ class ExtrusionEngine:
     # Public entry point
     # ------------------------------------------------------------------
     def extrude_profiles(self, comp, sketch, prefix, to_face, start_offset_expr, end_offset_expr, declared=None,
-                         cut_context=None):
+                         cut_context=None, bars=True):
         """Extrude every closed frame-bar profile in the shape-outline
         sketch and apply the SURROUND trim cut.
 
@@ -50,6 +50,9 @@ class ExtrusionEngine:
         gets its SURROUND cut from (root extrude features, the frame's root-context occurrence) -- MEASURED (probe 2,
         2026-10-14): from any component's own features Fusion refused it, "body not found to extrude through".
         None (the legacy root board): unchanged.
+
+        ``bars`` False (Bars Off, fb_engine/frame_bars.py): every BAR plan (main and window bars) is dropped; the
+        SURROUND trim and the window hole cut are built as always.
         """
         # the bodies the SURROUND cuts actually modified (_finalize_feature) -- the coordinator restores each one's
         # own paint: the to_face body is not always the cut's target (measured live 2026-10-07)
@@ -69,6 +72,11 @@ class ExtrusionEngine:
         else:
             self.log.log("EXTRUDER: no declared template on this frame: bounding-box classifier")
             to_process = self._collect_profiles(sketch, start_offset_expr, end_offset_expr)
+        if not bars:
+            from fb_engine.frame_bars import drop_bar_plans
+            kept = drop_bar_plans(to_process)
+            self.log.log(f"EXTRUDER: bars off -- {len(to_process) - len(kept)} bar profile(s) not built (the panel keeps them)")
+            to_process = kept
         extrudes = comp.features.extrudeFeatures
 
         new_bodies = []

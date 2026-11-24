@@ -101,12 +101,14 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     # F31 item 2c: the joined-joint ids (Fred: "the side can sometimes be one piece"), never in
     # ui_data (same reason as inset_window: a list, not a single scalar).
     joined_miters = data_dict.get('joined_miters') if isinstance(data_dict, dict) else None
+    # Bars Off (fb_engine/frame_bars.py): False = the frame shape only; absent = the bars (as before)
+    bars = data_dict.get('bars', True) if isinstance(data_dict, dict) else True
 
     if external_logger:
         external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}, seeds={len(seed_geometry or {})}")
     builder.scope = data_dict.get('frame_scope') if isinstance(data_dict, dict) else None  # Send targets: the board
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase, seed_geometry=seed_geometry,
-                            panel_lip=panel_lip, inset_window=inset_window, joined_miters=joined_miters)
+                            panel_lip=panel_lip, inset_window=inset_window, joined_miters=joined_miters, bars=bars)
     return builder.fit
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -190,7 +192,7 @@ class FrameBuilder:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
     def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None, seed_geometry=None,
-                        panel_lip=None, inset_window=None, joined_miters=None):
+                        panel_lip=None, inset_window=None, joined_miters=None, bars=True):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -213,6 +215,10 @@ class FrameBuilder:
                     frame_comp.attributes.add('FrameBuilder', 'JoinedMiters', json.dumps(list(joined_miters)))
                 except Exception as e:
                     self.logger.log(f"Could not tag component '{frame_comp.name}' with JoinedMiters attribute: {e}", "WARNING")
+            # Bars Off: stamped the same way (the solid build reads it: solid_coordinator -> frame_bars.bars_on_comp)
+            from fb_engine.frame_bars import stamp_bars
+            if stamp_bars(frame_comp, bars, self.logger.log):
+                self.logger.log(f"BARS OFF: '{frame_comp.name}' builds the frame shape only")
 
             # Resolve template and prefix from registry
             template, prefix = _resolve_template(style_id, ui_data)

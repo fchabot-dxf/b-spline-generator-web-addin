@@ -17,6 +17,7 @@ import { offsetOutlineInward } from './outline-offset.js';
 import { insetWindowGeometry } from '../core/inset-window.js';
 import { shapeParamOverrides, frameHandles, clampToFrameRanges, FRAME_CLAMPED_PRESETS, frameParamRanges, linkedSeedPatch } from './frame-handles.js';
 import { frameColorFor } from '../core/color-utils.js';
+import { frameBarsOn } from '../core/frame-bars.js';
 import { handleKindVisual, handleHoverVisual, drawParamHandle, drawSegmentHighlight, HANDLE_HOVER_FILL } from './editor-transform-handles.js';
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
 import { distToPrimitive, footOnPrimitive } from './editor-primitives.js';
@@ -199,6 +200,19 @@ export function frameInnerProfile(defs, record, board) {
   return { primitives, defects: outlineDefects(real, { requireTangency: false }) };
 }
 
+/**
+ * Bars Off (Fred 2026-11-23): the frame's BARS -- the inner edge every consumer that DRAWS or BUILDS the wood reads
+ * (the 3D bars, the 2D wood band / inner edge / miters, the SVG download, the joint markers and blank widths) --
+ * or null when the record's bars are off (core/frame-bars.js frameBarsOn) or there is no valid inner edge. The
+ * board's outline (frameCutProfile, the panel trim) never depends on it. The shape checks (Generate, the drag
+ * stops, the template icons) keep reading frameInnerProfile itself, so switching the bars back on always finds
+ * buildable bars.
+ */
+export function frameBarsProfile(defs, record, board) {
+  if (!frameBarsOn(record)) return null;
+  return frameInnerProfile(defs, record, board);
+}
+
 /** Everything the 3D preview needs (core/preview/frame-mesh.js), or null
  *  when there is no frame or the outline fails the guard. */
 /** F22: the panel's trim outline = the frame outline offset OUTWARD by the record's panel lip (the F8 true offset,
@@ -213,11 +227,12 @@ export function panelTrimPrimitives(prof, record) {
 export function frameSolidSpec(defs, record, board) {
   const prof = frameCutProfile(defs, record, board);
   if (!prof || prof.defects.length) return null;
-  const inner = prof.fit.ok ? frameInnerProfile(defs, record, board) : null;
+  const inner = prof.fit.ok ? frameBarsProfile(defs, record, board) : null;
   const innerOk = inner && !inner.defects.length && inner.primitives.length === prof.primitives.length;
   const tpl = (defs.templates || []).find((t) => t.id === prof.templateId);
   const ft = _param(tpl, record, 'frame_thickness') ?? 0;
   return {
+    ...(frameBarsOn(record) ? {} : { bars: false }), // Bars Off: no main bars (inner null) AND no window bars (frame-mesh.js)
     outline: sampleOutline(prof.primitives),
     inner: innerOk ? sampleOutline(inner.primitives) : null,
     outerPrimitives: prof.primitives,
@@ -511,7 +526,7 @@ export function frameVectorParts(editor) {
   const board = { widthIn: editor._mW, heightIn: editor._mH };
   const prof = frameCutProfile(spec.defs, spec.record, board);
   if (!prof || prof.defects.length) return null;
-  const inner = prof.fit.ok ? frameInnerProfile(spec.defs, spec.record, board) : null;
+  const inner = prof.fit.ok ? frameBarsProfile(spec.defs, spec.record, board) : null; // Bars Off: the outline alone
   const ok = !!inner && !inner.defects.length && inner.primitives.length === prof.primitives.length;
   const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');
   return {
@@ -543,7 +558,9 @@ function _drawFrameProfile(editor) {
   // The frame itself: the band between the outline and its inner edge (the
   // frame thickness), tinted in the chosen wood, plus the inner edge and the
   // 4 miter lines. Same inner loop the 3D bars use (frameInnerProfile).
-  const inner = prof.fit.ok ? frameInnerProfile(spec.defs, spec.record, { widthIn: W, heightIn: H }) : null;
+  // Bars Off: frameBarsProfile is null -- no wood band, inner edge, miters or joint markers; the outline and its
+  // cutaway (above / below) stay, the board is still cut to the frame's shape.
+  const inner = prof.fit.ok ? frameBarsProfile(spec.defs, spec.record, { widthIn: W, heightIn: H }) : null;
   if (inner && !inner.defects.length && inner.primitives.length === prof.primitives.length) {
     const innerD = primitivesToPathD(inner.primitives);
     // H8: frameColorFor() again — see frameSolidSpec's own identical call.

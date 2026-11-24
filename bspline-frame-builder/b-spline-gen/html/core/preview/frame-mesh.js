@@ -769,7 +769,8 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
     }
     wall.name = 'frame-panel-wall';
     extra.push(wall);
-    if (inner || windowed) {
+    const windowBars = windowed && spec.bars !== false; // Bars Off: the window's hole stays (below), its bars go
+    if (inner || windowBars) {
       // H8: spec.color is already the declared frame colour (frameSolidSpec,
       // editor-frame-profile.js) — this fallback only fires when it's null
       // (no matching wood found); Ash's own declared entry keeps it consistent.
@@ -790,7 +791,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
         bars.name = 'frame-bars';
         extra.push(bars);
       }
-      if (windowed) {
+      if (windowBars) {
         // T82 item 3 (Fred, phone shot from the BOTTOM: "inset window doesn't show a frame in 3D" -- the
         // design's own "hide the subframe" meant hidden FROM THE FRONT by the panel overhang, not absent).
         // The SAME ring primitive as the main frame's own bars, between the window's outer and inner

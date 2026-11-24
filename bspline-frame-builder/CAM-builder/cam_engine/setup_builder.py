@@ -140,6 +140,10 @@ def setup_specs(design=None):
         if spec.get('role') == 'frame':
             names = frame_layout.design_body_names(design) if design else None
             present = frame_layout.present_sides(names) if names is not None else None
+            # Bars Off (frame-builder fb_engine/frame_bars.py, 2026-11-23): a design whose frame bodies were never built
+            # (the frame SHAPE only, or no frame at all) has nothing to cut in wood -- no Frame setup. Unreadable = as before.
+            if present is not None and not present:
+                continue
             out.extend(frame_layout.expand(spec, frame_layout.load(design), present))
         else:
             out.append(spec)

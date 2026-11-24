@@ -188,3 +188,24 @@ def test_a_piece_thickness_is_the_stock_z_and_xy_stay_declared(eng):
     s2 = _Setup(z_up=True)
     eng.sb._apply_stock_box(s2, 'Frame', None, 'frame_stock')
     assert s2.parameters.written()['job_stockFixedZ'] == "(surfaceZHigh - surfaceZLow)"   # no thickness: the bars' own
+
+
+# ---------------------------------------------------------------------------
+# Bars Off (2026-11-23): a design with no frame bodies has no Frame setup
+# ---------------------------------------------------------------------------
+
+def _design_with_bodies(names):
+    root = types.SimpleNamespace(bRepBodies=[types.SimpleNamespace(name=n) for n in names], allOccurrences=[])
+    return types.SimpleNamespace(attributes=_Attrs(), rootComponent=root)
+
+
+def test_no_frame_bodies_means_no_frame_setup(eng):
+    sb = eng.sb
+    specs = sb.setup_specs(_design_with_bodies(['Body1', 'Clean', 'Stamped']))   # the frame shape only: no bars built
+    assert [s['name'] for s in specs] == [s['name'] for s in sb.SETUP_SPECS if s['role'] != 'frame']
+
+
+def test_frame_bodies_keep_the_frame_setup_exactly(eng):
+    sb = eng.sb
+    d = _design_with_bodies(['Body1', 'frame_top', 'frame_right', 'frame_bottom', 'frame_left'])
+    assert sb.setup_specs(d) == sb.SETUP_SPECS

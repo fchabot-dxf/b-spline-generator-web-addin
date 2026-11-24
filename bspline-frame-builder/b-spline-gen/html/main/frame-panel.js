@@ -17,7 +17,7 @@
  * reaction to a switch (below, the 'editorTabChanged' listener), same as photo-panel.js/
  * brick-panel.js keep theirs.
  */
-import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
+import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange, frameBarsOn } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { recordStep } from '../core/history.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
@@ -177,6 +177,36 @@ function _writeShapeSeed(tpl, key, value, label) {
   return editFrame({ seeds: { ...rec.seeds, ...linkedSeedPatch(tpl, rec.seeds, { [key]: value }) } }, label);
 }
 
+/** The segmented On / Off-style button group (a `.segmented-group` of `.editor-fillmode-btn`s, one per option, each
+ *  carrying its value as `data-value`) -- the ONE builder for a declared switch: a template's shape-control switch
+ *  (_buildShapeControl) and the frame record's own switches (FRAME_RECORD_SWITCHES) both draw through it. */
+function _segmentedGroup(label, options, onPick) {
+  const group = document.createElement('div');
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', label);
+  group.className = 'segmented-group';
+  // the BUTTONS are the touch targets: 28 px inside the group's 1 px border (MEASURED at 390 px: border-box left them 26)
+  group.style.boxSizing = 'content-box';
+  group.style.height = `${CONTROL_TOUCH_PX}px`;
+  for (const o of options || []) {
+    const b = document.createElement('button');
+    Object.assign(b, { type: 'button', className: 'editor-fillmode-btn', textContent: o.label });
+    b.dataset.value = String(o.value);
+    b.style.cssText = 'flex:1; min-width:44px; font-size:11px;';
+    b.addEventListener('click', () => onPick(o));
+    group.appendChild(b);
+  }
+  return group;
+}
+/** Marks the button of `container`'s segmented group whose value is `value` (aria-pressed + .active). */
+function _markSegmented(container, value) {
+  for (const b of container.querySelectorAll('button')) {
+    const on = b.dataset.value === String(value);
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('active', on);
+  }
+}
+
 function _buildShapeControl(tpl, h) {
   const c = h.control, row = document.createElement('div');
   row.dataset.shapeKey = h.key;
@@ -211,20 +241,7 @@ function _buildShapeControl(tpl, h) {
     label.append(box, document.createTextNode(h.label));
     row.append(label);
   } else if (c.kind === 'switch') {
-    const group = document.createElement('div');
-    group.setAttribute('role', 'group');
-    group.setAttribute('aria-label', h.label);
-    group.className = 'segmented-group';
-    group.style.height = `${CONTROL_TOUCH_PX}px`;
-    for (const o of c.options || []) {
-      const b = document.createElement('button');
-      Object.assign(b, { type: 'button', className: 'editor-fillmode-btn', textContent: o.label });
-      b.dataset.value = String(o.value);
-      b.style.cssText = 'flex:1; min-width:44px; font-size:11px;';
-      b.addEventListener('click', () => _writeShapeSeed(tpl, h.key, o.value, `${h.label}: ${o.label}`));
-      group.appendChild(b);
-    }
-    row.append(head(h.label), group);
+    row.append(head(h.label), _segmentedGroup(h.label, c.options, (o) => _writeShapeSeed(tpl, h.key, o.value, `${h.label}: ${o.label}`)));
   }
   return row;
 }
@@ -273,12 +290,56 @@ function _syncShapeControls(tpl, rec) {
       } else if (h.control.kind === 'switch') {
         const opts = h.control.options || [];
         const pick = opts.reduce((best, o) => (Math.abs(o.value - v) < Math.abs(best.value - v) ? o : best), opts[0] || { value: v });
-        for (const b of row.querySelectorAll('button')) {
-          const on = Number(b.dataset.value) === pick.value;
-          b.setAttribute('aria-pressed', String(on));
-          b.classList.toggle('active', on);
-        }
+        _markSegmented(row, pick.value);
       }
+    }
+  }
+}
+
+/**
+ * The frame RECORD's own switches (not a template's): each one key of the record, drawn in every host the same way
+ * (the sidebar Wood frame section and the Frame tab's panel: two views of one record, the FRAME_SHAPE_CONTROL_HOSTS
+ * pattern), written through editFrame (one undo step). `dims`: the rows that only matter while the switch is at its
+ * first option -- shown dimmed (display only: still editable, the values kept) at any other. Hidden with no template
+ * (the Rectangle choice has nothing to switch; the record's value is kept as it is).
+ *
+ * Bars (Fred 2026-11-23): On = today; Off = no wood bars drawn or built, the board still cut to the frame's outline
+ * (core/frame-bars.js). Frame thickness / bottom / wood and the fit warning are about the bars.
+ */
+export const FRAME_RECORD_SWITCHES = Object.freeze([
+  Object.freeze({
+    key: 'bars', label: 'Bars', hosts: Object.freeze(['frameBarsSwitch', 'editorFrameBarsSwitch']),
+    options: Object.freeze([Object.freeze({ value: true, label: 'On' }), Object.freeze({ value: false, label: 'Off (shape only)' })]),
+    read: (rec) => frameBarsOn(rec),
+    dims: Object.freeze(['frameThicknessRow', 'frameBottomZRow', 'frameAppearanceRow', 'editorFrameThicknessRow']),
+  }),
+]);
+export const FRAME_SWITCH_DIM_OPACITY = 0.45;
+
+function _syncRecordSwitches(tpl, rec) {
+  for (const sw of FRAME_RECORD_SWITCHES) {
+    const value = sw.read(rec);
+    for (const id of sw.hosts) {
+      const host = $(id);
+      if (!host) continue;
+      if (!host.dataset.built) {
+        const label = document.createElement('label');
+        label.className = 'cad-label cad-label-inline';
+        label.textContent = sw.label;
+        host.replaceChildren(label, _segmentedGroup(sw.label, sw.options, (o) => {
+          if (sw.read(getFrameRecord()) !== o.value) editFrame({ [sw.key]: o.value }, `${sw.label}: ${o.label}`);
+        }));
+        host.dataset.built = '1';
+      }
+      host.style.display = tpl ? 'flex' : 'none'; // its markup's own column layout
+      _markSegmented(host, value);
+    }
+    const dim = value !== sw.options[0].value;
+    for (const id of sw.dims) {
+      const el = $(id);
+      if (!el) continue;
+      el.style.opacity = dim ? String(FRAME_SWITCH_DIM_OPACITY) : '';
+      if (dim) el.dataset.dimmedBy = sw.key; else delete el.dataset.dimmedBy;
     }
   }
 }
@@ -454,6 +515,7 @@ export function syncFramePanel() {
     }
   }
   _syncShapeControls(tpl, rec); // T20: the template's declared shape controls (none for every earlier template)
+  _syncRecordSwitches(tpl, rec); // Bars On / Off (FRAME_RECORD_SWITCHES)
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
   if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : `— ${NO_FRAME_CHOICE.label}`;
 
@@ -461,7 +523,8 @@ export function syncFramePanel() {
   if (warn) {
     const fit = tpl ? frameFit(P.widthIn, P.heightIn, frameParam(FRAME_DEFS, rec, 'frame_thickness'),
       frameParam(FRAME_DEFS, rec, 'boundingboxoffset')) : { ok: true };
-    warn.style.display = fit.ok ? 'none' : '';
+    // Bars Off: the fit rule is about the bars (2 x frame thickness) -- nothing to warn about without them
+    warn.style.display = fit.ok || !frameBarsOn(rec) ? 'none' : '';
     warn.textContent = fit.ok ? '' : `Board too small for this frame: the safe zone is ${fit.safeZoneIn.toFixed(2)} in `
       + `but the frame needs more than ${fit.requiredIn.toFixed(2)} in.`;
   }
@@ -476,7 +539,7 @@ export function syncFramePanel() {
   if (joinInfo) {
     const seen = new Set();
     const lines = [];
-    if (tpl && (rec.joinedMiters || []).length) {
+    if (tpl && frameBarsOn(rec) && (rec.joinedMiters || []).length) { // Bars Off: no bars, no blanks to cut
       const board = { widthIn: P.widthIn, heightIn: P.heightIn };
       const outerProf = frameCutProfile(FRAME_DEFS, rec, board);
       const innerProf = !outerProf.defects.length ? frameInnerProfile(FRAME_DEFS, rec, board) : null;

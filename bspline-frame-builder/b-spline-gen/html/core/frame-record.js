@@ -12,6 +12,9 @@
  * Python by tools/gen_frame_defs.py), so a regenerated definition never needs
  * a migration of saved projects.
  *
+ * `bars` (Bars Off, 2026-11-23): only ever `false` (the frame is a SHAPE only: no wood bars, the board still cut to
+ * the outline); absent = the bars are built. `frameBarsOn` (core/frame-bars.js) is its one reader.
+ *
  * `normalizeFrameRecord` is the ONE gate every write and every load goes
  * through: a project saved before frames existed (no `frame` key), an unknown
  * template, a wood that isn't declared, or a non-numeric value all resolve to
@@ -34,6 +37,9 @@ import FRAME_DEFS from '../data/frame-defs.js';
 import { P, saveLastSession } from './state.js';
 import { markDirty } from './dirty.js';
 import { haptic } from './haptics.js';
+import { frameBarsOn } from './frame-bars.js';
+
+export { frameBarsOn }; // Bars Off: the one reader of `bars` (core/frame-bars.js)
 
 export const FRAME_RECORD_VERSION = 1;
 export { FRAME_DEFS };
@@ -133,6 +139,10 @@ export function normalizeFrameRecord(raw, defs = FRAME_DEFS) {
     const joinable = new Set((tpl.regions?.joinable || []).map((j) => j.id));
     out.joinedMiters = raw.joinedMiters.filter((id) => typeof id === 'string' && joinable.has(id));
   }
+  // Bars Off (Fred 2026-11-23: "a version of a board without the wood frame, its outline cut to the frame's shape"):
+  // stored ONLY as `bars: false`; absent = the bars are on (every record saved before this, unchanged byte for byte).
+  // Record-level like insetWindow: a template change or the Rectangle choice keeps it.
+  if (raw.bars === false) out.bars = false;
   return out;
 }
 
@@ -150,7 +160,8 @@ export function framePayload(defs, record) {
   return { recordVersion: record.recordVersion, templateId: tpl.id, params, seeds: { ...(record.seeds || {}) },
     frameBottomZ: record.frameBottomZ, panelLip: record.panelLip ?? 0, appearance: record.appearance,
     insetWindow: { ...(record.insetWindow || defaultFrameRecord(defs).insetWindow) },
-    joinedMiters: [...(record.joinedMiters || [])] };
+    joinedMiters: [...(record.joinedMiters || [])],
+    ...(frameBarsOn(record) ? {} : { bars: false }) }; // Bars Off: fb_engine/send_frame.py bars_of; absent = on (as before)
 }
 
 /** F22: the panel lip's declared range for `record`: frame-defs `extrusion` panelLip {min, max}, where `max` names a
