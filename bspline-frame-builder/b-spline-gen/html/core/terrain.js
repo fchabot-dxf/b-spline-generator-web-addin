@@ -31,40 +31,96 @@ export function foldUV(u, v, params, out = {}) {
   out.sv = f.fy ? Math.abs(zv - f.my) * 2 : zv;
   return out;
 }
-/**
- * Generate a flat Float32Array[nz × nx] of heights in inches.
- * Index: heights[j * nx + i]  i=col/U/X  j=row/V/Z
- */
-export function generateHeightmap(params, stampParams = null) {
+/** TERRAIN FIT (Fred 2026-11-23, "Relief fills it"): P.terrainFit 'fill' (a NEW board's default) fits the generated terrain
+ *  (shape + texture, before stamps, layers, sculpt and Thicken) so its lowest point is 0 and its highest carveZ. The range is
+ *  measured on ONE reference sampling of the terrain -- `intervals` steps across the board on each axis, whatever grid is
+ *  being built -- so the preview, the Send grid and the editor backdrop all get the same map (a grid's own min / max would
+ *  differ from grid to grid). Any other value / absent ('legacy', every board saved before) = heights max(0, h) * carveZ. */
+//  `intervals`: the reference grid ((intervals + 1)^2 points over the board). Then the `candidates` lowest local minima and
+//  highest local maxima of that grid are each refined: `steps` x `steps` points across +-1 reference cell around it, then
+//  again across +-1/(steps/2) cell around the best -- so the range is the terrain's own (to a few 1e-5 of it), not one grid's.
+export const TERRAIN_FIT_REF = Object.freeze({ intervals: 320, candidates: 8, steps: 9 });
+export const terrainFills = (params) => params.terrainFit === 'fill' && params.shapeFlat !== true;
+
+/** The generated terrain's [lowest, highest] value per inch of carve depth (max(0, h), Passes 1 + 2), from the reference
+ *  sampling (TERRAIN_FIT_REF). Depends on the terrain's own settings only, never on the caller's nx / nz. */
+export function terrainFitRange(params) {
+  // the last range is reused while every other setting is the same: a carve depth or smoothing change, or another grid, keeps
+  // it (the sampler never reads them). A long text value (the drawing's SVG) is left out of the key -- no terrain setting is one.
+  let key = null;
+  try {
+    key = JSON.stringify(params, function (k, v) {
+      if (this !== params) return v;
+      if (k === 'nx' || k === 'nz' || k === 'carveZ' || k === 'terrainFit' || k === 'terrainFloorIn' || k === 'smoothIntensity' || k === 'smoothRadius' || k === 'smoothRespectSymmetry') return undefined;
+      if (k === 'thickness' || k === 'thickenEnabled' || k === 'thickenDir' || k === 'backMode') return undefined; // the back: the floor only
+      return typeof v === 'string' && v.length > 512 ? undefined : v;
+    });
+  } catch (_) { key = null; }
+  if (key !== null && _fitMemo && _fitMemo.key === key) return _fitMemo.range.slice();
+  const range = _terrainFitRange(params);
+  if (key !== null) _fitMemo = { key, range: range.slice() };
+  return range;
+}
+let _fitMemo = null;
+function _terrainFitRange(params) {
+  const { intervals: R, candidates: K, steps: S } = TERRAIN_FIT_REF;
+  const n = R + 1;
+  const { sample } = makeTerrainSampler({ ...params, nx: n, nz: n });
+  const val = (u, v) => { const h = Math.max(0, sample(u, v)); return isNaN(h) ? 0 : h; }; // generateHeightmap's own value
+  const vals = new Float64Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) vals[j * n + i] = val(i / R, j / R);
+  // the K highest local maxima (sign 1) / lowest local minima (sign -1) of the grid
+  const extremes = (sign) => {
+    const best = []; // [score, i, j], best first
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const s = sign * vals[j * n + i];
+      if (best.length === K && s <= best[K - 1][0]) continue;
+      let peak = true;
+      for (let dj = -1; dj <= 1 && peak; dj++) for (let di = -1; di <= 1; di++) {
+        const a = i + di, b = j + dj;
+        if ((di || dj) && a >= 0 && a < n && b >= 0 && b < n && sign * vals[b * n + a] > s) { peak = false; break; }
+      }
+      if (!peak) continue;
+      let at = best.length; while (at > 0 && best[at - 1][0] < s) at--;
+      best.splice(at, 0, [s, i, j]);
+      if (best.length > K) best.pop();
+    }
+    let top = -Infinity;
+    for (const [, i, j] of best) {
+      let u0 = i / R, v0 = j / R, s0 = sign * val(u0, v0);
+      for (const reach of [1 / R, 2 / (R * (S - 1))]) { // +-1 cell, then +-1/(steps/2) cell round the best so far
+        const cu = u0, cv = v0;
+        for (let b = 0; b < S; b++) for (let a = 0; a < S; a++) {
+          const u = Math.min(1, Math.max(0, cu + reach * (2 * a / (S - 1) - 1))); // inside the board (the sample domain)
+          const v = Math.min(1, Math.max(0, cv + reach * (2 * b / (S - 1) - 1)));
+          const s = sign * val(u, v);
+          if (s > s0) { s0 = s; u0 = u; v0 = v; }
+        }
+      }
+      if (s0 > top) top = s0;
+    }
+    return sign * top;
+  };
+  return [extremes(-1), extremes(1)];
+}
+
+/** The terrain's Passes 1 + 2 at one board point: `sample(u, v)` (u, v in 0..1) -> the raw value h (hills: before max(0, h)
+ *  * carveZ; Flat (no hills): the grain g, before max(0, g) * carveZ + the surface height). generateHeightmap reads it at its
+ *  grid points; terrainFitRange at the reference sampling. */
+function makeTerrainSampler(params) {
   const {
     widthIn        = 9,
     heightIn       = 7,
-    carveZ         = 0.5,
     seed           = 42,
-    scale          = 1.2,
     macroScale     = 0.35,
-    mapZoom        = 1,
-    seedOffsetX    = 0,
-    seedOffsetY    = 0,
-    octaves        = 4,
-    roughness      = 0.5,
     edgeMargin     = 0,
-    symmetry       = 'none',
-    symOffsetX     = 0,
-    symOffsetY     = 0,
     noiseType      = 'simplex',
-    smoothIntensity = 0,
-    smoothRadius   = 1.2,
-    nx             = 20,
-    nz             = 16,
-    warpIntensity  = 1.0,
-  } = params;
+  } = params; // (the sampler never reads carveZ, the smoothing or the grid size: terrainFitRange's memo relies on it)
 
   const noiseFine   = new PerlinNoise(seed);
   const noiseWarp   = new PerlinNoise(seed ^ 0x9e3779b9);
   const noiseCoarse = new PerlinNoise(seed ^ 0x5f3759df);
 
-  const heights = new Float32Array(nx * nz);
   const aspect  = widthIn / heightIn;
 
   // Extract the active filter's UI tweaks once. Each mode fn reads
@@ -91,11 +147,8 @@ export function generateHeightmap(params, stampParams = null) {
 
   const folded = { zu: 0, zv: 0, su: 0, sv: 0 }; // foldUV's output, one object for the whole heightmap
 
-  // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
-  for (let j = 0; j < nz; j++) {
-    for (let i = 0; i < nx; i++) {
-        const u = i / (nx - 1);
-        const v = j / (nz - 1);
+  // ── Pass 1 + 2: fine detail & coarse redistribution, at one point ─────────
+  const sample = (u, v) => {
 
         // H17 item 1 -- Map Zoom: a drawing-style zoom of the whole
         // generated terrain, centred on the board. Remapped ONCE here, at
@@ -172,9 +225,7 @@ export function generateHeightmap(params, stampParams = null) {
             let g = params.isolateSkeleton ? 0 : fine * LOW;
             if (texS !== 1 && !params.isolateSkeleton) g *= texS; // the grain scales by the strength (0 = exactly Flat)
             if (safeMargin > 0) g *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
-            const grainH = Math.max(0, g) * (carveZ || 0);
-            heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
-            continue;
+            return g; // generateHeightmap: surface height + max(0, g) * carveZ
         }
 
         if (texS !== 1) fine = lerp(0.5, fine, texS); // hills: the fine value toward the flat 0.5 (isolateSkeleton's value)
@@ -239,8 +290,52 @@ export function generateHeightmap(params, stampParams = null) {
         let h = lerp(fine * LOW,  PEAK_BASE + fine * PEAK_RNG,  coarse);
 
         if (safeMargin > 0) h *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
+        return h;
+  };
+  return { sample, shapeFlat, surfaceZ };
+}
 
-        const finalH = Math.max(0, h) * (carveZ || 0);
+/**
+ * Generate a flat Float32Array[nz × nx] of heights in inches.
+ * Index: heights[j * nx + i]  i=col/U/X  j=row/V/Z
+ */
+export function generateHeightmap(params, stampParams = null) {
+  const {
+    widthIn        = 9,
+    heightIn       = 7,
+    carveZ         = 0.5,
+    seed           = 42,
+    symmetry       = 'none',
+    symOffsetX     = 0,
+    symOffsetY     = 0,
+    smoothIntensity = 0,
+    smoothRadius   = 1.2,
+    nx             = 20,
+    nz             = 16,
+  } = params;
+
+  const heights = new Float32Array(nx * nz);
+  const { sample, shapeFlat, surfaceZ } = makeTerrainSampler(params);
+  // TERRAIN FIT 'fill' (TERRAIN_FIT_REF above): the reference range [lo, hi] maps onto 0..carveZ; a terrain with no range
+  // (hi === lo) is left as built. Not on Flat (no hills): that shape is a flat base at its surface height plus grain.
+  const fitRange = terrainFills(params) ? terrainFitRange(params) : null;
+  const fitLo = fitRange && fitRange[1] > fitRange[0] ? fitRange[0] : null;
+  const fitSpan = fitLo === null ? 1 : fitRange[1] - fitRange[0];
+  // the FILL FLOOR (Fred 2026-11-23): the height the lowest point maps to -- the body's bottom clearance under the terrain,
+  // decided by the caller from the back (core/engine/build-thicken-data.js fillFloorIn); absent = 0. The highest stays carveZ.
+  const fitFloor = Number(params.terrainFloorIn) || 0;
+
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+        const u = i / (nx - 1);
+        const v = j / (nz - 1);
+        const h = sample(u, v);
+        if (shapeFlat) { // Flat (no hills): the grain alone, from the surface height
+            const grainH = Math.max(0, h) * (carveZ || 0);
+            heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
+            continue;
+        }
+        const finalH = fitLo === null ? Math.max(0, h) * (carveZ || 0) : fitFloor + (Math.max(0, h) - fitLo) / fitSpan * ((carveZ || 0) - fitFloor);
         heights[j * nx + i] = isNaN(finalH) ? 0 : finalH;
     }
   }

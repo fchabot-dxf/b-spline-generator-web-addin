@@ -54,11 +54,12 @@ const wall = (nx, nz) => {
 };
 const fnv = (a) => { const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); let h = 0x811c9dc5; for (let i = 0; i < u.length; i++) { h ^= u[i]; h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); };
 
-const KEYS = ['widthIn', 'heightIn', 'spacing', 'thickenEnabled', 'jobTimeline', 'stlLayers', 'heightLayers', 'brickSettings', 'layerOrder', 'thickness'];
+const KEYS = ['widthIn', 'heightIn', 'spacing', 'thickenEnabled', 'jobTimeline', 'stlLayers', 'heightLayers', 'brickSettings', 'layerOrder', 'thickness', 'terrainFit'];
 const saved = {};
 beforeEach(() => {
   for (const k of KEYS) saved[k] = P[k];
-  Object.assign(P, { widthIn: W, heightIn: H, spacing: SP, thickenEnabled: true, jobTimeline: null, stlLayers: [], heightLayers: [], layerOrder: null });
+  // terrainFit 'legacy': the pins below were measured before the terrain fit (a saved board reads 'legacy', tests/terrain-fit.test.js)
+  Object.assign(P, { widthIn: W, heightIn: H, spacing: SP, thickenEnabled: true, jobTimeline: null, stlLayers: [], heightLayers: [], layerOrder: null, terrainFit: 'legacy' });
   P.brickSettings = { ...(saved.brickSettings || {}) };
   delete P.brickSettings.placement;
   scheduleUndoSnapshot.mockClear();

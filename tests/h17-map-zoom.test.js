@@ -18,6 +18,8 @@ import { DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.j
 // on a partial object, per H15's own test-construction finding).
 const BASE = {
   ...DEFAULT,
+  // the sampler's geometry ('legacy'); a 'fill' board re-fits its heights to 0..carveZ after a zoom (tests/terrain-fit.test.js)
+  terrainFit: 'legacy',
   widthIn: 7, heightIn: 9,
   seed: 777,
   symmetry: 'none',

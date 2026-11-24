@@ -22,7 +22,8 @@ describe('generateHeightmap with smoothing: byte-identical to the pre-change box
   it(`${CASES.length} cases (3 boards x 5 radii x 2 intensity / symmetry)`, () => {
     const got = {};
     for (const c of CASES) {
-      const { heights } = generateHeightmap({ ...P, ...c }, { mask: null }); // the app's own defaults: a real terrain
+      // the app's own defaults: a real terrain ('legacy': pinned before the terrain fit, a saved board's scale)
+      const { heights } = generateHeightmap({ ...P, ...c, terrainFit: 'legacy' }, { mask: null });
       got[JSON.stringify(c)] = createHash('sha1').update(Buffer.from(heights.buffer, heights.byteOffset, heights.byteLength)).digest('hex');
     }
     if (process.env.PIN === '1') writeFileSync(PINNED, JSON.stringify(got, null, 1) + '\n');

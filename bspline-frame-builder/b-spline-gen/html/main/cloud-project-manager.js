@@ -14,7 +14,7 @@
 // 'splineGenPresets' (old local preset store), offers to upload them to cloud.
 // Marks completion with 'splineGenProjectsMigrated' so the prompt never repeats.
 
-import { P, preDelta, postDelta, extraThickenThinMask, persistableP, isFusionMode, flushSessionSave } from '../core/state.js';
+import { P, DEFAULT, NEW_BOARD_ONLY_KEYS, preDelta, postDelta, extraThickenThinMask, persistableP, isFusionMode, flushSessionSave } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
@@ -923,6 +923,7 @@ export async function newProject() {
   snapP.heightLayers = [];
   snapP.layerOrder = null;
   snapP.seed = Math.floor(Math.random() * 99999);
+  for (const k of NEW_BOARD_ONLY_KEYS) snapP[k] = DEFAULT[k]; // a new board's own values (terrainFit 'fill'), even from a legacy board
   snapP.boardId = null; // Send targets: a new project gets its own board in Fusion
   await applySnapshot({ P: snapP }, _preview, { source: 'load', historyLabel: 'New project' }); // no deltas in the snapshot: sculpt cleared
   setCurrentFile(null);

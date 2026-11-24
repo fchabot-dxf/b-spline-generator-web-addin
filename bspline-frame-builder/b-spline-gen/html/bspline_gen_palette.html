@@ -657,12 +657,24 @@
               </label>
 
               <div id="thickenOptions" style="flex-direction:column;">
+                <!-- data-back-flat-row: greyed while a flat back gives it no effect (main/back-flat-ui.js) -->
+                <div data-back-flat-row="thickenOffset">
                 <label class="cad-label">Offset (Thickness, in)</label>
                 <div class="cad-slider-row" style="margin-bottom:12px;">
                   <input type="range" id="thickenOffsetSlider" class="cad-slider" min="0.01" max="5" step="0.005" value="0.2">
                   <div class="cad-stepper" style="width:75px;">
                     <input type="number" id="thickenOffset" value="0.2" step="0.1">
                   </div>
+                </div>
+                </div>
+
+                <!-- Fred 2026-11-23: Back: Shell (the offset shell above) / Flat (solid down to a flat bottom at z = 0) -- P.backMode -->
+                <label class="cad-label">Back</label>
+                <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+                  <select id="backMode" title="Shell: the back follows the top at the thickness. Flat: the body is solid down to a flat bottom at the stock bottom (z = 0)" style="width:100%; border:none; background:transparent; font-size:11px;">
+                    <option value="shell" selected>Shell</option>
+                    <option value="flat">Flat</option>
+                  </select>
                 </div>
 
                 <div id="thickenWarning" class="cad-status-text"
@@ -1135,8 +1147,10 @@
 
       <!-- 8. Sculpt Bottom -->
       <div class="panel panel-sculpt-bot">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT BOTTOM</div>
-        <div class="panel-body hidden">
+        <!-- data-back-flat-row / -note: greyed + its one line while Back is Flat (main/back-flat-ui.js; display only) -->
+        <div class="panel-header collapsed" onclick="togglePanel(this)" data-back-flat-row="sculptBottom">🎨 SCULPT BOTTOM</div>
+        <div class="back-flat-note" data-back-flat-note="sculptBottom" hidden></div>
+        <div class="panel-body hidden" data-back-flat-row="sculptBottom">
           <div class="cad-tool-group">
             <button id="btnToolBotDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>

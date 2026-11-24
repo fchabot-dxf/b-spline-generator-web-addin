@@ -34,7 +34,7 @@ import { isStoredRaster } from '../height/raster.js';
 import { stlStockReport, setStlStockReport } from '../stl/stock.js';
 import { stockReport, stockOvershoot, setHeightStockReport } from '../stock.js';
 import { updateStlGhosts, ghostSurface } from '../stl/ghost.js';
-import { buildThickenData } from './build-thicken-data.js';
+import { buildThickenData, fillFloorIn } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
 import { isJobTimelineEnabled } from '../job-timeline-enabled.js';
@@ -107,6 +107,7 @@ export const HEIGHTS_INERT_KEYS = new Set([
     'adaptiveDisplay', 'showMesh', 'flatShading', 'colourEdges', 'showLeaders', // the display
     'thickness', 'thickenEnabled', 'thickenDir', 'thickenMode', 'thickenWireframe', 'thickenYellowOffset', 'includeSurface',
     'includeUnstampedSolid', 'bottomSmoothRadius', 'extraThickenThin', 'extraThickenThinFalloff', // the thicken step
+    'backMode', // ...whose settings reach the heights only through the fill floor (fillFloorIn, its own digest term below)
     'decalEnabled', 'decalResolution', 'decalLayerIds',
     'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
     'spacing', 'exportSpacing', 'sameAsDisplayResolution', 'exportOrientation', // the grid (nx, nz) is its own input
@@ -120,6 +121,7 @@ export function heightsInputDigest(nx, nz) {
         let h = 2166136261;
         h = _fnv(h, `${nx}x${nz}${_heightReadyTerm()}`);
         h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : _digestValue(v))));
+        h = _fnv(h, `|floor ${fillFloorIn(P)}`); // the fill floor (a 'fill' board: from the back's settings; else 0)
         h = _fnvArray(h, preDelta);
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
@@ -323,7 +325,7 @@ function buildHeights(nx, nz) {
     const edgeMargin = (P.edgeMarginIn > 0)
         ? Math.min(0.49, P.edgeMarginIn / Math.min(P.widthIn, P.heightIn))
         : 0;
-    const generated = generateHeightmap({ ...P, nx, nz, edgeMargin }, { mask: null });
+    const generated = generateHeightmap({ ...P, nx, nz, edgeMargin, terrainFloorIn: fillFloorIn(P) }, { mask: null });
 
     const cleanHeights = new Float32Array(generated.heights);
     if (preDelta) {

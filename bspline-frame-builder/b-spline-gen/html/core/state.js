@@ -258,11 +258,18 @@ export const DEFAULT = {
     // on top (core/terrain.js). Absent on a saved board = false = the hills, exactly as before (tests/terrain-flat.test.js).
     surfaceHeightIn: 0,
     shapeFlat: false,
+    // TERRAIN FIT (Fred 2026-11-23, "Relief fills it"): 'fill' = the generated terrain spans 0..carveZ (core/terrain.js
+    // TERRAIN_FIT_REF). A NEW board's value only (NEW_BOARD_ONLY_KEYS below): a board saved before has no key and keeps
+    // 'legacy' = the old scale, which floats it about a quarter of the carve depth up (main/app-init.js MIGRATIONS 'terrain-fit-legacy').
+    terrainFit: 'fill',
     // Thicken
     thickenEnabled: true,
     thickness: 0.125,
     thickenDir: 'down',
     thickenMode: 'adaptive',
+    // Back: Shell / Flat (Fred 2026-11-23, the Thicken line): 'shell' = the offset shell (thickness, direction); 'flat' = the
+    // body solid from the top surface down to a flat bottom at z = 0 (core/engine/build-thicken-data.js). Absent = 'shell'.
+    backMode: 'shell',
     showLeaders: true,
     includeSurface: true,
     bottomSmoothRadius: 0.3, // Hardcoded for machining consistency
@@ -355,6 +362,11 @@ export const DEFAULT = {
     // layer to a new place in the main panel's stack (main/layer-stack.js). A load of a board without it reads null.
     layerOrder: null,
 };
+
+/** Keys whose DEFAULT is a NEW board's value only (AGENTS.md rule 3): a saved board that lacks one never takes it -- its
+ *  loaders (loadLastSession below, main/snapshot-manager.js applySnapshot 'load') leave the key ABSENT and main/app-init.js
+ *  MIGRATIONS writes the board's legacy value; a New project (main/cloud-project-manager.js newProject) takes DEFAULT's. */
+export const NEW_BOARD_ONLY_KEYS = Object.freeze(['terrainFit']);
 
 export let P = { ...DEFAULT };
 
@@ -574,7 +586,9 @@ export function loadLastSession() {
                 P[k] = val;
             }
         });
-        
+        // a session saved before a new-board-only key: absent, never the new board's default (MIGRATIONS writes its value)
+        for (const k of NEW_BOARD_ONLY_KEYS) if (!(k in sess.P)) delete P[k];
+
         // Safeguard critical dimensions
         if (isNaN(P.widthIn) || P.widthIn <= 0) P.widthIn = DEFAULT.widthIn;
         if (isNaN(P.heightIn) || P.heightIn <= 0) P.heightIn = DEFAULT.heightIn;
@@ -598,7 +612,7 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
+    const stringParams = ['terrainFit', 'backMode', 'symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',

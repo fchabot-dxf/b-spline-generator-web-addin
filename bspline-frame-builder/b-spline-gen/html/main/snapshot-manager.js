@@ -1,5 +1,5 @@
 import { withLoadingStage } from '../core/loading-signal.js';
-import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession, flushSessionSave } from '../core/state.js';
+import { P, DEFAULT, NEW_BOARD_ONLY_KEYS, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession, flushSessionSave } from '../core/state.js';
 import { renderLayersPanel, reopenKeepingLocks } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt, UNDO_KEEPS } from '../core/history.js';
@@ -15,6 +15,7 @@ import { syncStlPanel, noteStlProjectReplaced } from './stl-panel.js';
 import { syncHeightTab } from './height-panel.js';
 import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
+import { syncBackFlatUI } from './back-flat-ui.js';
 
 /**
  * T45 (Fred: "on open, a loaded project doesn't have the SVG until I open
@@ -54,6 +55,9 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   if (source === 'load') {
     for (const k of Object.keys(DEFAULT)) {
       if (k in snap.P) continue;
+      // a new-board-only key (core/state.js NEW_BOARD_ONLY_KEYS): absent, never the new board's default -- runMigrations
+      // below writes the saved board's own value
+      if (NEW_BOARD_ONLY_KEYS.includes(k)) { delete P[k]; continue; }
       P[k] = DEFAULT[k] && typeof DEFAULT[k] === 'object' ? JSON.parse(JSON.stringify(DEFAULT[k])) : DEFAULT[k];
       syncUItoParam(k, P[k]);
     }
@@ -105,6 +109,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   // The UI was synced from the saved values above; a migration can change
   // the filter (removed-noise-type-to-default), so re-sync the dropdown.
   syncUItoParam('noiseType', P.noiseType);
+  syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label (the restore wrote P without events)
 
   // T45: 'load' also replaces the LIVE editor's own document — P.editorSvg
   // was already overwritten above (part of the P-restore loop), but

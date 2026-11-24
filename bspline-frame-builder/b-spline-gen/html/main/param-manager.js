@@ -7,13 +7,14 @@ import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { AppState } from './app-state.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
+import { syncBackFlatUI, BACK_FLAT_KEYS } from './back-flat-ui.js';
 
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
   'seedType', 'seedOffsetX', 'seedOffsetY', 'seedRotation',
   'symmetry', 'symOffsetX', 'symOffsetY', 'carveZ', 'scale', 'macroScale', 'mapZoom', 'warpIntensity',
   'peakShape', 'density', 'clustering',
-  'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
+  'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode', 'backMode',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
   'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile',
   'isolateSkeleton', 'shapeFlat', 'surfaceHeightIn'
@@ -115,6 +116,7 @@ export function applyParam(key, value, { rebuild: wantRebuild = true } = {}) {
     const thickenCon = document.getElementById('thickenOptions');
     if (thickenCon) thickenCon.style.display = value ? 'flex' : 'none';
   }
+  if (BACK_FLAT_KEYS.includes(key)) syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label
 
   if (key === 'thickenWireframe') {
     scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);

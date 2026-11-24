@@ -27,6 +27,7 @@ import { isFittedView, applyView } from '../editor/editor-view.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
+import { syncBackFlatUI } from './back-flat-ui.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
 import { paletteCss, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
@@ -264,6 +265,23 @@ export const MIGRATIONS = [
     // reads as 1 = the texture exactly as before (core/terrain.js), so this entry writes nothing -- DECLARED so the new
     // default is on the record (tests/texture-strength.test.js pins the heightmap digests against main eb918410).
     when: (p) => p.textureStrength === undefined,
+    apply: () => {},
+  },
+  {
+    id: 'terrain-fit-legacy',
+    // Fred 2026-11-23 ("carve depth Z ... just lifts the model in the air"; "Relief fills it", new boards only): a NEW board's
+    // terrain spans 0..carveZ (P.terrainFit 'fill', core/terrain.js TERRAIN_FIT_REF). A board saved before has no terrainFit
+    // -- its loaders leave the key absent (core/state.js NEW_BOARD_ONLY_KEYS) -- and keeps the old scale: 'legacy', its
+    // heights bit for bit (tests/terrain-fit.test.js pins framed, no-frame and session-restored boards against main 68937a66).
+    when: (p) => p.terrainFit === undefined,
+    apply: (p) => { p.terrainFit = 'legacy'; },
+  },
+  {
+    id: 'back-mode-shell',
+    // Fred 2026-11-23 (the Thicken line's Back: Shell / Flat): a board saved before it has no backMode; absent reads 'shell'
+    // = the offset shell exactly as before (core/engine/build-thicken-data.js), so this entry writes nothing -- DECLARED so
+    // the setting's default is on the record (tests/back-mode.test.js; the saved-board pins in tests/terrain-fit.test.js).
+    when: (p) => p.backMode === undefined,
     apply: () => {},
   },
   {
@@ -762,6 +780,7 @@ export async function initApp(preview, wireGlobalEvents) {
   setUndoRestoring(true);
   Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
   setUndoRestoring(false);
+  syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label (the restore wrote P without events)
   updateSpacingLabels(P.widthIn, P.heightIn);
   updateSpacingLabels(P.widthIn, P.heightIn, 'exportSpacing');
 
