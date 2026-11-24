@@ -51,6 +51,20 @@ const RED   = [1.0,   0.1,   0.1];   // top-bot intersection
 const PINK  = [1.0,   0.4,   0.7];   // self-intersection (bottom only)
 const BLUE  = [0.5,   0.8,   1.0];   // thin
 
+/** Fred 2026-11-23 ("divide this in two settings"), the FILL FLOOR: on a terrainFit 'fill' board the whole body stays inside
+ *  the stock 0..carveZ -- the terrain's lowest point maps to the wood left under the deepest valley (core/terrain.js reads it
+ *  as params.terrainFloorIn): P.thickness while Thicken is on and DOWN, whichever the Back -- Shell: the shell's bottom then
+ *  lands at about 0 (its geometric offset at +0.005 in on Fred's board; the back as built, after the thin fill and the 0.3 in
+ *  smoothing, dips to -0.026 in at 0.125 in -- kept as is, Fred 2026-11-23); Flat: the valley floor stays `thickness` above the
+ *  flat bottom at 0. 0 with Thicken off or up. A TINY carve depth (carveZ <= that floor, Fred OK 2026-11-23) takes 0: the
+ *  relief fills 0..carveZ and the back sits under it as on a legacy board -- never an inverted terrain. A legacy board (no
+ *  fill) has no floor. The heights stage gets it through this one rule (core/engine/rebuild.js). */
+export function fillFloorIn(p) {
+  if (!p || p.terrainFit !== 'fill' || !p.thickenEnabled || p.thickenDir === 'up') return 0;
+  const t = Number(p.thickness) || 0;
+  return Number(p.carveZ) > t ? t : 0;
+}
+
 export function buildThickenData(heights, nx, nz, params, opts = {}) {
   const {
     widthIn, heightIn, thickness, thickenEnabled,
@@ -90,8 +104,13 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
   // cut (core/job-timeline-snapshot.js), so later front (top-surface) edits never move it. Bypasses the whole
   // offset computation (safe-map, thin-fill, smoothing -- the frozen heights were already smoothed, once, at
   // capture time): the bottom point at each cell is the CURRENT top point's (x, y) straight down to the frozen z.
+  // Back 'flat' (Fred 2026-11-23, the Thicken line's Back: Shell / Flat): the body is solid from the top surface down to a
+  // flat bottom at z = 0, the stock bottom -- each bottom point the top point's own (x, y) at z 0 (thickness, direction and
+  // the sculpted bottom are not read). A locked Back still wins (its frozen underside). Absent / 'shell' = the offset shell.
   const offsetPts = backHeights
     ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights })
+    : params.backMode === 'flat'
+    ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights: new Float32Array(nx * nz) })
     : buildAdjustedOffsetPts({
         heights: under, normals: underNormals, nx, nz, widthIn, heightIn,
         thickness, thickenMode, safeMap, sign,

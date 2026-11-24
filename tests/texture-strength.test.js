@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { P, DEFAULT, lastResult } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { P, DEFAULT, NEW_BOARD_ONLY_KEYS, lastResult } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { generateHeightmap } from '../bspline-frame-builder/b-spline-gen/html/core/terrain.js';
 import { rebuild, _forgetHeights } from '../bspline-frame-builder/b-spline-gen/html/core/engine/rebuild.js';
 import { MIGRATIONS, runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
@@ -68,7 +68,11 @@ describe("MIGRATIONS 'texture-strength' and saved boards", () => {
   it("a saved board without the key builds main's digests", async () => {
     const snapP = JSON.parse(JSON.stringify(BOARDS['claude 14'].P));
     delete snapP.textureStrength;
-    for (const k of Object.keys(DEFAULT)) if (!(k in snapP)) P[k] = JSON.parse(JSON.stringify(DEFAULT[k]));
+    for (const k of Object.keys(DEFAULT)) {
+      if (k in snapP) continue;
+      if (NEW_BOARD_ONLY_KEYS.includes(k)) { delete P[k]; continue; } // left absent, as the real loaders do
+      P[k] = JSON.parse(JSON.stringify(DEFAULT[k]));
+    }
     Object.assign(P, snapP);
     delete P.textureStrength; // a load of a save that lacks it must still build as 1
     runMigrations(P);

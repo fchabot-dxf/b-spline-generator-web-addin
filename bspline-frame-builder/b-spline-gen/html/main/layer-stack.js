@@ -30,6 +30,7 @@ import {
   openStlId, toggleStlCard, closeStlCards, setStlEnabled, removeStlLayer, setStlField, syncStlPanel, openStlAddSheet, LAYER_STACK_STALE,
 } from './stl-panel.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
+import { THICKEN_SETTINGS_SYNCED } from './back-flat-ui.js';
 
 /** The stack key of the Thicken line (never a layer: not stored, not in P.layerOrder). */
 export const THICKEN_LINE_KEY = 'thicken';
@@ -346,7 +347,8 @@ function hostOpen(listEl, items) {
 }
 /** A card's name button id (the brick matrix opens a card by it): layerCardName_<key>, ':' as '_'. */
 export const cardNameId = (key) => `layerCardName_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
-const thickenState = () => (P.thickenEnabled ? `${inches(P.thickness)} in` : 'off');
+// Back 'flat' (Fred 2026-11-23): the body is solid to z = 0, the thickness is not used -- the line says so
+const thickenState = () => (!P.thickenEnabled ? 'off' : P.backMode === 'flat' ? 'flat back' : `${inches(P.thickness)} in`);
 
 /** Re-reads the board and rebuilds the stack (safe any time: a load, an undo, a roster change). */
 export function refreshLayerStack() {
@@ -556,6 +558,8 @@ export function initLayerStack(hooks = {}) {
     // 'editorModeChanged': the editor opened (its open sets a mode): an editorHome block (HOSTED) goes back into it
     for (const ev of ['editorLayersChanged', 'stlLayersChanged', LAYER_STACK_STALE, 'brickSettingsRestored', 'editorCommit', 'stampTargetChanged', 'editorModeChanged']) document.addEventListener(ev, refresh);
     document.addEventListener('stlCardOpened', () => { _openKey = null; refreshLayerStack(); });
+    // the Thicken settings written without a tap in their panel (an undo, a load, a pull): the label from its one function
+    document.addEventListener(THICKEN_SETTINGS_SYNCED, () => { const s = byId('layerStackThickenState'); if (s) s.textContent = thickenState(); });
     document.addEventListener('stlLayersChanged', () => {
       if (!_pendingAdd || _pendingAdd.type !== 'stl') return;
       const fresh = (P.stlLayers || []).filter((r) => r && !_pendingAdd.before.has(r.id));

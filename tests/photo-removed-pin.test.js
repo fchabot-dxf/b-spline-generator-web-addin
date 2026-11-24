@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { P, DEFAULT, lastResult } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { P, DEFAULT, NEW_BOARD_ONLY_KEYS, lastResult } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { rebuild, _forgetHeights } from '../bspline-frame-builder/b-spline-gen/html/core/engine/rebuild.js';
 import { MIGRATIONS, runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
@@ -42,7 +42,11 @@ afterEach(() => {
 /** A project load of board `name` (applySnapshot's 'load' merge), its migrations, then the real rebuild. */
 async function load(name) {
   const snapP = clone(BOARDS[name].P);
-  for (const k of Object.keys(DEFAULT)) if (!(k in snapP)) P[k] = clone(DEFAULT[k]);
+  for (const k of Object.keys(DEFAULT)) {
+    if (k in snapP) continue;
+    if (NEW_BOARD_ONLY_KEYS.includes(k)) { delete P[k]; continue; } // left absent: MIGRATIONS writes the saved board's value
+    P[k] = clone(DEFAULT[k]);
+  }
   Object.assign(P, snapP);
   runMigrations(P);
   return snapP;

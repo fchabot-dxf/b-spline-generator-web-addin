@@ -494,7 +494,8 @@ describe('runMigrations: removed-noise-type-to-default (T78 item 10: Biomechanic
     // (2026-10-10 .. 2026-11-23: 'photo-mirror-mode' / 'photo-orientation' / 'photo-edge' wrote a photo key on any board that
     // had none; retired with the photo, Fred 2026-11-23 -- no photo key is written any more)
     // (2026-10-14: 'job-timeline' gives a board with no timeline its default order -- here the sections alone, head 0)
-    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } },
+    // (2026-11-23: 'terrain-fit-legacy' gives a board saved without terrainFit the old terrain scale, 'legacy')
+    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } }, terrainFit: 'legacy',
       jobTimeline: { order: ['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back'], head: 0 } });
   });
 });

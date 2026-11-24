@@ -5,6 +5,7 @@
 
 import { P, preDelta } from './state.js';
 import { generateHeightmap } from './terrain.js';
+import { fillFloorIn } from './engine/build-thicken-data.js';
 import { COORD_SYSTEM } from './coords.js';
 import { withLoadingStage } from './loading-signal.js';
 
@@ -214,7 +215,7 @@ function _paintTopView(heightsLow, nxLow, nzLow) {
     }
 
     // 1. Generate High-Res Base Noise (without stamps)
-    const { heights: heightsBase } = generateHeightmap({ ...P, nx, nz }, { mask: null });
+    const { heights: heightsBase } = generateHeightmap({ ...P, nx, nz, terrainFloorIn: fillFloorIn(P) }, { mask: null }); // the 3D's own fill floor
     const heights = new Float32Array(heightsBase);
 
     // 2. Blend Low-Res Sculpting (Bilinear)
