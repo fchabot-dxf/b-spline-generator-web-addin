@@ -25,8 +25,10 @@ export const DRAW_DRAWER_TREE = Object.freeze([
 // the layers matrix row reads the list on screen when the Draw tab is back); Text / Expand open with their tool
 export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general', 'layers']);
 export const DRAW_TREE_OPEN_KEY = 'bspline.draw.drawerOpen';
+// Fred 2026-11-24 (tool-row duplicates; the Brick and Height trees' rule): `armedOnly` -- the Text / Expand cards show
+// only while their tool is armed (the tool rail is the picker); General, Layers, Stamp unchanged
 export const DRAW_TREE = createDrawerTree({ id: 'drawDrawerTree', branches: DRAW_DRAWER_TREE, openKey: DRAW_TREE_OPEN_KEY,
-  defaultOpen: DRAW_TREE_DEFAULT_OPEN, branchDomId: drawBranchDomId });
+  defaultOpen: DRAW_TREE_DEFAULT_OPEN, branchDomId: drawBranchDomId, armedOnly: true });
 
 const _mode = () => (typeof window !== 'undefined' && window.svgEditor ? window.svgEditor._currentMode : null);
 
