@@ -107,10 +107,13 @@ export function buildThickenData(heights, nx, nz, params, opts = {}) {
   // Back 'flat' (Fred 2026-11-23, the Thicken line's Back: Shell / Flat): the body is solid from the top surface down to a
   // flat bottom at z = 0, the stock bottom -- each bottom point the top point's own (x, y) at z 0 (thickness, direction and
   // the sculpted bottom are not read). A locked Back still wins (its frozen underside). Absent / 'shell' = the offset shell.
+  // Base below 0 (Fred 2026-11-24, "Extend below zero is fine"): P.flatBaseDropIn moves that flat bottom down to
+  // z = -flatBaseDropIn -- a plinth under the stock; the top (relief, fill, floor) is unchanged. Absent / 0 = at 0, bit for bit.
+  const flatDrop = Number(params.flatBaseDropIn) || 0;
   const offsetPts = backHeights
     ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights })
     : params.backMode === 'flat'
-    ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights: new Float32Array(nx * nz) })
+    ? buildFrozenOffsetPts({ nx, nz, widthIn, heightIn, thickness, backHeights: flatDrop ? new Float32Array(nx * nz).fill(-flatDrop) : new Float32Array(nx * nz) })
     : buildAdjustedOffsetPts({
         heights: under, normals: underNormals, nx, nz, widthIn, heightIn,
         thickness, thickenMode, safeMap, sign,
