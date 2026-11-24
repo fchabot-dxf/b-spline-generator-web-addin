@@ -108,6 +108,7 @@ export const HEIGHTS_INERT_KEYS = new Set([
     'thickness', 'thickenEnabled', 'thickenDir', 'thickenMode', 'thickenWireframe', 'thickenYellowOffset', 'includeSurface',
     'includeUnstampedSolid', 'bottomSmoothRadius', 'extraThickenThin', 'extraThickenThinFalloff', // the thicken step
     'backMode', // ...whose settings reach the heights only through the fill floor (fillFloorIn, its own digest term below)
+    'flatBaseDropIn', // Back = Flat's Base below 0: the bottom only (the fill floor never reads it)
     'decalEnabled', 'decalResolution', 'decalLayerIds',
     'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
     'spacing', 'exportSpacing', 'sameAsDisplayResolution', 'exportOrientation', // the grid (nx, nz) is its own input

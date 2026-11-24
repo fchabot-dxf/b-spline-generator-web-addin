@@ -285,6 +285,14 @@ export const MIGRATIONS = [
     apply: () => {},
   },
   {
+    id: 'flat-base-drop-zero',
+    // Fred 2026-11-24 ("Extend below zero is fine": Back = Flat's Base below 0): a board saved before it has no
+    // flatBaseDropIn; absent reads 0 = the flat bottom at the stock bottom exactly as before (core/engine/build-thicken-data.js),
+    // so this entry writes nothing -- DECLARED so the default is on the record (tests/flat-base-drop.test.js).
+    when: (p) => p.flatBaseDropIn === undefined,
+    apply: () => {},
+  },
+  {
     id: 'removed-noise-type-to-default',
     // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
     // removed after two rejected reworks. A save naming a filter that is no

@@ -14,7 +14,7 @@ const immediateRebuildParams = [
   'seedType', 'seedOffsetX', 'seedOffsetY', 'seedRotation',
   'symmetry', 'symOffsetX', 'symOffsetY', 'carveZ', 'scale', 'macroScale', 'mapZoom', 'warpIntensity',
   'peakShape', 'density', 'clustering',
-  'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode', 'backMode',
+  'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode', 'backMode', 'flatBaseDropIn',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
   'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile',
   'isolateSkeleton', 'shapeFlat', 'surfaceHeightIn'

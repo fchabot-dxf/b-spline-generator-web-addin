@@ -270,6 +270,9 @@ export const DEFAULT = {
     // Back: Shell / Flat (Fred 2026-11-23, the Thicken line): 'shell' = the offset shell (thickness, direction); 'flat' = the
     // body solid from the top surface down to a flat bottom at z = 0 (core/engine/build-thicken-data.js). Absent = 'shell'.
     backMode: 'shell',
+    // Base below 0 (Fred 2026-11-24, "Extend below zero is fine"): with Back = Flat, the flat bottom at z = -flatBaseDropIn
+    // (inches), a plinth under the stock bottom; the top is unchanged. Absent / 0 = the flat bottom at 0 (as before).
+    flatBaseDropIn: 0,
     showLeaders: true,
     includeSurface: true,
     bottomSmoothRadius: 0.3, // Hardcoded for machining consistency
@@ -404,6 +407,7 @@ export const SLIDER_PAIRS = {
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
     thickness: 'thickenOffsetSlider',
+    flatBaseDropIn: 'flatBaseDropInSlider', // Back = Flat: Base below 0 (in)
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',
     sculptTopStrength: 'sculptTopHardnessSlider',
