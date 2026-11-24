@@ -250,7 +250,11 @@ export class TerrainPreview {
     // Track terrain centre Z so the orbit target follows height changes.
     const midZ = (minZ + maxZ) / 2;
     this._orbit.setTargetZ(midZ);
-    this._groundGrid.setZExtent(W, H, minZ, maxZ);
+    // the Z ruler spans the WHOLE BODY (Fred 2026-11-24): the back's points too (a Flat base below 0, a shell dipping under
+    // the stock bottom) -- the extent the solid mesh has; a top-only board (no back) = the top surface, as before
+    let bodyMin = minZ, bodyMax = maxZ;
+    if (hasSolid) for (let k = 2; k < count * 3; k += 3) { const z = offsetPts[k]; if (z < bodyMin) bodyMin = z; if (z > bodyMax) bodyMax = z; }
+    this._groundGrid.setZExtent(W, H, bodyMin, bodyMax);
     this._syncZScale();
 
     if (W !== this._lastW || H !== this._lastH || this._lastW === 0) {
