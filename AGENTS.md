@@ -31,6 +31,11 @@ event handler.
 A new test must FAIL on the code before your change (real assertions on real app shapes, not tautologies or
 restated tables). Run the touched test files and the full `npx vitest run` before handing over.
 
+Heavy runs (the full `npx vitest run`, brick-matrix runs, timing probes) take the machine-wide shared CPU lock so they
+take turns with the DDCS and Sketch-Studio projects: run them through `tools/heavy-run.ps1 <eta-min> <command...>`
+(PowerShell) or `tools/heavy-run.sh <eta-min> <command...>` (bash), or `tools/brick-matrix/run.mjs`, which takes it
+itself. Never bypass it.
+
 ## 5. Owner decisions already made (don't reverse them silently)
 
 - Wood-frame "families" SUGGEST presets (fitting ones first / marked); they never hide a preset.

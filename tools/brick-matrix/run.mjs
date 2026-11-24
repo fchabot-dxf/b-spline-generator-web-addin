@@ -26,6 +26,7 @@ import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from '
 import { bootRetry } from './boot.mjs';
 import { missingControlResult } from './introduced.mjs';
 import { guardHeavyRun, HEAVY_RUN_CHILD_ENV } from '../heavy-run-guard.mjs';
+import { takeCpuLock } from '../cpu-lock.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
@@ -79,6 +80,11 @@ if (arg('only-if-changed')) {
     process.exit(0);
   }
 }
+
+// the machine-wide shared CPU lock (tools/cpu-lock.mjs): take turns with the DDCS / Sketch-Studio projects. A single
+// --group run is ~5 min (the one-place side lane); a full or --parallel run is ~15 min. Released on exit / signals;
+// the gate (CPU_LOCK_HELD) and --parallel's group children skip. Taken BEFORE the guard so a wait does not go stale.
+await takeCpuLock(`matrix ${arg('group', flag('parallel') ? 'parallel' : 'all')}`, arg('group') && !flag('parallel') ? 5 : 15);
 
 // a heavy run from here on (--only-if-changed above may skip it for free): refused while the gate holds its lock
 // (its own runs pass) or free RAM is under the floor -- tools/heavy-run-guard.mjs
