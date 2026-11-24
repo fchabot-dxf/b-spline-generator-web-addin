@@ -44,7 +44,10 @@ aside {
     border-right: none;
     background: var(--surface);
     overflow-y: auto;
-    padding: 14px 14px 60px 14px;
+    padding: 14px var(--sidebar-pad) 60px var(--sidebar-pad);
+    --sidebar-pad: 14px; /* the aside's side padding; the stripe gap below starts from it */
+    --branch-indent: 12px; /* a branch's body is indented by this (.sidebar-branch-body) */
+    --panel-edge-gap: var(--sidebar-pad); /* how far a top-level panel sits in from the sidebar's left edge; a branch body adds its indent */
     display: flex;
     flex-direction: column;
     gap: var(--gap);
@@ -463,6 +466,13 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     z-index: var(--z-sticky-head);
 }
 
+/* THE STRIPE REACHES THE SIDEBAR'S EDGE (Fred 2026-11-24: "the small coloured side on each section ... I want it to touch the edge of
+   the screen"). ONE mechanism for every themed top-level panel (sections, layer cards, the Thicken line): the panel
+   steps left by --panel-edge-gap (the aside's padding plus a branch body's indent, set where each is declared) and its
+   stripe widens by the same amount, so the stripe runs to the sidebar's left edge while the header text, the fields and
+   the panel's right edge stay where they were. --section-stripe-w is the visible stripe. */
+.cad-sidebar { --section-stripe-w: 4px; }
+.cad-sidebar .section-themed { margin-left: calc(-1 * var(--panel-edge-gap)); }
 /* F35 item 30: colour-coded sections -- the colours are main/section-themes.js's tokens (applySectionThemes writes
    them as --section-* on each themed section); nothing here names a colour. (0,3,0) beats the page's own
    `.cad-sidebar .panel-body { background:#fff }`. */
@@ -470,13 +480,16 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .cad-sidebar .section-themed > .panel-header:hover {
     background: var(--section-header);
     color: var(--section-text);
-    border-left: 4px solid var(--section-stripe);
+    border-left: var(--section-stripe-w) solid var(--section-stripe);
 }
 .cad-sidebar .section-themed > .panel-header:hover { filter: brightness(0.97); }
 .cad-sidebar .section-themed > .panel-body {
     background: var(--section-body);
-    border-left: 4px solid var(--section-stripe);
+    border-left: var(--section-stripe-w) solid var(--section-stripe);
 }
+.cad-sidebar .section-themed > .panel-header,
+.cad-sidebar .section-themed > .panel-body { border-left-width: calc(var(--section-stripe-w) + var(--panel-edge-gap)); }
+
 
 /* F35 item 26 -- the numbers are main/sidebar-layout.js's SIDEBAR_LAYOUT (it sets --sidebar-cell-min and toggles
    .sidebar-desktop / .sidebar-two-col); never typed here. Desktop only: a tool group (4 buttons) gains columns
@@ -493,7 +506,7 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
    section never split; the pinned actions stay outside, full width. Height stays auto, so the columns balance. */
 .cad-sidebar.sidebar-two-col .cad-sidebar-sections {
     column-count: 2;
-    column-gap: 0;
+    column-gap: calc(var(--sidebar-pad) + var(--branch-indent)); /* = the stripe's reach back: column 2's stripes run into the gap, not over column 1 */
     column-rule: 1px solid var(--cad-border-standard);
 }
 .cad-sidebar-sections .panel {
@@ -779,7 +792,8 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     text-align: left;
 }
 .sidebar-branch-body {
-    padding-left: 12px;
+    --panel-edge-gap: calc(var(--sidebar-pad) + var(--branch-indent)); /* the stripe's reach back to the edge */
+    padding-left: var(--branch-indent);
 }
 .sidebar-branch-body[hidden] {
     display: none;
