@@ -28,8 +28,10 @@ export const SECTION_THEMES = Object.freeze({
   export: { hue: 90 },
   resolution: { hue: 235 },
   // the LAYER STACK's card kinds with no sidebar section of their own (Fred 2026-11-23, main/layer-stack.js LAYER_TYPES):
-  // a Lattice layer (clear of Draw = stamp's 135 and Texture's 175) and a Height patch (clear of Shape 265 / Bottom 295)
-  lattice: { hue: 155 },
+  // a Lattice layer and a Height patch (clear of Shape 265 / Bottom 295). Lattice (Fred 2026-11-24: "clearly different"
+  // from Draw's 135 green; was 155): TEAL, in the widest gap between the layer stack's own kinds (Draw 135 .. Height 280),
+  // between Texture 175 and View 195, and clear of the UI's blues (--cad-accent 216, --cad-accent-blue 199)
+  lattice: { hue: 185 },
   height: { hue: 280 },
 });
 
@@ -84,12 +86,13 @@ export const BRICK_SECTION_THEMES = Object.freeze({
  *  layer has in the layer stack (main/layer-stack.js LAYER_TYPES[...].theme), so the colour also says which layer you
  *  are editing. Calm: one hue per tab, the cards told apart by a lightness step only.
  *    tree id -> { theme: a SECTION_THEMES id, tool: the shade of any TOOL card (armsTool), shades: { branch id: shade } }
- *  A branch not listed takes shade 0. The Brick cards' coloured KIND sections inside them are unchanged. */
+ *  A branch not listed takes shade 0. A `flat` branch (main/drawer-tree.js: the Brick element + General groups) is no
+ *  card and takes no tint: its BRICK_SECTION_THEMES sections are the cards. */
 export const EDITOR_CARD_THEMES = Object.freeze({
   drawDrawerTree: Object.freeze({ theme: 'stamp', tool: 0, shades: Object.freeze({ general: 1, layers: 2, stamp: 3 }) }),
   latticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
   shapeLatticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, contour: 1, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
-  brickDrawerTree: Object.freeze({ theme: 'brick', tool: 0, shades: Object.freeze({ general: 2, layers: 3 }) }),
+  brickDrawerTree: Object.freeze({ theme: 'brick', tool: 0, shades: Object.freeze({ layers: 2 }) }),
   heightDrawerTree: Object.freeze({ theme: 'height', tool: 0, shades: Object.freeze({ patch: 1, view: 2, stamp: 3, selection: 1, place: 2, file: 3 }) }),
 });
 

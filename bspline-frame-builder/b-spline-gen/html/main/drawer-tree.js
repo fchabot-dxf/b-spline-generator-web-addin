@@ -14,6 +14,10 @@
  * branch declaring it (derived, never typed). `armedOnly`: a tool branch shows only while its tool is armed (the tool row
  * above the tree is the picker; ten folded tool headers would repeat it).
  * Each card is tinted as main/section-themes.js EDITOR_CARD_THEMES declares for the tree `id` (Fred 2026-11-24, option A).
+ * `flat` (Fred 2026-11-24, "no cards inside cards"): a branch whose hosts are already coloured cards (the Brick
+ * sections) is a wrapper-less GROUP, not a card -- no tint, no frame; a tool group shows no header at all (the tool row
+ * names it), a free group keeps its header as a plain fold heading (same id, caret, open / fold). Its element stays, so
+ * every id (brickBranch_*, the headerId) keeps working.
  */
 import { themeEditorCard } from './section-themes.js';
 
@@ -71,7 +75,8 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
         shell.id = branchDomId(b.id);
         shell.className = 'drawer-branch';
         shell.dataset.branch = b.id;
-        themeEditorCard(shell, id, b.id, !!b.armsTool);
+        if (b.flat) shell.classList.add('drawer-branch-flat');
+        else themeEditorCard(shell, id, b.id, !!b.armsTool);
         const head = doc.createElement('button');
         head.type = 'button';
         head.id = b.headerId || `${branchDomId(b.id)}_head`;
@@ -84,6 +89,7 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
         const summary = doc.createElement('span');
         summary.className = 'drawer-branch-summary';
         head.append(caret, title, summary);
+        if (b.flat && b.armsTool) head.hidden = true; // a tool group: the tool row is its label
         const body = doc.createElement('div');
         body.className = 'drawer-branch-body';
         body.id = `${branchDomId(b.id)}_body`;

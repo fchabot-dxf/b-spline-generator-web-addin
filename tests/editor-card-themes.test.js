@@ -53,6 +53,44 @@ describe('EDITOR_CARD_THEMES: every editor card in its layer colour', () => {
     expect(general.style.getPropertyValue('--section-stripe-dark')).toBe(themeTokens('stamp', 'dark').stripe);
     expect(themeEditorCard(document.createElement('div'), 'noSuchTree', 'x')).toBe(false);
   });
+  it('Brick: no cards inside cards -- every branch holding coloured sections is a flat group (no tint, a tool group no header)', () => {
+    // the branches whose hosts hold BRICK_TAB_SECTIONS' coloured sections: every one but Layers
+    for (const b of BRICK_DRAWER_TREE) expect(!!b.flat, b.id).toBe(b.id !== 'layers');
+    document.body.innerHTML = '<div id="host"><div id="w"></div><div id="g"></div><div id="l"></div></div>';
+    const tree = createDrawerTree({ id: 'brickDrawerTree', openKey: 'test.flat', branchDomId: (id) => `flat_${id}`, armedOnly: true, defaultOpen: ['layers'],
+      branches: [{ id: 'wall', title: 'Wall', hosts: ['w'], armsTool: 'wall', flat: true }, { id: 'general', title: 'General', hosts: ['g'], headerId: 'flatGeneralHead', flat: true },
+        { id: 'layers', title: 'Layers', hosts: ['l'] }] });
+    tree.build(document.getElementById('host'), () => {});
+    tree.sync('wall');
+    const wall = document.getElementById('flat_wall'), general = document.getElementById('flat_general'), layers = document.getElementById('flat_layers');
+    for (const g of [wall, general]) {
+      expect(g.classList.contains('drawer-branch-flat'), g.id).toBe(true);
+      expect(g.classList.contains('section-themed-card'), g.id).toBe(false);
+      expect(g.style.getPropertyValue('--section-header'), g.id).toBe('');
+    }
+    expect(wall.querySelector('.drawer-branch-head').hidden).toBe(true); // the tool row names it
+    expect(wall.classList.contains('open')).toBe(true);
+    const gh = document.getElementById('flatGeneralHead'); // a free group keeps its fold heading (and its id)
+    expect(gh.hidden).toBe(false);
+    gh.click();
+    expect(general.classList.contains('open')).toBe(true);
+    expect(layers.classList.contains('section-themed-card')).toBe(true);
+    const ed = readFileSync('bspline-frame-builder/styles/editor.css', 'utf-8');
+    const sel = '.drawer-branch.drawer-branch-flat > .drawer-branch-head {';
+    expect(ed.indexOf(sel)).toBeGreaterThan(0);
+    expect(ed.slice(ed.indexOf(sel), ed.indexOf('}', ed.indexOf(sel)))).toMatch(/position: static/); // only the section headers stick
+    // measured: the head's display:flex beat [hidden] (the WALL heading still showed under the tool row)
+    const hid = '.drawer-branch.drawer-branch-flat > .drawer-branch-head[hidden] {';
+    expect(ed.slice(ed.indexOf(hid), ed.indexOf('}', ed.indexOf(hid)))).toMatch(/display: none/);
+  });
+  it("the layer stack's kinds are told apart by hue: Lattice is no longer a near-copy of Draw's green", () => {
+    const hues = [...new Set(Object.values(LAYER_TYPES).map((L) => L.theme))].map((t) => [t, SECTION_THEMES[t].hue]);
+    for (const [a, ha] of hues) for (const [b, hb] of hues) {
+      if (a >= b) continue;
+      const d = Math.min(Math.abs(ha - hb), 360 - Math.abs(ha - hb));
+      expect(d, `${a} ${ha} vs ${b} ${hb}`).toBeGreaterThanOrEqual(45);
+    }
+  });
   it('the CSS reads the tokens only, with a THIN stripe (Fred: not the sidebar\'s stripe-to-the-edge)', () => {
     const ed = readFileSync('bspline-frame-builder/styles/editor.css', 'utf-8');
     const block = (sel) => ed.slice(ed.indexOf(sel), ed.indexOf('}', ed.indexOf(sel)));

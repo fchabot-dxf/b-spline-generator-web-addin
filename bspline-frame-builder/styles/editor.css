@@ -2173,6 +2173,33 @@
 .drawer-branch.section-themed-card.open > .drawer-branch-head {
     border-radius: 4px 7px 0 0 / 7px 7px 0 0;
 }
+/* a FLAT branch (main/drawer-tree.js `flat`: the Brick element + General groups, Fred 2026-11-24 "no cards inside
+   cards"): no card -- its coloured sections are the cards, one level. A free group's header is a plain fold heading that
+   does not stick (only the section headers stick, one at a time); a tool group has none (the tool row names it). */
+.drawer-branch.drawer-branch-flat {
+    border: none;
+    border-radius: 0;
+    background: none;
+}
+.drawer-branch.drawer-branch-flat > .drawer-branch-head {
+    position: static;
+    padding: 4px 2px;
+    background: none;
+    border-bottom: none;
+    border-radius: 0;
+}
+.drawer-branch.drawer-branch-flat > .drawer-branch-head > .drawer-branch-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--cad-text-muted);
+}
+.drawer-branch.drawer-branch-flat > .drawer-branch-head[hidden] {
+    display: none; /* the head's own display:flex would beat the [hidden] attribute */
+}
+.drawer-branch.drawer-branch-flat > .drawer-branch-body {
+    padding: 0;
+}
 /* a one-section branch's own bold title: the branch header says it (editor/lattice-side-column.js) */
 .drawer-host-title { display: none !important; }
 /* the Layers block inside a tree: its branch folds it -- the label's own fold (UI3) would be a second control */

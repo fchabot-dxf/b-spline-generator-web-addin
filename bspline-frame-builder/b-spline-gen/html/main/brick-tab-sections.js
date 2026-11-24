@@ -79,14 +79,17 @@ export const SHARED_ROWS = Object.freeze((() => {
  *  device. `headerId`: the header keeps a retired control's id (the General tab's), for the brick matrix.
  *  Fred 2026-11-24 (phone: the tool row and the element headers below it were the same choices twice): `armedOnly` --
  *  below the tool row only the ARMED tool's card shows (its title the row's label), plus General and Layers, like the
- *  Height tab. Scissors (no settings) shows no element card; Stripe keeps Brush's (its tabOf). */
+ *  Height tab. Scissors (no settings) shows no element card; Stripe keeps Brush's (its tabOf).
+ *  Fred 2026-11-24 (editor cards, one style: "no cards inside cards"): the element and General branches are `flat`
+ *  (main/drawer-tree.js) -- their coloured sections ARE the cards, one level; the element's sub-tools and label sit above
+ *  them under the tool row; General keeps a plain fold heading (brickTab_general). Layers stays a card. */
 const branch = (id, title, summary, hosts, extra = {}) => Object.freeze({ id, title, summary, hosts: Object.freeze(hosts), ...extra });
 export const BRICK_DRAWER_TREE = Object.freeze([
-  branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall' }),
-  branch('frame', FRAME_LABELS.brick, 'bands · fan centre · crumble', ['brickFrameSection'], { armsTool: 'frame' }),
-  branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush' }),
-  branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush' }), // retiring (E: heights move to Select)
-  branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general' }),
+  branch('wall', 'Wall', 'pattern · stones · accents', ['brickWallSection'], { armsTool: 'wall', flat: true }),
+  branch('frame', FRAME_LABELS.brick, 'bands · fan centre · crumble', ['brickFrameSection'], { armsTool: 'frame', flat: true }),
+  branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush', flat: true }),
+  branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush', flat: true }), // retiring (E: heights move to Select)
+  branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general', flat: true }),
   branch('layers', 'Layers', (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; }, ['brickLayersSlot']),
 ]);
 // the free branches a device starts with: Layers open (Fred, phone: "We don't see layers still"), General folded
