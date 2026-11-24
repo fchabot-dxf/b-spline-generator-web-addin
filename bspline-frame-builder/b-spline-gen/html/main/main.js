@@ -20,6 +20,7 @@ import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-
 import { paintFusionMemory } from '../core/fusion-memory-line.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
+import { initStickyHeads } from './sticky-heads.js';
 import { initSidebarTabs } from './sidebar-tabs.js';
 import { initArtTabs } from './art-tabs.js';
 import { initDrawTree } from './draw-tree.js';
@@ -111,6 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResizer(preview);
     initMobilePreviewResizer();
     initSidebarLayout();
+    initStickyHeads(); // Fred 2026-11-24: an open panel's header stays pinned under the seed bar (styles/layout-app.css)
     initSidebarTabs(); // F35 items 48 + 47: the sidebar's tabs + pinned sections
     applySectionThemes(); // F35 item 30: the declared section tints (sidebar + editor panels)
     setupMobileViewportHandling();

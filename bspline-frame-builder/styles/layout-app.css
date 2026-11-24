@@ -446,6 +446,23 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
     min-height: 0;
 }
 
+/* STICKY PANEL HEADERS (Fred 2026-11-24: "on any screen size the header of a panel is locked at the top while you have
+   it in view"). ONE rule for every scroll area: a top-level panel's header pins at --sticky-head-top, which
+   main/sticky-heads.js sets on the scroll area from its pinned bar's real height (the seed bar; 0 where nothing is
+   pinned above); the next panel's header pushes it away (sticky stays inside its own .panel). Sub-panels (.panel-sub)
+   and the sidebar's branch headings do not stick. The 2D editor's cards (.drawer-branch) take the same rule. Header backgrounds are the section colour (opaque), the left stripe is theirs.
+   .panel's `overflow: hidden` (rounded corners) would make the panel itself the sticky scroller, so it clips instead.
+   Order: the pinned bars (.sticky-actions, z 20) > these headers (z 5) > panel bodies; popovers / pickers / the loading
+   card sit at 1000+ and stay above. */
+:root { --z-sticky-head: 5; }
+.panel:not(.panel-sub) { overflow: clip; }
+.panel:not(.panel-sub) > .panel-header,
+.drawer-branch > .drawer-branch-head { /* the 2D editor's cards (main/drawer-tree.js: Draw, Lattice, Brick, Height tabs) */
+    position: sticky;
+    top: var(--sticky-head-top, 0px);
+    z-index: var(--z-sticky-head);
+}
+
 /* F35 item 30: colour-coded sections -- the colours are main/section-themes.js's tokens (applySectionThemes writes
    them as --section-* on each themed section); nothing here names a colour. (0,3,0) beats the page's own
    `.cad-sidebar .panel-body { background:#fff }`. */
