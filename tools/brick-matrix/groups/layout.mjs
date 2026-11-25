@@ -27,6 +27,12 @@ export const TOGGLE_CLEAR = {
   desktop: { name: 'desktop 1366x900', width: 1366, height: 900 }, // unchanged: the pill stays, the class never lands
 };
 
+// ---- the Height patch's dashed outline keeps its on-screen width when the phone drawer is raised over the canvas and lowered
+// again (measured on origin/main, 390 x 844: Height tab opened while the drawer was FULL drew the outline 1.5 in wide -- the
+// 0-high canvas reads a CTM scale of 1 -- and nothing redrew it when the drawer came down). `drawerStates` run in order; the
+// outline's stroke-width (editor inches) x the canvas's real px-per-inch must equal `px` CSS px at each.
+export const OUTLINE_STROKE = { viewport: { name: 'phone 390x844', width: 390, height: 844 }, drawerStates: ['full', 'peek', 'half'], px: 1.5, tolPx: 0.2 };
+
 // ---- panel fit (item 74, seat D, measured: at 1366 the Photo crop row's W/H sat off its 220 px panel, x 1368-1508): each
 // declared control (its JS-wrapped stepper when it has one) lies fully inside its nearest scrolling ancestor. One row per
 // viewport x section; `open` = the clicks that show the section.
@@ -130,7 +136,7 @@ export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runPageZoom(); await runFitEdgeHandles(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -413,6 +419,38 @@ async function runToggleClear() {
     return { class: c.classList.contains('canvas-floaters-no-room'), vis: getComputedStyle(p).visibility, w: Math.round(r.width), top: Math.round(r.top) }; })())`);
   checkRow('layout', `Toggle clear of the drawer ${T.desktop.name}: the pill is unchanged (shown, no hiding class)`, !d.class && d.vis === 'visible' && d.w > 0, `class ${d.class}, visibility ${d.vis}, ${d.w}px wide at top ${d.top}`);
   await shot('toggle_desktop');
+}
+
+// ---------------------------------------------------------------- the Height outline's stroke width across drawer states (phone)
+async function runOutlineStroke() {
+  const T = OUTLINE_STROKE;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  try {
+    await send('Emulation.setDeviceMetricsOverride', { width: T.viewport.width, height: T.viewport.height, deviceScaleFactor: 1, mobile: true });
+    await js(`(() => { try { sessionStorage.removeItem('bspline.editor.drawerHeightPx'); } catch (_) {} return 1; })()`);
+    await send('Page.reload', {}); await waitApp(); await openBrickTab();
+    await js(`(async () => { const W = (ms) => new Promise((r) => setTimeout(r, ms));
+      document.getElementById('editorTabArtwork')?.click(); await W(400);
+      const dr = await import('./editor/editor-drawer.js'); const d = document.getElementById('editorMobileDrawer');
+      d.style.height = dr.drawerHeightPx('full', innerHeight) + 'px'; await W(600);
+      document.getElementById('editorTabHeight')?.click(); await W(600);
+      if (!document.querySelector('.height-patch-outline')) { document.getElementById('heightNew')?.click(); await W(1500); }
+      return 1; })()`);
+    for (const state of T.drawerStates) {
+      const r = await jsJSON(`(async () => { const W = (ms) => new Promise((r) => setTimeout(r, ms)); const dr = await import('./editor/editor-drawer.js'); const d = document.getElementById('editorMobileDrawer');
+        d.style.height = (${JSON.stringify(state)} === 'peek' ? 96 : dr.drawerHeightPx(${JSON.stringify(state)}, innerHeight)) + 'px'; await W(700);
+        const b = document.querySelector('.height-patch-outline'); const g = document.getElementById('heightPatches'); const m = g && g.getScreenCTM();
+        return JSON.stringify({ found: !!b, sw: b ? Number(b.getAttribute('stroke-width')) : 0, scale: m ? Math.abs(m.a) : 0 }); })()`);
+      const px = r.sw * r.scale;
+      checkRow('layout', `Height outline stroke ${T.viewport.name}: ${state} drawer, opened at full`, r.found && Math.abs(px - T.px) <= T.tolPx,
+        `${r.found ? `${px.toFixed(2)} screen px (${T.px} expected), stroke ${r.sw} in at ${r.scale.toFixed(2)} px/in` : 'no outline'}`);
+      if (!(r.found && Math.abs(px - T.px) <= T.tolPx) || process.env.TOGGLE_SHOTS) await shot(`outline_${state}`);
+    }
+  } finally {
+    await send('Emulation.setEmulatedMedia', { features: [] });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+  }
 }
 
 // ---------------------------------------------------------------- page zoom + the Expand tip (phone, touch)

@@ -2054,6 +2054,7 @@ function onTabChanged(e) {
   syncHeightOverlay();
 }
 const onViewChanged = () => syncHeightOverlay();
+const _boxRO = { el: null, ro: null }; // the canvas box's ResizeObserver (initHeightPanel)
 /** A heights build reported against the stock (core/stock.js heightStockChanged): the line follows it. */
 const onBuilt = () => syncCarveRange();
 
@@ -2148,6 +2149,15 @@ export function initHeightPanel(hooks = {}) {
     document.addEventListener('editorTabChanged', onTabChanged); // the same function: one listener however often init runs
     for (const ev of ['editorBoardResized', 'editorViewChanged', 'editorTopViewUpdated']) document.addEventListener(ev, onViewChanged);
     document.addEventListener('heightStockChanged', onBuilt); // a heights build reported (rebuild.js)
+    // the canvas box resizing (the phone drawer raised / lowered) changes the screen scale with no view change: the outline /
+    // selection / cursor strokes are cssPx() (one screen px in inches, from the CTM), so they redraw with the box -- drawn
+    // while the drawer covered the canvas (a 0-high box reads a CTM scale of 1: 1 px = 1 inch) they stayed 1.5 in wide
+    const box = byId('editorSVGContainer');
+    if (box && typeof ResizeObserver === 'function' && _boxRO.el !== box) {
+      if (_boxRO.ro) _boxRO.ro.disconnect();
+      _boxRO.el = box; _boxRO.ro = new ResizeObserver(() => syncHeightOverlay());
+      _boxRO.ro.observe(box);
+    }
   }
   ensureTool();
   syncHeightPanel();
@@ -2165,6 +2175,7 @@ export function syncHeightTab() {
 
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
+  if (_boxRO.ro) _boxRO.ro.disconnect(); _boxRO.el = null; _boxRO.ro = null;
   _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _float = null; _marq = null; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();

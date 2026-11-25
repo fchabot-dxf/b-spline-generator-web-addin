@@ -103,6 +103,28 @@ describe('the patch on the shared editor canvas', () => {
     expect(Number(g2.getAttribute('opacity'))).toBe(INACTIVE_LAYER_OPACITY);
     expect(g2.nextSibling).toBe(window.svgEditor._sketchLayer.node); // under the drawing elsewhere
   });
+  it('the outline strokes follow the canvas box: drawn while the phone drawer covers it (scale 1), redrawn when the box resizes', async () => {
+    // measured on origin/main (390 x 844): drawn with the box 0 high the CTM scale reads 1 (1 screen px = 1 inch) -> a 1.5 in
+    // outline, and nothing redrew it when the drawer came down
+    const boxes = [];
+    vi.stubGlobal('ResizeObserver', class { constructor(cb) { this.cb = cb; boxes.push(this); } observe() {} disconnect() {} });
+    try {
+      _resetHeightPanelForTests(); initHeightPanel({});
+      expect(boxes.length).toBe(1);
+      await newHeightPatch();
+      setEditorTab('height');
+      syncHeightOverlay();
+      const g = document.querySelector('#heightPatches');
+      let scale = 1; // px per inch under the canvas's own transform: 1 while the box has no height
+      g.getScreenCTM = () => ({ a: scale });
+      syncHeightOverlay();
+      const outline = () => Number(g.querySelector('rect.height-patch-outline').getAttribute('stroke-width'));
+      expect(outline()).toBeCloseTo(1.5, 6);
+      scale = 47.7; // the drawer came down: the box is tall again
+      boxes[0].cb([]);
+      expect(outline()).toBeCloseTo(1.5 / 47.7, 6);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('an editor session sees a stroke (app-init.js editorSessionFingerprint: [3D] then takes the Apply way, the rebuild)', async () => {
     const { editorSessionFingerprint } = await import('../bspline-frame-builder/b-spline-gen/html/main/app-init.js');
     await newHeightPatch();
