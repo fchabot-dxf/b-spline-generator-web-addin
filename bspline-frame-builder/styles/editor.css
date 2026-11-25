@@ -248,6 +248,14 @@
     }
 }
 
+/* the canvas's top floaters (the 2D | 3D pill, the Height readout) must not sit on the raised drawer: editor/canvas-floaters.js
+   puts this class on the canvas when no room is left above the drawer. visibility, not display: nothing reflows. */
+#editorCanvasContainer.canvas-floaters-no-room .view-mode-toggle,
+#editorCanvasContainer.canvas-floaters-no-room .heights-hud {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 /* Top View Canvas Scaling */
 #svgEditorTopView {
     image-rendering: pixelated;

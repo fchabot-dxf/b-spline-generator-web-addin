@@ -15,6 +15,18 @@ export const PEEK_LAYOUT = {
   element: 'brickGenerate',
 };
 
+// ---- the floating 2D/3D pill + the Height readout stay off the phone drawer (Fred, 390 shots: raised, the drawer's tool
+// row -- Draw's Select, Brick's Wall -- sat under them). One row per editor tab x drawer state: whatever is VISIBLE
+// of the two does not intersect the drawer's rect, and the pill's buttons are real >= minPx tap targets that
+// elementFromPoint hits. `tabs` = the editor tab buttons; `states` = editor-drawer.js DRAWER_SNAP_STATES.
+export const TOGGLE_CLEAR = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844 },
+  tabs: ['editorTabFrame', 'editorTabArtwork', 'editorTabLattice', 'editorTabBrick', 'editorTabHeight'],
+  states: ['peek', 'half', 'full'],
+  minPx: 28,
+  desktop: { name: 'desktop 1366x900', width: 1366, height: 900 }, // unchanged: the pill stays, the class never lands
+};
+
 // ---- panel fit (item 74, seat D, measured: at 1366 the Photo crop row's W/H sat off its 220 px panel, x 1368-1508): each
 // declared control (its JS-wrapped stepper when it has one) lies fully inside its nearest scrolling ancestor. One row per
 // viewport x section; `open` = the clicks that show the section.
@@ -118,7 +130,7 @@ export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); await runFitEdgeHandles(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runPageZoom(); await runFitEdgeHandles(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -352,6 +364,55 @@ async function runTouchTargets() {
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}
+
+// ---------------------------------------------------------------- the pill + Height readout clear of the drawer (phone)
+const TOGGLE_CLEAR_PROBE = (tab, state, minPx) => `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  document.getElementById(${JSON.stringify(tab)})?.click(); await sleep(500);
+  const drawer = document.getElementById('editorMobileDrawer'); const dr = await import('./editor/editor-drawer.js');
+  const px = ${JSON.stringify(state)} === 'peek' ? 96 : dr.drawerHeightPx(${JSON.stringify(state)}, window.innerHeight);
+  drawer.style.height = px + 'px'; await sleep(500);
+  const ro = document.getElementById('heightReadout'); if (ro && ${JSON.stringify(tab)} === 'editorTabHeight') { ro.hidden = false; ro.textContent = 'H 1.500"'; await sleep(200); }
+  const d = drawer.getBoundingClientRect();
+  const shown = (e) => { if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.hidden; };
+  const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  const out = { drawerTop: Math.round(d.top), over: [], small: [], blocked: [], seen: [] };
+  const pill = document.querySelector('#editorCanvasContainer .view-mode-toggle');
+  for (const [name, e] of [['pill', pill], ['H readout', ro]]) {
+    if (!shown(e)) continue; out.seen.push(name);
+    if (hit(e.getBoundingClientRect(), d)) out.over.push(name);
+  }
+  if (shown(pill)) for (const b of pill.querySelectorAll('button')) {
+    const r = b.getBoundingClientRect(); if (r.width < ${minPx} || r.height < ${minPx}) out.small.push(b.id);
+    if (document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) !== b) out.blocked.push(b.id);
+  }
+  return JSON.stringify(out);
+})()`;
+async function runToggleClear() {
+  const T = TOGGLE_CLEAR;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setDeviceMetricsOverride', { width: T.viewport.width, height: T.viewport.height, deviceScaleFactor: 1, mobile: true });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  for (const tab of T.tabs) {
+    if (!(await js(`!!document.getElementById(${JSON.stringify(tab)})?.getClientRects().length`))) continue;
+    for (const state of T.states) {
+      const r = await jsJSON(TOGGLE_CLEAR_PROBE(tab, state, T.minPx));
+      const ok = r.over.length === 0 && r.small.length === 0 && r.blocked.length === 0;
+      checkRow('layout', `Toggle clear of the drawer ${T.viewport.name}: ${tab.replace('editorTab', '')} at ${state}`, ok,
+        `drawer top ${r.drawerTop}; visible: ${r.seen.join(', ') || 'none'}${r.over.length ? `; OVER the drawer: ${r.over}` : ''}${r.small.length ? `; under ${T.minPx}px: ${r.small}` : ''}${r.blocked.length ? `; covered: ${r.blocked}` : ''}`);
+      if (!ok || process.env.TOGGLE_SHOTS) await shot(`${ok ? 'toggle' : 'FAIL_toggle'}_${tab.replace('editorTab', '')}_${state}`);
+    }
+  }
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+  await send('Emulation.setDeviceMetricsOverride', { width: T.desktop.width, height: T.desktop.height, deviceScaleFactor: 1, mobile: false });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  const d = await jsJSON(`JSON.stringify((() => { const c = document.getElementById('editorCanvasContainer'); const p = c.querySelector('.view-mode-toggle'); const r = p.getBoundingClientRect();
+    return { class: c.classList.contains('canvas-floaters-no-room'), vis: getComputedStyle(p).visibility, w: Math.round(r.width), top: Math.round(r.top) }; })())`);
+  checkRow('layout', `Toggle clear of the drawer ${T.desktop.name}: the pill is unchanged (shown, no hiding class)`, !d.class && d.vis === 'visible' && d.w > 0, `class ${d.class}, visibility ${d.vis}, ${d.w}px wide at top ${d.top}`);
+  await shot('toggle_desktop');
 }
 
 // ---------------------------------------------------------------- page zoom + the Expand tip (phone, touch)
