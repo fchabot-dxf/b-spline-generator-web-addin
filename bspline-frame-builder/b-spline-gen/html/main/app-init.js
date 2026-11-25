@@ -28,6 +28,7 @@ import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
 import { syncBackFlatUI } from './back-flat-ui.js';
+import { syncFlattenBandUI } from './flatten-band-ui.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
 import { paletteCss, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
@@ -275,6 +276,14 @@ export const MIGRATIONS = [
     // heights bit for bit (tests/terrain-fit.test.js pins framed, no-frame and session-restored boards against main 68937a66).
     when: (p) => p.terrainFit === undefined,
     apply: (p) => { p.terrainFit = 'legacy'; },
+  },
+  {
+    id: 'flatten-band-off',
+    // Fred 2026-11-25 (Surface > Flatten band, core/flatten-band.js): a board saved before it has no band keys; absent reads
+    // as the band OFF = the heights exactly as before (core/terrain.js applies no weight), so this entry writes nothing --
+    // DECLARED so the defaults are on the record (tests/flatten-band.test.js pins a saved board's digests).
+    when: (p) => p.bandEnabled === undefined,
+    apply: () => {},
   },
   {
     id: 'back-mode-shell',
@@ -789,6 +798,7 @@ export async function initApp(preview, wireGlobalEvents) {
   Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
   setUndoRestoring(false);
   syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label (the restore wrote P without events)
+  syncFlattenBandUI({ boardLoaded: true }); // the Flatten band panel; the retiring Flat Border's row (shown on a board using it)
   updateSpacingLabels(P.widthIn, P.heightIn);
   updateSpacingLabels(P.widthIn, P.heightIn, 'exportSpacing');
 

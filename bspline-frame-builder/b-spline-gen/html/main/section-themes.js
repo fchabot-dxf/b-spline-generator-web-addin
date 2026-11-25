@@ -18,6 +18,7 @@ export const SECTION_THEMES = Object.freeze({
   frame: { hue: 28 },
   skeleton: { hue: 265 },
   filter: { hue: 175 },
+  band: { hue: 343 }, // the FLATTEN BAND (Fred 2026-11-25): in the widest free gap, between Sculpt top 320 and Brick 6
   brick: { hue: 6 },
   stamp: { hue: 135 }, // Vector Stamping = the editor's Artwork tab
   'sculpt-top': { hue: 320 },
@@ -41,7 +42,7 @@ export const SECTION_THEMES = Object.freeze({
 export const SECTION_ICONS = Object.freeze({
   // skeleton = TERRAIN SHAPE's ⛰ since TERRAIN-FLAT (2026-11-22); filter = TERRAIN TEXTURE
   stock: '📐', layers: '📑', frame: '🖼', skeleton: '⛰️', filter: '🎨', brick: '🧱', stamp: '📐',
-  'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️',
+  band: '🔳', 'sculpt-top': '🎨', stl: '🗿', thicken: '⛓️', 'sculpt-bot': '🎨', view: '👁️', export: '📩', resolution: '⚙️',
   lattice: '🕸️', height: '🎚️', // the layer stack's card kinds (the mockup's Height glyph)
 });
 

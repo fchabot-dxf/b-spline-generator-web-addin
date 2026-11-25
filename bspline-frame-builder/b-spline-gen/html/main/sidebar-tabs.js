@@ -17,9 +17,10 @@
 // the mechanism (groups, groupOfSection) stays for the next one.
 export const SIDEBAR_TABS = Object.freeze([
   Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
+  // panel-band = the FLATTEN BAND (Fred 2026-11-25): its own section, right after Terrain Texture (it flattens either)
   // panel-stl keeps its GLOBAL settings only: their layers are cards in the Layers stack; the Brick panel's
   // body moved whole into the Brick card (main/layer-stack.js HOSTED), so that panel retired (Fred 2026-11-23)
-  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']) }),
+  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-band', 'panel-sculpt-top', 'panel-stl']) }),
   // the unified LAYER STACK (Fred 2026-11-23, main/layer-stack.js): after Surface, before Sculpt bottom and Output. The
   // stack's section (panel-layers, moved here from Board) has no header and no box: its cards are this branch's panels,
   // full width like Sculpt bottom (styles/layout-app.css); the Thicken panel retired into its Thicken line; Sculpt bottom

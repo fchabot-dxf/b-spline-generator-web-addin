@@ -40,7 +40,7 @@ describe('phase 5: the main sidebar tree', () => {
   it('Fred 2026-10-11 (final) + 2026-11-23 (the layer stack): four branches; no "2D editor" group / Vector stamping panel; the LAYERS branch after Surface', () => {
     expect(SIDEBAR_TABS.map((t) => t.id)).toEqual(['board', 'surface', 'layers', 'output']);
     expect(BOARD).toEqual(['panel-stock', 'panel-frame']);
-    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-stl']); // the Brick panel's body is the Brick card's (layer stack)
+    expect(SURFACE).toEqual(['panel-skeleton', 'panel-filter', 'panel-band', 'panel-sculpt-top', 'panel-stl']); // the Brick panel's body is the Brick card's (layer stack); the Flatten band after Texture (Fred 2026-11-25)
     // the stack (its Thicken line holds the retired Thicken panel's settings), then Sculpt bottom as it followed Thicken
     expect(LAYERS).toEqual(['panel-layers', 'panel-sculpt-bot']);
     // the Vector stamping panel (an Open SVG Editor button + a pointer note) retired: nothing declares it, nothing in the page carries it

@@ -8,6 +8,7 @@ import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js'
 import { AppState } from './app-state.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { syncBackFlatUI, BACK_FLAT_KEYS } from './back-flat-ui.js';
+import { syncFlattenBandUI, BAND_UI_KEYS } from './flatten-band-ui.js';
 
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
@@ -17,7 +18,8 @@ const immediateRebuildParams = [
   'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode', 'backMode', 'flatBaseDropIn',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
   'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile',
-  'isolateSkeleton', 'shapeFlat', 'surfaceHeightIn'
+  'isolateSkeleton', 'shapeFlat', 'surfaceHeightIn',
+  'bandEnabled', 'bandAppliesTo', 'bandHeightIn', 'bandWidthIn', 'bandInnerFeatherIn', 'bandOuterFeatherIn', // FLATTEN BAND
 ];
 
 // Params that change the rasterized mask itself (require re-rasterize).
@@ -117,6 +119,7 @@ export function applyParam(key, value, { rebuild: wantRebuild = true } = {}) {
     if (thickenCon) thickenCon.style.display = value ? 'flex' : 'none';
   }
   if (BACK_FLAT_KEYS.includes(key)) syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label
+  if (BAND_UI_KEYS.includes(key)) syncFlattenBandUI(); // the Flatten band's rows, its Applies-to, the Flat height's travel
 
   if (key === 'thickenWireframe') {
     scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);

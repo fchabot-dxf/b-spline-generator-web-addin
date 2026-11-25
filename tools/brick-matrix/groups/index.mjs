@@ -22,6 +22,7 @@ import * as grout from './grout.mjs';
 import * as handedit from './handedit.mjs';
 import * as strokes from './strokes.mjs';
 import * as blind from './blind.mjs';
+import * as flattenBand from './flatten-band.mjs';
 
 const MODULES = {
   wall: wall,
@@ -44,6 +45,7 @@ const MODULES = {
   handedit: handedit,
   strokes: strokes,
   blind: blind,
+  'flatten-band': flattenBand, // Surface > Flatten band (Fred 2026-11-25): the flat on the frame outline; off = bit-identical
   // 'photo-layer' RETIRED with the photo (Fred 2026-11-23, "Remove photo"): every row drove the removed Surface > Photo
   // section / Photo tab; a saved photo board's build is pinned in tests/photo-removed-pin.test.js instead
 };

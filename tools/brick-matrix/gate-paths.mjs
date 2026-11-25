@@ -11,6 +11,7 @@ export const BRICK_MATRIX_GATE_PATHS = [
   'bspline-frame-builder/b-spline-gen/html/editor/',           // the whole editor (brick tool, layers, stripe, io)
   'bspline-frame-builder/b-spline-gen/html/core/bricks/',
   'bspline-frame-builder/b-spline-gen/html/core/state.js',
+  'bspline-frame-builder/b-spline-gen/html/core/flatten-band', // the Flatten band (groups/flatten-band.mjs), + its outline
   'bspline-frame-builder/b-spline-gen/html/core/engine/',
   'bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html',
   'bspline-frame-builder/styles/',

@@ -16,6 +16,7 @@ import { syncHeightTab } from './height-panel.js';
 import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
 import { syncBackFlatUI } from './back-flat-ui.js';
+import { syncFlattenBandUI } from './flatten-band-ui.js';
 
 /**
  * T45 (Fred: "on open, a loaded project doesn't have the SVG until I open
@@ -110,6 +111,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   // the filter (removed-noise-type-to-default), so re-sync the dropdown.
   syncUItoParam('noiseType', P.noiseType);
   syncBackFlatUI(); // Back: Flat greys what no longer acts; the Thicken line's label (the restore wrote P without events)
+  syncFlattenBandUI({ boardLoaded: true }); // the Flatten band panel; the retiring Flat Border's row (shown on a board using it)
 
   // T45: 'load' also replaces the LIVE editor's own document — P.editorSvg
   // was already overwritten above (part of the P-restore loop), but
