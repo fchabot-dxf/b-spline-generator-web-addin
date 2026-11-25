@@ -249,10 +249,12 @@ describe('reorder by the handle; the Thicken line splits body / top only', () =>
   it('the Thicken line itself drags: every layer it passes changes side', async () => {
     mount();
     await applyStackDrop(['layer:0', 'layer:1', THICKEN_LINE_KEY, 'layer:2', 'bricks', 'layer:5', 'stl:s1', 'height:h1', 'stl:s2']);
-    expect(window.svgEditor._layers[2].placement).toBe('afterBack');
+    // (by id: a new stack order also reorders the roster -- the drawing order, Fred 2026-11-25)
+    const layer = (id) => window.svgEditor._layers.find((l) => l.id === id);
+    expect(layer('2').placement).toBe('afterBack');
     expect(P.brickSettings.placement).toBe('afterBack');
     expect(P.stlLayers.map((s) => s.placement)).toEqual(['afterBack', 'afterBack']);
-    expect(window.svgEditor._layers[0]).not.toHaveProperty('placement');
+    expect(layer('0')).not.toHaveProperty('placement');
   });
 });
 

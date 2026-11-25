@@ -18,12 +18,13 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   initLayerStack, stackSequence, STACK_VIEWS, EDITOR_FIXED_ROWS, EDITOR_STACK_LAYOUTS, ADD_PICKERS, LAYER_ADD_TYPES, LAYER_TYPES,
   selectEditorRow, editorSelection, refreshEditorStack, edRowId, THICKEN_LINE_KEY, _resetLayerStackForTests,
-  EDITOR_ROW_MENU, EDITOR_ROW_EYE, rowSubject, rowMenuItems, openRowMenu, stackItems,
+  EDITOR_ROW_MENU, EDITOR_ROW_EYE, rowSubject, rowMenuItems, openRowMenu, stackItems, applyStackDrop, drawOrderForStack,
 } from '../bspline-frame-builder/b-spline-gen/html/main/layer-stack.js';
 import { EDITOR_TABS, getEditorTab, setEditorTab, SHARED_PEEK_ESSENTIALS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
-import { typedLayerName, addLayer, isUserLocked } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { typedLayerName, addLayer, isUserLocked, syncLayerZOrder } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 // the ⋯ menu's popover module, loaded up front (the stack imports it on the first tap)
 import '../bspline-frame-builder/b-spline-gen/html/editor/editor-context-menu.js';
+import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const $ = (id) => document.getElementById(id);
@@ -251,5 +252,66 @@ describe('phase 2: every row keeps its EYE; the old Layers row\'s other controls
   it('the old Layers list is gone from the palette (its controls all have a home above)', () => {
     for (const id of ['editorLayersList', 'editorLayersHeader', 'editorAddLayer', 'drawLayersBody']) expect(HTML.includes(`id="${id}"`), id).toBe(false);
     expect(HTML.includes('id="brickStartHint"')).toBe(true); // the Brick start hint stays (its own slot)
+  });
+});
+
+describe('ONE order everywhere (Fred 2026-11-25): a stack drag sets the stamp order AND the 2D drawing order', () => {
+  // an editor with a real drawing: two Draw layers' nodes, in the roster's order (later = drawn on top)
+  function withDrawing() {
+    mount();
+    const ed = window.svgEditor;
+    ed._layers.push({ id: '5', name: 'Draw 2', visible: true, carve: true, depth: 0.2, profile: 'vbit', angle: 90 });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    svg.appendChild(g);
+    for (const id of ['0', '5']) { const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); r.setAttribute('data-layer', id); g.appendChild(r); }
+    document.body.appendChild(svg);
+    const wrap = (n) => ({ node: n, attr: (k) => n.getAttribute(k), addClass: (c) => n.classList.add(c), removeClass: (c) => n.classList.remove(c), hasClass: (c) => n.classList.contains(c) });
+    ed._sketchLayer = { node: g, children: () => { const a = [...g.children].map(wrap); a.toArray = () => a; return a; } }; // svg.js's List shape
+    ed._selectedElements = [];
+    ed._onChange = vi.fn();
+    refreshEditorStack();
+    return { ed, g };
+  }
+  const drawn = (g) => [...g.children].map((n) => n.getAttribute('data-layer'));
+  it('Draw 1 dragged above Draw 2 (stack top): the stamp order follows AND Draw 1 now draws on top; ONE editor step', async () => {
+    const { ed, g } = withDrawing();
+    expect(stackSequence($('editorLayerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1', THICKEN_LINE_KEY]);
+    expect(drawn(g)).toEqual(['0', '5']); // Draw 2 (later in the roster) on top
+    const steps = ed.pushState.mock.calls.length;
+    // the user's drop: Draw 2 moved to the top of the stack, Draw 1 below it -> the stack says Draw 2 is higher
+    await applyStackDrop(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]);
+    expect(P.layerOrder).toEqual(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1']);
+    // higher in the stack draws on top: the roster runs bottom first (the stack reversed), the nodes with it
+    expect(window.svgEditor._layers.map((l) => l.id)).toEqual(['3', '4', '1', '0', '5']);
+    expect(drawn(g)).toEqual(['0', '5']); // Draw 2 is still the higher one: drawn last
+    await applyStackDrop(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]); // Draw 1 above Draw 2
+    expect(P.layerOrder).toEqual(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1']);
+    expect(drawn(g)).toEqual(['5', '0']); // Draw 1 now draws ON TOP
+    expect(ed.pushState.mock.calls.length).toBe(steps + 2); // one editor step per drop
+  });
+  it('Undo puts both back: the stamp order rides in the editor step (undo part), the roster + nodes are the step\'s own', async () => {
+    const { ed, g } = withDrawing();
+    // the previous editor entry, as editor.js _snapshotState keeps it: the roster + the parts
+    const before = { layers: [...ed._layers], parts: takeUndoParts() };
+    expect(before.parts).toHaveProperty('layerOrder', null);
+    await applyStackDrop(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]);
+    expect(P.layerOrder).not.toBeNull();
+    expect(drawn(g)).toEqual(['5', '0']);
+    // Undo = the editor restores that entry: its roster (+ the drawing) and its parts
+    ed._layers = before.layers;
+    restoreUndoParts(before.parts);
+    syncLayerZOrder(ed);
+    expect(P.layerOrder).toBeNull();
+    expect(drawn(g)).toEqual(['0', '5']);
+    refreshEditorStack();
+    expect(stackSequence($('editorLayerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1', THICKEN_LINE_KEY]);
+  });
+  it('a saved board is untouched until a drag: showing the stack writes no order and does not reorder the roster', () => {
+    const { ed } = withDrawing();
+    expect(P.layerOrder).toBeNull();
+    expect(ed._layers.map((l) => l.id)).toEqual(['0', '1', '3', '4', '5']);
+    expect(drawOrderForStack(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1'], ed._layers).map((l) => l.id)).toEqual(['5', '3', '4', '1', '0']);
+    expect(drawOrderForStack(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1'], ['3', '4', '1', '0', '5'].map((id) => ed._layers.find((l) => l.id === id)))).toBeNull(); // already so: nothing to do
   });
 });

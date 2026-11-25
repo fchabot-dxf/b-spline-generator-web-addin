@@ -25,7 +25,9 @@ import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
 import {
   isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName,
   setLayerVisible, setLayerShowColor, setLayerLocked, isUserLocked, removeLayer, renameLayer, eyeIconSVG, flashLayerGeometry,
+  syncLayerZOrder, applyLayerState, renderLayersPanel,
 } from '../editor/layers.js';
+import { registerUndoPart } from '../editor/undo-parts.js';
 import { patchLayers } from '../core/height/compose.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
 import { EDITOR_MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
@@ -234,6 +236,10 @@ export async function applyStackDrop(seq) {
   if (!sameSides(sides(keys, side), sides(items.map((i) => i.key), side))) { P.layerOrder = [...keys]; order = true; }
   const moved = keys.filter((k) => itemPlacement(byKey.get(k)) !== want.get(k));
   for (const k of moved) { const it = byKey.get(k); await LAYER_TYPES[it.type].setPlacement(it, want.get(k)); }
+  // ONE order everywhere (Fred 2026-11-25, as the old Layers list did): a new stack order is also the 2D drawing order --
+  // a row higher in the stack draws ON TOP. The roster follows (editor layers bottom first), the drawing's nodes with it;
+  // ONE editor step holds both (the 'layerOrder' undo part below rides in it), so Undo puts both back.
+  if (order) applyDrawOrder(keys);
   if (order || moved.length) {
     scheduleSessionSave();
     scheduleUndoSnapshot('layerStack', 'Layers');
@@ -242,6 +248,44 @@ export async function applyStackDrop(seq) {
   refreshLayerStack();
   return { order, moved };
 }
+
+/** Pure: the editor roster (bottom of the drawing first) for stack `keys` (top first): the stack reversed, each key's own
+ *  layers (the Bricks item = every brick layer, in its roster order) in their place; a layer the stack does not list keeps
+ *  its place at the bottom. null = the roster is already in that order. */
+export function drawOrderForStack(keys, layers) {
+  const list = Array.isArray(layers) ? layers.filter(Boolean) : [];
+  const groups = new Map();
+  for (const l of list) { const k = editorLayerKey(l); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
+  const top = [];
+  for (const k of [...keys].reverse()) { const g = groups.get(k); if (g) { top.push(...g); groups.delete(k); } }
+  const next = [...list.filter((l) => !top.includes(l)), ...top];
+  return next.length === list.length && next.every((l, i) => l === list[i]) ? null : next;
+}
+/** A stack drop's new order, applied to the drawing: the roster reordered, the nodes re-stacked, ONE editor step. */
+function applyDrawOrder(keys) {
+  const ed = editor();
+  const next = ed && drawOrderForStack(keys, ed._layers);
+  if (!next) { if (ed) commitEdit(ed); return false; } // the stamp order alone changed: still one step (the undo part holds it)
+  ed._layers.splice(0, ed._layers.length, ...next);
+  syncLayerZOrder(ed);
+  applyLayerState(ed);
+  renderLayersPanel(ed);
+  commitEdit(ed);
+  return true;
+}
+/** The stack's order (P.layerOrder) rides in the editor's undo entries (editor/undo-parts.js): an Undo of a stack drop puts
+ *  the stamp order back with the drawing order (the roster + nodes are the entry's own). */
+registerUndoPart('layerOrder', {
+  take: () => (Array.isArray(P.layerOrder) ? [...P.layerOrder] : P.layerOrder ?? null),
+  restore: (v) => {
+    const now = Array.isArray(P.layerOrder) ? P.layerOrder.join('|') : null, was = Array.isArray(v) ? v.join('|') : null;
+    if (now === was) return;
+    P.layerOrder = Array.isArray(v) ? [...v] : v;
+    _lastSig = null;
+    _hooks.onChange();
+    refreshLayerStack();
+  },
+});
 
 /** A new layer lands just ABOVE the Thicken line: when it is not already the last layer above it, the stack's order is
  *  written with it there (the user placed it by adding it). Already there: nothing is written. */
