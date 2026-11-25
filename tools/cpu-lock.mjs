@@ -8,7 +8,10 @@
 // stale while we work and is judged stale as soon as we die. CPU_LOCK_HELD set (the merge gate, heavy-run.sh/.ps1, or a
 // parent that already took it) -> no-op; children inherit it from us. CPU_LOCK_SKIP=1 -> no-op (tests of this helper).
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const PROJECT = 'bspline';
 const GIT_BASH = 'C:/Program Files/Git/bin/bash.exe';
@@ -28,20 +31,44 @@ const skip = () => !!(process.env.CPU_LOCK_HELD || process.env.CPU_LOCK_SKIP);
 const script = (body) => `source ~/.shared-cpu/cpu_lock.sh; ${body}`;
 const lockEnv = (extra = {}) => ({ ...process.env, CPU_LOCK_PID: String(process.pid), ...extra });
 
-/** Block until the lock is held by this process. No-op when skipped (see the header). */
+/** Block until the lock is held by this process. No-op when skipped (see the header). The taker is
+ *  tools/cpu-lock-take.sh: it writes its lines to a log FILE (never a pipe a dead owner could leave blocking), watches
+ *  this process and stops itself when we are gone; and we kill it by pid on exit / signals while waiting. */
 export async function takeCpuLock(what, etaMin) {
   if (skip() || held) return;
   const bash = findBash();
-  await new Promise((resolve, reject) => {
-    const child = spawn(bash, ['-c', script(`cpu_lock_take ${PROJECT} "$CPU_LOCK_WHAT" "$CPU_LOCK_ETA"`)], {
-      windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: lockEnv({ CPU_LOCK_WHAT: String(what), CPU_LOCK_ETA: `${etaMin}min` }),
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'cpulock-take-'));
+  const log = path.join(dir, 'take.log');
+  writeFileSync(log, '');
+  const sh = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cpu-lock-take.sh').split(path.sep).join('/');
+  let child; let off = 0;
+  const relay = () => {
+    try {
+      const buf = readFileSync(log); if (buf.length <= off) return;
+      const txt = buf.subarray(off).toString('utf8'); off = buf.length;
+      process.stderr.write(txt.split(/\r?\n/).filter((l) => l.startsWith('cpu_lock:')).map((l) => l + '\n').join(''));
+    } catch { /* log gone */ }
+  };
+  const killTaker = () => {
+    if (child && child.exitCode === null && child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+  };
+  const onSig = () => { killTaker(); process.exit(130); };
+  const sigs = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'];
+  process.on('exit', killTaker); for (const s of sigs) process.on(s, onSig);
+  try {
+    await new Promise((resolve, reject) => {
+      child = spawn(bash, [sh], {
+        windowsHide: true, stdio: 'ignore',
+        env: lockEnv({ CPU_LOCK_WHAT: String(what), CPU_LOCK_ETA: `${etaMin}min`, CPU_LOCK_LOG: log.split(path.sep).join('/') }),
+      });
+      const t = setInterval(relay, 500);
+      child.on('error', (e) => { clearInterval(t); reject(e); });
+      child.on('exit', (code) => { clearInterval(t); relay(); code === 0 ? resolve() : reject(new Error(`cpu-lock: take failed (exit ${code})`)); });
     });
-    const relay = (d) => process.stderr.write(String(d).split(/\r?\n/).filter((l) => l.startsWith('cpu_lock:')).map((l) => l + '\n').join(''));
-    child.stdout.on('data', relay); child.stderr.on('data', relay);
-    child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`cpu-lock: take failed (exit ${code})`))));
-  });
+  } finally {
+    process.off('exit', killTaker); for (const s of sigs) process.off(s, onSig);
+    rmSync(dir, { recursive: true, force: true });
+  }
   held = true;
   process.env.CPU_LOCK_HELD = PROJECT;
   if (!hooked) {

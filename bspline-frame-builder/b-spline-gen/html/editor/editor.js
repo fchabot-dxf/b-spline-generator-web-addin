@@ -3,6 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
+import { CANVAS_NO_ROOM_CLASS, floatersHaveNoRoom } from './canvas-floaters.js';
 import { logAction } from '../core/action-log.js';
 import { pieceKindOf, applyColorOverride } from './editor-piece-override.js';
 import { initIO, save, saveSvgDownload, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
@@ -260,6 +261,9 @@ export class VectorEditor {
                 // two options (vs. docking it into the drawer header, which
                 // would need new markup there) — it reappears the instant
                 // the drawer shrinks back down, since this recomputes live.
+                canvasEl.classList.toggle(CANVAS_NO_ROOM_CLASS, floatersHaveNoRoom({
+                    drawerTop: mobileDrawerEl ? mobileDrawerEl.getBoundingClientRect().top : window.innerHeight, canvasTop: r.top,
+                    drawerFixed: !!mobileDrawerEl && getComputedStyle(mobileDrawerEl).position === 'fixed' }));
                 const pillEl = document.querySelector('.editor-history');
                 if (pillEl) {
                     const drawerTop = mobileDrawerEl ? mobileDrawerEl.getBoundingClientRect().top : window.innerHeight;
