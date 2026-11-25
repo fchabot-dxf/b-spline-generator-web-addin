@@ -33,6 +33,7 @@ describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
       lattice: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H }, // redesign phase 2: Draw's focus
       brick: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: H },
       height: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 },
+      stl: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }, // the editor layer stack's STL row
     });
   });
 

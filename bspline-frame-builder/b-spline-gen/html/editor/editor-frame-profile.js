@@ -64,6 +64,8 @@ export const EDITOR_TAB_FOCUS = Object.freeze({
   brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
   // the Height tab: the art faded as in Brick (context, not edited), bricks full, the patches in full
   height: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: 1 }),
+  // the editor layer stack's STL row (no 2D view yet): the board as context, nothing in focus
+  stl: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY, heightPatches: INACTIVE_LAYER_OPACITY }),
 });
 /** The focus of `editor`'s current tab (before any setEditorFocus: its frame / artwork mode; a tab not declared reads
  *  as Artwork). */

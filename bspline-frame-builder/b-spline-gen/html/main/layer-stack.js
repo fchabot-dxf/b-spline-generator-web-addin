@@ -22,7 +22,9 @@ import { scheduleUndoSnapshot, isEditorOpen } from '../core/history.js';
 import { placementOf } from '../core/stamp/placement.js';
 import { defaultStackKeys, effectiveOrder, editorLayerKey, isBrickLayerRecord, STACK_BRICKS_KEY } from '../core/stamp/order.js';
 import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
-import { isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer } from '../editor/layers.js';
+import { isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName } from '../editor/layers.js';
+import { patchLayers } from '../core/height/compose.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
@@ -58,6 +60,10 @@ const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
  *   enabled         { get(item), set(item, on), title }: the header's Stamp switch (absent: none)
  *   remove(item)    the header's trash (absent: none)
  *   add()           '+ Add layer': its app's existing create path; resolves to the new item's key (or null)
+ *  The EDITOR view (STACK_VIEWS.editor, Fred 2026-11-23: the editor's layer tabs became this same stack):
+ *   stackTab        the editor tab (main/editor-tabs.js EDITOR_TABS id) whose tools + settings a selected row shows
+ *   pick(item, sub) make the row the one the editor edits (its app's own active-layer / active-patch call; UI state only)
+ *   subRows(item)   its sub-layers, top first: [{ id, name, icon }] (indented fold-open rows; none = no fold)
  */
 export const LAYER_TYPES = Object.freeze({
   brick: Object.freeze({
@@ -74,6 +80,10 @@ export const LAYER_TYPES = Object.freeze({
       if (v === 'afterBack') P.brickSettings.placement = 'afterBack'; else delete P.brickSettings.placement;
       (await lazy.brickPanel()).commitBrickSetting('surface'); // a 3D-only brick setting: re-masks, no re-lay (SURFACE_ONLY_SETTING_KEYS)
     },
+    stackTab: 'brick',
+    // a part row = its layer becomes the active one (bricks land on the ACTIVE layer, item 22 slice 3)
+    pick: (_item, sub) => { const ed = editor(); if (ed && sub != null) setActiveLayer(ed, sub); },
+    subRows: (item) => item.ref.map((l) => ({ id: l.id, name: l.name || 'Bricks', icon: '▪' })).reverse(),
     // a new board's bricks start on the Wall's own layer (layers.js BRICK_KIND_LAYERS); they are laid in the Brick tab
     add() {
       const ed = editor();
@@ -89,6 +99,8 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    stackTab: 'artwork',
+    pick: (item) => { const ed = editor(); if (ed) setActiveLayer(ed, item.ref.id); },
     async add() {
       const ed = editor();
       if (!ed) return null;
@@ -104,6 +116,8 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    stackTab: 'lattice',
+    pick: (item) => { const ed = editor(); if (ed) setActiveLayer(ed, item.ref.id); },
     // a new layer holding a fresh Lattice pattern (the Lattice panel's own lazy create, editor-lattice-pattern.js freshPattern),
     // then the editor on the Lattice tab: a lattice is made by its Generate there (the Rails / Ties / Nodes layers); until it
     // runs once the layer is a plain drawing layer (layers.js isLatticeLayer: pattern.id, the panels' own signal)
@@ -111,8 +125,7 @@ export const LAYER_TYPES = Object.freeze({
       const ed = editor();
       if (!ed) return null;
       const { freshPattern } = await lazy.lattice();
-      const n = edLayers().filter((l) => l && l.pattern && l.pattern.id != null).length + 1;
-      const made = addLayer(ed, { name: `Lattice ${n}`, skipUndo: true });
+      const made = addLayer(ed, { name: typedLayerName(edLayers(), 'Lattice'), skipUndo: true }); // named by type, one past the last
       made.pattern = freshPattern(ed);
       setActiveLayer(ed, made.id);
       commitEdit(ed); // ONE undo step: the layer and its pattern
@@ -131,6 +144,10 @@ export const LAYER_TYPES = Object.freeze({
     async setPlacement(item, v) { (await lazy.heightPanel()).setHeightField('placement', v, { id: item.ref.id }); },
     enabled: { get: (item) => item.ref.enabled !== false, async set(item, on) { (await lazy.heightPanel()).setHeightEnabled(item.ref.id, on); }, title: 'Stamp this patch' },
     async select(item) { (await lazy.heightPanel()).pickHeightPatch(item.ref.id); },
+    stackTab: 'height',
+    async pick(item, sub) { const hp = await lazy.heightPanel(); hp.pickHeightPatch(item.ref.id); if (sub != null) hp.selectPatchLayer(sub); },
+    // its paint / image layers (core/height/compose.js patchLayers, bottom first): top first, as the Height panel lists them
+    subRows: (item) => patchLayers(item.ref).map((l) => ({ id: l.id, name: l.name || 'Layer', icon: l.kind === 'image' ? '🖼' : '🖌' })).reverse(),
     async add() { const rec = await (await lazy.heightPanel()).newHeightPatch(); return rec ? `height:${rec.id}` : null; },
   }),
   stl: Object.freeze({
@@ -141,6 +158,8 @@ export const LAYER_TYPES = Object.freeze({
     setPlacement: (item, v) => setStlField('placement', v, item.ref.id),
     enabled: { get: (item) => item.ref.enabled !== false, set: (item, on) => setStlEnabled(item.ref.id, on), title: 'Stamp this STL' },
     remove: (item) => removeStlLayer(item.ref.id),
+    stackTab: 'stl', // no 2D view yet (planned): its panel points to the sidebar card
+    pick: (item) => { _edStlKey = item.key; },
     // the STL add sheet; the new record arrives later (a download): it lands on 'stlLayersChanged' (_pendingAdd)
     add() { _pendingAdd = { type: 'stl', before: new Set((P.stlLayers || []).filter(Boolean).map((r) => r.id)) }; openStlAddSheet(); return null; },
   }),
@@ -318,18 +337,21 @@ async function openItemInEditor(item) {
   return openEditorTab(T.editorTab);
 }
 
-function thickenLine() {
-  const open = _openKey === THICKEN_LINE_KEY;
-  const card = el('div', { class: `panel layer-card layer-thicken-line${open ? '' : ' collapsed'}`, role: 'listitem', 'data-stack-key': THICKEN_LINE_KEY });
+/** The Thicken line. `edit`: the editor view's (its own ids; a line, not a card: no body, its settings stay in the sidebar). */
+function thickenLine({ edit = false } = {}) {
+  const open = !edit && _openKey === THICKEN_LINE_KEY;
+  const card = el('div', { class: `panel layer-card layer-thicken-line${open ? '' : ' collapsed'}${edit ? ' ed-stack-card ed-stack-line' : ''}`, role: 'listitem', 'data-stack-key': THICKEN_LINE_KEY });
   themeSectionEl(card, 'thicken');
   const head = el('div', { class: 'panel-header layer-card-head' }, [
     el('span', { class: 'layer-card-handle', title: 'Drag the line: layers above it are part of the body, below it top-only detail', 'aria-label': 'Move the Thicken line', role: 'button', text: '≡' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: SECTION_ICONS.thicken }),
-    el('button', { type: 'button', class: 'layer-card-name', id: cardNameId(THICKEN_LINE_KEY), 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open), title: 'Thicken: above the line part of the body, below it top-only detail' },
-      [el('span', { class: 'layer-card-title', text: 'Thicken' }), el('span', { class: 'layer-card-state', id: 'layerStackThickenState', text: thickenState() }),
-        el('span', { class: 'layer-card-type', text: 'above: part of the body · below: top only' })]),
+    el('button', { type: 'button', class: `layer-card-name${edit ? ' ed-stack-name' : ''}`, id: edit ? edRowId(THICKEN_LINE_KEY) : cardNameId(THICKEN_LINE_KEY),
+      ...(edit ? {} : { 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open) }), title: 'Thicken: above the line part of the body, below it top-only detail' },
+      [el('span', { class: 'layer-card-title', text: 'Thicken' }), el('span', { class: 'layer-card-state', id: edit ? 'editorLayerStackThickenState' : 'layerStackThickenState', text: thickenState() }),
+        el('span', { class: 'layer-card-type', text: edit ? '↑ body · ↓ top only' : 'above: part of the body · below: top only' })]),
   ]);
-  card.append(head, el('div', { class: 'panel-body layer-card-body', id: 'layerStackThickenBody' }));
+  card.append(head);
+  if (!edit) card.append(el('div', { class: 'panel-body layer-card-body', id: 'layerStackThickenBody' }));
   return card;
 }
 /** The open card's body gets the HOSTED blocks declared for its type / key, in their declared order. */
@@ -349,6 +371,8 @@ function hostOpen(listEl, items) {
 export const cardNameId = (key) => `layerCardName_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
 // Back 'flat' (Fred 2026-11-23): the body is solid to z = 0, the thickness is not used -- the line says so
 const thickenState = () => (!P.thickenEnabled ? 'off' : P.backMode === 'flat' ? 'flat back' : `${inches(P.thickness)} in`);
+/** Both views' Thicken line state text, from its one function. */
+const syncThickenStates = () => { for (const id of ['layerStackThickenState', 'editorLayerStackThickenState']) { const s = byId(id); if (s) s.textContent = thickenState(); } };
 
 /** Re-reads the board and rebuilds the stack (safe any time: a load, an undo, a roster change). */
 export function refreshLayerStack() {
@@ -383,7 +407,8 @@ export function refreshLayerStack() {
     }
   } finally { _rendering = false; }
   syncStlPanel(); // the STL cards' state + its settings in the open one (and the job-timeline lock back on them)
-  if (_dirty) { _dirty = false; refreshLayerStack(); }
+  if (_dirty) { _dirty = false; refreshLayerStack(); return; }
+  refreshEditorStack(); // the editor's view of the same stack
 }
 
 /** Open one card (or the Thicken line) by its key and scroll it into view: the job timeline's Back opens the line. */
@@ -413,7 +438,8 @@ function toggleItem(key) {
 // ── drag by the handle ─────────────────────────────────────────────────────────────────────────────────────────────
 const AUTOSCROLL = Object.freeze({ edgePx: 40, stepPx: 12 });
 function scrollParent(node) {
-  for (let n = node && node.parentElement; n; n = n.parentElement) {
+  // from the list itself: the editor's list scrolls on its own (past EDITOR_STACK_LAYOUTS' rows); the sidebar's has no box
+  for (let n = node; n; n = n.parentElement) {
     const s = getComputedStyle(n);
     if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return n;
   }
@@ -497,16 +523,212 @@ export async function addStackLayer(type) {
  *  its picker's ids; `inEditor` = the editor stays open and then shows the new layer's tab. */
 export const ADD_PICKERS = Object.freeze([
   Object.freeze({ grid: 'layerStackAddGrid', prefix: 'layerStackAdd_', label: '＋ Add layer', ids: Object.freeze({ wrap: 'layerStackAdd', chip: 'layerStackAddBtn' }), inEditor: false }),
-  // (the editor's own '+' -- an ADD_PICKERS entry with inEditor: true -- is on HOLD: the editor's layer UI is being decided)
+  // the editor layer stack's head (Fred 2026-11-23: '+ Add layer' in the editor with the same picker)
+  Object.freeze({ grid: 'editorLayerStackAddGrid', prefix: 'editorLayerStackAdd_', label: '＋ Add layer', ids: Object.freeze({ wrap: 'editorLayerStackAdd', chip: 'editorLayerStackAddBtn' }), inEditor: true }),
 ]);
 
-/** A picker's tile picked: THE add (addStackLayer); from the editor, the editor then shows that type's tab (it stays open;
- *  the new Draw / Lattice layer is already the active one, a new patch the Height tab's active patch). */
+/** A picker's tile picked: THE add (addStackLayer); from the editor, the new layer's row is then selected (the editor stays
+ *  open and shows its type's tools; the new Draw / Lattice layer is already the active one, a new patch the active patch). */
 export async function pickAddType(type, picker = ADD_PICKERS[0]) {
   const key = await addStackLayer(type);
-  const tab = LAYER_TYPES[type] && LAYER_TYPES[type].editorTab;
-  if (picker.inEditor && key && tab && editorUp()) await openEditorTab(tab);
+  if (picker.inEditor && key && editorUp()) await selectEditorRow(key);
   return key;
+}
+
+// ── the EDITOR view (Fred 2026-11-23) ──────────────────────────────────────────────────────────────────────────────
+/** The stack's views: ONE data (stackItems), ONE card look, ONE drag; each view its list and what a header tap does.
+ *    sidebar  tap = the card expands inline (its summary, its editor door, its HOSTED blocks)
+ *    editor   tap = the row is SELECTED: the editor shows that layer's tools + settings below the list (no card body);
+ *             a fixed, locked first row (EDITOR_FIXED_ROWS), sub-layers as indented fold-open rows (LAYER_TYPES subRows) */
+export const STACK_VIEWS = Object.freeze({
+  sidebar: Object.freeze({ list: 'layerStackList', pane: null, tap: 'expand' }),
+  editor: Object.freeze({ list: 'editorLayerStackList', pane: 'editorLayerStack', tap: 'select' }),
+});
+/** The editor view's fixed rows, above every layer: never dragged, never removed (the Frame: the board's wood frame). */
+export const EDITOR_FIXED_ROWS = Object.freeze([
+  Object.freeze({ key: 'frame', theme: 'frame', icon: SECTION_ICONS.frame, name: () => FRAME_LABELS.wood, type: 'locked', stackTab: 'frame' }),
+]);
+/** Per breakpoint (Fred 2026-11-24: "think mobile and desktop"), first match wins -- ONE component, its arrangement declared:
+ *    fold     the list folds to the selected row (tap it to unfold; picking a row folds it again)
+ *    maxRows  rows the list shows before it scrolls on its own (the settings below always scroll separately)
+ *  phone      portrait <= 600 px, or a phone held sideways (short + coarse): the drawer is the only panel -> fold
+ *  tablet     601-900 px (a tablet, a narrow desktop window): the bottom drawer, wide -> open list, fewer rows
+ *  desktop    the right-hand column: open list, ~6 rows */
+export const EDITOR_STACK_LAYOUTS = Object.freeze([
+  Object.freeze({ id: 'phone', query: '(max-width: 600px), (pointer: coarse) and (max-height: 500px)', fold: true, maxRows: 5 }),
+  Object.freeze({ id: 'tablet', query: '(max-width: 900px)', fold: false, maxRows: 4 }),
+  Object.freeze({ id: 'desktop', query: null, fold: false, maxRows: 6 }),
+]);
+const FRAME_ROW_KEY = EDITOR_FIXED_ROWS[0].key;
+let _edFolded = true;          // the phone layout's fold (UI state)
+const _edSubsOpen = new Set(); // rows whose sub-layers are folded open (the selected row's open when it is picked)
+let _edStlKey = null;          // the STL row selected (an STL has no editor state of its own yet)
+let _edMods = { tabs: null, height: null };
+const loadTabs = async () => (_edMods.tabs = _edMods.tabs || await import('./editor-tabs.js'));
+
+export function editorStackLayout() {
+  const mm = (q) => { try { return typeof matchMedia === 'function' && matchMedia(q).matches; } catch (_) { return false; } };
+  return EDITOR_STACK_LAYOUTS.find((L) => !L.query || mm(L.query)) || EDITOR_STACK_LAYOUTS[EDITOR_STACK_LAYOUTS.length - 1];
+}
+/** An editor row's id (the matrix / tests pick a row by it): edStackRow_<key>[__<sub id>], ':' as '_'. */
+export const edRowId = (key, sub = null) => `edStackRow_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}${sub != null ? `__${String(sub).replace(/[^A-Za-z0-9_-]/g, '_')}` : ''}`;
+
+/** Which row the editor is editing, DERIVED (never stored twice): the editor's tab + its active layer / active patch. */
+export function editorSelection(items = stackItems()) {
+  const tab = _edMods.tabs ? _edMods.tabs.getEditorTab() : 'artwork';
+  if (tab === 'frame') return { key: FRAME_ROW_KEY, sub: null };
+  if (tab === 'stl') return { key: _edStlKey, sub: null };
+  if (tab === 'height') {
+    const hp = _edMods.height, rec = hp && hp.activeHeightLayer(), l = hp && rec ? hp.activePatchLayer() : null;
+    return { key: rec ? `height:${rec.id}` : null, sub: l ? l.id : null };
+  }
+  const ed = editor(), id = ed ? getActiveLayer(ed) : null;
+  const l = edLayers().find((x) => x && x.id === id);
+  const bricks = items.find((i) => i.type === 'brick');
+  const inBricks = !!(l && bricks && bricks.ref.includes(l));
+  if (tab === 'brick') return { key: STACK_BRICKS_KEY, sub: inBricks ? l.id : null };
+  if (inBricks && isBrickLayerRecord(l)) return { key: STACK_BRICKS_KEY, sub: l.id };
+  return { key: l ? editorLayerKey(l) : null, sub: null };
+}
+
+/** Select a row: its type's pick (the app's own active-layer / patch call), then the editor shows its type's tab. */
+export async function selectEditorRow(key, sub = null) {
+  let tab;
+  if (key === FRAME_ROW_KEY) tab = EDITOR_FIXED_ROWS[0].stackTab;
+  else {
+    const item = stackItems().find((i) => i.key === key);
+    if (!item) return false;
+    const T = LAYER_TYPES[item.type];
+    if (T.pick) await T.pick(item, sub);
+    if (T.subRows && sub != null) _edSubsOpen.add(key);
+    tab = T.stackTab;
+  }
+  if (!tab) return false;
+  const tabs = await loadTabs();
+  if (tabs.getEditorTab() !== tab) tabs.setEditorTab(tab); else refreshEditorStack();
+  if (editorStackLayout().fold) { _edFolded = true; refreshEditorStack(); }
+  return true;
+}
+
+function fixedRow(f, sel) {
+  const selected = sel.key === f.key;
+  const card = el('div', { class: `panel layer-card ed-stack-card ed-stack-fixed${selected ? ' is-selected' : ''}`, role: 'listitem', 'data-stack-fixed': f.key });
+  themeSectionEl(card, f.theme);
+  const name = f.name();
+  card.append(el('div', { class: 'panel-header layer-card-head' }, [
+    el('span', { class: 'layer-card-handle ed-stack-lock', title: 'The frame is always the first layer', 'aria-label': 'Locked first', text: '🔒' }),
+    el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: f.icon }),
+    el('button', { type: 'button', class: 'layer-card-name ed-stack-name', id: edRowId(f.key), 'data-ed-select': f.key, 'aria-pressed': String(selected), title: `${name} (always first)` },
+      [el('span', { class: 'layer-card-title', text: name }), el('span', { class: 'layer-card-type', text: f.type })]),
+    el('span', { class: 'ed-stack-unfold', 'aria-hidden': 'true', text: '▾' }),
+  ]));
+  return card;
+}
+
+function editorCard(item, after, sel) {
+  const T = LAYER_TYPES[item.type];
+  const selected = sel.key === item.key;
+  const subs = T.subRows ? T.subRows(item) : [];
+  const open = subs.length > 0 && _edSubsOpen.has(item.key);
+  const card = el('div', { class: `panel layer-card ed-stack-card${selected ? ' is-selected' : ''}${after ? ' layer-card-after' : ''}${open ? ' subs-open' : ''}${selected && sel.sub != null ? ' sub-selected' : ''}`,
+    role: 'listitem', 'data-stack-key': item.key, 'data-stack-type': item.type });
+  themeSectionEl(card, T.theme);
+  const name = T.name(item);
+  const head = el('div', { class: 'panel-header layer-card-head' }, [
+    el('span', { class: 'layer-card-handle', title: 'Drag to move (stamp order; across the Thicken line: body or top only)', 'aria-label': `Move ${name}`, role: 'button', text: '≡' }),
+    el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: T.icon }),
+    T.enabled ? el('input', { type: 'checkbox', class: 'layer-card-enable', title: T.enabled.title, 'aria-label': T.enabled.title }) : null,
+    subs.length ? el('button', { type: 'button', class: 'ed-stack-caret', 'data-ed-caret': item.key, 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Unfold'} the layers of ${name}`, text: open ? '▾' : '▸' }) : null,
+    el('button', { type: 'button', class: 'layer-card-name ed-stack-name', id: edRowId(item.key), 'data-ed-select': item.key, 'aria-pressed': String(selected && sel.sub == null), title: `${name} — ${T.label}${after ? ', top only' : ''}` },
+      // a new layer's name says its type (typedLayerName) and its icon + colour do too: the type line only for 'top only'
+      [el('span', { class: 'layer-card-title', text: name }), after ? el('span', { class: 'layer-card-type', text: 'top only' }) : null]),
+    el('span', { class: 'ed-stack-unfold', 'aria-hidden': 'true', text: '▾' }),
+  ]);
+  const box = head.querySelector('.layer-card-enable');
+  if (box) box.checked = !!T.enabled.get(item);
+  card.append(head);
+  if (subs.length) {
+    const list = el('div', { class: 'ed-stack-subs', role: 'group', 'aria-label': `Layers of ${name}` });
+    for (const s of subs) {
+      const on = selected && sel.sub != null && String(sel.sub) === String(s.id);
+      list.appendChild(el('button', { type: 'button', class: `ed-stack-sub${on ? ' is-selected' : ''}`, id: edRowId(item.key, s.id), 'data-ed-select': item.key, 'data-ed-sub': s.id, 'aria-pressed': String(on), title: s.name },
+        [el('span', { class: 'ed-stack-sub-icon', 'aria-hidden': 'true', text: s.icon }), el('span', { class: 'ed-stack-sub-name', text: s.name })]));
+    }
+    card.append(list);
+  }
+  return card;
+}
+
+/** Re-reads the board and rebuilds the editor's list (its rows hold no hosted fields: a rebuild is always safe). */
+export function refreshEditorStack() {
+  const listEl = byId(STACK_VIEWS.editor.list), pane = byId(STACK_VIEWS.editor.pane);
+  if (!listEl || _drag) return;
+  const items = stackItems();
+  const sel = editorSelection(items);
+  if (sel.key && sel.sub != null) _edSubsOpen.add(sel.key);
+  const L = editorStackLayout();
+  const folded = L.fold && _edFolded && !!sel.key;
+  const scroll = listEl.scrollTop;
+  listEl.innerHTML = '';
+  for (const f of EDITOR_FIXED_ROWS) listEl.appendChild(fixedRow(f, sel));
+  for (const i of items) if (itemPlacement(i) !== 'afterBack') listEl.appendChild(editorCard(i, false, sel));
+  listEl.appendChild(thickenLine({ edit: true }));
+  for (const i of items) if (itemPlacement(i) === 'afterBack') listEl.appendChild(editorCard(i, true, sel));
+  listEl.scrollTop = scroll;
+  if (pane) {
+    pane.classList.toggle('is-folded', folded);
+    pane.classList.toggle('can-fold', L.fold && !folded);
+    pane.dataset.layout = L.id;
+    pane.style.setProperty('--ed-stack-max-rows', String(L.maxRows));
+  }
+  const count = byId('editorLayerStackCount');
+  if (count) count.textContent = `${items.length + EDITOR_FIXED_ROWS.length}`;
+  const stl = sel.key && sel.key.startsWith('stl:') ? items.find((i) => i.key === sel.key) : null;
+  const stlName = byId('editorStlName');
+  if (stlName) stlName.textContent = stl ? LAYER_TYPES.stl.name(stl) : '';
+  // the selected row in view (a long list scrolls to it)
+  const row = sel.key ? byId(edRowId(sel.key, sel.sub)) || byId(edRowId(sel.key)) : null;
+  if (row && !folded && typeof row.scrollIntoView === 'function' && listEl.scrollHeight > listEl.clientHeight) {
+    const r = row.getBoundingClientRect(), b = listEl.getBoundingClientRect();
+    if (r.top < b.top || r.bottom > b.bottom) listEl.scrollTop += r.top < b.top ? r.top - b.top : r.bottom - b.bottom;
+  }
+}
+
+let _edDocWired = false;
+const _edWiredLists = new WeakSet();
+function initEditorStack() {
+  const listEl = byId(STACK_VIEWS.editor.list);
+  if (!listEl || _edWiredLists.has(listEl)) return false;
+  _edWiredLists.add(listEl);
+  loadTabs().then(() => refreshEditorStack(), () => {});
+  lazy.heightPanel().then((m) => { _edMods.height = m; refreshEditorStack(); }, () => {});
+  listEl.addEventListener('pointerdown', (e) => { const h = e.target.closest('.layer-card-handle'); if (h && !h.classList.contains('ed-stack-lock')) startDrag(e, h); });
+  listEl.addEventListener('click', (e) => {
+    const caret = e.target.closest('[data-ed-caret]');
+    if (caret) { const k = caret.dataset.edCaret; if (_edSubsOpen.has(k)) _edSubsOpen.delete(k); else _edSubsOpen.add(k); refreshEditorStack(); return; }
+    const row = e.target.closest('[data-ed-select]');
+    if (!row) return;
+    const key = row.dataset.edSelect, sub = row.dataset.edSub != null ? row.dataset.edSub : null;
+    const L = editorStackLayout(), sel = editorSelection();
+    const same = sel.key === key && String(sel.sub ?? '') === String(sub ?? '');
+    // the phone: a tap on the folded list unfolds it; a tap on the selected row folds it back (picking another row folds too)
+    if (L.fold && byId(STACK_VIEWS.editor.pane)?.classList.contains('is-folded')) { _edFolded = false; refreshEditorStack(); return; }
+    if (L.fold && same) { _edFolded = true; refreshEditorStack(); return; }
+    selectEditorRow(key, sub);
+  });
+  listEl.addEventListener('change', (e) => {
+    const box = e.target.closest('.layer-card-enable');
+    if (!box) return;
+    const item = stackItems().find((i) => i.key === box.closest('[data-stack-key]').dataset.stackKey);
+    if (item && LAYER_TYPES[item.type].enabled) LAYER_TYPES[item.type].enabled.set(item, box.checked);
+  });
+  byId('editorLayerStackFold')?.addEventListener('click', () => { _edFolded = true; refreshEditorStack(); });
+  if (typeof document !== 'undefined' && !_edDocWired) {
+    _edDocWired = true;
+    document.addEventListener('editorTabChanged', () => refreshEditorStack());
+    if (typeof matchMedia === 'function') for (const L of EDITOR_STACK_LAYOUTS) if (L.query) { try { matchMedia(L.query).addEventListener('change', () => refreshEditorStack()); } catch (_) { /* old engines */ } }
+  }
+  return true;
 }
 
 function renderAddPickers() {
@@ -549,8 +771,9 @@ export function initLayerStack(hooks = {}) {
     const item = stackItems().find((i) => i.key === box.closest('[data-stack-key]').dataset.stackKey);
     if (item && LAYER_TYPES[item.type].enabled) LAYER_TYPES[item.type].enabled.set(item, box.checked);
   });
+  initEditorStack();
   const t = byId('thickenSettings');
-  if (t) for (const ev of ['input', 'change']) t.addEventListener(ev, () => { const s = byId('layerStackThickenState'); if (s) s.textContent = thickenState(); });
+  if (t) for (const ev of ['input', 'change']) t.addEventListener(ev, () => syncThickenStates());
   if (!_docWired && typeof document !== 'undefined') {
     _docWired = true;
     const refresh = () => refreshLayerStack();
@@ -559,7 +782,7 @@ export function initLayerStack(hooks = {}) {
     for (const ev of ['editorLayersChanged', 'stlLayersChanged', LAYER_STACK_STALE, 'brickSettingsRestored', 'editorCommit', 'stampTargetChanged', 'editorModeChanged']) document.addEventListener(ev, refresh);
     document.addEventListener('stlCardOpened', () => { _openKey = null; refreshLayerStack(); });
     // the Thicken settings written without a tap in their panel (an undo, a load, a pull): the label from its one function
-    document.addEventListener(THICKEN_SETTINGS_SYNCED, () => { const s = byId('layerStackThickenState'); if (s) s.textContent = thickenState(); });
+    document.addEventListener(THICKEN_SETTINGS_SYNCED, () => syncThickenStates());
     document.addEventListener('stlLayersChanged', () => {
       if (!_pendingAdd || _pendingAdd.type !== 'stl') return;
       const fresh = (P.stlLayers || []).filter((r) => r && !_pendingAdd.before.has(r.id));
@@ -575,4 +798,7 @@ export function initLayerStack(hooks = {}) {
 let _docWired = false;
 
 /** Tests: forget the UI state. */
-export function _resetLayerStackForTests() { _lastSig = null; _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} }; }
+export function _resetLayerStackForTests() {
+  _lastSig = null; _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} };
+  _edFolded = true; _edSubsOpen.clear(); _edStlKey = null;
+}

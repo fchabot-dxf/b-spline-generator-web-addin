@@ -351,10 +351,21 @@ function _nextLayerId(editor) {
   return String(editor._nextLayerId++);
 }
 
+/** EDITOR LAYER STACK (Fred 2026-11-23): a NEW layer is named by its TYPE -- 'Draw 1', 'Draw 2', ... (a first drawing
+ *  on a board with a Wall and a Frame part was 'Layer 3'). The type's name for a plain drawing layer (main/layer-stack.js
+ *  LAYER_TYPES draw.label); a saved layer keeps the name it has (only a new one is named here). */
+export const NEW_LAYER_TYPE_NAME = 'Draw';
+/** Pure: '<type> N' with N one past the highest '<type> N' already in `layers` (never reuses a number on screen). */
+export function typedLayerName(layers, type = NEW_LAYER_TYPE_NAME) {
+  const re = new RegExp(`^${type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
+  const top = (Array.isArray(layers) ? layers : []).reduce((m, l) => { const k = re.exec((l && l.name) || ''); return k ? Math.max(m, Number(k[1])) : m; }, 0);
+  return `${type} ${top + 1}`;
+}
+
 export function addLayer(editor, opts = {}) {
   if (!Array.isArray(editor._layers)) editor._layers = [];
   const id = opts.id != null ? String(opts.id) : _nextLayerId(editor);
-  const name = opts.name || `Layer ${editor._layers.length + 1}`;
+  const name = opts.name || typedLayerName(editor._layers);
   const visible = opts.visible !== false;
   // Build the layer with identity fields first, then layer-in any
   // caller-supplied tooling overrides, then fill in unspecified tooling

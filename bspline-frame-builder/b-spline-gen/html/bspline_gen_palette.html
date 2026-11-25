@@ -1972,6 +1972,21 @@
           <!-- Wraps the body so BOTH orientations share one always-column-internally content block -- the drawer
                itself flips row/column (styles/editor.css), this wrapper never needs to. -->
           <div id="editorDrawerContent">
+          <!-- EDITOR LAYER STACK (Fred 2026-11-23): the board's layers as ONE vertical list ABOVE the selected layer's
+               settings -- the same component and data as the sidebar's LAYERS (main/layer-stack.js STACK_VIEWS 'editor').
+               Selecting a row switches the editor's tools to that layer's type (the tab strip above is retired from view;
+               its buttons stay for ids). The list sizes to its content and scrolls on its own past its declared row count
+               (EDITOR_STACK_LAYOUTS); the settings below (#editorDrawerBody) scroll separately. Phone: the list folds to the
+               selected row. -->
+          <div id="editorLayerStack" class="ed-stack">
+            <div class="ed-stack-head">
+              <span class="ed-stack-title">Layers</span>
+              <span id="editorLayerStackCount" class="layer-stack-count"></span>
+              <div id="editorLayerStackAddGrid" class="layer-stack-add-grid"></div>
+              <button type="button" id="editorLayerStackFold" class="ed-stack-fold" title="Fold the list to the selected layer" aria-label="Fold the layer list">▴</button>
+            </div>
+            <div id="editorLayerStackList" class="layer-stack ed-stack-list" role="list"></div>
+          </div>
           <div id="editorDrawerBody" class="editor-drawer-body">
         <!-- Lattice Pattern Panel (SE7b) — lives inside the modal, above
              Layers, so it sits next to the canvas it acts on. Shown only
@@ -2802,6 +2817,16 @@
               </div>
             </div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
+          </div>
+        </aside>
+
+        <!-- EDITOR LAYER STACK: an STL row's settings (main/editor-tabs.js EDITOR_TABS 'stl', no tab button). Its 2D placement
+             (top-view footprint, move / scale / rotate) is planned, not built: for now it points to the sidebar card. -->
+        <aside class="editor-layers-panel" id="editorStlPanel" style="display:none;">
+          <div class="layers-header"><span>STL relief</span></div>
+          <div style="padding:10px; display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div id="editorStlName" style="font-weight:700;"></div>
+            <div id="editorStlNote" style="color:#666;">Edit in the sidebar card (Layers). Placing an STL on the board here (move, scale, rotate) comes later.</div>
           </div>
         </aside>
 

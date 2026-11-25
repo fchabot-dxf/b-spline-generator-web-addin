@@ -409,8 +409,11 @@ export function pickHeightPatch(id) {
   _active = id;
   syncHeightPanel();
   syncHeightOverlay();
+  selectionChanged();
   return true;
 }
+/** The editor layer stack (main/layer-stack.js) shows the patch / paint layer the tools edit: tell it the pick changed. */
+const selectionChanged = () => { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('layerStackStale')); };
 
 // ── the layers of a patch (slice 2; core/height/compose.js) ─────────────────────────────────────────────────────────
 /** The layer of patch `rec` the tools edit: the selected one, else the TOP layer (a slice-1 record: its one 'base'). */
@@ -1287,6 +1290,7 @@ export function selectPatchLayer(layerId) {
   _activeLayer.set(rec.id, layerId);
   syncHeightPanel();
   syncHeightOverlay();
+  selectionChanged();
   return true;
 }
 /** One field of a layer of the active patch (`path`: a key or a key path, e.g. ['mapping', 'whiteIn']). `commit` false =
