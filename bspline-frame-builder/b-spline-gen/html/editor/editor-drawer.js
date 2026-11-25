@@ -30,6 +30,8 @@ export const TOOL_PANELS = {
 };
 
 export const DRAWER_SNAP_STATES = ['peek', 'half', 'full'];
+/** The editor layer stack's folded phone list was opened (main/layer-stack.js): the drawer makes room for it. */
+export const STACK_UNFOLDED_EVENT = 'editorLayerStackUnfolded';
 const DRAWER_HEIGHT_STORAGE_KEY = 'bspline.editor.drawerHeightPx';
 
 /** Peek is a fixed px height (the dispatch's own "~96px: essentials
@@ -244,12 +246,28 @@ export function initDrawer(editor) {
   const drawerBody = el('editorDrawerBody');
   if (drawerBody && typeof MutationObserver !== 'undefined') {
     let queued = false;
-    new MutationObserver(() => {
+    const mo = new MutationObserver(() => {
       if (queued) return;
       queued = true;
       requestAnimationFrame(() => { queued = false; resnapPeek(); });
-    }).observe(drawerBody, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
+    });
+    mo.observe(drawerBody, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
+    // the editor layer stack heads the drawer (a peek essential, main/editor-tabs.js SHARED_PEEK_ESSENTIALS): its list
+    // unfolding / folding or gaining rows changes its height -- a drawer at peek grows with it (measured: unfolded at peek,
+    // the rows below the screen edge could not be tapped)
+    const stack = el('editorLayerStack');
+    if (stack) mo.observe(stack, { attributes: true, attributeFilter: ['style', 'class'], childList: true, subtree: true });
   }
+  // the phone's folded layer list opened by a tap: a drawer too low to show it whole rises to half (full if half is not
+  // enough) -- measured: below the screen edge its rows could not be tapped
+  document.addEventListener(STACK_UNFOLDED_EVENT, () => requestAnimationFrame(() => {
+    const stack = el('editorLayerStack');
+    if (!stack || isLandscapeMode() || drawer.classList.contains('is-dragging')) return;
+    const r = stack.getBoundingClientRect();
+    if (r.bottom <= window.innerHeight + 0.5) return;
+    const need = r.height + handle.offsetHeight + 8;
+    splitter.snapTo(need <= drawerHeightPx('half', window.innerHeight) ? 'half' : 'full');
+  }));
 
   // MOB4: landscape phone's own side-column splitter — a SECOND
   // makeSplitter instance on the SAME drawer element, driving `width`

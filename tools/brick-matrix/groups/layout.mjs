@@ -513,7 +513,8 @@ async function runPageZoom() {
   for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await previewRows(vp);
   await openBrickTab(); // opens the editor
-  const armed = (await go('row:draw', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  const drawRow = await go('row:draw', 900); // a Draw layer's row in the stack (real input)
+  const armed = drawRow === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
   for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await js(`(async () => { try { localStorage.removeItem(${JSON.stringify(T.legacyKey)}); } catch (_) {} document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300)); return 1; })()`);
   await pinchRow('a pinch on the drawing zooms the drawing, not the page', '#editorSVGContainer', { drawing: true });
@@ -524,7 +525,7 @@ async function runPageZoom() {
   const s1 = await jsJSON(VIEW_STATE), drew = s1.sketch - s0.sketch;
   const ok = armed && drew === 1 && !tip.text && tip.ids.length === 0;
   checkRow('layout', `Expand tip removed (${vp.name}, touch): no tip after the first stroke`, ok,
-    `${armed ? '' : 'Draw tool not armed; '}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
+    `${armed ? '' : `Draw tool not armed (Draw row: ${drawRow}); `}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
   if (!ok) await shot('FAIL_expand_tip_after_stroke');
   await pinchRow('a pinch where the Expand tip sat zooms the drawing, not the page', '#editorSVGContainer', { drawing: true, area: T.formerArea });
   await send('Emulation.setEmulatedMedia', { features: [] });

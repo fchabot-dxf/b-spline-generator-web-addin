@@ -141,8 +141,12 @@ describe('per breakpoint: the phone folds the list to the selected row', () => {
     await selectEditorRow('layer:0');
     expect($('editorLayerStack').classList.contains('is-folded')).toBe(true);
     expect($('editorLayerStack').dataset.layout).toBe('phone');
+    const unfolded = vi.fn();
+    document.addEventListener('editorLayerStackUnfolded', unfolded); // editor-drawer.js STACK_UNFOLDED_EVENT: the drawer makes room
     $(edRowId('layer:0')).click();
     expect($('editorLayerStack').classList.contains('is-folded')).toBe(false);
+    expect(unfolded).toHaveBeenCalledTimes(1);
+    document.removeEventListener('editorLayerStackUnfolded', unfolded);
     _resetLayerStackForTests();
     mount();
     await selectEditorRow('layer:0');

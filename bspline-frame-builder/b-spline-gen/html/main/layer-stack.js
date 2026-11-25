@@ -29,6 +29,7 @@ import {
 import { patchLayers } from '../core/height/compose.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
 import { EDITOR_MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
+import { STACK_UNFOLDED_EVENT } from '../editor/editor-drawer.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
@@ -856,7 +857,11 @@ function initEditorStack() {
     const L = editorStackLayout(), sel = editorSelection();
     const same = sel.key === key && String(sel.sub ?? '') === String(sub ?? '');
     // the phone: a tap on the folded list unfolds it; a tap on the selected row folds it back (picking another row folds too)
-    if (L.fold && byId(STACK_VIEWS.editor.pane)?.classList.contains('is-folded')) { _edFolded = false; refreshEditorStack(); return; }
+    if (L.fold && byId(STACK_VIEWS.editor.pane)?.classList.contains('is-folded')) {
+      _edFolded = false; refreshEditorStack();
+      document.dispatchEvent(new CustomEvent(STACK_UNFOLDED_EVENT)); // the drawer makes room for the whole list
+      return;
+    }
     if (L.fold && same) { _edFolded = true; refreshEditorStack(); return; }
     selectEditorRow(key, sub);
   });
