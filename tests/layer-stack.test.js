@@ -164,7 +164,8 @@ describe('the stack: every layer a card in stamp order, split by the Thicken lin
     mount();
     expect(stackSequence()).toEqual(['layer:0', 'layer:1', 'layer:2', 'bricks', 'layer:5', 'stl:s1', 'height:h1', THICKEN_LINE_KEY, 'stl:s2']);
     expect(P.layerOrder).toBeNull(); // nothing written by showing it
-    expect(cards().map((c) => c.dataset.stackType || 'line')).toEqual(['draw', 'lattice', 'lattice', 'brick', 'draw', 'stl', 'height', 'line', 'stl']);
+    // the display reads like the piece (STACK_DISPLAY, Fred 2026-11-25): the stamp order reversed, top-only detail on top
+    expect(cards().map((c) => c.dataset.stackType || 'line')).toEqual(['stl', 'line', 'height', 'stl', 'draw', 'brick', 'lattice', 'lattice', 'draw']);
     for (const [type, T] of Object.entries(LAYER_TYPES)) {
       expect(SECTION_THEMES[T.theme], type).toBeTruthy();
       expect(T.icon, type).toBeTruthy();
@@ -209,13 +210,13 @@ describe('the stack: every layer a card in stamp order, split by the Thicken lin
 describe('reorder by the handle; the Thicken line splits body / top only', () => {
   const pe = (el, type, clientY, pointerType = 'touch') => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType, button: 0, clientX: 5, clientY }));
   const layout = () => cards().forEach((c, i) => { c.getBoundingClientRect = () => ({ top: i * 40, bottom: i * 40 + 40, height: 40, left: 0, right: 300, width: 300 }); });
-  it('a touch drag of a Draw card below the line (handle only) writes its placement; a pure crossing writes no order', async () => {
+  it('a touch drag of a Draw card ABOVE the line (handle only; STACK_DISPLAY: above = top only) writes its placement; a pure crossing writes no order', async () => {
     mount();
     layout();
-    const h = card('layer:0').querySelector('.layer-card-handle');
-    pe(h, 'pointerdown', 10);
-    pe(h, 'pointermove', 8 * 40 + 10); // just past the Thicken line (index 7): above the Rose card's middle
-    pe(h, 'pointerup', 8 * 40 + 10);
+    const h = card('layer:0').querySelector('.layer-card-handle'); // the bottom row (STACK_DISPLAY: stamped first)
+    pe(h, 'pointerdown', 8 * 40 + 10);
+    pe(h, 'pointermove', 1 * 40 + 10); // just ABOVE the Thicken line (row 1), under Rose: top-only
+    pe(h, 'pointerup', 1 * 40 + 10);
     await new Promise((r) => setTimeout(r, 0));
     expect(window.svgEditor._layers[0].placement).toBe('afterBack');
     expect(P.layerOrder).toBeNull(); // Lines stays first among the top-only layers: no order to write

@@ -1,8 +1,9 @@
 /**
  * main/layer-stack.js -- the unified LAYER STACK, step 1 (Fred 2026-11-23; memory project_layer_stack_design, the clickable
- * mockup mock-layer-stack.html): the main panel's LAYERS section lists every layer of the board as a card, in STAMP ORDER
- * (top = stamped first), split by the THICKEN LINE -- above it a layer is part of the body (the back follows it,
- * 'withSurface'), below it only the top carries it ('afterBack', core/stamp/placement.js).
+ * mockup mock-layer-stack.html): the main panel's LAYERS section lists every layer of the board as a card, READ LIKE THE
+ * PIECE (Fred 2026-11-25, STACK_DISPLAY: the top row is stamped LAST and drawn on top; the display is the stamp order
+ * reversed), split by the THICKEN LINE -- below it a layer is part of the body (the back follows it, 'withSurface'),
+ * above it only the top carries it ('afterBack', core/stamp/placement.js).
  *
  *   - The cards are the sidebar's own panel cards (.panel + .panel-header + .panel-body, tinted by SECTION_THEMES through
  *     section-themes.js themeSectionEl): a fold-open header with the type's icon and colour, several per type.
@@ -193,6 +194,15 @@ export const HOSTED = Object.freeze([
 /** The editor modal is up (core/history.js isEditorOpen): an editorHome block stays in the editor then. */
 const editorUp = () => { try { return !!isEditorOpen(); } catch (_) { return false; } };
 
+/** The stack READS LIKE THE PIECE (Fred 2026-11-25), in the sidebar and the editor alike: the top row is stamped LAST and
+ *  drawn on top in 2D; the bottom is closest to the body. Above the Thicken line: top-only detail ('afterBack'); below it:
+ *  part of the body ('withSurface'); the Frame (the editor's fixed row) is the base, at the very bottom. DISPLAY ONLY: the
+ *  stored stamp order (P.layerOrder, the editor roster) and every placement are what they were -- the rows are drawn in
+ *  reverse, and a drop is read back in stamp order (stackSequence). */
+export const STACK_DISPLAY = Object.freeze({ topRow: 'stampedLast', aboveLine: 'afterBack', belowLine: 'withSurface', fixedRows: 'bottom' });
+/** One side's items in display order (top row first): that side's stamp order, reversed. */
+const displayOrder = (items, side) => items.filter((i) => (itemPlacement(i) === 'afterBack') === (side === 'afterBack')).reverse();
+
 // ── the items ──────────────────────────────────────────────────────────────────────────────────────────────────────
 /** Pure-ish: every layer of the board as { key, type, ref } in STACK ORDER (core/stamp/order.js effectiveOrder): editor
  *  layers (Draw / Lattice; every brick layer is the ONE Brick item, ref = its layers), STL records, height patches. */
@@ -249,7 +259,8 @@ export async function applyStackDrop(seq) {
   return { order, moved };
 }
 
-/** Pure: the editor roster (bottom of the drawing first) for stack `keys` (top first): the stack reversed, each key's own
+/** Pure: the editor roster (bottom of the drawing first) for the stamp order `keys` (stamped first first): the same order --
+ *  the last stamped draws on top, the top row of the stack (STACK_DISPLAY reversed) -- each key's own
  *  layers (the Bricks item = every brick layer, in its roster order) in their place; a layer the stack does not list keeps
  *  its place at the bottom. null = the roster is already in that order. */
 export function drawOrderForStack(keys, layers) {
@@ -257,7 +268,7 @@ export function drawOrderForStack(keys, layers) {
   const groups = new Map();
   for (const l of list) { const k = editorLayerKey(l); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
   const top = [];
-  for (const k of [...keys].reverse()) { const g = groups.get(k); if (g) { top.push(...g); groups.delete(k); } }
+  for (const k of keys) { const g = groups.get(k); if (g) { top.push(...g); groups.delete(k); } }
   const next = [...list.filter((l) => !top.includes(l)), ...top];
   return next.length === list.length && next.every((l, i) => l === list[i]) ? null : next;
 }
@@ -287,7 +298,8 @@ registerUndoPart('layerOrder', {
   },
 });
 
-/** A new layer lands just ABOVE the Thicken line: when it is not already the last layer above it, the stack's order is
+/** A new layer lands at the top of the BODY side -- on screen just BELOW the Thicken line (STACK_DISPLAY; its stored
+ *  placement is today's 'withSurface'): when it is not already the last stamped of that side, the stack's order is
  *  written with it there (the user placed it by adding it). Already there: nothing is written. */
 export function landAboveLine(key) {
   const items = stackItems();
@@ -392,12 +404,12 @@ function thickenLine({ edit = false } = {}) {
   const card = el('div', { class: `panel layer-card layer-thicken-line${open ? '' : ' collapsed'}${edit ? ' ed-stack-card ed-stack-line' : ''}`, role: 'listitem', 'data-stack-key': THICKEN_LINE_KEY });
   themeSectionEl(card, 'thicken');
   const head = el('div', { class: 'panel-header layer-card-head' }, [
-    el('span', { class: 'layer-card-handle', title: 'Drag the line: layers above it are part of the body, below it top-only detail', 'aria-label': 'Move the Thicken line', role: 'button', text: '≡' }),
+    el('span', { class: 'layer-card-handle', title: 'Drag the line: layers below it are part of the body, above it top-only detail', 'aria-label': 'Move the Thicken line', role: 'button', text: '≡' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: SECTION_ICONS.thicken }),
     el('button', { type: 'button', class: `layer-card-name${edit ? ' ed-stack-name' : ''}`, id: edit ? edRowId(THICKEN_LINE_KEY) : cardNameId(THICKEN_LINE_KEY),
-      ...(edit ? {} : { 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open) }), title: 'Thicken: above the line part of the body, below it top-only detail' },
+      ...(edit ? {} : { 'data-stack-open': THICKEN_LINE_KEY, 'aria-expanded': String(open) }), title: 'Thicken: below the line part of the body, above it top-only detail' },
       [el('span', { class: 'layer-card-title', text: 'Thicken' }), el('span', { class: 'layer-card-state', id: edit ? 'editorLayerStackThickenState' : 'layerStackThickenState', text: thickenState() }),
-        el('span', { class: 'layer-card-type', text: edit ? '↑ body · ↓ top only' : 'above: part of the body · below: top only' })]),
+        el('span', { class: 'layer-card-type', text: edit ? '↓ body · ↑ top only' : 'below: part of the body · above: top only' })]),
   ]);
   card.append(head);
   if (!edit) card.append(el('div', { class: 'panel-body layer-card-body', id: 'layerStackThickenBody' }));
@@ -447,9 +459,11 @@ export function refreshLayerStack() {
       _lastSig = sig;
       parkHosted();
       listEl.innerHTML = '';
-      for (const i of items) if (itemPlacement(i) !== 'afterBack') listEl.appendChild(cardFor(i, false));
+      // read like the piece (STACK_DISPLAY): the top-only detail on top, then the line, then the body; each side's
+      // order reversed -- the top row is stamped LAST
+      for (const i of displayOrder(items, 'afterBack')) listEl.appendChild(cardFor(i, true));
       listEl.appendChild(thickenLine());
-      for (const i of items) if (itemPlacement(i) === 'afterBack') listEl.appendChild(cardFor(i, true));
+      for (const i of displayOrder(items, 'withSurface')) listEl.appendChild(cardFor(i, false));
       hostOpen(listEl, items);
       const sum = byId('layerStackSummary');
       if (sum) sum.textContent = `${items.length} layer${items.length === 1 ? '' : 's'}`;
@@ -495,13 +509,15 @@ function scrollParent(node) {
   return null;
 }
 function paintSides(listEl) {
-  let after = false;
+  let after = true; // above the line (STACK_DISPLAY): top-only detail
   for (const c of listEl.children) {
-    if (c.dataset.stackKey === THICKEN_LINE_KEY) { after = true; continue; }
-    c.classList.toggle('layer-card-after', after);
+    if (c.dataset.stackKey === THICKEN_LINE_KEY) { after = false; continue; }
+    if (c.dataset.stackKey) c.classList.toggle('layer-card-after', after);
   }
 }
-export const stackSequence = (listEl = byId('layerStackList')) => (listEl ? [...listEl.children].map((c) => c.dataset.stackKey).filter(Boolean) : []);
+/** The stack's keys in STAMP ORDER (stamped first first, the Thicken line between the sides), read from a list on screen:
+ *  its rows bottom to top (STACK_DISPLAY: the display is the stamp order reversed). */
+export const stackSequence = (listEl = byId('layerStackList')) => (listEl ? [...listEl.children].map((c) => c.dataset.stackKey).filter(Boolean).reverse() : []);
 
 function startDrag(e, handle) {
   if (e.button !== undefined && e.button !== 0) return;
@@ -529,6 +545,7 @@ function startDrag(e, handle) {
       const r = c.getBoundingClientRect();
       if (ev.clientY < r.top + r.height / 2) { before = c; break; }
     }
+    if (!before) before = listEl.querySelector(':scope > [data-stack-fixed]'); // a fixed row (the Frame, the base) stays last
     if (before !== card.nextElementSibling && before !== card) { listEl.insertBefore(card, before); paintSides(listEl); }
   };
   // the moves / the release are read on the DOCUMENT: the card moves in the list while it is dragged, and a moved element
@@ -849,10 +866,10 @@ export function refreshEditorStack() {
   const folded = L.fold && _edFolded && !!sel.key;
   const scroll = listEl.scrollTop;
   listEl.innerHTML = '';
-  for (const f of EDITOR_FIXED_ROWS) listEl.appendChild(fixedRow(f, sel));
-  for (const i of items) if (itemPlacement(i) !== 'afterBack') listEl.appendChild(editorCard(i, false, sel));
+  for (const i of displayOrder(items, 'afterBack')) listEl.appendChild(editorCard(i, true, sel));
   listEl.appendChild(thickenLine({ edit: true }));
-  for (const i of items) if (itemPlacement(i) === 'afterBack') listEl.appendChild(editorCard(i, true, sel));
+  for (const i of displayOrder(items, 'withSurface')) listEl.appendChild(editorCard(i, false, sel));
+  for (const f of EDITOR_FIXED_ROWS) listEl.appendChild(fixedRow(f, sel)); // the Frame: the base, at the bottom
   listEl.scrollTop = scroll;
   if (pane) {
     pane.classList.toggle('is-folded', folded);

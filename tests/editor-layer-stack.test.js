@@ -19,6 +19,7 @@ import {
   initLayerStack, stackSequence, STACK_VIEWS, EDITOR_FIXED_ROWS, EDITOR_STACK_LAYOUTS, ADD_PICKERS, LAYER_ADD_TYPES, LAYER_TYPES,
   selectEditorRow, editorSelection, refreshEditorStack, edRowId, THICKEN_LINE_KEY, _resetLayerStackForTests,
   EDITOR_ROW_MENU, EDITOR_ROW_EYE, rowSubject, rowMenuItems, openRowMenu, stackItems, applyStackDrop, drawOrderForStack,
+  STACK_DISPLAY, refreshLayerStack, addStackLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/main/layer-stack.js';
 import { EDITOR_TABS, getEditorTab, setEditorTab, SHARED_PEEK_ESSENTIALS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 import { typedLayerName, addLayer, isUserLocked, syncLayerZOrder } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
@@ -81,13 +82,13 @@ describe('the palette: the stack above the selected layer\'s settings; the tab s
   });
 });
 
-describe('the editor view: one data with the sidebar, a locked Frame row first', () => {
-  it('the same keys in the same order as the sidebar\'s cards, the Frame row first (never draggable, no stack key)', () => {
+describe('the editor view: one data with the sidebar, a locked Frame row (the base, last)', () => {
+  it('the same keys in the same order as the sidebar\'s cards, the Frame row last (never draggable, no stack key)', () => {
     mount();
     expect(STACK_VIEWS.editor.list).toBe('editorLayerStackList');
     expect(stackSequence($('editorLayerStackList'))).toEqual(stackSequence($('layerStackList')));
     expect(stackSequence($('editorLayerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]);
-    const first = rows()[0];
+    const first = rows().at(-1); // the Frame: the base, at the bottom (STACK_DISPLAY)
     expect(first.dataset.stackFixed).toBe(EDITOR_FIXED_ROWS[0].key);
     expect(first.dataset.stackKey).toBeUndefined();
     expect(first.querySelector('.ed-stack-lock')).toBeTruthy();
@@ -255,7 +256,7 @@ describe('phase 2: every row keeps its EYE; the old Layers row\'s other controls
   });
 });
 
-describe('ONE order everywhere (Fred 2026-11-25): a stack drag sets the stamp order AND the 2D drawing order', () => {
+describe('the stack READS LIKE THE PIECE (Fred 2026-11-25): top row = stamped last + drawn on top; below the line = the body', () => {
   // an editor with a real drawing: two Draw layers' nodes, in the roster's order (later = drawn on top)
   function withDrawing() {
     mount();
@@ -274,32 +275,84 @@ describe('ONE order everywhere (Fred 2026-11-25): a stack drag sets the stamp or
     return { ed, g };
   }
   const drawn = (g) => [...g.children].map((n) => n.getAttribute('data-layer'));
-  it('Draw 1 dragged above Draw 2 (stack top): the stamp order follows AND Draw 1 now draws on top; ONE editor step', async () => {
+  const shown = (id) => [...$(id).children].map((c) => c.dataset.stackKey || `fixed:${c.dataset.stackFixed}`);
+  const pe = (el, type, clientY) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'mouse', button: 0, clientX: 5, clientY }));
+  const layoutRows = (id) => [...$(id).children].forEach((c, i) => { c.getBoundingClientRect = () => ({ top: i * 40, bottom: i * 40 + 40, height: 40, left: 0, right: 300, width: 300 }); });
+
+  it('the display is the stamp order REVERSED, in both views: top-only detail on top, the line, the body, the Frame (the base) last', () => {
+    mount();
+    P.stlLayers = [{ id: 's1', name: 'Lion', placement: 'withSurface' }, { id: 's2', name: 'Rose', placement: 'afterBack' }];
+    refreshLayerStack();
+    expect(STACK_DISPLAY).toEqual({ topRow: 'stampedLast', aboveLine: 'afterBack', belowLine: 'withSurface', fixedRows: 'bottom' });
+    // stamp order (stackSequence reads the rows bottom to top): unchanged
+    expect(stackSequence($('layerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY, 'stl:s2']);
+    expect(shown('layerStackList')).toEqual(['stl:s2', THICKEN_LINE_KEY, 'stl:s1', 'bricks', 'layer:1', 'layer:0']);
+    expect(shown('editorLayerStackList')).toEqual(['stl:s2', THICKEN_LINE_KEY, 'stl:s1', 'bricks', 'layer:1', 'layer:0', 'fixed:frame']);
+    // above the line = top-only detail (dashed), below = the body
+    const card = (key) => [...$('layerStackList').children].find((c) => c.dataset.stackKey === key);
+    expect(card('stl:s2').classList.contains('layer-card-after')).toBe(true);
+    expect(card('layer:0').classList.contains('layer-card-after')).toBe(false);
+    expect(card(THICKEN_LINE_KEY).textContent).toContain('below: part of the body · above: top only');
+  });
+  it('a saved board is not touched by the new display: no order written, every placement as stored, the roster as stored', () => {
+    const { ed } = withDrawing();
+    P.stlLayers = [{ id: 's1', name: 'Lion', placement: 'withSurface' }, { id: 's2', name: 'Rose', placement: 'afterBack' }];
+    refreshLayerStack();
+    expect(P.layerOrder).toBeNull();
+    expect(P.stlLayers.map((r) => r.placement)).toEqual(['withSurface', 'afterBack']);
+    expect(ed._layers.map((l) => l.id)).toEqual(['0', '1', '3', '4', '5']);
+    expect(ed._layers.some((l) => 'placement' in l)).toBe(false);
+  });
+  it('an untouched board: the TOP row draws on top from the start (the last stamped = the last in the roster)', () => {
     const { ed, g } = withDrawing();
-    expect(stackSequence($('editorLayerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1', THICKEN_LINE_KEY]);
-    expect(drawn(g)).toEqual(['0', '5']); // Draw 2 (later in the roster) on top
+    const top = shown('editorLayerStackList').find((k) => k.startsWith('layer:'));
+    expect(top).toBe('layer:5'); // Draw 2, the top Draw row
+    expect(drawn(g).at(-1)).toBe('5'); // ... is drawn last, on top
+    expect(drawOrderForStack(stackSequence($('editorLayerStackList')).filter((k) => k !== THICKEN_LINE_KEY), ed._layers)).toBeNull(); // already one order
+  });
+  it('a drag UP = stamped later + drawn on top; ONE editor step; the placement stays (a move within the body)', async () => {
+    const { ed, g } = withDrawing();
+    expect(shown('editorLayerStackList')).toEqual([THICKEN_LINE_KEY, 'stl:s1', 'layer:5', 'bricks', 'layer:1', 'layer:0', 'fixed:frame']); // nothing top-only: the line on top
+    expect(drawn(g)).toEqual(['0', '5']);
     const steps = ed.pushState.mock.calls.length;
-    // the user's drop: Draw 2 moved to the top of the stack, Draw 1 below it -> the stack says Draw 2 is higher
-    await applyStackDrop(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]);
-    expect(P.layerOrder).toEqual(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1']);
-    // higher in the stack draws on top: the roster runs bottom first (the stack reversed), the nodes with it
-    expect(window.svgEditor._layers.map((l) => l.id)).toEqual(['3', '4', '1', '0', '5']);
-    expect(drawn(g)).toEqual(['0', '5']); // Draw 2 is still the higher one: drawn last
-    await applyStackDrop(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]); // Draw 1 above Draw 2
-    expect(P.layerOrder).toEqual(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1']);
-    expect(drawn(g)).toEqual(['5', '0']); // Draw 1 now draws ON TOP
-    expect(ed.pushState.mock.calls.length).toBe(steps + 2); // one editor step per drop
+    layoutRows('editorLayerStackList');
+    // Draw 1 (row 5) dragged UP above Draw 2 (row 2)
+    const h = [...$('editorLayerStackList').children][5].querySelector('.layer-card-handle');
+    pe(h, 'pointerdown', 5 * 40 + 10); pe(h, 'pointermove', 2 * 40 + 10); pe(h, 'pointerup', 2 * 40 + 10);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(P.layerOrder).toEqual(['layer:1', 'bricks', 'layer:5', 'layer:0', 'stl:s1']); // Draw 1 stamped after Draw 2
+    expect(drawn(g)).toEqual(['5', '0']); // Draw 1 on top
+    expect(ed._layers.map((l) => l.id)).toEqual(['1', '3', '4', '5', '0']); // the roster = the stamp order
+    expect(ed._layers.find((l) => l.id === '0')).not.toHaveProperty('placement');
+    expect(ed.pushState.mock.calls.length).toBe(steps + 1);
+    expect(shown('editorLayerStackList').slice(0, 4)).toEqual([THICKEN_LINE_KEY, 'stl:s1', 'layer:0', 'layer:5']);
+  });
+  it('a drag ABOVE the line = top-only (afterBack), BELOW = the body (withSurface): the stored field, as before', async () => {
+    withDrawing();
+    layoutRows('editorLayerStackList');
+    const rowsNow = () => [...$('editorLayerStackList').children];
+    const h = rowsNow()[5].querySelector('.layer-card-handle'); // Draw 1, at the bottom of the body
+    pe(h, 'pointerdown', 5 * 40 + 10); pe(h, 'pointermove', 10); pe(h, 'pointerup', 10); // above the line (row 0)
+    for (let i = 0; i < 5; i++) await settle();
+    expect(window.svgEditor._layers.find((l) => l.id === '0').placement).toBe('afterBack');
+    expect(shown('editorLayerStackList').slice(0, 3)).toEqual(['layer:0', THICKEN_LINE_KEY, 'stl:s1']);
+  });
+  it('a drop never lands below the Frame row (the base stays last)', async () => {
+    withDrawing();
+    layoutRows('editorLayerStackList');
+    const h = [...$('editorLayerStackList').children][2].querySelector('.layer-card-handle'); // Draw 2
+    pe(h, 'pointerdown', 2 * 40 + 10); pe(h, 'pointermove', 20 * 40); pe(h, 'pointerup', 20 * 40);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(shown('editorLayerStackList').at(-1)).toBe('fixed:frame');
+    expect(shown('editorLayerStackList').at(-2)).toBe('layer:5');
   });
   it('Undo puts both back: the stamp order rides in the editor step (undo part), the roster + nodes are the step\'s own', async () => {
     const { ed, g } = withDrawing();
-    // the previous editor entry, as editor.js _snapshotState keeps it: the roster + the parts
     const before = { layers: [...ed._layers], parts: takeUndoParts() };
     expect(before.parts).toHaveProperty('layerOrder', null);
-    await applyStackDrop(['layer:0', 'layer:5', 'layer:1', 'bricks', 'stl:s1', THICKEN_LINE_KEY]);
-    expect(P.layerOrder).not.toBeNull();
+    await applyStackDrop(['layer:1', 'bricks', 'layer:5', 'layer:0', 'stl:s1', THICKEN_LINE_KEY]);
     expect(drawn(g)).toEqual(['5', '0']);
-    // Undo = the editor restores that entry: its roster (+ the drawing) and its parts
-    ed._layers = before.layers;
+    ed._layers = before.layers; // Undo = the editor restores that entry: its roster (+ the drawing) and its parts
     restoreUndoParts(before.parts);
     syncLayerZOrder(ed);
     expect(P.layerOrder).toBeNull();
@@ -307,11 +360,12 @@ describe('ONE order everywhere (Fred 2026-11-25): a stack drag sets the stamp or
     refreshEditorStack();
     expect(stackSequence($('editorLayerStackList'))).toEqual(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1', THICKEN_LINE_KEY]);
   });
-  it('a saved board is untouched until a drag: showing the stack writes no order and does not reorder the roster', () => {
-    const { ed } = withDrawing();
-    expect(P.layerOrder).toBeNull();
-    expect(ed._layers.map((l) => l.id)).toEqual(['0', '1', '3', '4', '5']);
-    expect(drawOrderForStack(['layer:0', 'layer:1', 'bricks', 'layer:5', 'stl:s1'], ed._layers).map((l) => l.id)).toEqual(['5', '3', '4', '1', '0']);
-    expect(drawOrderForStack(['layer:5', 'layer:0', 'layer:1', 'bricks', 'stl:s1'], ['3', '4', '1', '0', '5'].map((id) => ed._layers.find((l) => l.id === id)))).toBeNull(); // already so: nothing to do
+  it('+ Add layer: a new layer keeps today\'s stored placement (the body) and lands at the top of the body, just BELOW the line', async () => {
+    withDrawing();
+    window.svgEditor._onChange = vi.fn();
+    const key = await addStackLayer('draw');
+    expect(window.svgEditor._layers.at(-1)).not.toHaveProperty('placement');
+    const s = shown('editorLayerStackList');
+    expect(s[s.indexOf(THICKEN_LINE_KEY) + 1]).toBe(key);
   });
 });
