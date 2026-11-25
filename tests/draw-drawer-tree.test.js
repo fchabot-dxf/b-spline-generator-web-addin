@@ -28,23 +28,23 @@ beforeEach(() => {
 });
 
 describe('the Draw tree', () => {
-  it('General, Text, Expand, Layers -- no Pen, no Edit; the Art-tab strip hides on this tab (its buttons kept)', () => {
+  it('General, Text, Expand, Stamp -- no Pen, no Edit, no Layers; the Art-tab strip hides on this tab (its buttons kept)', () => {
     // DRAW-STAMP U (location only): + the Stamp branch, the selected layer's stamp settings moved in from the sidebar
-    expect(DRAW_DRAWER_TREE.map((b) => b.id)).toEqual(['general', 'text', 'expand', 'layers', 'stamp']);
+    // the editor layer stack (Fred 2026-11-24): the Layers branch retired -- the stack above the panel lists the layers
+    expect(DRAW_DRAWER_TREE.map((b) => b.id)).toEqual(['general', 'text', 'expand', 'stamp']);
+    expect($('editorLayersList')).toBeNull();
     for (const t of ART_TABS) { expect($(`artTab_${t.id}`), t.id).not.toBeNull(); expect($(`artTab_${t.id}`).style.display, t.id).toBe('none'); }
   });
   it('each branch holds its content: stroke / colour / fill in General, the font group in Text, Expand\'s group, the Layers', () => {
     for (const g of ['editorStrokeGroup', 'editorColorGroup', 'editorFillModeGroup']) expect(inBranch('general', g), g).toBe(true);
     for (const g of ['editorFontGroup', 'editorSymbolKeyboardToggle']) expect(inBranch('text', g), g).toBe(true);
     expect(inBranch('expand', 'editorExpandGroup')).toBe(true);
-    for (const g of ['editorLayersHeader', 'editorLayersList']) expect(inBranch('layers', g), g).toBe(true);
   });
-  it('the first look: General and Layers open (Fred: the layers in view); the caret folds; the open set is remembered', () => {
+  it('the first look: General open (the layers are in the stack above); the caret folds; the open set is remembered', () => {
     expect(open('general')).toBe(true);
-    expect(open('layers')).toBe(true);
-    branch('layers').querySelector('.drawer-branch-caret').click();
-    expect(open('layers')).toBe(false);
-    expect(JSON.parse(localStorage.getItem(DRAW_TREE_OPEN_KEY))).not.toContain('layers');
+    branch('general').querySelector('.drawer-branch-caret').click();
+    expect(open('general')).toBe(false);
+    expect(JSON.parse(localStorage.getItem(DRAW_TREE_OPEN_KEY))).not.toContain('general');
   });
   it('a tool branch is the tool\'s: the text mode opens it, another mode folds it', () => {
     setMode('text');
@@ -52,18 +52,18 @@ describe('the Draw tree', () => {
     setMode('select');
     expect(open('text')).toBe(false);
   });
-  it('the Brick tab borrows the Layers and gives them back INTO the tree (the active tab is applied last)', () => {
+  it('no tab borrows a Layers list any more: the Brick slot keeps only its start hint', () => {
     setEditorTab('brick');
-    expect($('brickLayersSlot').contains($('editorLayersList'))).toBe(true);
+    expect([...$('brickLayersSlot').children].map((c) => c.id)).toEqual(['brickStartHint']);
     setEditorTab('artwork');
-    expect(inBranch('layers', 'editorLayersList')).toBe(true);
+    expect($('drawLayersBody')).toBeNull();
   });
   // Fred 2026-11-24 (tool-row duplicates, the Brick tab's fix applied here): the Text / Expand cards repeated the tool
   // rail's Text / Expand buttons -- now only the ARMED tool's card shows; General, Layers, Stamp as before
   it('only the armed tool\'s card shows: Pen / Select / the other tools show none, Text and Expand each their own (open, titled)', () => {
     const shown = () => [...$('drawDrawerTree').querySelectorAll(':scope > .drawer-branch')].filter((s) => s.style.display !== 'none').map((s) => s.dataset.branch);
     const free = DRAW_DRAWER_TREE.filter((b) => !b.armsTool).map((b) => b.id);
-    expect(free).toEqual(['general', 'layers', 'stamp']);
+    expect(free).toEqual(['general', 'stamp']);
     for (const m of ['select', 'draw', 'node', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe']) {
       setMode(m);
       expect(shown(), m).toEqual(free);

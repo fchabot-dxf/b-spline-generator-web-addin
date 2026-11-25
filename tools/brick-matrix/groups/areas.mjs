@@ -20,8 +20,8 @@ export const WALL_AREAS = {
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let ROOT, sleep, send, js, jsJSON, click, CANVAS, heightsSettled, canvasSettled, editorOpen, apply, record, checkRow, wallCount, openEditorTab, reloadWithStorage, key;
-export function bind(ctx) { ({ ROOT, sleep, send, js, jsJSON, click, CANVAS, heightsSettled, canvasSettled, editorOpen, apply, record, checkRow, wallCount, openEditorTab, reloadWithStorage, key } = ctx); }
+let ROOT, sleep, send, js, jsJSON, click, CANVAS, heightsSettled, canvasSettled, editorOpen, apply, record, checkRow, wallCount, openEditorTab, reloadWithStorage, key, go;
+export function bind(ctx) { ({ ROOT, sleep, send, js, jsJSON, click, CANVAS, heightsSettled, canvasSettled, editorOpen, apply, record, checkRow, wallCount, openEditorTab, reloadWithStorage, key, go } = ctx); }
 export async function run() { await runWallAreas(); }
 
 // F35 item 22 slice 2 (37, fb-app 58be3ed) on T86 18b/18c: the Area brush paints wall areas of COMPLETE bricks,
@@ -59,9 +59,9 @@ async function overlapPairs(a, b, tol) {
 async function runWallAreas() {
   const A = WALL_AREAS;
   await reloadWithStorage({});
-  await openEditorTab('editorTabFrame');
+  await openEditorTab('row:frame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(A.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900); await click('brickGenerate', 2000);
   await click('brickTool_wall', 900);
@@ -118,7 +118,7 @@ async function runWallAreas() {
   const re = await jsJSON(areasState());
   checkRow('areas', 'Apply + reopen: the areas persist', saved === 3 && re.areas.length === 3, `saved ${saved} area records, reopened ${re.areas.length}`);
   // 7. Clear areas: the full wall back, exactly the baseline
-  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 700);
+  await openEditorTab('row:brick'); await click('brickTool_wall', 700);
   await click(A.strokes[0].pattern, 1500); await click(A.areaTool, 700); await click(A.clearAreas, 2500);
   const cl = await jsJSON(areasState()), canvas1 = await canvasSettled(null);
   checkRow('areas', 'Clear areas: the full wall back (the baseline)', cl.areas.length === 0 && cl.full === 1 && cl.wall === wall0 && canvas1 === canvas0,
@@ -126,7 +126,7 @@ async function runWallAreas() {
   // 8. Clear > Bricks removes the areas
   await paint(A.strokes[0].pattern, A.strokes[0].width, A.strokes[0].points);
   const before = await jsJSON(areasState());
-  await click('editorTabBrick', 600); await click(CLEAR_MENU.button, 600); await click('editorClear_bricks', 2000);
+  await go('row:brick', 600); await click(CLEAR_MENU.button, 600); await click('editorClear_bricks', 2000);
   const after = await jsJSON(areasState());
   checkRow('areas', 'Clear > Bricks removes the areas', before.areas.length === 1 && after.areas.length === 0, `areas ${before.areas.length} -> ${after.areas.length}`);
   if (await editorOpen()) await apply();

@@ -12,3 +12,13 @@ export const MOBILE_MAX_PX = 900;
 export const MOBILE_QUERY = `(max-width: ${MOBILE_MAX_PX}px)`;
 /** Landscape phone: a coarse pointer, short, and wider than the portrait breakpoint (so the two never both match). */
 export const LANDSCAPE_PHONE_QUERY = `(pointer: coarse) and (max-height: 500px) and (min-width: ${MOBILE_MAX_PX + 1}px)`;
+
+/** EDITOR LAYER STACK (Fred 2026-11-24, phase 2): the 2D EDITOR's own breakpoint -- the bottom drawer only on a phone
+ *  (below 768 px wide); from 768 px (a tablet, a narrow desktop window) the editor keeps its desktop right-hand column
+ *  (the layer stack above the selected layer's settings). The app shell (sidebar, main panel) keeps MOBILE_MAX_PX.
+ *  styles/editor.css's drawer @media blocks repeat this number (tests/breakpoints-consistency.test.js). */
+export const EDITOR_MOBILE_MAX_PX = 767;
+/** The editor's portrait phone (the bottom drawer). */
+export const EDITOR_MOBILE_QUERY = `(max-width: ${EDITOR_MOBILE_MAX_PX}px)`;
+/** The editor's landscape phone (the drawer docked on the right): coarse, short, and wider than the portrait breakpoint. */
+export const EDITOR_LANDSCAPE_PHONE_QUERY = `(pointer: coarse) and (max-height: 500px) and (min-width: ${EDITOR_MOBILE_MAX_PX + 1}px)`;

@@ -23,10 +23,10 @@ export const PANEL_FIT = {
   sections: [
     // (the 'Photo crop' section, this table's first row, left with the photo, Fred 2026-11-23)
     // item 74e: the "Applies on the next Generate" line over each lattice panel's next-Generate group
-    { name: 'Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
-    { name: 'Shape Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
+    { name: 'Lattice next-Generate hint', open: ['row:draw', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
+    { name: 'Shape Lattice next-Generate hint', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
     // item 74j: the four segment-style choices fit their row (measured: "Kink" was clipped at 1366)
-    { name: 'Shape segment styles', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeSegStyleAuto', 'shapeSegStyleStraight', 'shapeSegStyleCurve', 'shapeSegStyleKink'],
+    { name: 'Shape segment styles', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeSegStyleAuto', 'shapeSegStyleStraight', 'shapeSegStyleCurve', 'shapeSegStyleKink'],
       unfold: ['shapeLatticeSegmentsBlock'] }, // folded by default when narrow: opened by its label, as a user does
   ],
 };
@@ -37,15 +37,15 @@ export const PANEL_FIT = {
 export const ANCHOR_GREY = {
   why: 'Same rails as the current anchor at this spacing', liveSpacing: 0.75,
   panels: [
-    { name: 'Lattice', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], generate: 'latticeGenerate', prefix: 'lattice', greyAt1: ['Start', 'End'] },
-    { name: 'Shape Lattice', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], generate: 'shapeLatticeGenerate', prefix: 'shapeLattice', greyAt1: [] },
+    { name: 'Lattice', open: ['row:draw', 'artTab_lattice', 'toolLattice'], generate: 'latticeGenerate', prefix: 'lattice', greyAt1: ['Start', 'End'] },
+    { name: 'Shape Lattice', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], generate: 'shapeLatticeGenerate', prefix: 'shapeLattice', greyAt1: [] },
   ],
 };
 
 // ---- item 74i: with the Shape Lattice's "Offset from frame" on, the Size / Shape / Segments blocks are inert (F21) and a
 // declared line says why. Driven with REAL pointer input (advisor: a scripted click bypasses inert -- 74g's false finding).
 export const FOLLOWS_FRAME = {
-  open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], toggle: 'shapeLatticeContourFromFrame', note: 'shapeLatticeFollowsFrameNote',
+  open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], toggle: 'shapeLatticeContourFromFrame', note: 'shapeLatticeFollowsFrameNote',
   text: 'The shape follows the frame while Offset from frame is on', blocks: ['shapeLatticeShapeBlock', 'shapeLatticeSegmentsBlock'], probe: 'shapeSegStyleCurve',
 };
 
@@ -116,8 +116,8 @@ export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
-export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
+let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go;
+export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go } = ctx); }
 export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); await runFitEdgeHandles(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
@@ -126,7 +126,7 @@ export async function run() { await runLayout(); await runPanelFit(); await runA
 // really active, and Generate's rect unchanged over SETTLE_SAMPLES polls (> the drawer's 0.18s snap transition).
 // (the Brick panel itself stays hidden until a tool is picked, so readiness is the editor + the active tab;
 // the per-tool settle below then requires Generate to have a real box)
-function brickTabReady() { return js(`!!window.svgEditor?._sketchLayer && !!document.getElementById('editorTabBrick')?.classList.contains('active')`); }
+function brickTabReady() { return js(`import('./main/editor-tabs.js').then((m) => !!window.svgEditor?._sketchLayer && m.getEditorTab() === 'brick')`); } // the Bricks row picked
 function LAYOUT_PROBE(tool) { return `JSON.stringify((()=>{ const g=document.getElementById(${JSON.stringify(PEEK_LAYOUT.element)}); const d=document.getElementById('editorMobileDrawer');
   const b=g ? g.getBoundingClientRect() : { top: 0, bottom: 0, height: 0 };
   return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height), innerW: innerWidth, innerH: innerHeight,
@@ -181,7 +181,7 @@ async function runPanelFit() {
     await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
     await send('Page.reload', {}); await waitApp(); await openBrickTab();
     for (const sec of PANEL_FIT.sections) {
-      for (const id of sec.open) await click(id, 900);
+      for (const id of sec.open) await go(id, 900);
       for (const id of sec.unfold || []) await js(`(()=>{ const b=document.getElementById(${JSON.stringify(id)}); const body=b && b.firstElementChild && b.firstElementChild.nextElementSibling; if (body && body.offsetParent === null) b.firstElementChild.click(); return 1; })()`);
       if (sec.unfold) await sleep(600);
       const r = await jsJSON(PANEL_FIT_PROBE(sec.ids));
@@ -203,7 +203,7 @@ async function runAnchorGrey() {
   const row = (prefix) => jsJSON(`JSON.stringify(Object.fromEntries(['Start','Center','End'].map((a)=>{ const b=document.getElementById(${JSON.stringify(prefix)}+'RailsAnchor'+a); return [a, { grey: !!b?.disabled, title: b?.title || '' }]; })))`);
   const spacing = (prefix, v) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(prefix)}+'RailsSpacing'); e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); return 1; })()`);
   for (const pn of A.panels) {
-    for (const id of pn.open) await click(id, 700);
+    for (const id of pn.open) await go(id, 700);
     await click(pn.generate, 3500);
     const r1 = await row(pn.prefix);
     const greyed = Object.keys(r1).filter((a) => r1[a].grey);
@@ -221,7 +221,7 @@ async function runFollowsFrame() {
   await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.reload', {}); await waitApp(); await openBrickTab();
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-  for (const id of F.open) await click(id, 700);
+  for (const id of F.open) await go(id, 700);
   const realClick = async (id) => {
     const r = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.scrollIntoView({block:'center'}); const b=e.getBoundingClientRect(); return { x: b.left + b.width/2, y: b.top + b.height/2 }; })())`);
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', buttons: 1, clickCount: 1 });
@@ -345,10 +345,10 @@ async function runTouchTargets() {
     await openBrickTab();
     for (const id of T.brickTabs) await touchRow(vp, id.replace(/^brick(Tab|Tool)_/, 'Brick '), (await click(id, 900)) === 'ok', EDITOR_ROOT);
     for (const t of T.artTabs) {
-      const opened = (await click('editorTabArtwork', 600)) === 'ok' && (await click(`artTab_${t}`, 900)) === 'ok';
+      const opened = (await go('row:draw', 600)) === 'ok' && (await click(`artTab_${t}`, 900)) === 'ok';
       await touchRow(vp, `Art ${t}`, opened, EDITOR_ROOT);
     }
-    await touchRow(vp, 'Frame', (await click('editorTabFrame', 1200)) === 'ok', EDITOR_ROOT);
+    await touchRow(vp, 'Frame', (await go('row:frame', 1200)) === 'ok', EDITOR_ROOT);
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
@@ -449,7 +449,7 @@ async function runPageZoom() {
   for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await previewRows(vp);
   await openBrickTab(); // opens the editor
-  const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  const armed = (await go('row:draw', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
   for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await js(`(async () => { try { localStorage.removeItem(${JSON.stringify(T.legacyKey)}); } catch (_) {} document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300)); return 1; })()`);
   await pinchRow('a pinch on the drawing zooms the drawing, not the page', '#editorSVGContainer', { drawing: true });
@@ -484,7 +484,7 @@ async function runFitEdgeHandles() {
       await js(`(async () => { const m = document.getElementById('svgEditorModal'); document.getElementById('viewMode_2d').click();
         for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
         return 1; })()`);
-      await click('editorTabFrame', 1500);
+      await go('row:frame', 1500);
       const r = await jsJSON(`(async () => { const sel = document.getElementById('editorFrameTemplate'); if (!sel) return JSON.stringify({ missing: true });
         const tpls = [...sel.options].map((o) => o.value).filter((v) => v && v !== 'none'); const near = []; let seen = 0;
         for (const t of tpls) {

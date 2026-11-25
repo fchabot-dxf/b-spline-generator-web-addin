@@ -156,7 +156,7 @@
         display: flex !important;
     }
 }
-@media (max-width: 900px) {
+@media (max-width: 767px) {
     #editorToolbarTop > :empty {
         display: none !important;
     }
@@ -216,7 +216,7 @@
     }
 }
 
-@media (pointer: coarse) and (max-width: 900px) {
+@media (pointer: coarse) and (max-width: 767px) {
     /* T32/MOB3: lift the pill above the mobile drawer (editor-drawer.js)
        when it's open — but the drawer only becomes a FIXED, viewport-
        bottom element under this SAME width breakpoint; outside it (e.g. a
@@ -281,7 +281,7 @@
 }
 
 /* 2-STATE RESPONSIVE: NARROW MODE */
-@media (max-width: 900px) {
+@media (max-width: 767px) {
     .cad-modal-window.overhauled {
         width: 100vw !important;
         height: 100vh !important;
@@ -660,7 +660,7 @@
    conditions from ever both matching the same viewport. Only each
    orientation's OWN drawer POSITIONING + handle SHAPE differ — those stay
    in their own narrower blocks below this one. */
-@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
     /* Overrides the base `display:contents` — a real box, always column-
        internally (tabs bar above the scrollable body) regardless of
        whether the OUTER drawer itself is laid out as a column (portrait)
@@ -880,7 +880,7 @@
 /* =========================================================================
    ===== Mobile: PORTRAIT-only (bottom drawer, narrow-width layout) =====
    ========================================================================= */
-@media (max-width: 900px) {
+@media (max-width: 767px) {
     #svgEditorModal .modal-window>div:nth-child(2) {
         flex-direction: column;
     }
@@ -1044,7 +1044,7 @@
    between portrait and landscape keeps each their own remembered split,
    never fighting over one value).
    ========================================================================= */
-@media (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
     /* NOT position:fixed — a normal flex sibling in the SAME row
        .cad-modal-body already lays .editor-sidebar/#editorCanvasContainer
        out in (bspline_gen_palette.html's own `.cad-modal-body{display:
@@ -1107,7 +1107,7 @@
     }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 767px) {
     /* H4 (Fred, phone shot 11:09: "can't scroll the header"): the RIGHT
        group's own overflow-x:auto (below) already technically scrolls
        (proven live: scrollLeft moves Cancel/Apply fully into view) -- the
@@ -1318,7 +1318,7 @@
    selector short of `!important`), matching this file's own established
    convention for every other mobile override that beats an inline style.
    ========================================================================= */
-@media (max-width: 900px), (pointer: coarse) {
+@media (max-width: 900px), (pointer: coarse) { /* app-wide: the stepper / touch sizes follow the APP breakpoint (editor/breakpoints.js MOBILE_MAX_PX) */
     :root {
         --cad-stepper-touch: 44px;
         /* H10 (Fred: "change just the WIDTH of the stepper" -- an earlier
@@ -1999,7 +1999,7 @@
    the controls' own inline height:22-28px without !important; desktop sizes are untouched. A segmented
    group's fixed 24px height (base.css) is released so its buttons can grow. Section and sub-section
    labels (the fold toggles) get the same height. */
-@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
     #editorShapeLatticePanel .segmented-group {
         height: auto;
     }
@@ -2306,8 +2306,6 @@
    ========================================================================= */
 /* the retired tab strip: its buttons stay (ids: tests, the brick matrix), the stack's rows are the picker now */
 #editorModeTabs { display: none !important; }
-/* each tab's own 'Layers' card: the stack replaces it */
-#drawDrawerTree > [data-branch="layers"], #brickDrawerTree > [data-branch="layers"], #brickLayersSlot { display: none !important; }
 .ed-stack {
     --ed-stack-row-h: 34px;
     --ed-stack-sub-h: 28px;
@@ -2357,14 +2355,27 @@
 .ed-stack-subs { display: none; flex-direction: column; gap: 2px; margin: 2px 0 2px 26px; }
 .ed-stack-card.subs-open > .ed-stack-subs { display: flex; }
 .ed-stack-sub {
-    display: flex; align-items: center; gap: 6px; min-height: var(--ed-stack-sub-h); padding: 0 8px; text-align: left;
-    font: inherit; font-size: 12px; color: var(--section-text); cursor: pointer;
+    display: flex; align-items: center; gap: 2px; min-height: var(--ed-stack-sub-h); padding: 0 4px 0 0;
+    font-size: 12px; color: var(--section-text);
     background: var(--section-body); border: 1px solid transparent; border-left: 3px solid var(--section-stripe); border-radius: 3px 5px 5px 3px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ed-stack-sub.is-selected { background: var(--section-header); outline: 2px solid var(--section-stripe); outline-offset: -2px; font-weight: 700; }
+.ed-stack-sub-pick {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: var(--ed-stack-sub-h); padding: 0 6px; text-align: left;
+    font: inherit; color: inherit; background: none; border: 0; cursor: pointer; white-space: nowrap; overflow: hidden;
+}
 .ed-stack-sub-icon { flex: 0 0 auto; width: 16px; text-align: center; }
 .ed-stack-sub-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* phase 2 (Fred 2026-11-24): every row's EYE stays in view; the rest is its ONE ⋯ menu (EDITOR_ROW_MENU) */
+.ed-stack-eye, .ed-stack-more {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; min-height: 26px; padding: 0;
+    border: 0; border-radius: 4px; background: none; color: inherit; cursor: pointer; opacity: 0.75;
+}
+.ed-stack-eye svg { width: 16px; height: 16px; }
+.ed-stack-eye.is-hidden { opacity: 0.4; }
+.ed-stack-more { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+.ed-stack-eye:hover, .ed-stack-more:hover { background: rgba(0, 0, 0, 0.07); opacity: 1; }
+.ed-stack-rename { flex: 1 1 auto; min-width: 0; min-height: 26px; font: inherit; font-size: 12px; box-sizing: border-box; }
 /* the Thicken line: a slim hatched band */
 .ed-stack .ed-stack-card.panel.ed-stack-line > .layer-card-head {
     min-height: 28px; background: repeating-linear-gradient(135deg, rgba(201, 162, 39, 0.22) 0 8px, transparent 8px 16px), var(--section-header);
@@ -2382,7 +2393,7 @@
 .ed-stack.is-folded .ed-stack-list { max-height: none; overflow: visible; }
 .ed-stack.is-folded .layer-card-handle:not(.ed-stack-lock) { visibility: hidden; width: 8px; min-width: 8px; }
 /* the drawer (phone / tablet / a narrow window): the stack is the drawer's pinned head, the body scrolls under it */
-@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
+@media (max-width: 767px), (pointer: coarse) and (max-height: 500px) and (min-width: 768px) {
     .ed-stack { padding: 2px 8px 6px; }
 }
 @media (pointer: coarse) {
@@ -2392,4 +2403,5 @@
     .ed-stack-card .layer-card-enable { min-width: 28px; min-height: 28px; }
     .ed-stack-card .layer-card-handle { min-width: 32px; min-height: 32px; }
     .ed-stack-caret { min-width: 28px; min-height: 32px; }
+    .ed-stack-eye, .ed-stack-more { min-width: 32px; min-height: 32px; }
 }

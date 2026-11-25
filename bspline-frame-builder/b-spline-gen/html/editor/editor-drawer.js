@@ -18,7 +18,7 @@
  */
 import { el, on } from './dom.js';
 import { makeSplitter } from './splitter.js';
-import { LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
+import { EDITOR_LANDSCAPE_PHONE_QUERY as LANDSCAPE_PHONE_QUERY } from './breakpoints.js'; // the editor's own (phone < 768 px)
 
 /** Declared once — the tools with their own options panel (a future one is one entry here): entering one opens the
  *  drawer at peek. The Art tabs (Fred: "what's stripe and brick?") retired the drawer's tool | panel tab pair -- the

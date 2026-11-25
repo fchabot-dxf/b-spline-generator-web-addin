@@ -28,7 +28,7 @@
 import { createDrawerTree } from '../main/drawer-tree.js';
 import { el, on } from './dom.js';
 import { GUIDE_STROKE } from './editor-guides.js';
-import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
+import { EDITOR_MOBILE_QUERY as MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY as LANDSCAPE_PHONE_QUERY } from './breakpoints.js'; // the editor's own (phone < 768 px)
 
 // =========================================================================
 // 1. Section colour-coding (Fred picked option B from the mockup).

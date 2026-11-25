@@ -18,9 +18,12 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   initLayerStack, stackSequence, STACK_VIEWS, EDITOR_FIXED_ROWS, EDITOR_STACK_LAYOUTS, ADD_PICKERS, LAYER_ADD_TYPES, LAYER_TYPES,
   selectEditorRow, editorSelection, refreshEditorStack, edRowId, THICKEN_LINE_KEY, _resetLayerStackForTests,
+  EDITOR_ROW_MENU, EDITOR_ROW_EYE, rowSubject, rowMenuItems, openRowMenu, stackItems,
 } from '../bspline-frame-builder/b-spline-gen/html/main/layer-stack.js';
 import { EDITOR_TABS, getEditorTab, setEditorTab, SHARED_PEEK_ESSENTIALS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
-import { typedLayerName, addLayer } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { typedLayerName, addLayer, isUserLocked } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+// the ⋯ menu's popover module, loaded up front (the stack imports it on the first tap)
+import '../bspline-frame-builder/b-spline-gen/html/editor/editor-context-menu.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const $ = (id) => document.getElementById(id);
@@ -95,7 +98,7 @@ describe('the editor view: one data with the sidebar, a locked Frame row first',
   it('Brick parts are indented sub-rows of the ONE Bricks row (top first)', () => {
     mount();
     const bricks = rows().find((r) => r.dataset.stackKey === 'bricks');
-    expect([...bricks.querySelectorAll('.ed-stack-sub')].map((b) => b.textContent.slice(1))).toEqual(['Brick frame', 'Wall']);
+    expect([...bricks.querySelectorAll('.ed-stack-sub .ed-stack-sub-name')].map((b) => b.textContent)).toEqual(['Brick frame', 'Wall']);
     expect(LAYER_TYPES.height.subRows({ ref: { id: 'h', raster: { cols: 1, rows: 1 } } }).map((s) => s.name)).toEqual(['Paint 1']);
   });
 });
@@ -113,7 +116,7 @@ describe('selecting a row switches the editor to that layer\'s tools', () => {
     expect(window.svgEditor._activeLayer).toBe('3');
     expect(getEditorTab()).toBe('brick');
     expect(editorSelection()).toEqual({ key: 'bricks', sub: '3' });
-    expect($(edRowId('bricks', '3')).classList.contains('is-selected')).toBe(true);
+    expect($(edRowId('bricks', '3')).closest('.ed-stack-sub').classList.contains('is-selected')).toBe(true);
     // a tap on a row is the same path
     $(edRowId('layer:0')).click();
     await settle(); await settle();
@@ -131,8 +134,10 @@ describe('selecting a row switches the editor to that layer\'s tools', () => {
 
 describe('per breakpoint: the phone folds the list to the selected row', () => {
   it('phone: folded after a pick, a tap unfolds it; desktop: never folded', async () => {
-    expect(EDITOR_STACK_LAYOUTS.map((L) => [L.id, L.fold])).toEqual([['phone', true], ['tablet', false], ['desktop', false]]);
-    mount((q) => q.includes('max-width: 600px'));
+    // Fred 2026-11-24: the drawer (and the fold) only below 768 px; a tablet / a narrow window gets the desktop column
+    expect(EDITOR_STACK_LAYOUTS.map((L) => [L.id, L.fold])).toEqual([['phone', true], ['desktop', false]]);
+    expect(EDITOR_STACK_LAYOUTS[0].query).toContain('(max-width: 767px)');
+    mount((q) => q.includes('max-width: 767px'));
     await selectEditorRow('layer:0');
     expect($('editorLayerStack').classList.contains('is-folded')).toBe(true);
     expect($('editorLayerStack').dataset.layout).toBe('phone');
@@ -167,5 +172,80 @@ describe('a NEW layer is named by its type', () => {
     expect(addLayer(ed, { skipUndo: true }).name).toBe('Draw 1');
     // a name given is kept (a saved layer, a brick kind, a lattice)
     expect(addLayer(ed, { name: 'Rails', skipUndo: true }).name).toBe('Rails');
+  });
+});
+
+describe('phase 2: every row keeps its EYE; the old Layers row\'s other controls live in ONE ⋯ menu', () => {
+  const item = (key) => stackItems().find((i) => i.key === key);
+  it('the eye on a Draw row, on the Bricks row and on each Brick part; it hides / shows the layer (no Stamp box on a row)', async () => {
+    mount();
+    expect(document.querySelector('#editorLayerStackList .layer-card-enable')).toBeNull();
+    for (const id of ['edStackEye_layer_0', 'edStackEye_bricks', 'edStackEye_bricks__3', 'edStackEye_bricks__4']) expect($(id), id).toBeTruthy();
+    $('edStackEye_layer_0').click();
+    await settle();
+    expect(window.svgEditor._layers[0].visible).toBe(false);
+    expect($('edStackEye_layer_0').getAttribute('aria-pressed')).toBe('false');
+    $('edStackEye_bricks').click(); // all the parts
+    await settle();
+    expect(window.svgEditor._layers.filter((l) => l.brickKind).map((l) => l.visible)).toEqual([false, false]);
+  });
+  it('a layer\'s menu: rename, stamp (carve), own colours, lock, delete -- the old row\'s carve / colour / lock / rename / delete', () => {
+    mount();
+    expect(rowMenuItems(rowSubject(item('layer:0'))).map((m) => m.id)).toEqual(['rename', 'stamp', 'colour', 'lock', 'delete']);
+    expect(rowMenuItems(rowSubject(item('bricks'), '3')).map((m) => m.id)).toEqual(['rename', 'stamp', 'colour', 'lock', 'delete']);
+    expect(rowMenuItems(rowSubject(item('stl:s1'))).map((m) => m.id)).toEqual(['stamp', 'delete']);
+    expect(Object.keys(EDITOR_ROW_EYE)).toEqual(['layer', 'bricks', 'paint']);
+    // a height patch's paint layers: up / down / delete as the Height panel's retired rows had them
+    const rec = { id: 'h', name: 'Height 1', layers: [{ id: 'a', name: 'Paint 1', kind: 'paint', raster: { cols: 1, rows: 1 } }, { id: 'b', name: 'Paint 2', kind: 'paint', raster: { cols: 1, rows: 1 } }] };
+    P.heightLayers = [rec];
+    expect(rowMenuItems({ kind: 'paint', patch: 'h', id: 'b' }).map((m) => m.id)).toEqual(['rename', 'down', 'delete']);
+    expect(rowMenuItems({ kind: 'patch', id: 'h' }).map((m) => m.id)).toEqual(['rename', 'stamp', 'delete']);
+    expect(EDITOR_ROW_MENU.map((m) => m.id)).toEqual(['rename', 'stamp', 'colour', 'lock', 'up', 'down', 'delete']);
+  });
+  it('the ⋯ button opens the editor\'s own context-menu popover; a pick runs the app\'s mutator (lock, carve)', async () => {
+    mount();
+    window.svgEditor._onChange = vi.fn();
+    const pick = async (label) => {
+      $('edStackMenu_layer_0').click();
+      for (let i = 0; i < 100 && !document.querySelector('.context-menu-popover'); i++) await new Promise((r) => setTimeout(r, 30));
+      const row = [...document.querySelectorAll('.context-menu-popover .context-menu-row')].find((r) => r.textContent.includes(label));
+      expect(row, label).toBeTruthy();
+      row.click();
+      await settle();
+    };
+    await pick('Lock');
+    expect(isUserLocked(window.svgEditor._layers[0])).toBe(true);
+    expect(rowMenuItems(rowSubject(item('layer:0'))).map((m) => m.id)).not.toContain('delete'); // a locked layer is never deleted
+    await pick('Stamp into the surface');
+    expect(window.svgEditor._layers[0].carve).toBe(false);
+    expect(document.querySelector('.context-menu-popover')).toBeNull(); // a pick closes it
+    expect(await openRowMenu('frame')).toBeNull(); // the Frame row has no menu
+  });
+  it('⋯ > Rename: the row\'s name becomes a box; Enter writes it (renameLayer), Esc puts it back', async () => {
+    mount();
+    window.svgEditor._onChange = vi.fn();
+    const rename = async () => {
+      $('edStackMenu_layer_0').click();
+      for (let i = 0; i < 100 && !document.querySelector('.context-menu-popover'); i++) await new Promise((r) => setTimeout(r, 30));
+      [...document.querySelectorAll('.context-menu-popover .context-menu-row')].find((r) => r.textContent.includes('Rename')).click();
+      await settle();
+      return document.querySelector('#editorLayerStackList .ed-stack-rename');
+    };
+    let box = await rename();
+    expect(box.value).toBe('Lines');
+    box.value = 'Outline';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await settle();
+    expect(window.svgEditor._layers[0].name).toBe('Outline');
+    expect($(edRowId('layer:0')).textContent).toBe('Outline');
+    box = await rename();
+    box.value = 'Nope';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+    expect(window.svgEditor._layers[0].name).toBe('Outline');
+  });
+  it('the old Layers list is gone from the palette (its controls all have a home above)', () => {
+    for (const id of ['editorLayersList', 'editorLayersHeader', 'editorAddLayer', 'drawLayersBody']) expect(HTML.includes(`id="${id}"`), id).toBe(false);
+    expect(HTML.includes('id="brickStartHint"')).toBe(true); // the Brick start hint stays (its own slot)
   });
 });

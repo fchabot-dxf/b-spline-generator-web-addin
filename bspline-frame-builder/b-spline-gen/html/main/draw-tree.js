@@ -14,8 +14,7 @@ export const DRAW_DRAWER_TREE = Object.freeze([
   Object.freeze({ id: 'general', title: 'General', summary: 'stroke · colour · fill', hosts: Object.freeze(['artGeneralBody']) }),
   Object.freeze({ id: 'text', title: 'Text', summary: 'font · symbols', hosts: Object.freeze(['artTextBody']), armsTool: 'text' }),
   Object.freeze({ id: 'expand', title: 'Expand', summary: 'offset a shape', hosts: Object.freeze(['artExpandBody']), armsTool: 'expand' }),
-  Object.freeze({ id: 'layers', title: 'Layers', hosts: Object.freeze(['drawLayersBody']),
-    summary: (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; } }),
+  // (the Layers branch retired with the editor layer stack, Fred 2026-11-24: the stack above the panel lists the layers)
   // DRAW-STAMP U (Fred 2026-11-22: edited in the editor, summarised in the sidebar): the SELECTED layer's stamp settings
   // (#drawStampBody: moved from the sidebar VECTOR STAMPING panel); its summary = the sidebar row's own line
   Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze(['drawStampBody']),
@@ -23,7 +22,7 @@ export const DRAW_DRAWER_TREE = Object.freeze([
 ]);
 // the first look: General open, and the Layers (Fred, phone: "We don't see layers" -- the Brick tree opens them too;
 // the layers matrix row reads the list on screen when the Draw tab is back); Text / Expand open with their tool
-export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general', 'layers']);
+export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general']);
 export const DRAW_TREE_OPEN_KEY = 'bspline.draw.drawerOpen';
 // Fred 2026-11-24 (tool-row duplicates; the Brick and Height trees' rule): `armedOnly` -- the Text / Expand cards show
 // only while their tool is armed (the tool rail is the picker); General, Layers, Stamp unchanged

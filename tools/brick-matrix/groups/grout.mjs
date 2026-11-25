@@ -50,7 +50,7 @@ async function runEdgeBand() {
   for (const size of E.sizes) {
     const name = `Cut edge: no low band at ${size} in (teeth)`;
     if (!has) { checkRow('grout', name, false, '', E.introducedBy); continue; }
-    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    if (!(await editorOpen())) await openEditorTab('row:brick');
     await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s || s.value===${JSON.stringify(E.template)}) return 1; s.value=${JSON.stringify(E.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
     await click(E.wallTool, 800); await setValue('brickSize', size, 'change'); // the Wall's size (per element, 2026-10-11)
     await click(E.pattern, 1500); await click('brickGenerate', 3000);
@@ -76,13 +76,13 @@ function jointProbe() { return `(async()=>{ const m=await import('./core/state.j
   return JSON.stringify({ brick: med(brick), joint: med(joint), joints: joint.length }); })()`; }
 async function runGroutJoints() {
   const G = GROUT_JOINTS;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await click(G.wallTool, 800); await click('brickGenerate', 3000);
   let Z = null;
   for (const pr of G.profiles) {
     if (!(await exists(pr.button))) { checkRow('grout', `Grout: ${pr.name}`, false, 'control missing', G.introducedBy); continue; }
-    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    if (!(await editorOpen())) await openEditorTab('row:brick');
     await click(pr.button, 1200); await apply(); Z = await heightsSettled(Z);
     const m = await jsJSON(jointProbe());
     const ok = m.joints > 0 && ('jointOverBrickAtLeast' in pr ? m.joint >= pr.jointOverBrickAtLeast * m.brick : m.joint < pr.jointBelow);

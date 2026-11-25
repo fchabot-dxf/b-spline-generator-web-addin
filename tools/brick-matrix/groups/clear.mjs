@@ -17,19 +17,19 @@ export const CLEAR_MENU = {
   confirmOk: '.pm-prompt-ok',
   seed: { stroke: [[0.35, 0.4], [0.5, 0.55], [0.65, 0.4]] },
   options: [
-    { name: 'Clear All', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'ok', clears: ['frame', 'artwork', 'bricks'], changes: [] },
-    { name: 'Clear All, then Keep', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'keep', clears: [], changes: [], undo: false },
-    { name: 'Clear Frame', item: 'editorClear_frame', tab: 'editorTabFrame', clears: ['frame'], changes: ['bricks'] },
-    { name: 'Clear Artwork', item: 'editorClear_artwork', tab: 'editorTabArtwork', clears: ['artwork'], changes: [] },
-    { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'editorTabBrick', clears: ['bricks'], changes: [] },
+    { name: 'Clear All', item: 'editorClear_all', tab: 'row:draw', confirm: 'ok', clears: ['frame', 'artwork', 'bricks'], changes: [] },
+    { name: 'Clear All, then Keep', item: 'editorClear_all', tab: 'row:draw', confirm: 'keep', clears: [], changes: [], undo: false },
+    { name: 'Clear Frame', item: 'editorClear_frame', tab: 'row:frame', clears: ['frame'], changes: ['bricks'] },
+    { name: 'Clear Artwork', item: 'editorClear_artwork', tab: 'row:draw', clears: ['artwork'], changes: [] },
+    { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'row:brick', clears: ['bricks'], changes: [] },
   ],
   introducedBy: '678c746',
 };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBoard, key;
-export function bind(ctx) { ({ sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBoard, key } = ctx); }
+let sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBoard, key, go;
+export function bind(ctx) { ({ sleep, js, shot, click, exists, rows, verdict, clearFingerprint, seedClearBoard, key, go } = ctx); }
 export async function run() { await runClear(); }
 
 function clearKinds() { return ['frame', 'artwork', 'bricks']; }
@@ -42,7 +42,7 @@ async function runClear() {
     const f0 = await seedClearBoard();
     const unseeded = clearKinds().filter((k) => f0[k].empty);
     if (unseeded.length) { clearRow(`${o.name}: clears only its kind`, false, `setup: the seeded board lacks ${unseeded.join(', ')}`); continue; }
-    await click(o.tab, 800);
+    await go(o.tab, 800);
     await click(CLEAR_MENU.button, 600);
     if (!(await exists(o.item))) {
       rows.push({ name: `${o.name}: clears only its kind`, kind: 'clear', result: `skipped: not in this build (introduced by ${CLEAR_MENU.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });

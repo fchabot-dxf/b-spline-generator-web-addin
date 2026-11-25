@@ -2854,9 +2854,9 @@
           <!-- F35 item 43 (Fred's OK on mockup v2): the Brick TOOLS are the tab strip at the top of this panel
                (main/brick-panel.js renderToolList: General + one tab per BRICK_TOOLS `tab`), pinned with Generate -->
           <div class="sticky-actions"><div id="editorToolbarBrick"></div><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" title="Re-lay the bricks now, with a new seed" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
-          <!-- F35 item 40 (Fred: "We don't see layers still"): the shared Layers component, hosted here while the Brick
-               tab is active (bricks land on the ACTIVE layer since item 22 slice 3) -->
-          <div id="brickLayersSlot"></div>
+          <!-- audit v2 N11: the Brick tab's start hint (main/brick-panel.js syncStartHint, text from BRICK_TOOLS); the slot
+               held the shared Layers list until the editor layer stack (Fred 2026-11-24) -->
+          <div id="brickLayersSlot"><div id="brickStartHint" style="display:none; font-size:11px; margin:6px 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div></div>
           <!-- Fred (2026-10-07, v2 "Yes, build it"): no shared header -- each tab shows its OWN colour-coded sections, declared in main/brick-tab-sections.js -->
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
             <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
@@ -3253,7 +3253,7 @@
             </div>
             <div id="artGeneralBody"></div>
             <!-- phase 4: the Draw tree's other branch bodies (main/draw-tree.js); EDITOR_TABS artwork panelHosts fill them -->
-            <div id="artTextBody"></div><div id="artExpandBody"></div><div id="drawLayersBody"></div>
+            <div id="artTextBody"></div><div id="artExpandBody"></div>
             <!-- DRAW-STAMP U (Fred 2026-11-22): the Draw tree's Stamp branch (main/draw-tree.js) -- the SELECTED layer's
                  stamp settings, MOVED here from the sidebar VECTOR STAMPING panel (ids, bindings, P keys / layer fields,
                  ranges unchanged; main/stamp/* binds them, every read / write through core/stamp/target.js stampTarget).
@@ -3473,17 +3473,8 @@
             </div>
             </div>
           </div>
-          <!-- F35 item 40: the header, the Brick start hint and the list are the ONE Layers component; the Brick tab
-               hosts them in its own panel (main/editor-tabs.js EDITOR_TABS brick.panelHosts) and they come back here -->
-          <div class="layers-header" id="editorLayersHeader">
-            <span>Layers</span>
-            <button id="editorAddLayer" class="layers-add-btn" type="button" title="Add Layer">+</button>
-          </div>
-          <!-- audit v2 N11: the Brick tab's start hint (main/brick-panel.js syncStartHint, text from BRICK_TOOLS) -->
-          <div id="brickStartHint" style="display:none; font-size:11px; margin:6px 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
-          <div class="layers-list" id="editorLayersList">
-            <div class="layers-empty" id="editorLayersEmpty">No layers yet.<br>Click + to add one, or just start drawing.</div>
-          </div>
+          <!-- (the old Layers list -- #editorLayersHeader / #editorLayersList -- retired with the editor layer stack, Fred
+               2026-11-24: #editorLayerStack lists the layers; each row's eye + its ⋯ menu hold the old row's controls) -->
         </aside>
           </div>
           </div>

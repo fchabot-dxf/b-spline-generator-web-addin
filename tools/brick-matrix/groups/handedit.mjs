@@ -18,11 +18,11 @@ export async function run() { await runHandEdit(); }
 // F35 item 65: a wall brick dragged by hand with the Select tool -> the 3D follows; the move survives Apply + reopen
 async function runHandEdit() {
   const H = HAND_EDIT;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(H.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await click('brickTool_wall', 800); await setValue('brickSizeSelect', H.size, 'change'); await sleep(2000); await click('brickGenerate', 2500);
   await apply(); const z0 = await heightsSettled(null);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   if (!(await exists(H.selectTool))) { checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', false, '', H.introducedBy); return; }
   await click(H.selectTool, 800);
   const b = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')]; const n=ns[Math.floor(ns.length/2)];
@@ -32,7 +32,7 @@ async function runHandEdit() {
   const piece = () => jsJSON(`JSON.stringify((()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick-id="${b.id}"]'); return n ? { points: n.getAttribute('points'), transform: n.getAttribute('transform') } : null; })())`);
   const after = await piece();
   await apply(); const z1 = await heightsSettled(z0);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   const reopened = await piece();
   const moved = !!after && after.points !== b.points && !after.transform;
   checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', moved && z1 !== z0 && !!reopened && reopened.points === after.points,

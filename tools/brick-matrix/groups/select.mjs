@@ -32,7 +32,7 @@ async function plainKey(keyName) {
 async function runSelect() {
   const S = SELECT_ELEMENT;
   await send('Page.reload', {}); await waitApp();
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 800); await click('brickGenerate', 2000);
   if (!(await exists(S.wallSelect))) { checkRow('select', 'Wall tool -> element Select', false, '', S.introducedBy); return; }

@@ -324,7 +324,7 @@ const brickSets = (kinds) => js(`(()=>{ const out={}; for (const k of ${JSON.str
 const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditorModal')).display !== 'none'`);
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('viewMode_2d', 2500);
-  await click('editorTabBrick', 800);
+  await pickLayerRow('brick', { wait: 800 });
   // F35 item 43: the tools are tabs (editor/tab-strip.js .ui-tab) at the top of the Brick panel
   const active = await js(`document.querySelector('#editorToolbarBrick .ui-tab.active')?.id || ''`);
   if (tool && active !== `brickTool_${tool}`) await click(`brickTool_${tool}`, 800);
@@ -526,7 +526,7 @@ try {
   }
   // each group's own runner (groups/<name>.mjs), after the rows; persistence reloads the page, so it runs LAST (and
   // alone in --parallel's own 'persistence' group) -- groups/index.mjs RUNNER_ORDER
-  bindGroups({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, exists, clearFingerprint, seedClearBoard, heightsSettled, editorOpen, apply, checkRow, wallCount, openEditorTab, reloadWithStorage, CANVAS, HERE, record, reloadWithSession, setValue, canvasSettled, drag, ROOT, act, openBrickTool });
+  bindGroups({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, exists, clearFingerprint, seedClearBoard, heightsSettled, editorOpen, apply, checkRow, wallCount, openEditorTab, reloadWithStorage, CANVAS, HERE, record, reloadWithSession, setValue, canvasSettled, drag, ROOT, act, openBrickTool, pickLayerRow, go, realTap, LAYER_ROWS });
   for (const g of RUNNER_ORDER) if (!arg('group') || arg('group') === g) await runGroup(g);
 } catch (e) {
   pageErrors.push(`run error: ${e.message}`); // e.g. setup failed -- reported, exit 1
@@ -559,7 +559,7 @@ async function waitApp() {
 async function openBrickTab() {
   if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  await click('editorTabBrick', 1000);
+  await pickLayerRow('brick', { wait: 1000 });
 }
 // ---------------------------------------------------------------- clear menu (hoisted; CLEAR_MENU in groups/clear.mjs; clear + layers use these)
 // One fingerprint per kind: { empty, hash }. Bricks and art are told apart the app's own way: since F35 item 22 slice 3
@@ -590,10 +590,10 @@ async function seedClearBoard() {
   await send('Page.reload', {}); await waitApp();
   if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  await click('editorTabFrame', 800);
+  await pickLayerRow('frame', { wait: 800 });
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 'none'; s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return s.value; })()`);
-  await click('editorTabArtwork', 800); await click('toolDraw', 400); await drag(CLEAR_MENU.seed.stroke); await click('toolSelect', 400);
-  await click('editorTabBrick', 800); await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await pickLayerRow('draw', { wait: 800 }); await click('toolDraw', 400); await drag(CLEAR_MENU.seed.stroke); await click('toolSelect', 400);
+  await pickLayerRow('brick', { wait: 800 }); await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   return clearFingerprint();
 }
 // ---------------------------------------------------------------- lay warnings + Select (hoisted)
@@ -608,11 +608,65 @@ function checkRow(kind, name, ok, detail, skip) {
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
 }
 async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
-async function openEditorTab(tabId) {
+/** Open the editor on a layer: `target` = a layer-row token ('row:brick', LAYER_ROWS) -- or any control id (a click). */
+async function openEditorTab(target) {
   if (!(await editorOpen())) await click('viewMode_2d', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  await click(tabId, 900);
+  return go(target, 900);
 }
+// ---------------------------------------------------------------- the editor layer stack (hoisted)
+// Fred 2026-11-23/24: the editor's layer TABS retired into the layer stack (main/layer-stack.js STACK_VIEWS.editor): a group
+// reaches a layer type's tools by SELECTING that layer's row with a REAL pointer, as a user does -- and when the board has
+// no layer of that type, by adding one through the stack's own '+ Add layer' picker (it selects the new row). A row token
+// in a group's data is 'row:<kind>'; LAYER_ROWS declares the kinds (the retired tab each replaces, for the reports).
+const LAYER_ROWS = Object.freeze({ frame: 'Frame', draw: 'Artwork', lattice: 'Lattice', brick: 'Brick', height: 'Height' });
+/** A real pointer press + release at the centre of element `elId` -- scrolled into view first, and only when the element
+ *  itself is what the pointer hits there ('MISSING' / 'DISABLED' / 'HIDDEN' / 'COVERED by ...' otherwise). `tapper(x, y)`:
+ *  the input to use (the mouse by default; a touch group passes its own). */
+async function realTap(elId, tapper = mouseTap) {
+  const at = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return { miss: 'MISSING' }; if(e.disabled) return { miss: 'DISABLED' };
+    if (typeof e.scrollIntoView === 'function') e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const r=e.getBoundingClientRect(); if(!r.width || !r.height) return { miss: 'HIDDEN' };
+    const x=r.left+r.width/2, y=r.top+r.height/2; const h=document.elementFromPoint(x, y);
+    return h && (h===e || e.contains(h)) ? { x, y } : { miss: 'COVERED by ' + (h ? (h.id || String(h.className || h.tagName)) : 'nothing') }; })())`);
+  if (at.miss) return at.miss;
+  await tapper(at.x, at.y);
+  return 'ok';
+}
+async function mouseTap(x, y) {
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+}
+/** The row to pick for a layer kind: the Frame row; else the ACTIVE layer's row when it is of that kind (a pick keeps the
+ *  layer the group was working on, as the retired tab did), else the first row of that kind ('' = none on the board). */
+const rowIdFor = (kind) => js(`(()=>{ const kind=${JSON.stringify(kind)}; if (kind === 'frame') return document.getElementById('edStackRow_frame') ? 'edStackRow_frame' : '';
+  const ed=window.svgEditor, act=ed && ed._activeLayer != null ? String(ed._activeLayer) : null;
+  const cards=[...document.querySelectorAll('#editorLayerStackList > [data-stack-type="' + kind + '"]')];
+  const c=cards.find((x) => act && x.dataset.stackKey === 'layer:' + act) || cards[0];
+  const b=c && c.querySelector(':scope > .layer-card-head [data-ed-select]'); return b ? b.id : ''; })()`);
+/** Select a layer kind's row in the editor stack with real input (see LAYER_ROWS). Returns 'ok' or what stopped it. */
+async function pickLayerRow(kind, { wait = 900, tapper = mouseTap } = {}) {
+  if (!LAYER_ROWS[kind]) return `unknown layer row ${kind}`;
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  // the phone: a folded list opens with a tap on its one row first
+  if (await js(`!!document.getElementById('editorLayerStack')?.classList.contains('is-folded')`)) {
+    const shown = await js(`([...document.querySelectorAll('#editorLayerStack [data-ed-select]')].find((b) => b.getClientRects().length) || {}).id || ''`);
+    if (shown) { await realTap(shown, tapper); await sleep(400); }
+  }
+  const id = await rowIdFor(kind);
+  if (!id) {
+    if (kind === 'frame') return 'no Frame row';
+    const a = await realTap('editorLayerStackAddBtn', tapper); await sleep(500);
+    const b = await realTap(`editorLayerStackAdd_${kind}`, tapper); await sleep(wait + 1500);
+    return a === 'ok' && b === 'ok' ? 'ok' : `add ${kind}: ${a} / ${b}`;
+  }
+  const r = await realTap(id, tapper); await sleep(wait);
+  return r;
+}
+/** A step of a group's script: a layer-row token ('row:<kind>') is picked in the stack, anything else clicked. */
+const go = (target, wait = 900) => (String(target).startsWith('row:') ? pickLayerRow(String(target).slice(4), { wait }) : click(target, wait));
 
 // ---------------------------------------------------------------- migration (hoisted; MIGRATION in groups/migration.mjs)
 async function loadFromStandIn(name) {

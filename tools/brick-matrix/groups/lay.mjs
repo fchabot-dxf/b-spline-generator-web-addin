@@ -96,9 +96,9 @@ async function runWallNoFrame() {
     await reloadWithStorage({});
     if (!(await js(N.marker))) { checkRow('lay', name, false, '', 'F35 item 42'); continue; }
     await js(`(()=>{ const h=document.getElementById('heightIn'); h.value=${JSON.stringify(String(c.heightIn))}; h.dispatchEvent(new Event('change')); return 1; })()`); await sleep(2000);
-    await openEditorTab('editorTabFrame');
+    await openEditorTab('row:frame');
     await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(c.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
-    await openEditorTab('editorTabBrick'); await click(N.wallTool, 900); await click(N.generate, 2500);
+    await openEditorTab('row:brick'); await click(N.wallTool, 900); await click(N.generate, 2500);
     const m = await jsJSON(`(async()=>{ const ed=window.svgEditor; const fp=await import('./editor/editor-frame-profile.js'); const cf=await import('./editor/contour-from-frame.js');
       const ctx=fp.frameContext(ed); const sil=ctx?cf.frameContourSilhouette(ctx,0,0):null;
       const cpts = sil && sil.primitives ? sil.primitives.flatMap((p)=>Object.values(p).filter((v)=>v&&typeof v==='object'&&'x' in v).map((v)=>[v.x,v.y])) : [[0,0],[ed._mW,ed._mH]];
@@ -116,10 +116,10 @@ async function runWallNoFrame() {
 async function runCarveUnderFlat() {
   const C = CARVE_UNDER_FLAT, name = 'Carving art under Flat bricks: crossed bricks keep their tops, the stroke cuts';
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick'); await click(C.wallTool, 900); await click(C.generate, 2500);
+  await openEditorTab('row:brick'); await click(C.wallTool, 900); await click(C.generate, 2500);
   await apply(); await heightsSettled(null);
   await js(`import('./core/state.js').then((m)=>{ window.__carveH0=Float32Array.from(m.lastResult.heights); return 1; })`);
-  await openEditorTab('editorTabArtwork');
+  await openEditorTab('row:draw');
   // a fresh board's drawing has no layer since the layer stack (Fred 2026-11-23: a new file has no layers): the stroke goes on
   // the first drawing layer, made by the app's own addLayer when there is none (as a drawn stroke's ensureActiveLayer would)
   await js(`import('./editor/layers.js').then((L)=>{ const ed=window.svgEditor; const lid=(ed._layers.find((l)=>!l.brickKind && !l.holdsBricks) || L.addLayer(ed, { skipUndo: true })).id; const s=${JSON.stringify(C.stroke)};
@@ -144,13 +144,13 @@ async function runCarveUnderFlat() {
 async function runLayWarnings() {
   const W = LAY_WARNING;
   await send('Page.reload', {}); await waitApp();
-  await openEditorTab('editorTabFrame');
+  await openEditorTab('row:frame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await apply(); await heightsSettled(null);
   await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
   const size = async (id) => { // the Brick frame's size (the bands fit by it; per element since 2026-10-11), then the sidebar
-    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await setValue('brickSizeSelect', id, 'change'); await sleep(2500);
+    await openEditorTab('row:brick'); await click('brickTool_frame', 900); await setValue('brickSizeSelect', id, 'change'); await sleep(2500);
     await apply(); await heightsSettled(null);
     await js(`import('./main/sidebar-tabs.js').then((m) => m.revealSidebarSection('panel-layers')).then(() => import('./main/layer-stack.js')).then(async (s) => { if (s.stackItems().some((i) => i.type === 'brick')) s.openLayerStackItem('bricks'); else await s.addStackLayer('brick'); return 1; })`);
   };
@@ -158,7 +158,7 @@ async function runLayWarnings() {
   await size(W.tooManySize);
   await click(W.tooMany, 2500);
   const side1 = await noteState(W.notes.sidebar);
-  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); // the Brick panel (and its note) shows once a tool is picked
+  await openEditorTab('row:brick'); await click('brickTool_wall', 900); // the Brick panel (and its note) shows once a tool is picked
   const walls1 = await wallCount(), ed1 = await noteState(W.notes.editor);
   const ok1 = walls1 === 0 && side1.shown && ed1.shown && side1.text.includes(W.text) && ed1.text.includes(W.text);
   checkRow('lay', `${W.template}: too many bands -> no wall + notes`, ok1, `wall ${walls1}, sidebar note ${side1.shown ? 'shown' : 'hidden'}, editor note ${ed1.shown ? 'shown' : 'hidden'}${side1.text.includes(W.text) ? '' : ' (text differs: ' + side1.text.slice(0, 60) + ')'}`);
@@ -167,7 +167,7 @@ async function runLayWarnings() {
   await size(W.fitsSize);
   await click(W.fits, 2500);
   const side2 = await noteState(W.notes.sidebar);
-  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900);
+  await openEditorTab('row:brick'); await click('brickTool_wall', 900);
   const walls2 = await wallCount(), ed2 = await noteState(W.notes.editor);
   checkRow('lay', `${W.template}: bands fit again -> wall back, notes hidden`, walls2 > 0 && !side2.shown && !ed2.shown,
     `wall ${walls2}, sidebar note ${side2.shown ? 'shown' : 'hidden'}, editor note ${ed2.shown ? 'shown' : 'hidden'}`);
@@ -180,7 +180,7 @@ async function runQuickFrameLays() {
   const setTemplate = (t) => js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(t)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   const frames = () => js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length`);
   await reloadWithStorage({}); // the defaults: a Soldier preset that is not laid until the Frame tool lays it
-  await openEditorTab('editorTabBrick'); await setTemplate(Q.template);
+  await openEditorTab('row:brick'); await setTemplate(Q.template);
   await click('brickTool_wall', 800); await click('brickGenerate', 2500);
   await apply(); const z0 = await heightsSettled(null);
   const f0 = await frames();
@@ -193,7 +193,7 @@ async function runQuickFrameLays() {
   const note = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(Q.sidebarNote)}); return { shown: !!e && getComputedStyle(e).display !== 'none', text: e ? e.textContent.trim() : '' }; })())`);
   checkRow('lay', 'Sidebar shows the band-fit note (a stack that only partly fits)', note.shown && note.text.startsWith(Q.reducedText), `sidebar note ${note.shown ? `"${note.text}"` : 'HIDDEN'}`);
   // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
-  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
+  await openEditorTab('row:brick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
   const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);
   await click(Q.noTemplatePick, 2500); const z3 = await heightsSettled(z2);
   const f3 = await frames();
@@ -203,9 +203,9 @@ async function runQuickFrameLays() {
 async function runBandsNote() {
   const W = BANDS_NOTE;
   await reloadWithStorage({}); // the defaults (1.25 in)
-  await openEditorTab('editorTabFrame');
+  await openEditorTab('row:frame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900); await click('brickGenerate', 2000);
   if (!(await exists(W.note))) { checkRow('lay', `${W.template}: 3-band reduced to fit -> note, wall kept, the unlaid bands hidden`, false, '', W.introducedBy); return; }
@@ -229,7 +229,7 @@ async function runStrokesFollow() {
   const read = () => jsJSON(`(()=>{ const n=window.svgEditor._sketchLayer.node; const sp=n.querySelector('[data-brick="brush-spine"]'); const s=sp?JSON.parse(sp.getAttribute('data-brick-settings')):{};
     return JSON.stringify({ pieces: n.querySelectorAll('[data-brick="brush"]').length, size: s.brickLengthIn, setId: s.setId, sets: [...new Set([...n.querySelectorAll('[data-brick="brush"]')].map((b)=>b.getAttribute('data-brick-set')))] }); })()`);
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 800);
+  await openEditorTab('row:brick'); await click('brickTool_brush', 800);
   await dragIn(F.stroke); await sleep(1500);
   const a = await read();
   await setValue('brickSizeSelect', F.sizePreset, 'change'); await sleep(2500);
@@ -254,9 +254,9 @@ const GREY_FILLS = `(async () => { const g = await import('./core/bricks/height-
 async function runGreyByHeight() {
   const G = GREY_BY_HEIGHT;
   await reloadWithStorage({});
-  await openEditorTab('editorTabFrame');
+  await openEditorTab('row:frame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return 1; })()`);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await click(G.wallTool, 900); await click(G.generate, 2500); await click(G.accent, 1200);
   await click(G.frameTool, 900); await click(G.generate, 2500);
   const a = await jsJSON(GREY_FILLS);

@@ -44,12 +44,12 @@ export const BLIND_BUDGET = {
     // drag + its debounce, ~0.85 s past t0 -- a settle counting quiet from t0 ended the row before it (seat D, MEASURED)
     { name: 'Surface: smoothing slider drag', sidebar: 'surface', act: { drag: 'smoothRadiusSlider', values: [2, 3, 4, 5] } },
     // the layer stack: a fresh board has no Brick layer, so its tools (the Brick card's body) are not in the page until one is added
-    { name: 'Wall Generate, the first lay', sidebar: 'layers', preSidebar: ['layerStackAddBtn', 'layerStackAdd_brick'], open: 'editorTabBrick', pre: ['brickTool_wall'], act: { tap: 'brickGenerate' }, fixedBy: '200ad4c' },
+    { name: 'Wall Generate, the first lay', sidebar: 'layers', preSidebar: ['layerStackAddBtn', 'layerStackAdd_brick'], open: 'row:brick', pre: ['brickTool_wall'], act: { tap: 'brickGenerate' }, fixedBy: '200ad4c' },
     { name: 'Brush stroke', pre: ['brickTool_brush'], act: { stroke: [[0.22, 0.45], [0.78, 0.5]] }, fixedBy: '12718cf' },
     { name: 'Raised brush stroke', pre: ['brickTool_raisedBrush', 'brickRaisedMode_bricks'], act: { stroke: [[0.22, 0.62], [0.78, 0.64]] }, fixedBy: '12718cf' },
     { name: 'Grout cut stroke', pre: ['brickRaisedMode_grout'], act: { stroke: [[0.3, 0.2], [0.7, 0.75]] }, post: ['brickRaisedMode_bricks'], fixedBy: '12718cf' },
     { name: 'Area brush stroke', pre: ['brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], act: { stroke: [[0.3, 0.3], [0.62, 0.38]] } },
-    { name: 'Frame tab Generate', pre: ['editorTabFrame'], act: { tap: 'editorFrameGenerate' } },
+    { name: 'Frame tab Generate', pre: ['row:frame'], act: { tap: 'editorFrameGenerate' } },
     // (the Photo tab's four rows and Surface > Photo's two left with the photo, Fred 2026-11-23)
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
@@ -62,10 +62,10 @@ export const BLIND_BUDGET = {
     // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
     // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
     // redesign phase 2: the lattices are the top-level Lattice tab's (a real tap reaches its own Art tabs, not Draw's)
-    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['editorTabLattice', 'artTab_lattice'], act: { tap: 'latticeGenerate' } },
+    { name: 'Art: Lattice Generate', open: 'row:draw', pre: ['row:lattice', 'artTab_lattice'], act: { tap: 'latticeGenerate' } },
     { name: 'Art: Undo after a Generate', act: { tap: 'editorUndo' } },
     { name: 'Art: Redo', act: { tap: 'editorRedo' } },
-    { name: 'Art: Shape Generate', pre: ['editorTabLattice', 'artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
+    { name: 'Art: Shape Generate', pre: ['row:lattice', 'artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
     { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
     // seat D 2026-10-09 (Fred's projects: 3D after a Generate ~120 ms blind): the phone's 3D toggle = Apply; its first
     // step 'saving the drawing' is on screen before the commit
@@ -75,8 +75,8 @@ export const BLIND_BUDGET = {
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups
 export const runsLast = true; // it reloads the page
 
-let sleep, send, js, jsJSON, shot, checkRow, waitApp;
-export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, checkRow, waitApp } = ctx); }
+let sleep, send, js, jsJSON, shot, checkRow, waitApp, pickLayerRow;
+export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, checkRow, waitApp, pickLayerRow } = ctx); }
 export async function run() { await runBlindBudget(); }
 
 /** Pure: the calibration's words for a FAIL's detail -- never a verdict. `medianMs` = this moment's workload median. */
@@ -125,6 +125,8 @@ async function touch(points, stepMs = 30) {
 const centreOf = (sel) => jsJSON(`JSON.stringify((() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null;
   e.scrollIntoView({ block: 'center', inline: 'center' }); const r = e.getBoundingClientRect(); return r.width && r.height ? [r.left + r.width / 2, r.top + r.height / 2] : null; })())`);
 async function tap(sel) { const c = await centreOf(sel); if (!c) return false; await touch([c]); return true; }
+// the editor layer stack (Fred 2026-11-24): a 'row:<kind>' step picks that layer's row in the stack with the same real touch
+const step = async (id) => (String(id).startsWith('row:') ? (await pickLayerRow(String(id).slice(4), { wait: 700, tapper: (x, y) => touch([[x, y]]) })) === 'ok' : tap('#' + id));
 async function strokeIn(fracs) {
   const pts = await jsJSON(`JSON.stringify((() => { const ed = window.svgEditor, m = ed._sketchLayer.node.getScreenCTM(); const P = ${JSON.stringify(fracs)}.map(([fx, fy]) => [ed._mW * fx, ed._mH * fy]);
     const out = []; for (let i = 1; i < P.length; i++) for (let k = i === 1 ? 0 : 1; k <= 12; k++) { const x = P[i - 1][0] + (P[i][0] - P[i - 1][0]) * k / 12, y = P[i - 1][1] + (P[i][1] - P[i - 1][1]) * k / 12; out.push([m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]); }
@@ -177,10 +179,10 @@ async function runBlindBudget() {
         await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('viewMode_2d').click();
           for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250)); return 1; })()`);
         await sleep(2500); // the opening card (item 41) is off the tab strip before the tab is tapped
-        await tap('#' + row.open); await sleep(1500);
+        await step(row.open); await sleep(1500);
       }
       let ready = true;
-      for (const id of row.pre || []) { if (!(await tap('#' + id))) { ready = false; break; } await sleep(700); }
+      for (const id of row.pre || []) { if (!(await step(id))) { ready = false; break; } await sleep(700); }
       await sleep(1200); // the setup's own work settles before the measured action
       if (!ready) { checkRow('blind', name, false, `setup control missing (${(row.pre || []).join(', ')})`); continue; }
       await send('Emulation.setCPUThrottlingRate', { rate: B.cpu });

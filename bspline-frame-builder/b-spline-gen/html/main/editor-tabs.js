@@ -46,13 +46,10 @@ export const EDITOR_TABS = [
       { content: 'editorStrokeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
-      // phase 4: the Text and Expand branches hold the mode groups; the Layers branch the ONE Layers component
+      // phase 4: the Text and Expand branches hold the mode groups (the Layers branch retired: the editor layer stack)
       { content: 'editorFontGroup', host: 'artTextBody', panel: 'editorToolbarTop' },
       { content: 'editorSymbolKeyboardToggle', host: 'artTextBody', panel: 'editorToolbarTop' },
       { content: 'editorExpandGroup', host: 'artExpandBody', panel: 'editorToolbarTop' },
-      { content: 'editorLayersHeader', host: 'drawLayersBody', panel: 'editorLayersPanel' },
-      { content: 'brickStartHint', host: 'drawLayersBody', panel: 'editorLayersPanel' },
-      { content: 'editorLayersList', host: 'drawLayersBody', panel: 'editorLayersPanel' },
     ] },
   { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
@@ -72,15 +69,9 @@ export const EDITOR_TABS = [
     // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
     // without an entry keeps the mode's own panel (Artwork's Stripe is unchanged).
     modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } },
-    // `panelHosts` (F35 item 40, Fred: "We don't see layers still"): blocks of ANOTHER panel this tab shows inside its
-    // own, whatever the mode -- the ONE Layers component (header + list; the Brick start hint lives with it), in the
-    // order given, under the pinned Generate. Bricks land on the ACTIVE layer (item 22 slice 3), so the Brick tab
-    // must show the layers and let the user pick one; no second list. Home = `panel`, in this order, on any other tab.
-    panelHosts: [
-      { content: 'editorLayersHeader', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-      { content: 'brickStartHint', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-      { content: 'editorLayersList', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-    ] },
+    // (its `panelHosts` -- the ONE Layers list hosted under Generate, F35 item 40 -- retired with the editor layer stack,
+    // Fred 2026-11-24: the stack above the panel lists the layers; the Brick start hint lives in #brickLayersSlot itself)
+  },
   // HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md slice 1): paint height patches ON the shared canvas (main/height-panel.js);
   // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js).
   // Owner 2026-11-23 (Draw's frame): no left rail -- the tool row (`toolbarId`) is the pinned head of its own panel

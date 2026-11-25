@@ -84,6 +84,6 @@ describe('the editor top bar: nothing empty takes a line', () => {
       return null;
     };
     expect(media('.editor-sidebar:not(:has(> [id^="editorToolbar"]')).toBeNull();
-    expect(media('#editorToolbarTop > :empty')).toMatch(/max-width: 900px/);
+    expect(media('#editorToolbarTop > :empty')).toMatch(/max-width: 767px/); // the editor's own breakpoint (editor/breakpoints.js EDITOR_MOBILE_MAX_PX)
   });
 });

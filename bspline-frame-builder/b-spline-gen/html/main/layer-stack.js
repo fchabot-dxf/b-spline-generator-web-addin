@@ -22,9 +22,13 @@ import { scheduleUndoSnapshot, isEditorOpen } from '../core/history.js';
 import { placementOf } from '../core/stamp/placement.js';
 import { defaultStackKeys, effectiveOrder, editorLayerKey, isBrickLayerRecord, STACK_BRICKS_KEY } from '../core/stamp/order.js';
 import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
-import { isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName } from '../editor/layers.js';
+import {
+  isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName,
+  setLayerVisible, setLayerShowColor, setLayerLocked, isUserLocked, removeLayer, renameLayer, eyeIconSVG, flashLayerGeometry,
+} from '../editor/layers.js';
 import { patchLayers } from '../core/height/compose.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
+import { EDITOR_MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
@@ -82,7 +86,7 @@ export const LAYER_TYPES = Object.freeze({
     },
     stackTab: 'brick',
     // a part row = its layer becomes the active one (bricks land on the ACTIVE layer, item 22 slice 3)
-    pick: (_item, sub) => { const ed = editor(); if (ed && sub != null) setActiveLayer(ed, sub); },
+    pick: (_item, sub) => { const ed = editor(); if (ed && sub != null) { setActiveLayer(ed, sub); flashLayerGeometry(ed, sub); } },
     subRows: (item) => item.ref.map((l) => ({ id: l.id, name: l.name || 'Bricks', icon: '▪' })).reverse(),
     // a new board's bricks start on the Wall's own layer (layers.js BRICK_KIND_LAYERS); they are laid in the Brick tab
     add() {
@@ -100,7 +104,7 @@ export const LAYER_TYPES = Object.freeze({
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
     stackTab: 'artwork',
-    pick: (item) => { const ed = editor(); if (ed) setActiveLayer(ed, item.ref.id); },
+    pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     async add() {
       const ed = editor();
       if (!ed) return null;
@@ -117,7 +121,7 @@ export const LAYER_TYPES = Object.freeze({
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
     stackTab: 'lattice',
-    pick: (item) => { const ed = editor(); if (ed) setActiveLayer(ed, item.ref.id); },
+    pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     // a new layer holding a fresh Lattice pattern (the Lattice panel's own lazy create, editor-lattice-pattern.js freshPattern),
     // then the editor on the Lattice tab: a lattice is made by its Generate there (the Rails / Ties / Nodes layers); until it
     // runs once the layer is a plain drawing layer (layers.js isLatticeLayer: pattern.id, the panels' own signal)
@@ -551,12 +555,11 @@ export const EDITOR_FIXED_ROWS = Object.freeze([
 /** Per breakpoint (Fred 2026-11-24: "think mobile and desktop"), first match wins -- ONE component, its arrangement declared:
  *    fold     the list folds to the selected row (tap it to unfold; picking a row folds it again)
  *    maxRows  rows the list shows before it scrolls on its own (the settings below always scroll separately)
- *  phone      portrait <= 600 px, or a phone held sideways (short + coarse): the drawer is the only panel -> fold
- *  tablet     601-900 px (a tablet, a narrow desktop window): the bottom drawer, wide -> open list, fewer rows
- *  desktop    the right-hand column: open list, ~6 rows */
+ *  phone      the editor's drawer (editor/breakpoints.js: below 768 px, or a phone held sideways): the drawer is the only
+ *             panel -> fold
+ *  desktop    the right-hand column (Fred 2026-11-24: from 768 px -- a tablet, a narrow window, a desktop): open, ~6 rows */
 export const EDITOR_STACK_LAYOUTS = Object.freeze([
-  Object.freeze({ id: 'phone', query: '(max-width: 600px), (pointer: coarse) and (max-height: 500px)', fold: true, maxRows: 5 }),
-  Object.freeze({ id: 'tablet', query: '(max-width: 900px)', fold: false, maxRows: 4 }),
+  Object.freeze({ id: 'phone', query: `${EDITOR_MOBILE_QUERY}, ${EDITOR_LANDSCAPE_PHONE_QUERY}`, fold: true, maxRows: 5 }),
   Object.freeze({ id: 'desktop', query: null, fold: false, maxRows: 6 }),
 ]);
 const FRAME_ROW_KEY = EDITOR_FIXED_ROWS[0].key;
@@ -625,6 +628,136 @@ function fixedRow(f, sel) {
   return card;
 }
 
+// ── the editor rows' controls (Fred 2026-11-24, phase 2): the EYE on every row; everything else the old Layers list row
+// had (lock, rename, delete, Stamp / carve, own colours; a paint layer's up / down) in ONE ⋯ menu per row, opened with the
+// editor's own context-menu popover (editor/editor-context-menu.js openMenuRows) -- declared below, one table.
+/** What a row stands for: an editor layer (a Draw / Lattice layer, a Brick part), all the bricks, a height patch, one of its
+ *  paint layers, or an STL record. */
+export function rowSubject(item, sub = null) {
+  if (!item) return null;
+  if (item.type === 'draw' || item.type === 'lattice') return { kind: 'layer', id: String(item.ref.id) };
+  if (item.type === 'brick') return sub != null ? { kind: 'layer', id: String(sub) } : { kind: 'bricks', ids: item.ref.map((l) => String(l.id)) };
+  if (item.type === 'height') return sub != null ? { kind: 'paint', patch: item.ref.id, id: String(sub) } : { kind: 'patch', id: item.ref.id };
+  if (item.type === 'stl') return { kind: 'stl', id: item.ref.id };
+  return null;
+}
+const edLayer = (id) => edLayers().find((l) => l && String(l.id) === String(id)) || null;
+const heightRec = (id) => (Array.isArray(P.heightLayers) ? P.heightLayers : []).find((r) => r && r.id === id) || null;
+const paintLayer = (s) => patchLayers(heightRec(s.patch)).find((l) => String(l.id) === s.id) || null;
+const stlRecOf = (id) => (Array.isArray(P.stlLayers) ? P.stlLayers : []).find((r) => r && r.id === id) || null;
+const heightMod = () => lazy.heightPanel();
+/** The eye per subject kind: shown / hidden on the canvas (it still carves and exports). A kind without one has no eye
+ *  (a height patch: its paint layers have theirs; an STL: no 2D view yet). */
+export const EDITOR_ROW_EYE = Object.freeze({
+  layer: Object.freeze({ get: (s) => (edLayer(s.id) || {}).visible !== false, set: (s, on) => setLayerVisible(editor(), s.id, on) }),
+  bricks: Object.freeze({ get: (s) => s.ids.some((id) => (edLayer(id) || {}).visible !== false), set: (s, on) => { for (const id of s.ids) setLayerVisible(editor(), id, on); } }),
+  paint: Object.freeze({ get: (s) => (paintLayer(s) || {}).visible !== false,
+    async set(s, on) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.setPatchLayerField(s.id, 'visible', on); } }),
+});
+const check = (on) => (on ? '☑' : '☐');
+const enabledOf = (s) => ((s.kind === 'patch' ? heightRec(s.id) : stlRecOf(s.id)) || {}).enabled !== false;
+/** The ⋯ menu, in order: { id, applies(subject), label(subject), icon(subject), run(subject, row) }. Every control the old
+ *  Layers list row had (editor/layers.js _makeLayerRow: carve, colours, lock, rename, delete) and the Height panel's patch /
+ *  paint-layer rows (stamp, rename, up / down, delete). */
+export const EDITOR_ROW_MENU = Object.freeze([
+  Object.freeze({ id: 'rename', applies: (s) => s.kind === 'layer' || s.kind === 'patch' || s.kind === 'paint', label: () => 'Rename…', icon: () => '✎',
+    run: (s, row) => beginRowRename(row, s) }),
+  Object.freeze({ id: 'stamp', applies: (s) => s.kind === 'layer' || s.kind === 'patch' || s.kind === 'stl', label: () => 'Stamp into the surface (3D)',
+    icon: (s) => check(s.kind === 'layer' ? (edLayer(s.id) || {}).carve !== false : enabledOf(s)),
+    async run(s) {
+      if (s.kind === 'layer') setLayerCarve(editor(), s.id, (edLayer(s.id) || {}).carve === false);
+      else if (s.kind === 'patch') (await heightMod()).setHeightEnabled(s.id, !enabledOf(s));
+      else setStlEnabled(s.id, !enabledOf(s));
+    } }),
+  Object.freeze({ id: 'colour', applies: (s) => s.kind === 'layer', label: () => 'Its own colours', icon: (s) => check((edLayer(s.id) || {}).showColor !== false),
+    run: (s) => setLayerShowColor(editor(), s.id, (edLayer(s.id) || {}).showColor === false) }),
+  Object.freeze({ id: 'lock', applies: (s) => s.kind === 'layer', label: (s) => (isUserLocked(edLayer(s.id)) ? 'Unlock' : 'Lock'), icon: (s) => (isUserLocked(edLayer(s.id)) ? '🔓' : '🔒'),
+    run: (s) => setLayerLocked(editor(), s.id, !isUserLocked(edLayer(s.id))) }),
+  Object.freeze({ id: 'up', applies: (s) => s.kind === 'paint' && canMovePaint(s, 1), label: () => 'Move up', icon: () => '▲',
+    async run(s) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.movePatchLayer(s.id, 1); } }),
+  Object.freeze({ id: 'down', applies: (s) => s.kind === 'paint' && canMovePaint(s, -1), label: () => 'Move down', icon: () => '▼',
+    async run(s) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.movePatchLayer(s.id, -1); } }),
+  // never the only layer, never a locked one (the old row's rules); a paint layer never its patch's last (the patch's Delete)
+  Object.freeze({ id: 'delete', applies: (s) => (s.kind === 'layer' ? edLayers().length > 1 && !isUserLocked(edLayer(s.id))
+    : s.kind === 'paint' ? patchLayers(heightRec(s.patch)).length > 1 : s.kind === 'patch' || s.kind === 'stl'), label: () => 'Delete', icon: () => '🗑',
+    async run(s) {
+      if (s.kind === 'layer') removeLayer(editor(), s.id);
+      else if (s.kind === 'patch') (await heightMod()).removeHeightPatch(s.id);
+      else if (s.kind === 'paint') { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.removePatchLayer(s.id); }
+      else removeStlLayer(s.id);
+    } }),
+]);
+function canMovePaint(s, dir) {
+  const ls = patchLayers(heightRec(s.patch)), i = ls.findIndex((l) => String(l.id) === s.id);
+  return i >= 0 && i + dir >= 0 && i + dir < ls.length;
+}
+/** The ⋯ menu's items for `subject`: the declared ones that apply now. */
+export const rowMenuItems = (subject) => (subject ? EDITOR_ROW_MENU.filter((m) => m.applies(subject)) : []);
+
+/** Rename in place: the row's name becomes a text box; Enter / leaving it writes the name (one step), Esc puts it back. */
+function beginRowRename(row, s) {
+  const title = row && row.querySelector('.layer-card-title, .ed-stack-sub-name');
+  if (!title) return false;
+  const now = s.kind === 'layer' ? (edLayer(s.id) || {}).name : s.kind === 'patch' ? (heightRec(s.id) || {}).name : (paintLayer(s) || {}).name;
+  const input = el('input', { type: 'text', class: 'ed-stack-rename', 'aria-label': 'Layer name', maxlength: '40' });
+  input.value = now || '';
+  title.replaceWith(input);
+  _edRenaming = true;
+  let done = false;
+  const finish = async (keep) => {
+    if (done) return;
+    done = true;
+    _edRenaming = false;
+    const v = input.value.trim();
+    if (keep && v && v !== now) {
+      if (s.kind === 'layer') renameLayer(editor(), s.id, v);
+      else if (s.kind === 'patch') (await heightMod()).renameHeightPatch(s.id, v);
+      else { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.setPatchLayerField(s.id, 'name', v); }
+    }
+    refreshEditorStack();
+  };
+  input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); finish(false); } });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('pointerdown', (e) => e.stopPropagation());
+  if (typeof input.focus === 'function') { input.focus(); if (typeof input.select === 'function') input.select(); }
+  return true;
+}
+let _edRenaming = false; // a row's name is being typed: no rebuild under it
+
+/** Open a row's ⋯ menu (its button's own click), anchored under `anchor`. */
+export async function openRowMenu(key, sub = null, anchor = null) {
+  const item = stackItems().find((i) => i.key === key);
+  const s = rowSubject(item, sub);
+  const items = rowMenuItems(s);
+  if (!items.length) return null;
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: 0, bottom: 0 };
+  // the row as it is when the item runs (a refresh may have rebuilt the list while the menu was open)
+  const rowNow = () => { const n = byId(edRowId(key, sub)); return n ? n.closest('.ed-stack-sub, .layer-card-head') : null; };
+  const { openMenuRows } = await import('../editor/editor-context-menu.js');
+  return openMenuRows(items.map((m) => ({ label: m.label(s), icon: m.icon(s), run: () => m.run(s, rowNow()) })), r.left, r.bottom + 2);
+}
+
+/** A row's eye (none for a kind EDITOR_ROW_EYE does not declare) and ⋯ button. */
+function rowControls(item, sub, name) {
+  const s = rowSubject(item, sub);
+  const eye = s && EDITOR_ROW_EYE[s.kind];
+  const shown = eye ? !!eye.get(s) : true;
+  const idPart = edRowId(item.key, sub).slice('edStackRow_'.length);
+  const out = [];
+  if (eye) {
+    const b = el('button', { type: 'button', class: `ed-stack-eye${shown ? '' : ' is-hidden'}`, id: `edStackEye_${idPart}`, 'data-ed-eye': item.key, ...(sub != null ? { 'data-ed-sub': sub } : {}),
+      'aria-pressed': String(shown), 'aria-label': `${shown ? 'Hide' : 'Show'} ${name}`, title: shown ? 'Hide (it still carves and exports)' : 'Show' });
+    b.innerHTML = eyeIconSVG(shown);
+    out.push(b);
+  }
+  if (rowMenuItems(s).length) {
+    out.push(el('button', { type: 'button', class: 'ed-stack-more', id: `edStackMenu_${idPart}`, 'data-ed-menu': item.key, ...(sub != null ? { 'data-ed-sub': sub } : {}),
+      'aria-haspopup': 'menu', 'aria-label': `More for ${name}`, title: 'Rename, stamp, colours, lock, delete', text: '⋯' }));
+  }
+  return out;
+}
+
 function editorCard(item, after, sel) {
   const T = LAYER_TYPES[item.type];
   const selected = sel.key === item.key;
@@ -637,22 +770,23 @@ function editorCard(item, after, sel) {
   const head = el('div', { class: 'panel-header layer-card-head' }, [
     el('span', { class: 'layer-card-handle', title: 'Drag to move (stamp order; across the Thicken line: body or top only)', 'aria-label': `Move ${name}`, role: 'button', text: '≡' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: T.icon }),
-    T.enabled ? el('input', { type: 'checkbox', class: 'layer-card-enable', title: T.enabled.title, 'aria-label': T.enabled.title }) : null,
     subs.length ? el('button', { type: 'button', class: 'ed-stack-caret', 'data-ed-caret': item.key, 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Unfold'} the layers of ${name}`, text: open ? '▾' : '▸' }) : null,
     el('button', { type: 'button', class: 'layer-card-name ed-stack-name', id: edRowId(item.key), 'data-ed-select': item.key, 'aria-pressed': String(selected && sel.sub == null), title: `${name} — ${T.label}${after ? ', top only' : ''}` },
       // a new layer's name says its type (typedLayerName) and its icon + colour do too: the type line only for 'top only'
       [el('span', { class: 'layer-card-title', text: name }), after ? el('span', { class: 'layer-card-type', text: 'top only' }) : null]),
+    ...rowControls(item, null, name),
     el('span', { class: 'ed-stack-unfold', 'aria-hidden': 'true', text: '▾' }),
   ]);
-  const box = head.querySelector('.layer-card-enable');
-  if (box) box.checked = !!T.enabled.get(item);
   card.append(head);
   if (subs.length) {
     const list = el('div', { class: 'ed-stack-subs', role: 'group', 'aria-label': `Layers of ${name}` });
     for (const s of subs) {
       const on = selected && sel.sub != null && String(sel.sub) === String(s.id);
-      list.appendChild(el('button', { type: 'button', class: `ed-stack-sub${on ? ' is-selected' : ''}`, id: edRowId(item.key, s.id), 'data-ed-select': item.key, 'data-ed-sub': s.id, 'aria-pressed': String(on), title: s.name },
-        [el('span', { class: 'ed-stack-sub-icon', 'aria-hidden': 'true', text: s.icon }), el('span', { class: 'ed-stack-sub-name', text: s.name })]));
+      list.appendChild(el('div', { class: `ed-stack-sub${on ? ' is-selected' : ''}`, 'data-ed-sub-row': s.id }, [
+        el('button', { type: 'button', class: 'ed-stack-sub-pick', id: edRowId(item.key, s.id), 'data-ed-select': item.key, 'data-ed-sub': s.id, 'aria-pressed': String(on), title: s.name },
+          [el('span', { class: 'ed-stack-sub-icon', 'aria-hidden': 'true', text: s.icon }), el('span', { class: 'ed-stack-sub-name', text: s.name })]),
+        ...rowControls(item, s.id, s.name),
+      ]));
     }
     card.append(list);
   }
@@ -662,7 +796,7 @@ function editorCard(item, after, sel) {
 /** Re-reads the board and rebuilds the editor's list (its rows hold no hosted fields: a rebuild is always safe). */
 export function refreshEditorStack() {
   const listEl = byId(STACK_VIEWS.editor.list), pane = byId(STACK_VIEWS.editor.pane);
-  if (!listEl || _drag) return;
+  if (!listEl || _drag || _edRenaming) return;
   const items = stackItems();
   const sel = editorSelection(items);
   if (sel.key && sel.sub != null) _edSubsOpen.add(sel.key);
@@ -704,6 +838,16 @@ function initEditorStack() {
   lazy.heightPanel().then((m) => { _edMods.height = m; refreshEditorStack(); }, () => {});
   listEl.addEventListener('pointerdown', (e) => { const h = e.target.closest('.layer-card-handle'); if (h && !h.classList.contains('ed-stack-lock')) startDrag(e, h); });
   listEl.addEventListener('click', (e) => {
+    const sub0 = (n) => (n.dataset.edSub != null ? n.dataset.edSub : null);
+    const eyeBtn = e.target.closest('[data-ed-eye]');
+    if (eyeBtn) {
+      const s = rowSubject(stackItems().find((i) => i.key === eyeBtn.dataset.edEye), sub0(eyeBtn));
+      const eye = s && EDITOR_ROW_EYE[s.kind];
+      if (eye) Promise.resolve(eye.set(s, !eye.get(s))).then(() => refreshEditorStack());
+      return;
+    }
+    const more = e.target.closest('[data-ed-menu]');
+    if (more) { openRowMenu(more.dataset.edMenu, sub0(more), more); return; }
     const caret = e.target.closest('[data-ed-caret]');
     if (caret) { const k = caret.dataset.edCaret; if (_edSubsOpen.has(k)) _edSubsOpen.delete(k); else _edSubsOpen.add(k); refreshEditorStack(); return; }
     const row = e.target.closest('[data-ed-select]');
@@ -800,5 +944,5 @@ let _docWired = false;
 /** Tests: forget the UI state. */
 export function _resetLayerStackForTests() {
   _lastSig = null; _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} };
-  _edFolded = true; _edSubsOpen.clear(); _edStlKey = null;
+  _edFolded = true; _edSubsOpen.clear(); _edStlKey = null; _edRenaming = false;
 }
