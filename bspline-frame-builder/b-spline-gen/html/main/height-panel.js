@@ -180,7 +180,9 @@ export const TOOL_DEFAULTS = Object.freeze({
 export const HEIGHT_TOOL_GROUPS = Object.freeze([
   // slice 5: how the patches draw on the canvas (Lit | Greyscale)
   Object.freeze({ id: 'view', label: 'View' }),
-  Object.freeze({ id: 'layers', label: 'Layers', note: 'top first; the tools edit the selected one' }),
+  // the patch / paint-layer ROWS moved to the editor layer stack (Fred 2026-11-24): its rows pick, show / hide, rename, move,
+  // delete; this group keeps the selected paint layer's own settings and '+ Paint layer'
+  Object.freeze({ id: 'layers', label: 'Layers', note: 'the selected paint layer (pick it in the layer list above)' }),
   Object.freeze({ id: 'move', label: 'Move', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the marquee only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
   // the tip extras show only for a square / chisel tip (a round brush is set by its falloff; slice 3b / 3c)
@@ -320,7 +322,7 @@ function controlText(id, label = '') {
 const toolSummary = (toolId) => (HEIGHT_OPTIONS_BAR[toolId] || []).filter((i) => i.control).map((i) => controlText(i.control, i.label)).filter(Boolean).slice(0, 2).join(' · ');
 const layerCount = (rec) => { const n = patchLayers(rec).length; return `${n} layer${n === 1 ? '' : 's'}`; };
 export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
-  Object.freeze({ id: 'patch', title: 'Patch & layers', hosts: Object.freeze(['heightPatchActions', 'heightList', groupDom('layers')]),
+  Object.freeze({ id: 'patch', title: 'Patch & layers', hosts: Object.freeze(['heightPatchActions', groupDom('layers')]),
     summary: () => { const r = activeHeightLayer(); return r ? `${r.name || 'Height'} · ${layerCount(r)}` : 'no patch yet'; } }),
   Object.freeze({ id: 'view', title: 'View', hosts: Object.freeze([groupDom('view')]),
     summary: () => [controlText('viewLook'), controlText('viewShow')].filter(Boolean).join(' · ') }),
@@ -409,8 +411,11 @@ export function pickHeightPatch(id) {
   _active = id;
   syncHeightPanel();
   syncHeightOverlay();
+  selectionChanged();
   return true;
 }
+/** The editor layer stack (main/layer-stack.js) shows the patch / paint layer the tools edit: tell it the pick changed. */
+const selectionChanged = () => { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('layerStackStale')); };
 
 // ── the layers of a patch (slice 2; core/height/compose.js) ─────────────────────────────────────────────────────────
 /** The layer of patch `rec` the tools edit: the selected one, else the TOP layer (a slice-1 record: its one 'base'). */
@@ -1196,6 +1201,15 @@ export async function newHeightPatch() {
   syncHeightOverlay();
   return rec;
 }
+/** Rename patch `id` (the editor layer stack's row menu; one step; an unchanged or empty name writes nothing). */
+export function renameHeightPatch(id, name) {
+  const rec = find(id), next = String(name == null ? '' : name).trim();
+  if (!rec || !next || next === rec.name) return false;
+  updateRecord(id, (r) => ({ ...r, name: next }));
+  commitStep('rename');
+  syncHeightPanel();
+  return true;
+}
 export function removeHeightPatch(id) {
   if (!find(id)) return;
   dropHeightMove();
@@ -1287,6 +1301,7 @@ export function selectPatchLayer(layerId) {
   _activeLayer.set(rec.id, layerId);
   syncHeightPanel();
   syncHeightOverlay();
+  selectionChanged();
   return true;
 }
 /** One field of a layer of the active patch (`path`: a key or a key path, e.g. ['mapping', 'whiteIn']). `commit` false =
@@ -1849,7 +1864,6 @@ const GROUP_HEADS = Object.freeze({
     ]),
   ]),
   layers: () => el('div', {}, [
-    el('div', { id: 'heightLayerList', class: 'stl-list' }),
     el('div', { class: 'photo-layer-buttons' }, [
       el('button', { type: 'button', id: 'heightLayerAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Paint layer', title: 'An unpainted layer above the selected one' }),
     ]),
@@ -1892,7 +1906,6 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar 
   body.appendChild(el('div', { id: 'heightStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   // slice 5 (Fred 2026-11-23): the last build against the stock (core/stock.js) -- detection only
   body.appendChild(el('div', { id: 'heightCarveRange', class: 'photo-layer-note', role: 'status', hidden: '' }));
-  body.appendChild(el('div', { id: 'heightList', class: 'stl-list' }));
   const ctx = panelCtx();
   for (const g of panelGroups()) {
     const box = el('div', { id: `heightGroup_${g.id}` });
@@ -1922,84 +1935,14 @@ function syncHeightTree() {
   }
 }
 
-/** Rename layer `layerId` in place: its name button becomes a text input; Enter or leaving it writes the name (ONE step,
- *  setPatchLayerField; an unchanged name writes nothing), Esc puts the name back. */
-function beginLayerRename(layerId) {
-  const btn = document.querySelector(`[data-patch-layer-pick="${layerId}"]`);
-  const layer = patchLayers(activeHeightLayer()).find((l) => l.id === layerId);
-  if (!btn || !layer) return false;
-  const input = el('input', { type: 'text', class: 'height-layer-rename', 'data-patch-layer-name-edit': layerId, 'aria-label': 'Layer name',
-    style: 'flex:1 0 auto; min-width:0; max-width:calc(100% - 24px); min-height:32px; font:inherit; box-sizing:border-box;' });
-  input.value = layer.name || '';
-  btn.replaceWith(input);
-  let done = false;
-  const finish = (keep) => {
-    if (done) return;
-    done = true;
-    if (keep && input.value !== (layer.name || '')) setPatchLayerField(layerId, 'name', input.value); // re-renders the rows
-    else syncHeightPanel();
-  };
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-  });
-  input.addEventListener('blur', () => finish(true));
-  if (typeof input.focus === 'function') { input.focus(); if (typeof input.select === 'function') input.select(); }
-  return true;
-}
-
-/** The active patch's layers, TOP first: visible, name (select; double-click renames), rename, up / down, delete. */
-function syncLayerList(rec) {
-  const box = byId('heightLayerList');
-  if (!box) return;
-  box.innerHTML = '';
-  const ls = patchLayers(rec);
-  const act = rec ? layerOf(rec) : null;
-  for (const l of [...ls].reverse()) {
-    const i = ls.indexOf(l);
-    const row = el('div', { class: `stl-row${act && l.id === act.id ? ' stl-row-active' : ''}`, 'data-patch-layer': l.id, style: 'gap:2px; flex-wrap:wrap;' }, [
-      el('input', { type: 'checkbox', 'data-patch-layer-visible': l.id, title: 'Show this layer (it counts in the patch)' }),
-      // not .stl-row-name: its open / closed arrow belongs to a card, and a layer row needs the room for its name
-      el('button', { type: 'button', class: 'height-layer-name', style: 'flex:1 0 auto; min-width:0; max-width:calc(100% - 24px); min-height:32px; text-align:left; background:none; border:0; font:inherit; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', 'data-patch-layer-pick': l.id, text: `${l.kind === 'image' ? '🖼 ' : ''}${l.name || 'Layer'}`, title: l.kind === 'image' ? 'An imported heightmap (its grey values, mapped live)' : 'A paint layer' }),
-      // a name longer than the row's free width takes the whole row and its buttons move under it together, right-aligned
-      el('span', { style: 'display:flex; gap:2px; margin-left:auto;' }, [
-        // slice 4 (Fred 2026-11-23): rename -- the pencil (touch) or a double-click on the name
-        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-rename': l.id, title: 'Rename this layer', 'aria-label': 'Rename layer', text: '✎' }),
-        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:1`, title: 'Move up', 'aria-label': 'Move up', text: '▲' }),
-        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-move': `${l.id}:-1`, title: 'Move down', 'aria-label': 'Move down', text: '▼' }),
-        el('button', { type: 'button', class: 'stl-row-del', 'data-patch-layer-remove': l.id, title: 'Delete this layer', 'aria-label': 'Delete layer', text: '🗑' }),
-      ]),
-    ]);
-    row.querySelector('input').checked = l.visible !== false;
-    row.querySelector(`[data-patch-layer-move="${l.id}:1"]`).disabled = i === ls.length - 1;
-    row.querySelector(`[data-patch-layer-move="${l.id}:-1"]`).disabled = i === 0;
-    row.querySelector('[data-patch-layer-remove]').disabled = ls.length < 2; // the patch's own Delete removes the last one
-    box.appendChild(row);
-  }
-}
-
 const KIB = 1024;
 /** Reflect the state on the panel. Safe any time (a load, an undo, a stroke). */
 export function syncHeightPanel() {
   const recs = list();
   if (!find(_active)) _active = recs[0]?.id ?? null;
-  const listEl = byId('heightList');
-  if (listEl) {
-    listEl.innerHTML = '';
-    if (!recs.length) listEl.appendChild(el('div', { class: 'photo-layer-note', text: 'No height patch yet. Add one, then paint on the board.' }));
-    for (const r of recs) {
-      const on = r.enabled !== false;
-      const row = el('div', { class: `stl-row${r.id === _active ? ' stl-row-active' : ''}` }, [
-        el('input', { type: 'checkbox', 'data-height-enable': r.id, title: 'Stamp this patch' }),
-        el('button', { type: 'button', class: 'stl-row-name', 'data-height-pick': r.id, text: r.name || 'Height' }),
-      ]);
-      row.querySelector('input').checked = on;
-      listEl.appendChild(row);
-    }
-  }
   const rec = activeHeightLayer();
   const n = rec ? placed(rec) : null;
   const ctx = panelCtx();
-  syncLayerList(rec);
   for (const c of allControls()) {
     const src = controlSource(c, rec);
     const v = src ? getPath(src, c.path) : undefined;
@@ -2070,14 +2013,6 @@ export function initHeightPanel(hooks = {}) {
   byId('editorTabHeight')?.addEventListener('click', () => setEditorTab('height'));
   byId('heightNew')?.addEventListener('click', () => { newHeightPatch().catch((e) => status(`Could not make the patch: ${e && e.message ? e.message : e}`, true)); });
   byId('heightRemove')?.addEventListener('click', () => { const r = activeHeightLayer(); if (r) removeHeightPatch(r.id); });
-  byId('heightList')?.addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-height-pick]');
-    if (pick) { dropHeightMove(); _active = pick.getAttribute('data-height-pick'); syncHeightPanel(); syncHeightOverlay(); }
-  });
-  byId('heightList')?.addEventListener('change', (e) => {
-    const box = e.target.closest('[data-height-enable]');
-    if (box) setHeightEnabled(box.getAttribute('data-height-enable'), box.checked);
-  });
   byId('heightFillApply')?.addEventListener('click', () => { fillHeight(); });
   // slice 5: the grey palette's swatches and ramp
   byId('heightGreySwatches')?.addEventListener('click', (e) => { const b = e.target.closest('[data-height-grey]'); if (b) pickHeightGrey(Number(b.getAttribute('data-height-grey')) / 100); });
@@ -2099,22 +2034,6 @@ export function initHeightPanel(hooks = {}) {
     if (id) selectHeightFromLayer(id).catch((e) => status(`Could not read the shape: ${e && e.message ? e.message : e}`, true));
   });
   byId('heightLayerAdd')?.addEventListener('click', () => { addPaintLayer().catch((e) => status(`Could not add the layer: ${e && e.message ? e.message : e}`, true)); });
-  byId('heightLayerList')?.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-patch-layer-pick],[data-patch-layer-move],[data-patch-layer-remove],[data-patch-layer-rename]');
-    if (!t || t.disabled) return;
-    if (t.hasAttribute('data-patch-layer-rename')) beginLayerRename(t.getAttribute('data-patch-layer-rename'));
-    else if (t.hasAttribute('data-patch-layer-pick')) selectPatchLayer(t.getAttribute('data-patch-layer-pick'));
-    else if (t.hasAttribute('data-patch-layer-remove')) removePatchLayer(t.getAttribute('data-patch-layer-remove'));
-    else { const v = t.getAttribute('data-patch-layer-move'); const k = v.lastIndexOf(':'); movePatchLayer(v.slice(0, k), Number(v.slice(k + 1))); }
-  });
-  byId('heightLayerList')?.addEventListener('dblclick', (e) => {
-    const t = e.target.closest('[data-patch-layer-pick]');
-    if (t) beginLayerRename(t.getAttribute('data-patch-layer-pick'));
-  });
-  byId('heightLayerList')?.addEventListener('change', (e) => {
-    const box = e.target.closest('[data-patch-layer-visible]');
-    if (box) setPatchLayerField(box.getAttribute('data-patch-layer-visible'), 'visible', box.checked);
-  });
   if (typeof document !== 'undefined') {
     for (const b of document.querySelectorAll('[data-height-tool]')) b.addEventListener('click', () => setHeightTool(b.getAttribute('data-height-tool')));
   }

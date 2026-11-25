@@ -46,13 +46,10 @@ export const EDITOR_TABS = [
       { content: 'editorStrokeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
-      // phase 4: the Text and Expand branches hold the mode groups; the Layers branch the ONE Layers component
+      // phase 4: the Text and Expand branches hold the mode groups (the Layers branch retired: the editor layer stack)
       { content: 'editorFontGroup', host: 'artTextBody', panel: 'editorToolbarTop' },
       { content: 'editorSymbolKeyboardToggle', host: 'artTextBody', panel: 'editorToolbarTop' },
       { content: 'editorExpandGroup', host: 'artExpandBody', panel: 'editorToolbarTop' },
-      { content: 'editorLayersHeader', host: 'drawLayersBody', panel: 'editorLayersPanel' },
-      { content: 'brickStartHint', host: 'drawLayersBody', panel: 'editorLayersPanel' },
-      { content: 'editorLayersList', host: 'drawLayersBody', panel: 'editorLayersPanel' },
     ] },
   { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
@@ -72,15 +69,9 @@ export const EDITOR_TABS = [
     // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
     // without an entry keeps the mode's own panel (Artwork's Stripe is unchanged).
     modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } },
-    // `panelHosts` (F35 item 40, Fred: "We don't see layers still"): blocks of ANOTHER panel this tab shows inside its
-    // own, whatever the mode -- the ONE Layers component (header + list; the Brick start hint lives with it), in the
-    // order given, under the pinned Generate. Bricks land on the ACTIVE layer (item 22 slice 3), so the Brick tab
-    // must show the layers and let the user pick one; no second list. Home = `panel`, in this order, on any other tab.
-    panelHosts: [
-      { content: 'editorLayersHeader', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-      { content: 'brickStartHint', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-      { content: 'editorLayersList', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
-    ] },
+    // (its `panelHosts` -- the ONE Layers list hosted under Generate, F35 item 40 -- retired with the editor layer stack,
+    // Fred 2026-11-24: the stack above the panel lists the layers; the Brick start hint lives in #brickLayersSlot itself)
+  },
   // HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md slice 1): paint height patches ON the shared canvas (main/height-panel.js);
   // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js).
   // Owner 2026-11-23 (Draw's frame): no left rail -- the tool row (`toolbarId`) is the pinned head of its own panel
@@ -88,7 +79,13 @@ export const EDITOR_TABS = [
   // main/height-panel.js HEIGHT_DRAWER_TREE) scroll under it. On a phone that head is the drawer's, shown in full at peek.
   { id: 'height', label: 'Height', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight',
     modes: ['select', 'heightBrush'], peekEssentials: ['#heightToolsHead'] },
+  // EDITOR LAYER STACK (Fred 2026-11-23): an STL row selected. No tab button (the stack's row is the picker); its 2D placement
+  // view is planned -- for now the panel points to the sidebar card (#editorStlPanel).
+  { id: 'stl', label: 'STL', buttonId: null, panelId: 'editorStlPanel', toolbarId: null, modes: ['select'] },
 ];
+/** EDITOR LAYER STACK: what shows in full at peek on EVERY tab, before the tab's own `peekEssentials` -- the stack (on a
+ *  phone folded to the selected row, main/layer-stack.js EDITOR_STACK_LAYOUTS). */
+export const SHARED_PEEK_ESSENTIALS = Object.freeze(['#editorLayerStack']);
 
 /** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;
  *  every other hosted block goes back to its own declared `panel` (its home). The mode's side panel then
@@ -136,6 +133,7 @@ const TOOLBAR_TOP_GROUPS_BY_TAB = {
   brick: ['editorGridGroup'],
   frame: [],
   height: ['editorHeightOptionsGroup'], // HEIGHT-PAINTER: none of the drawing's groups; its own options bar (main/height-panel.js HEIGHT_OPTIONS_BAR)
+  stl: [],
 };
 
 export function setEditorTab(tab) {
@@ -153,7 +151,7 @@ export function setEditorTab(tab) {
   // Mobile: the editor's bottom drawer gets the active tab's declared peek essentials (editor/ never imports main/, so as data on
   // the drawer element; editor-drawer.js re-measures its peek floor on 'editorTabChanged' below).
   const drawer = document.getElementById('editorMobileDrawer');
-  if (drawer) drawer.dataset.peekEssentials = JSON.stringify(EDITOR_TABS.find((t) => t.id === _editorTab)?.peekEssentials || []);
+  if (drawer) drawer.dataset.peekEssentials = JSON.stringify([...SHARED_PEEK_ESSENTIALS, ...(EDITOR_TABS.find((t) => t.id === _editorTab)?.peekEssentials || [])]);
   // F35 item 10 follow-up (advisor): the top toolbar's own GROUPS are shared chrome, not one tab's
   // content -- the bar itself now always shows (whenever any tab needs at least one group); WHICH
   // groups show is the per-tab table above.

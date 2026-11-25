@@ -19,6 +19,7 @@ import { P, DEFAULT, setLastResult } from '../bspline-frame-builder/b-spline-gen
 import {
   initHeightPanel, newHeightPatch, activeHeightLayer, _resetHeightPanelForTests, selectHeightRect, featherHeightSelection, heightSelection,
   fillHeight, setHeightField, setHeightTool, clearHeightSelection, HEIGHT_TOOLS, HEIGHT_TOOL_CONTROLS, addPaintLayer, activePatchLayer,
+  setPatchLayerField, renameHeightPatch,
 } from '../bspline-frame-builder/b-spline-gen/html/main/height-panel.js';
 import { heightBrushHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-height-tool.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -186,30 +187,23 @@ describe('the panel', () => {
     setHeightField('featherProfile', 'linear'); setHeightTool('brush'); setHeightTool('selectRect');
     expect(curve().hidden).toBe(true);
   });
-  it('layer rename: double-click the name, type, Enter -> the name, ONE undo step; the pencil + Esc cancels', async () => {
+  // the rename UI moved to the editor layer stack's ⋯ menu (Fred 2026-11-24; tests/editor-layer-stack.test.js): these are
+  // the writes it runs -- ONE undo step each, an unchanged / empty patch name writes nothing
+  it('layer + patch rename (the stack\'s Rename writes): ONE undo step each; the panel\'s own layer rows are gone', async () => {
     await newHeightPatch();
     await addPaintLayer();
     const layerId = activePatchLayer().id;
     const steps = ed._undoStack.length;
-    document.querySelector(`[data-patch-layer-pick="${layerId}"]`).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    let input = document.querySelector(`input[data-patch-layer-name-edit="${layerId}"]`);
-    expect(input).toBeTruthy();
-    input.value = 'Ridge';
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(document.querySelector('[data-patch-layer-pick]')).toBeNull();
+    setPatchLayerField(layerId, 'name', 'Ridge');
     expect(activePatchLayer().name).toBe('Ridge');
     expect(ed._undoStack.length).toBe(steps + 1);
-    expect(document.querySelector(`[data-patch-layer-pick="${layerId}"]`).textContent).toBe('Ridge');
-    document.querySelector(`[data-patch-layer-rename="${layerId}"]`).click();
-    input = document.querySelector(`input[data-patch-layer-name-edit="${layerId}"]`);
-    input.value = 'Nope';
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(activePatchLayer().name).toBe('Ridge');
-    expect(ed._undoStack.length).toBe(steps + 1);
-    document.querySelector(`[data-patch-layer-rename="${layerId}"]`).click();
-    input = document.querySelector(`input[data-patch-layer-name-edit="${layerId}"]`);
-    input.value = 'Groove';
-    input.dispatchEvent(new Event('blur'));
-    expect(activePatchLayer().name).toBe('Groove');
+    const id = activeHeightLayer().id;
+    expect(renameHeightPatch(id, 'Ridges')).toBe(true);
+    expect(activeHeightLayer().name).toBe('Ridges');
+    expect(ed._undoStack.length).toBe(steps + 2);
+    expect(renameHeightPatch(id, 'Ridges')).toBe(false);
+    expect(renameHeightPatch(id, '  ')).toBe(false);
     expect(ed._undoStack.length).toBe(steps + 2);
   });
 });

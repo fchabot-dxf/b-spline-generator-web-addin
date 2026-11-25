@@ -7,22 +7,23 @@ import { CLEAR_MENU } from './clear.mjs';
 // beside art (a fresh board gets no Bricks layer); a brick element moves with "Move to layer"; a layer's carve covers
 // its bricks; Clear Bricks / Clear Artwork split by node, not by layer. 37's seven rows (run.mjs runBrickLayers).
 export const BRICK_LAYERS = {
-  addLayer: 'editorAddLayer', wallTool: 'brickTool_wall', selectTool: 'toolSelect',
+  // the editor layer stack (Fred 2026-11-24): '+ Add layer' > Draw adds a layer; a row's ⋯ menu holds the old row's carve
+  addChip: 'editorLayerStackAddBtn', addDraw: 'editorLayerStackAdd_draw', wallTool: 'brickTool_wall', selectTool: 'toolSelect',
   menuMove: 'Move to layer', menuNewLayer: 'New layer…', // the context menu's own labels (editor-context-menu.js)
-  carveButton: '.layer-carve', framePreset: 'brickFramePreset_none', // a frame change that always leaves a wall
-  artworkTab: 'editorTabArtwork',
+  carveItem: 'Stamp into the surface (3D)', framePreset: 'brickFramePreset_none', // a frame change that always leaves a wall
+  artworkTab: 'row:draw',
   clears: CLEAR_MENU.options.filter((o) => o.item === 'editorClear_bricks' || o.item === 'editorClear_artwork'),
   stroke: [[0.3, 0.5], [0.5, 0.56], [0.7, 0.5]],
   introducedBy: 'bb9e664',
-  // F35 item 40 (Fred: "We don't see layers still"): the Brick tab hosts the ONE Layers list in its own panel
-  // (slot), with a tool picked too; a row picked there is where the next lay goes; Artwork gets the list back
-  brickTab: { slot: 'brickLayersSlot', list: 'editorLayersList', wallTool: 'brickTool_wall', generate: 'brickGenerate', artworkTab: 'editorTabArtwork' },
+  // F35 item 40 (Fred: "We don't see layers still"), since the editor layer stack (2026-11-24): the stack lists every layer
+  // ABOVE the Brick panel, with a tool picked too; a new wall still goes on its own Wall layer, whichever layer is active
+  brickTab: { stack: 'editorLayerStackList', wallTool: 'brickTool_wall', generate: 'brickGenerate' },
 };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, record, waitApp, seedClearBoard, checkRow, openEditorTab, reloadWithStorage, key, drag;
-export function bind(ctx) { ({ sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, record, waitApp, seedClearBoard, checkRow, openEditorTab, reloadWithStorage, key, drag } = ctx); }
+let sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, record, waitApp, seedClearBoard, checkRow, openEditorTab, reloadWithStorage, key, drag, go, realTap, pickLayerRow;
+export function bind(ctx) { ({ sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, record, waitApp, seedClearBoard, checkRow, openEditorTab, reloadWithStorage, key, drag, go, realTap, pickLayerRow } = ctx); }
 export async function run() { await runBrickLayers(); }
 
 // ---------------------------------------------------------------- bricks on layers (BRICK_LAYERS above)
@@ -54,12 +55,13 @@ async function layersRead() {
 // tab -- this used to pick it with the Artwork tab's Select tool, which the rule now refuses. Esc is the user's way back
 // to plain Select in any tab (global-events.js returnToSelect).
 async function rightClickBrick(kind) {
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await sleep(500);
   // F35 item 64: bricks sit on their kind's own layer, usually NOT the active one, and an inactive layer takes no art-tool
   // pointer events (.inactive-layer) -- so, like a user, activate the brick's layer first (its row in the Layers list)
-  await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); const id=n&&n.getAttribute('data-layer'); const row=id&&document.querySelector('#editorLayersList [data-layer-id="'+id+'"]'); if(row) row.click(); return !!row; })()`);
+  const brickLayer = await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); return n ? n.getAttribute('data-layer') : ''; })()`);
+  if (brickLayer) await pickLayerById(brickLayer); // its row in the editor layer stack (a Brick part: a sub-row of Bricks)
   await sleep(400);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="${kind}"]')];
     for (const n of ns) { const r=n.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
@@ -77,22 +79,56 @@ async function rightClickBrick(kind) {
 async function menuRow(label) {
   return js(`(()=>{ const b=[...document.querySelectorAll('.context-menu-popover .context-menu-row')].find((r)=>(r.querySelector('.context-menu-row-label')?.textContent||'').trim()===${JSON.stringify(label)}); if(!b) return 'missing'; b.click(); return 'ok'; })()`);
 }
-async function layerButton(layerId, cls) {
-  await click(BRICK_LAYERS.artworkTab, 600); // the layer list
-  return js(`(()=>{ const rs=[...document.querySelectorAll('.layer-row[data-layer-id="${layerId}"]')]; const r=rs.find((e)=>e.offsetParent!==null)||rs[0]; if(!r) return 'no row'; const b=${cls ? `r.querySelector(${JSON.stringify(cls)})` : 'r'}; if(!b) return 'no button'; b.click(); return 'ok'; })()`);
+// ---- the editor layer stack (Fred 2026-11-24): a layer is reached by ITS row -- a Brick part is a sub-row of the Bricks row,
+// folded open by its caret first -- and its old row buttons (carve, ...) are its ⋯ menu's items; all with REAL input
+const layerRowId = (layerId) => js(`(()=>{ const k=${JSON.stringify(String(layerId))}.replace(/[^A-Za-z0-9_-]/g, '_');
+  const own=document.getElementById('edStackRow_layer_' + k); if (own) return own.id; const sub=document.getElementById('edStackRow_bricks__' + k); return sub ? sub.id : ''; })()`);
+async function openSubRows(rowId) {
+  const caret = await js(`(()=>{ const r=document.getElementById(${JSON.stringify(rowId)}); const card=r && r.closest('.ed-stack-card');
+    if (!card || !r.closest('.ed-stack-subs') || card.classList.contains('subs-open')) return ''; const c=card.querySelector('[data-ed-caret]'); if (!c) return ''; c.id=c.id || '__mxCaret'; return c.id; })()`);
+  if (caret) { await realTap(caret); await sleep(300); }
+}
+async function pickLayerById(layerId) {
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
+  const id = await layerRowId(layerId);
+  if (!id) return 'no row';
+  await openSubRows(id);
+  const r = await realTap(id); await sleep(500);
+  return r;
+}
+async function layerMenu(layerId, label) {
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
+  const id = await layerRowId(layerId);
+  if (!id) return 'no row';
+  await openSubRows(id);
+  const a = await realTap(`edStackMenu_${id.slice('edStackRow_'.length)}`); await sleep(600);
+  if (a !== 'ok') return `menu ${a}`;
+  const item = await js(`(()=>{ const b=[...document.querySelectorAll('.context-menu-popover .context-menu-row')].find((r)=>(r.querySelector('.context-menu-row-label')?.textContent||'').trim()===${JSON.stringify(label)}); if(!b) return ''; b.id='__mxMenuRow'; return b.id; })()`);
+  if (!item) return 'no item';
+  const r = await realTap(item); await sleep(600);
+  return r;
+}
+/** '+ Add layer' > Draw, with real input: a new drawing layer, the active one (its row selected: the Draw tools). */
+async function addDrawLayer() {
+  const a = await realTap(BRICK_LAYERS.addChip); await sleep(500);
+  const b = await realTap(BRICK_LAYERS.addDraw); await sleep(1500);
+  return a === 'ok' && b === 'ok' ? 'ok' : `add ${a}/${b}`;
 }
 
-// the layer stack: a fresh board has NO layer now (it had an empty, active "Layer 1"). Rows 7 + 8 need that Layer 1 next
-// to the one they add (a "Layer 2" to pick / move to): set up through the app's own addLayer; the checks are unchanged.
-const ensureLayer1 = () => js(`import('./editor/layers.js').then((L) => { const ed = window.svgEditor; if (!ed._layers.length) L.setActiveLayer(ed, L.addLayer(ed, { skipUndo: true }).id); return ed._layers.length; })`);
+// the layer stack: a fresh board has NO layer now (it had an empty, active "Layer 1"). Rows 7 + 8 need a drawing layer next
+// to the one they add (a second one to pick / move to): set up through the app's own addLayer (a Brick part -- the Wall the
+// Bricks row added -- is not one); the checks are unchanged.
+const ensureLayer1 = () => js(`import('./editor/layers.js').then((L) => { const ed = window.svgEditor; if (!ed._layers.some((l) => !l.brickKind)) L.setActiveLayer(ed, L.addLayer(ed, { skipUndo: true }).id); return ed._layers.length; })`);
 
 async function runBrickLayers() {
   const B = BRICK_LAYERS;
   await reloadWithStorage({}); // a FRESH board (no saved session): slice 3's contract is about new boards
-  await openEditorTab('editorTabBrick');
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
   // slice 3's own marker: layers.js isBrickToolNode (a build before it has the layer UI but a Bricks layer)
   if (!(await js(`import('./editor/layers.js').then((L) => !!L.isBrickToolNode)`))) { checkRow('layers', 'Fresh board: bricks on the active layer', false, '', B.introducedBy); return; }
+  // read BEFORE the Bricks row is added: a fresh board reaches the Brick tools by '+ Add layer' > Brick (the Wall's layer)
   const s0 = await layersRead();
+  await openEditorTab('row:brick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 800); await click('brickGenerate', 2000);
   // 1. F35 item 64 (supersedes slice 3's "on the active layer"): a fresh board: Wall + Frame each land on their KIND's
@@ -125,7 +161,7 @@ async function runBrickLayers() {
     const sr = await layersRead();
     if (sr.wall.join() !== s2.wall.join()) { await rightClickBrick('wall'); await menuRow(B.menuMove); await sleep(400); await menuRow(newLayer.name); await sleep(1500); }
   }
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   // 3. a frame change re-lays the wall ON its new layer
   const s3a = await layersRead();
   await click('brickTool_frame', 800); await click(B.framePreset, 2500);
@@ -135,15 +171,15 @@ async function runBrickLayers() {
   // 4. that layer's carve off moves the 3D; on again -> the 3D exactly as before
   const wallLayer = s3.wall[0];
   await apply(); const Z0 = await heightsSettled(null);
-  await openEditorTab('editorTabBrick');
-  const c1 = await layerButton(wallLayer, B.carveButton); await apply(); const Z1 = await heightsSettled(Z0);
-  await openEditorTab('editorTabBrick');
-  const c2 = await layerButton(wallLayer, B.carveButton); await apply(); const Z2 = await heightsSettled(Z1);
+  await openEditorTab('row:brick');
+  const c1 = await layerMenu(wallLayer, B.carveItem); await apply(); const Z1 = await heightsSettled(Z0);
+  await openEditorTab('row:brick');
+  const c2 = await layerMenu(wallLayer, B.carveItem); await apply(); const Z2 = await heightsSettled(Z1);
   checkRow('layers', 'The wall layer carve off -> 3D changes; on -> 3D identical', c1 === 'ok' && c2 === 'ok' && Z1 !== Z0 && Z2 === Z0,
     `carve toggles ${c1}/${c2}; 3D ${Z0} -> off ${Z1} -> on ${Z2}`);
   // 5. save + reload: the same layer per kind, carve kept, nothing re-laid
-  await openEditorTab('editorTabBrick');
-  await layerButton(wallLayer, B.carveButton); // carve OFF for the round trip
+  await openEditorTab('row:brick');
+  await layerMenu(wallLayer, B.carveItem); // carve OFF for the round trip
   await apply(); await heightsSettled(null);
   const s5a = await layersRead();
   await sleep(1500);
@@ -155,13 +191,13 @@ async function runBrickLayers() {
   checkRow('layers', 'Save + reload: layers per kind, carve, nothing re-laid',
     s5.wall.join() === s5a.wall.join() && s5.frame.join() === s5a.frame.join() && carveOf(s5, wallLayer) === false && s5.wallPolys === s5a.wallPolys,
     `wall ${s5a.wall} -> ${s5.wall}, frame ${s5a.frame} -> ${s5.frame}, wall-layer carve ${carveOf(s5, wallLayer)}, wall ${s5.wallPolys === s5a.wallPolys ? 'identical' : 'RE-LAID'}`);
-  await layerButton(wallLayer, B.carveButton); await apply(); await heightsSettled(null); // carve back on
+  await layerMenu(wallLayer, B.carveItem); await apply(); await heightsSettled(null); // carve back on
   // 6. Clear -> Bricks takes every brick and leaves the art on the same layer; Clear -> Artwork leaves a brick layer
   for (const o of B.clears) {
     await reloadWithStorage({}); // the defaults, not the rows above's frame preset
     const f0 = await seedClearBoard();
     const sa = await layersRead();
-    await click(o.tab, 800); await click(CLEAR_MENU.button, 600); await click(o.item, 1500); await sleep(2500);
+    await go(o.tab, 800); await click(CLEAR_MENU.button, 600); await click(o.item, 1500); await sleep(2500);
     const sb = await layersRead();
     if (o.item === 'editorClear_bricks') {
       const shared = sa.artLayers.some((id) => sa.wall.includes(id));
@@ -178,11 +214,12 @@ async function runBrickLayers() {
   // 7. F35 item 64: a Brush stroke with Layer 2 active goes on the "Brush" kind layer (was: the active Layer 2), spine and
   // bricks; moving one brick moves the spine and every piece
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await ensureLayer1();
-  await click(B.addLayer, 900);
+  await addDrawLayer(); // the second drawing layer, the active one
   const s7a = await layersRead();
   const layer2 = s7a.active;
+  await openEditorTab('row:brick'); // the Bricks row: its tools (the active layer stays)
   await click('brickTool_brush', 900);
   await drag(B.stroke); await sleep(1500);
   const s7 = await layersRead();
@@ -190,7 +227,7 @@ async function runBrickLayers() {
   checkRow('layers', 'A Brush stroke goes on the Brush kind layer (item 64), spine and bricks',
     s7.brushN > 0 && !!brushId && brushId !== layer2 && s7.brush.length === 1 && s7.brush[0] === brushId && s7.spine.length === 1 && s7.spine[0] === brushId && s7a.layers.length >= 2,
     `active ${layer2} of ${s7a.layers.length} layers; Brush layer ${brushId}; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
-  const layer1 = s7a.layers.find((l) => l.id !== layer2);
+  const layer1 = s7a.layers.find((l) => l.id !== layer2 && !l.brickKind);
   let m7 = 'no brush piece under the pointer';
   if (layer1 && await rightClickBrick('brush')) { const a = await menuRow(B.menuMove); await sleep(400); const b = await menuRow(layer1.name); await sleep(1500); m7 = `menu ${a}/${b}`; }
   const s7b = await layersRead();
@@ -198,28 +235,25 @@ async function runBrickLayers() {
     !!layer1 && s7b.brushN === s7.brushN && s7b.brush.join() === layer1.id && s7b.spine.join() === layer1.id,
     `${m7}; bricks (${s7b.brushN}) on ${s7b.brush}, spine on ${s7b.spine} (Layer 1 = ${layer1 ? layer1.id : 'none'})`);
   if (await editorOpen()) await apply();
-  // 8. F35 item 40: the Brick tab shows the layers (hosted in its panel) with the Wall tool picked; a row picked there
-  // is where the lay goes; Artwork gets the ONE list back
+  // 8. F35 item 40, since the editor layer stack: with a tool picked, the stack lists the layers ABOVE the Brick panel;
+  // a drawing layer picked (the active one), then the Bricks row: a new wall still goes on its own Wall layer
   const T = B.brickTab;
-  if (!(await exists(T.slot)) && !(await js(`fetch('./bspline_gen_palette.html').then(r=>r.text()).then(t=>t.includes('id="${T.slot}"'))`))) {
+  if (!(await js(`fetch('./bspline_gen_palette.html').then(r=>r.text()).then(t=>t.includes('id="${T.stack}"'))`))) {
     checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay', false, '', 'F35 item 40'); return;
   }
   await reloadWithStorage({});
-  await openEditorTab(B.artworkTab); await ensureLayer1(); await click(B.addLayer, 900);
-  await openEditorTab('editorTabBrick'); await click(T.wallTool, 900);
-  const vis = await jsJSON(`JSON.stringify((()=>{ const l=document.getElementById(${JSON.stringify(T.list)}); const slot=document.getElementById(${JSON.stringify(T.slot)});
-    const rows=[...l.querySelectorAll('[data-layer-id]')]; const r=l.getBoundingClientRect();
-    return { hosted: !!slot && slot.contains(l), shown: l.offsetParent !== null && r.height > 0, rows: rows.map((e)=>e.getAttribute('data-layer-id')), active: String(window.svgEditor._activeLayer) }; })())`);
-  const pick = vis.rows.find((id) => id !== vis.active);
-  if (pick) { await js(`document.querySelector('#${T.list} [data-layer-id="${pick}"]').click()`); await sleep(600); }
+  await openEditorTab(B.artworkTab); await ensureLayer1(); await addDrawLayer();
+  const pick = String(await js('String(window.svgEditor._activeLayer)'));
+  await openEditorTab('row:brick'); await click(T.wallTool, 900);
+  const vis = await jsJSON(`JSON.stringify((()=>{ const l=document.getElementById(${JSON.stringify(T.stack)}); const r=l.getBoundingClientRect(); const panel=document.getElementById('editorBrickPanel');
+    const rows=[...l.querySelectorAll('[data-ed-select]')].map((e)=>e.id); const sel=document.querySelector('#${T.stack} > [data-stack-key="bricks"]');
+    return { above: !!panel && panel.offsetParent !== null && r.bottom <= panel.getBoundingClientRect().top + 1, shown: l.offsetParent !== null && r.height > 0, rows: rows.length,
+      bricksSelected: !!sel && sel.classList.contains('is-selected'), active: String(window.svgEditor._activeLayer) }; })())`);
   await click(T.generate, 2000);
   const on = await jsJSON(`JSON.stringify([...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>n.getAttribute('data-layer')))])`);
-  await openEditorTab(B.artworkTab);
-  const home = await js(`!document.getElementById(${JSON.stringify(T.slot)}).contains(document.getElementById(${JSON.stringify(T.list)})) && !!document.getElementById(${JSON.stringify(T.list)}).offsetParent`);
-  // item 64: a picked row is the ACTIVE layer, but a NEW wall goes on its own "Wall" kind layer, not the picked one
   const wallKind = (await layersRead()).layers.find((l) => l.brickKind === 'wall');
   checkRow('layers', 'Brick tab: the layers show with a tool; a new wall goes on the Wall layer, not the picked row',
-    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick && home,
-    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'}); Artwork has the list back ${home}`);
+    vis.above && vis.shown && vis.rows >= 3 && vis.bricksSelected && vis.active === pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick,
+    `stack above the Brick panel ${vis.above}, shown ${vis.shown}, rows ${vis.rows}, Bricks selected ${vis.bricksSelected}; active ${vis.active} (picked ${pick}): wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'})`);
   if (await editorOpen()) await apply();
 }

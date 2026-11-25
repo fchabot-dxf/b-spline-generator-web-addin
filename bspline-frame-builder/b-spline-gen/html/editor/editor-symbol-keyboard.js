@@ -20,7 +20,7 @@ import { el, query, addClass, on } from './dom.js';
 import { insertSymbol } from './editor-text-style.js';
 import { verifyFontLoaded, SYMBOL_FAMILIES } from './editor-fonts.js';
 import { dbg } from './debug.js';
-import { MOBILE_MAX_PX } from './breakpoints.js';
+import { EDITOR_MOBILE_MAX_PX as MOBILE_MAX_PX } from './breakpoints.js'; // the editor's own (phone < 768 px)
 
 const HIDDEN_INPUT_ID = 'editorHiddenInput';
 const PANEL_ID = 'editorSymbolKeyboard';

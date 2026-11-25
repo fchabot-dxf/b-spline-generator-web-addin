@@ -34,7 +34,7 @@ async function piecesSettled(kind) {
 // F35 item 60: a Raised brush stroke across the frame lays no brick over a frame piece (STROKE_CLEAR)
 async function runStrokesClear() {
   const K = STROKE_CLEAR;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(K.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   if (!(await exists(K.raisedTool))) { checkRow('strokes', 'Raised stroke keeps clear of the frame', false, '', K.introducedBy); return; }
   // the Grey stone frame, laid
@@ -103,7 +103,7 @@ const CLEAR_STROKES = `import('./editor/editor-brick-tool.js').then((T)=>{ const
   T.forceRegenerateOwnedBrickElements(ed); return 1; })`;
 async function runBrushCrossings() {
   const C = CROSSINGS;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   if (!(await exists(C.tool))) { checkRow('strokes', 'Crossings', false, '', C.introducedBy); return; }
   for (const k of C.cases) {
     await js(CLEAR_STROKES);
@@ -159,7 +159,7 @@ export const WALL_AROUND = {
 };
 async function runWallAroundCrossings() {
   const C = WALL_AROUND;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   if (!(await exists(C.tool)) || !(await exists(C.wallTool))) { checkRow('strokes', 'Wall round cut strokes', false, '', C.introducedBy); return; }
   for (const k of C.cases) {
     await js(CLEAR_STROKES);
@@ -217,7 +217,7 @@ export const STONE_CUTS = {
 };
 async function runStoneCuts() {
   const C = STONE_CUTS;
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   if (!(await exists(C.wallPattern)) || !(await exists('brickRaisedMode_grout'))) { checkRow('strokes', 'Stones', false, '', C.introducedBy); return; }
   // the template + the set ids as they were, put back after (the rows lay their own)
   const was = await jsJSON(`import('./core/state.js').then((S)=>JSON.stringify({ template: document.getElementById('editorFrameTemplate')?.value ?? null, setIds: S.P.brickSettings.setIds, bands: S.P.brickSettings.frameBandPatterns }))`);

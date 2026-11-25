@@ -176,8 +176,9 @@ describe('the Height panel layer list', () => {
     expect(rec.layers[1].raster.cols).toBe(base.cols);
     expect(activePatchLayer().id).toBe(rec.layers[1].id);
     expect(window.svgEditor._undoStack.length).toBe(steps + 1);
-    // the list shows the layers, TOP first
-    expect([...document.querySelectorAll('[data-patch-layer-pick]')].map((b) => b.getAttribute('data-patch-layer-pick'))).toEqual([rec.layers[1].id, 'base']);
+    // the layers are listed by the editor layer stack now (its height row's sub-rows, tests/editor-layer-stack.test.js);
+    // the Height panel's own layer rows retired (Fred 2026-11-24)
+    expect(document.querySelector('[data-patch-layer-pick]')).toBeNull();
   });
   it('the brush paints ONLY the selected layer', async () => {
     await newHeightPatch();

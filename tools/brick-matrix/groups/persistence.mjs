@@ -145,13 +145,13 @@ export const runsLast = true;
 async function runPatternParamPersist() {
   const W = PATTERN_PARAM_PERSIST, name = 'Persist (reload): pattern chip Octagon L';
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 800);
+  await openEditorTab('row:brick'); await click('brickTool_wall', 800);
   if (!(await exists(W.pattern))) { checkRow('persistence', name, false, '', W.introducedBy); return; }
   await click(W.pattern, 2000); await click(W.chip, 2000);
   const before = await js(`!!document.getElementById(${JSON.stringify(W.chip)})?.classList.contains('active')`);
   await apply(); await heightsSettled(null); await sleep(1500);
   await send('Page.reload', {}); await waitApp();
-  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 800);
+  await openEditorTab('row:brick'); await click('brickTool_wall', 800);
   const st = await jsJSON(`JSON.stringify({ chip: !!document.getElementById(${JSON.stringify(W.chip)})?.classList.contains('active'), pattern: !!document.getElementById(${JSON.stringify(W.pattern)})?.classList.contains('active') })`);
   checkRow('persistence', name, before && st.chip && st.pattern, `chip active before ${before}; after reload: pattern ${st.pattern ? 'active' : 'NOT active'}, chip ${st.chip ? 'active' : 'NOT active'}`);
   if (await editorOpen()) await apply();
@@ -214,14 +214,14 @@ async function checkGenerateAfterRestore(when) {
   if (!(await js(G.marker))) { checkRow('persistence', name, false, '', 'F35 item 39'); return; }
   const wallState = () => jsJSON(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick=${JSON.stringify(G.kind)}]')||[])];
     return { n: ns.length, seeds: [...new Set(ns.map((e)=>e.getAttribute(${JSON.stringify(G.seedAttr)})))] }; })())`);
-  await openEditorTab('editorTabBrick'); await click(G.tool, 900);
+  await openEditorTab('row:brick'); await click(G.tool, 900);
   const before = await wallState();
   const c0 = await js(CANVAS);
   await click(G.generate, 1800);
   await canvasSettled(c0);
   const after = await wallState();
   await apply(); await heightsSettled(null);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   const kept = await wallState();
   const fresh = after.seeds.length === 1 && before.seeds.length === 1 && after.seeds[0] !== before.seeds[0];
   // not the piece count: this board's wall is Fieldstone, whose stone count follows the seed (measured 152 -> 142)
@@ -263,7 +263,7 @@ async function runWindowedLoad() {
   for (const [id, v] of Object.entries(Wl.board)) await js(`(()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event('change')); return 1; })()`);
   await heightsSettled(null);
   await js(`import('./core/frame-record.js').then((m) => (m.setFrameRecord({ insetWindow: ${JSON.stringify(Wl.insetWindow)} }), 1))`);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   for (const tool of Wl.lay) { await click(tool, 800); await click(Wl.generate, 2500); }
   const laid = await js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick]').length`);
   await apply(); await heightsSettled(null);
@@ -286,7 +286,7 @@ async function runWindowedLoad() {
 async function runFreshVsRestored() {
   const F = FRESH_VS_RESTORED;
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick'); await click(F.wallTool, 800); await click(F.generate, 2500);
+  await openEditorTab('row:brick'); await click(F.wallTool, 800); await click(F.generate, 2500);
   await click(F.frameTool, 800); await click(F.generate, 2500);
   await apply();
   const live = await heightsSettled(null, 40000);
@@ -300,7 +300,7 @@ async function runFreshVsRestored() {
 async function runSizeNudgeScene() {
   const Z = SIZE_NUDGE_SCENE;
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick'); await click(Z.wallTool, 800); await click(Z.generate, 2500);
+  await openEditorTab('row:brick'); await click(Z.wallTool, 800); await click(Z.generate, 2500);
   await click(Z.frameTool, 800); await click(Z.generate, 2500);
   await apply(); await heightsSettled(null, 40000);
   const w0 = await js(`import('./core/state.js').then(({ P }) => P[${JSON.stringify(Z.field)}])`);

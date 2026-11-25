@@ -1972,6 +1972,21 @@
           <!-- Wraps the body so BOTH orientations share one always-column-internally content block -- the drawer
                itself flips row/column (styles/editor.css), this wrapper never needs to. -->
           <div id="editorDrawerContent">
+          <!-- EDITOR LAYER STACK (Fred 2026-11-23): the board's layers as ONE vertical list ABOVE the selected layer's
+               settings -- the same component and data as the sidebar's LAYERS (main/layer-stack.js STACK_VIEWS 'editor').
+               Selecting a row switches the editor's tools to that layer's type (the tab strip above is retired from view;
+               its buttons stay for ids). The list sizes to its content and scrolls on its own past its declared row count
+               (EDITOR_STACK_LAYOUTS); the settings below (#editorDrawerBody) scroll separately. Phone: the list folds to the
+               selected row. -->
+          <div id="editorLayerStack" class="ed-stack">
+            <div class="ed-stack-head">
+              <span class="ed-stack-title">Layers</span>
+              <span id="editorLayerStackCount" class="layer-stack-count"></span>
+              <div id="editorLayerStackAddGrid" class="layer-stack-add-grid"></div>
+              <button type="button" id="editorLayerStackFold" class="ed-stack-fold" title="Fold the list to the selected layer" aria-label="Fold the layer list">▴</button>
+            </div>
+            <div id="editorLayerStackList" class="layer-stack ed-stack-list" role="list"></div>
+          </div>
           <div id="editorDrawerBody" class="editor-drawer-body">
         <!-- Lattice Pattern Panel (SE7b) — lives inside the modal, above
              Layers, so it sits next to the canvas it acts on. Shown only
@@ -2805,6 +2820,16 @@
           </div>
         </aside>
 
+        <!-- EDITOR LAYER STACK: an STL row's settings (main/editor-tabs.js EDITOR_TABS 'stl', no tab button). Its 2D placement
+             (top-view footprint, move / scale / rotate) is planned, not built: for now it points to the sidebar card. -->
+        <aside class="editor-layers-panel" id="editorStlPanel" style="display:none;">
+          <div class="layers-header"><span>STL relief</span></div>
+          <div style="padding:10px; display:flex; flex-direction:column; gap:8px; font-size:12px;">
+            <div id="editorStlName" style="font-weight:700;"></div>
+            <div id="editorStlNote" style="color:#666;">Edit in the sidebar card (Layers). Placing an STL on the board here (move, scale, rotate) comes later.</div>
+          </div>
+        </aside>
+
         <!-- HEIGHT-PAINTER slice 1: the Height tab's right panel -- the patches, the brush and the active patch's place /
              stamp options, rendered from main/height-panel.js HEIGHT_CONTROLS. The painting itself is on the shared canvas. -->
         <!-- Owner 2026-11-23: the Draw tab's frame -- [the pinned tool row][the branches]. The tools (main/height-panel.js HEIGHT_TOOLS,
@@ -2829,9 +2854,9 @@
           <!-- F35 item 43 (Fred's OK on mockup v2): the Brick TOOLS are the tab strip at the top of this panel
                (main/brick-panel.js renderToolList: General + one tab per BRICK_TOOLS `tab`), pinned with Generate -->
           <div class="sticky-actions"><div id="editorToolbarBrick"></div><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" title="Re-lay the bricks now, with a new seed" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
-          <!-- F35 item 40 (Fred: "We don't see layers still"): the shared Layers component, hosted here while the Brick
-               tab is active (bricks land on the ACTIVE layer since item 22 slice 3) -->
-          <div id="brickLayersSlot"></div>
+          <!-- audit v2 N11: the Brick tab's start hint (main/brick-panel.js syncStartHint, text from BRICK_TOOLS); the slot
+               held the shared Layers list until the editor layer stack (Fred 2026-11-24) -->
+          <div id="brickLayersSlot"><div id="brickStartHint" style="display:none; font-size:11px; margin:6px 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div></div>
           <!-- Fred (2026-10-07, v2 "Yes, build it"): no shared header -- each tab shows its OWN colour-coded sections, declared in main/brick-tab-sections.js -->
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
             <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
@@ -3228,7 +3253,7 @@
             </div>
             <div id="artGeneralBody"></div>
             <!-- phase 4: the Draw tree's other branch bodies (main/draw-tree.js); EDITOR_TABS artwork panelHosts fill them -->
-            <div id="artTextBody"></div><div id="artExpandBody"></div><div id="drawLayersBody"></div>
+            <div id="artTextBody"></div><div id="artExpandBody"></div>
             <!-- DRAW-STAMP U (Fred 2026-11-22): the Draw tree's Stamp branch (main/draw-tree.js) -- the SELECTED layer's
                  stamp settings, MOVED here from the sidebar VECTOR STAMPING panel (ids, bindings, P keys / layer fields,
                  ranges unchanged; main/stamp/* binds them, every read / write through core/stamp/target.js stampTarget).
@@ -3448,17 +3473,8 @@
             </div>
             </div>
           </div>
-          <!-- F35 item 40: the header, the Brick start hint and the list are the ONE Layers component; the Brick tab
-               hosts them in its own panel (main/editor-tabs.js EDITOR_TABS brick.panelHosts) and they come back here -->
-          <div class="layers-header" id="editorLayersHeader">
-            <span>Layers</span>
-            <button id="editorAddLayer" class="layers-add-btn" type="button" title="Add Layer">+</button>
-          </div>
-          <!-- audit v2 N11: the Brick tab's start hint (main/brick-panel.js syncStartHint, text from BRICK_TOOLS) -->
-          <div id="brickStartHint" style="display:none; font-size:11px; margin:6px 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
-          <div class="layers-list" id="editorLayersList">
-            <div class="layers-empty" id="editorLayersEmpty">No layers yet.<br>Click + to add one, or just start drawing.</div>
-          </div>
+          <!-- (the old Layers list -- #editorLayersHeader / #editorLayersList -- retired with the editor layer stack, Fred
+               2026-11-24: #editorLayerStack lists the layers; each row's eye + its ⋯ menu hold the old row's controls) -->
         </aside>
           </div>
           </div>

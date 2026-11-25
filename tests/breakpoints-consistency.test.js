@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { MOBILE_MAX_PX, MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from '../bspline-frame-builder/b-spline-gen/html/editor/breakpoints.js';
+import { MOBILE_MAX_PX, MOBILE_QUERY, LANDSCAPE_PHONE_QUERY, EDITOR_MOBILE_MAX_PX, EDITOR_MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY } from '../bspline-frame-builder/b-spline-gen/html/editor/breakpoints.js';
 
 const FILES = [
   'bspline-frame-builder/styles/editor.css',
@@ -23,7 +23,7 @@ function mediaWidths(file) {
     if (!/@media\s*\(|matchMedia\(/.test(line)) return; // real queries, not comments that mention @media
     for (const m of line.matchAll(/(max|min)-width:\s*(\d+)px/g)) {
       const px = Number(m[2]);
-      if (px >= PHONE_RANGE[0] && px <= PHONE_RANGE[1]) out.push({ file, line: i + 1, kind: m[1], px });
+      if (px >= PHONE_RANGE[0] && px <= PHONE_RANGE[1]) out.push({ file, line: i + 1, kind: m[1], px, appWide: /app-wide/.test(line) });
     }
   });
   return out;
@@ -37,8 +37,18 @@ describe('the phone breakpoint has one value everywhere', () => {
   it.each(FILES)('%s: every phone-range max-width is MOBILE_MAX_PX and every min-width is MOBILE_MAX_PX + 1', (file) => {
     const found = mediaWidths(file);
     expect(found.length).toBeGreaterThan(0);
+    // the editor's stylesheet follows the EDITOR breakpoint (Fred 2026-11-24: the bottom drawer below 768 px only), except a
+    // block marked app-wide (the stepper / touch sizes the whole app shares)
+    const editorFile = file.endsWith('editor.css');
     for (const f of found) {
-      expect(f.px, `${f.file}:${f.line} ${f.kind}-width`).toBe(f.kind === 'max' ? MOBILE_MAX_PX : MOBILE_MAX_PX + 1);
+      const max = editorFile && !f.appWide ? EDITOR_MOBILE_MAX_PX : MOBILE_MAX_PX;
+      expect(f.px, `${f.file}:${f.line} ${f.kind}-width`).toBe(f.kind === 'max' ? max : max + 1);
     }
+  });
+  it('the editor own breakpoint: the drawer below 768 px; its queries built from EDITOR_MOBILE_MAX_PX', () => {
+    expect(EDITOR_MOBILE_MAX_PX).toBe(767);
+    expect(EDITOR_MOBILE_QUERY).toBe('(max-width: 767px)');
+    expect(EDITOR_LANDSCAPE_PHONE_QUERY).toContain('(min-width: 768px)');
+    expect(mediaWidths('bspline-frame-builder/styles/editor.css').filter((f) => !f.appWide && f.px >= 768 && f.kind === 'max')).toEqual([]);
   });
 });

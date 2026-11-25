@@ -16,7 +16,7 @@ export const UNDO_SETTINGS = {
   // previous canvas edit and left the setting)
   nextStroke: { tool: 'brickTool_brush', from: 'brickBtnProfileStripped', to: 'brickBtnProfileContinuous' },
   // item 73: the Stripe tool's settings (the same panel in both tabs) -- a count stepper click = one step, Undo puts it back
-  stripe: { box: 'stripeCount', tabs: [['editorTabBrick', 'brickTool_stripe'], ['editorTabArtwork', 'toolStripe']] },
+  stripe: { box: 'stripeCount', tabs: [['row:brick', 'brickTool_stripe'], ['row:draw', 'toolStripe']] },
   // item 74d (seat D's Artwork audit): an Artwork next-element setting is ONE step and Undo puts it back. `act` = a button
   // to click, `stepper` = a box whose stepper '+' to click; `watch` = what shows the value (a group button: its active one)
   artworkNext: [
@@ -35,7 +35,7 @@ export const UNDO_SETTINGS = {
 // from frame OFF -- with it on the Segments block is inert), Curve pins a segment and changes the outline; Auto un-pins
 // it and the outline is the ORIGINAL again; each pick is ONE undo step and Undo after Auto is Curve again. Real pointer.
 export const SEGMENT_AUTO = {
-  open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], offset: 'shapeLatticeContourFromFrame', generate: 'shapeLatticeGenerate',
+  open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], offset: 'shapeLatticeContourFromFrame', generate: 'shapeLatticeGenerate',
   segment: '0', curve: 'shapeSegStyleCurve', auto: 'shapeSegStyleAuto', marker: 'SEGMENT_STYLE_CHOICES',
 };
 
@@ -50,15 +50,15 @@ export const SIDEBAR_UNDO = {
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send;
-export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send } = ctx); }
+let sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send, go, LAYER_ROWS;
+export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send, go, LAYER_ROWS } = ctx); }
 export async function run() { await runUndoSettings(); await runSidebarUndo(); }
 
 // F35 item 38 (UNDO_SETTINGS above): editor Undo / Redo bring back the brick settings with the canvas
 async function runUndoSettings() {
   const U = UNDO_SETTINGS;
   await reloadWithStorage({});
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   if (!(await js(`import(${JSON.stringify(U.marker)}).then(() => true, () => false)`))) { checkRow('undo', 'Undo restores the pattern AND its chip', false, '', U.marker); return; }
   await click('brickTool_wall', 800); await click(U.from, 1500); await click('brickGenerate', 2000);
   const chips = () => jsJSON(`JSON.stringify({ from: !!document.getElementById(${JSON.stringify(U.from)})?.classList.contains('active'), to: !!document.getElementById(${JSON.stringify(U.to)})?.classList.contains('active') })`);
@@ -95,19 +95,19 @@ async function runUndoSettings() {
   checkRow('undo', 'A next-stroke setting is ONE undo step, Undo puts it back', ns.steps === 1 && ns.picked && ns.back,
     `${N.to}: ${ns.steps} undo steps; undo -> ${ns.back ? N.from + ' active again' : 'NOT back'}`);
   for (const [tab, tool] of U.stripe.tabs) {
-    await click(tab, 900); await click(tool, 800);
+    await go(tab, 900); await click(tool, 800);
     const sr = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const box=document.getElementById(${JSON.stringify(U.stripe.box)});
       const v0=box.value, n0=ed._undoStack.length; [...box.closest('.cad-stepper').querySelectorAll('button')][1].click(); await W(1200);
       const v1=box.value, n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1200);
       return JSON.stringify({ v0, v1, v2: box.value, steps: n1 - n0 }); })()`);
-    checkRow('undo', `Stripe count (${tab.replace('editorTab', '')} tab) is ONE undo step, Undo puts it back`, sr.steps === 1 && sr.v1 !== sr.v0 && sr.v2 === sr.v0,
+    checkRow('undo', `Stripe count (${LAYER_ROWS[tab.slice(4)]} tab) is ONE undo step, Undo puts it back`, sr.steps === 1 && sr.v1 !== sr.v0 && sr.v2 === sr.v0,
       `${sr.v0} -> ${sr.v1} (${sr.steps} undo steps) -> undo -> ${sr.v2}`);
   }
   const hasArtwork = await js(`import(${JSON.stringify(U.artworkMarker)}).then(() => true, () => false)`);
   for (const c of U.artworkNext) {
     const name = `Artwork ${c.watch}: a next-element setting is ONE undo step, Undo puts it back`;
     if (!hasArtwork) { checkRow('undo', name, false, '', 'item 74d'); continue; }
-    await click('editorTabArtwork', 900); await click(c.tab, 600); if (c.tool) await click(c.tool, 700);
+    await go('row:draw', 900); await click(c.tab, 600); if (c.tool) await click(c.tool, 700);
     const ar = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const c=${JSON.stringify(c)};
       const val=()=>{ const e=document.getElementById(c.watch); return e.tagName==='BUTTON' ? [...e.parentElement.querySelectorAll(':scope > button.active')].map((b)=>b.id).join() : e.value; };
       const v0=val(), n0=ed._undoStack.length;
@@ -144,7 +144,7 @@ async function runSegmentAuto() {
   const name = 'Shape segment: Curve pins it, Auto gives back the original outline -- one undo step each';
   const has = await js(`import('./editor/editor-shape-lattice-generator.js').then((m) => !!m[${JSON.stringify(S.marker)}], () => false)`);
   if (!has) { checkRow('undo', name, false, '', 'item 74j'); return; }
-  for (const id of S.open) await click(id, 700);
+  for (const id of S.open) await go(id, 700);
   const realClick = async (id) => {
     const r = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.scrollIntoView({block:'center'}); const b=e.getBoundingClientRect(); return { x: b.left + b.width/2, y: b.top + b.height/2 }; })())`);
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', buttons: 1, clickCount: 1 });

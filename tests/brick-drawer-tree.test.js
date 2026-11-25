@@ -41,10 +41,10 @@ describe('the declaration', () => {
     for (const b of BRICK_DRAWER_TREE) if (b.armsTool) expect(tools, b.id).toContain(b.armsTool);
     expect(tools).not.toContain('general');
   });
-  it('General keeps the retired tab\'s id on its header; Layers starts open (Fred: the layers on a phone), General folded', () => {
+  it('General keeps the retired tab\'s id on its header; General folded; no Layers card (the editor layer stack lists them)', () => {
     expect(head('general').id).toBe('brickTab_general');
-    expect(BRICK_TREE_DEFAULT_OPEN).toEqual(['layers']);
-    expect(open('layers')).toBe(true);
+    expect(BRICK_TREE_DEFAULT_OPEN).toEqual([]);
+    expect(BRICK_DRAWER_TREE.map((b) => b.id)).not.toContain('layers');
     expect(open('general')).toBe(false);
   });
   it('Raised is ONE declaration (retiring with E\'s Select-on-bricks heights): removing it is one line', () => {
@@ -95,11 +95,11 @@ describe('one element card: the armed tool\'s, below the tool row', () => {
   const hostNodes = new Map();
   beforeAll(() => { for (const b of BRICK_DRAWER_TREE) for (const h of b.hosts) hostNodes.set(h, $(h)); });
   const withCard = () => brickTabs().filter((x) => BRICK_DRAWER_TREE.some((b) => b.armsTool === x.id));
-  it('the tree shows exactly the armed tool\'s card + General + Layers, for each tool of the row with settings', () => {
+  it('the tree shows exactly the armed tool\'s card + General, for each tool of the row with settings', () => {
     expect(withCard().map((t) => t.id)).toEqual(['wall', 'frame', 'brush', 'raisedBrush']);
     for (const t of withCard()) {
       $(t.buttonId).click();
-      expect(shownBranches(), t.id).toEqual([BRICK_DRAWER_TREE.find((b) => b.armsTool === t.id).id, 'general', 'layers']);
+      expect(shownBranches(), t.id).toEqual([BRICK_DRAWER_TREE.find((b) => b.armsTool === t.id).id, 'general']);
     }
   });
   it('arming each tool swaps the card: its title is the row\'s label, its summary and hosts the tool\'s, open; the host nodes are the same nodes', () => {
@@ -117,10 +117,10 @@ describe('one element card: the armed tool\'s, below the tool row', () => {
       }
     }
   });
-  it('Scissors (no settings): no element card, only General + Layers', () => {
+  it('Scissors (no settings): no element card, only General', () => {
     $('brickTool_scissors').click();
     expect(elementCards().map((b) => b.id)).toEqual([]);
-    expect(shownBranches()).toEqual(['general', 'layers']);
+    expect(shownBranches()).toEqual(['general']);
   });
   it('the tool row and the card never disagree (Stripe, Brush\'s sub-tool, keeps the Brush card)', () => {
     for (const t of brickTabs()) {
@@ -147,7 +147,8 @@ describe('General and Layers fold on their own, remembered per device', () => {
     expect(open('general')).toBe(false);
     expect(JSON.parse(localStorage.getItem(BRICK_TREE_OPEN_KEY))).not.toContain('general');
   });
-  it('Layers says how many layers it holds', () => {
-    expect(branch('layers').querySelector('.drawer-branch-summary').textContent).toMatch(/^\d+ layers?$/);
+  it('the Brick start hint keeps its own slot under Generate (no Layers card)', () => {
+    expect([...$('brickLayersSlot').children].map((c) => c.id)).toEqual(['brickStartHint']);
+    expect(branch('layers')).toBeNull();
   });
 });

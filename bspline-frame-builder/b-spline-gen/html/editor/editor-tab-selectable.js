@@ -25,6 +25,7 @@ export const EDITOR_TAB_SELECTABLE = Object.freeze({
   brick: Object.freeze({ kinds: Object.freeze(['brick']), selectAllLabel: 'Select all bricks' }),
   frame: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }),
   height: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }), // HEIGHT-PAINTER: the brush paints; nothing picked
+  stl: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }), // the editor layer stack's STL row: no 2D tools yet
 });
 
 /** The editor's current tab (setEditorFocus records it; before any switch, its frame / artwork mode). */

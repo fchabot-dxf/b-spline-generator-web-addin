@@ -7,9 +7,11 @@ import { SIDEBAR_TABS } from '../../../bspline-frame-builder/b-spline-gen/html/m
 // tool's Generate must still show IN FULL there. One row per viewport x tool.
 export const PEEK_LAYOUT = {
   viewports: [
-    { name: 'phone 390x844', width: 390, height: 844, mobile: true },
-    { name: 'palette 700x850', width: 700, height: 850, mobile: false },
-    { name: 'palette 880x850', width: 880, height: 850, mobile: false },
+    // `drawer`: the editor's layout there (editor/breakpoints.js EDITOR_MOBILE_MAX_PX, Fred 2026-11-24: the bottom drawer only
+    // below 768 px -- from 768 the right column); either way Generate shows in full
+    { name: 'phone 390x844', width: 390, height: 844, mobile: true, drawer: true },
+    { name: 'palette 700x850', width: 700, height: 850, mobile: false, drawer: true },
+    { name: 'palette 880x850', width: 880, height: 850, mobile: false, drawer: false },
   ],
   tools: ['wall', 'frame'],
   element: 'brickGenerate',
@@ -18,10 +20,11 @@ export const PEEK_LAYOUT = {
 // ---- the floating 2D/3D pill + the Height readout stay off the phone drawer (Fred, 390 shots: raised, the drawer's tool
 // row -- Draw's Select, Brick's Wall -- sat under them). One row per editor tab x drawer state: whatever is VISIBLE
 // of the two does not intersect the drawer's rect, and the pill's buttons are real >= minPx tap targets that
-// elementFromPoint hits. `tabs` = the editor tab buttons; `states` = editor-drawer.js DRAWER_SNAP_STATES.
+// elementFromPoint hits. `tabs` = the layer rows picked in the editor stack (the retired tab buttons; run.mjs LAYER_ROWS,
+// picked with real input); `states` = editor-drawer.js DRAWER_SNAP_STATES.
 export const TOGGLE_CLEAR = {
   viewport: { name: 'phone 390x844', width: 390, height: 844 },
-  tabs: ['editorTabFrame', 'editorTabArtwork', 'editorTabLattice', 'editorTabBrick', 'editorTabHeight'],
+  tabs: ['row:frame', 'row:draw', 'row:lattice', 'row:brick', 'row:height'],
   states: ['peek', 'half', 'full'],
   minPx: 28,
   desktop: { name: 'desktop 1366x900', width: 1366, height: 900 }, // unchanged: the pill stays, the class never lands
@@ -41,10 +44,10 @@ export const PANEL_FIT = {
   sections: [
     // (the 'Photo crop' section, this table's first row, left with the photo, Fred 2026-11-23)
     // item 74e: the "Applies on the next Generate" line over each lattice panel's next-Generate group
-    { name: 'Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
-    { name: 'Shape Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
+    { name: 'Lattice next-Generate hint', open: ['row:draw', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
+    { name: 'Shape Lattice next-Generate hint', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
     // item 74j: the four segment-style choices fit their row (measured: "Kink" was clipped at 1366)
-    { name: 'Shape segment styles', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeSegStyleAuto', 'shapeSegStyleStraight', 'shapeSegStyleCurve', 'shapeSegStyleKink'],
+    { name: 'Shape segment styles', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeSegStyleAuto', 'shapeSegStyleStraight', 'shapeSegStyleCurve', 'shapeSegStyleKink'],
       unfold: ['shapeLatticeSegmentsBlock'] }, // folded by default when narrow: opened by its label, as a user does
   ],
 };
@@ -55,15 +58,15 @@ export const PANEL_FIT = {
 export const ANCHOR_GREY = {
   why: 'Same rails as the current anchor at this spacing', liveSpacing: 0.75,
   panels: [
-    { name: 'Lattice', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], generate: 'latticeGenerate', prefix: 'lattice', greyAt1: ['Start', 'End'] },
-    { name: 'Shape Lattice', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], generate: 'shapeLatticeGenerate', prefix: 'shapeLattice', greyAt1: [] },
+    { name: 'Lattice', open: ['row:draw', 'artTab_lattice', 'toolLattice'], generate: 'latticeGenerate', prefix: 'lattice', greyAt1: ['Start', 'End'] },
+    { name: 'Shape Lattice', open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], generate: 'shapeLatticeGenerate', prefix: 'shapeLattice', greyAt1: [] },
   ],
 };
 
 // ---- item 74i: with the Shape Lattice's "Offset from frame" on, the Size / Shape / Segments blocks are inert (F21) and a
 // declared line says why. Driven with REAL pointer input (advisor: a scripted click bypasses inert -- 74g's false finding).
 export const FOLLOWS_FRAME = {
-  open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], toggle: 'shapeLatticeContourFromFrame', note: 'shapeLatticeFollowsFrameNote',
+  open: ['row:draw', 'artTab_shape', 'toolShapeLattice'], toggle: 'shapeLatticeContourFromFrame', note: 'shapeLatticeFollowsFrameNote',
   text: 'The shape follows the frame while Offset from frame is on', blocks: ['shapeLatticeShapeBlock', 'shapeLatticeSegmentsBlock'], probe: 'shapeSegStyleCurve',
 };
 
@@ -134,9 +137,9 @@ export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
-export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); }
+export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go, LAYER_ROWS } = ctx); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runPageZoom(); await runFitEdgeHandles(); }
+>>>>>>> origin/main
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -144,19 +147,19 @@ export async function run() { await runLayout(); await runPanelFit(); await runA
 // really active, and Generate's rect unchanged over SETTLE_SAMPLES polls (> the drawer's 0.18s snap transition).
 // (the Brick panel itself stays hidden until a tool is picked, so readiness is the editor + the active tab;
 // the per-tool settle below then requires Generate to have a real box)
-function brickTabReady() { return js(`!!window.svgEditor?._sketchLayer && !!document.getElementById('editorTabBrick')?.classList.contains('active')`); }
+function brickTabReady() { return js(`import('./main/editor-tabs.js').then((m) => !!window.svgEditor?._sketchLayer && m.getEditorTab() === 'brick')`); } // the Bricks row picked
 function LAYOUT_PROBE(tool) { return `JSON.stringify((()=>{ const g=document.getElementById(${JSON.stringify(PEEK_LAYOUT.element)}); const d=document.getElementById('editorMobileDrawer');
   const b=g ? g.getBoundingClientRect() : { top: 0, bottom: 0, height: 0 };
   return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height), innerW: innerWidth, innerH: innerHeight,
     drawerLayout: !!d && getComputedStyle(d).position === 'fixed', dragging: !!d && d.classList.contains('is-dragging'), peek: !!d && d.classList.contains('is-peek'),
     toolActive: !!document.getElementById(${JSON.stringify('brickTool_' + tool)})?.classList.contains('active'),
     shownPx: Math.round(Math.max(0, Math.min(b.bottom, innerHeight) - Math.max(b.top, 0))) }; })())`; }
-async function settledLayout(tool) {
+async function settledLayout(tool, drawer = true) {
   const SETTLE_SAMPLES = 4, SETTLE_POLL_MS = 300, SETTLE_MAX_MS = 20000;
   let last = null, same = 0, r = null;
   for (let t = 0; t < SETTLE_MAX_MS; t += SETTLE_POLL_MS) {
     r = (await jsJSON(LAYOUT_PROBE(tool)));
-    const ready = r.drawerLayout && !r.dragging && r.toolActive && r.h > 0;
+    const ready = r.drawerLayout === drawer && !r.dragging && r.toolActive && r.h > 0;
     const key = `${r.top}/${r.h}/${r.innerW}`;
     same = ready && key === last ? same + 1 : 0; last = key;
     if (same >= SETTLE_SAMPLES - 1) return { r, settled: true };
@@ -176,12 +179,12 @@ async function runLayout() {
     }
     for (const tool of PEEK_LAYOUT.tools) {
       for (let i = 0; i < 3 && !(await js(`!!document.getElementById(${JSON.stringify('brickTool_' + tool)})?.classList.contains('active')`)); i++) await click(`brickTool_${tool}`, 1000);
-      const { r, settled } = await settledLayout(tool);
+      const { r, settled } = await settledLayout(tool, vp.drawer);
       const ok = settled && r.top >= 0 && r.bottom <= r.innerH + 0.5;
-      const name = `Peek ${vp.name}: ${tool} Generate fully shown`;
+      const name = `${vp.drawer ? 'Peek' : 'Column'} ${vp.name}: ${tool} Generate fully shown`;
       rows.push({ name, kind: 'layout', result: settled ? 'ok' : 'setup: page never settled (see observed)', observed: r,
         verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', layout: ok ? 'PASS' : 'FAIL' } });
-      console.log(`${ok ? 'pass' : 'FAIL'}  Peek ${vp.name}: ${tool} Generate`.padEnd(54) + (settled ? ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${vp.drawer ? 'Peek' : 'Column'} ${vp.name}: ${tool} Generate`.padEnd(54) + (settled ? ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`
         : ` NOT SETTLED ${JSON.stringify(r)}`));
       if (!ok) await shot(`FAIL_peek_${vp.width}_${tool}`);
     }
@@ -199,7 +202,7 @@ async function runPanelFit() {
     await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
     await send('Page.reload', {}); await waitApp(); await openBrickTab();
     for (const sec of PANEL_FIT.sections) {
-      for (const id of sec.open) await click(id, 900);
+      for (const id of sec.open) await go(id, 900);
       for (const id of sec.unfold || []) await js(`(()=>{ const b=document.getElementById(${JSON.stringify(id)}); const body=b && b.firstElementChild && b.firstElementChild.nextElementSibling; if (body && body.offsetParent === null) b.firstElementChild.click(); return 1; })()`);
       if (sec.unfold) await sleep(600);
       const r = await jsJSON(PANEL_FIT_PROBE(sec.ids));
@@ -221,7 +224,7 @@ async function runAnchorGrey() {
   const row = (prefix) => jsJSON(`JSON.stringify(Object.fromEntries(['Start','Center','End'].map((a)=>{ const b=document.getElementById(${JSON.stringify(prefix)}+'RailsAnchor'+a); return [a, { grey: !!b?.disabled, title: b?.title || '' }]; })))`);
   const spacing = (prefix, v) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(prefix)}+'RailsSpacing'); e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); return 1; })()`);
   for (const pn of A.panels) {
-    for (const id of pn.open) await click(id, 700);
+    for (const id of pn.open) await go(id, 700);
     await click(pn.generate, 3500);
     const r1 = await row(pn.prefix);
     const greyed = Object.keys(r1).filter((a) => r1[a].grey);
@@ -239,7 +242,7 @@ async function runFollowsFrame() {
   await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.reload', {}); await waitApp(); await openBrickTab();
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
-  for (const id of F.open) await click(id, 700);
+  for (const id of F.open) await go(id, 700);
   const realClick = async (id) => {
     const r = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.scrollIntoView({block:'center'}); const b=e.getBoundingClientRect(); return { x: b.left + b.width/2, y: b.top + b.height/2 }; })())`);
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', buttons: 1, clickCount: 1 });
@@ -363,10 +366,10 @@ async function runTouchTargets() {
     await openBrickTab();
     for (const id of T.brickTabs) await touchRow(vp, id.replace(/^brick(Tab|Tool)_/, 'Brick '), (await click(id, 900)) === 'ok', EDITOR_ROOT);
     for (const t of T.artTabs) {
-      const opened = (await click('editorTabArtwork', 600)) === 'ok' && (await click(`artTab_${t}`, 900)) === 'ok';
+      const opened = (await go('row:draw', 600)) === 'ok' && (await click(`artTab_${t}`, 900)) === 'ok';
       await touchRow(vp, `Art ${t}`, opened, EDITOR_ROOT);
     }
-    await touchRow(vp, 'Frame', (await click('editorTabFrame', 1200)) === 'ok', EDITOR_ROOT);
+    await touchRow(vp, 'Frame', (await go('row:frame', 1200)) === 'ok', EDITOR_ROOT);
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
@@ -375,11 +378,10 @@ async function runTouchTargets() {
 // ---------------------------------------------------------------- the pill + Height readout clear of the drawer (phone)
 const TOGGLE_CLEAR_PROBE = (tab, state, minPx) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  document.getElementById(${JSON.stringify(tab)})?.click(); await sleep(500);
   const drawer = document.getElementById('editorMobileDrawer'); const dr = await import('./editor/editor-drawer.js');
   const px = ${JSON.stringify(state)} === 'peek' ? 96 : dr.drawerHeightPx(${JSON.stringify(state)}, window.innerHeight);
   drawer.style.height = px + 'px'; await sleep(500);
-  const ro = document.getElementById('heightReadout'); if (ro && ${JSON.stringify(tab)} === 'editorTabHeight') { ro.hidden = false; ro.textContent = 'H 1.500"'; await sleep(200); }
+  const ro = document.getElementById('heightReadout'); if (ro && ${JSON.stringify(tab)} === 'row:height') { ro.hidden = false; ro.textContent = 'H 1.500"'; await sleep(200); }
   const d = drawer.getBoundingClientRect();
   const shown = (e) => { if (!e) return false; const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !e.hidden; };
   const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -402,13 +404,14 @@ async function runToggleClear() {
   await send('Emulation.setDeviceMetricsOverride', { width: T.viewport.width, height: T.viewport.height, deviceScaleFactor: 1, mobile: true });
   await send('Page.reload', {}); await waitApp(); await openBrickTab();
   for (const tab of T.tabs) {
-    if (!(await js(`!!document.getElementById(${JSON.stringify(tab)})?.getClientRects().length`))) continue;
+    const label = LAYER_ROWS[tab.slice(4)];
+    const picked = await go(tab, 900); // the layer's row in the stack, real input (the board gets one when it has none)
     for (const state of T.states) {
       const r = await jsJSON(TOGGLE_CLEAR_PROBE(tab, state, T.minPx));
-      const ok = r.over.length === 0 && r.small.length === 0 && r.blocked.length === 0;
-      checkRow('layout', `Toggle clear of the drawer ${T.viewport.name}: ${tab.replace('editorTab', '')} at ${state}`, ok,
-        `drawer top ${r.drawerTop}; visible: ${r.seen.join(', ') || 'none'}${r.over.length ? `; OVER the drawer: ${r.over}` : ''}${r.small.length ? `; under ${T.minPx}px: ${r.small}` : ''}${r.blocked.length ? `; covered: ${r.blocked}` : ''}`);
-      if (!ok || process.env.TOGGLE_SHOTS) await shot(`${ok ? 'toggle' : 'FAIL_toggle'}_${tab.replace('editorTab', '')}_${state}`);
+      const ok = picked === 'ok' && r.over.length === 0 && r.small.length === 0 && r.blocked.length === 0;
+      checkRow('layout', `Toggle clear of the drawer ${T.viewport.name}: ${label} at ${state}`, ok,
+        `${picked === 'ok' ? '' : `row pick: ${picked}; `}drawer top ${r.drawerTop}; visible: ${r.seen.join(', ') || 'none'}${r.over.length ? `; OVER the drawer: ${r.over}` : ''}${r.small.length ? `; under ${T.minPx}px: ${r.small}` : ''}${r.blocked.length ? `; covered: ${r.blocked}` : ''}`);
+      if (!ok || process.env.TOGGLE_SHOTS) await shot(`${ok ? 'toggle' : 'FAIL_toggle'}_${label}_${state}`);
     }
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
@@ -548,7 +551,8 @@ async function runPageZoom() {
   for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await previewRows(vp);
   await openBrickTab(); // opens the editor
-  const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  const drawRow = await go('row:draw', 900); // a Draw layer's row in the stack (real input)
+  const armed = drawRow === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
   for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
   await js(`(async () => { try { localStorage.removeItem(${JSON.stringify(T.legacyKey)}); } catch (_) {} document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300)); return 1; })()`);
   await pinchRow('a pinch on the drawing zooms the drawing, not the page', '#editorSVGContainer', { drawing: true });
@@ -559,7 +563,7 @@ async function runPageZoom() {
   const s1 = await jsJSON(VIEW_STATE), drew = s1.sketch - s0.sketch;
   const ok = armed && drew === 1 && !tip.text && tip.ids.length === 0;
   checkRow('layout', `Expand tip removed (${vp.name}, touch): no tip after the first stroke`, ok,
-    `${armed ? '' : 'Draw tool not armed; '}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
+    `${armed ? '' : `Draw tool not armed (Draw row: ${drawRow}); `}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
   if (!ok) await shot('FAIL_expand_tip_after_stroke');
   await pinchRow('a pinch where the Expand tip sat zooms the drawing, not the page', '#editorSVGContainer', { drawing: true, area: T.formerArea });
   await send('Emulation.setEmulatedMedia', { features: [] });
@@ -583,7 +587,7 @@ async function runFitEdgeHandles() {
       await js(`(async () => { const m = document.getElementById('svgEditorModal'); document.getElementById('viewMode_2d').click();
         for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
         return 1; })()`);
-      await click('editorTabFrame', 1500);
+      await go('row:frame', 1500);
       const r = await jsJSON(`(async () => { const sel = document.getElementById('editorFrameTemplate'); if (!sel) return JSON.stringify({ missing: true });
         const tpls = [...sel.options].map((o) => o.value).filter((v) => v && v !== 'none'); const near = []; let seen = 0;
         for (const t of tpls) {

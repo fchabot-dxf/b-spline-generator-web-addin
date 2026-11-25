@@ -41,6 +41,7 @@ describe('EDITOR_TAB_SELECTABLE: declared per tab', () => {
     expect(Object.fromEntries(Object.entries(EDITOR_TAB_SELECTABLE).map(([t, d]) => [t, d.kinds]))).toEqual({
       artwork: ['art'], lattice: ['art'], brick: ['brick'], frame: [], // redesign phase 2: the Lattice tab = art
       height: [], // HEIGHT-PAINTER: the brush paints; nothing on the canvas is picked in the Height tab
+      stl: [], // the editor layer stack's STL row: no 2D tools yet
     });
     expect(isSelectableInTab({ _focusTab: 'height' }, document.createElementNS('http://www.w3.org/2000/svg', 'path'))).toBe(false);
     expect(selectAllLabelFor({ _focusTab: 'artwork' })).toBe('Select all artwork');

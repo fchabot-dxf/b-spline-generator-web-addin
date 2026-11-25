@@ -48,7 +48,7 @@ async function relaid(before) { return (await canvasSettled(before)) !== before;
 
 async function runFrameUi() {
   await send('Page.reload', {}); await waitApp();
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900);
   await click('brickFramePreset_single_soldier', 2000);
@@ -83,21 +83,21 @@ async function runFrameUi() {
   // 5. per-element accents (ed618f3): a band's own accent marks only that band; its level moves the relief
   if (await editorOpen()) await apply();
   let Z = await heightsSettled(null);
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900);
   await click('brickFramePreset_three_band', 2000);
   if (!(await exists('brickAccent_band1_checker'))) { checkRow('frame-ui', 'Accents: band 1', false, '', 'ed618f3'); return; }
   await apply(); Z = await heightsSettled(Z);
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900);
   await click('brickAccent_band1_checker', 2000);
   const acc = await jsJSON(`JSON.stringify((()=>{ const f=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const by=(b)=>f.filter((n)=>n.getAttribute('data-brick-band')===String(b)); return { b1: by(1).filter((n)=>n.getAttribute('data-brick-accent')==='1').length, b1n: by(1).length, b0: by(0).filter((n)=>n.getAttribute('data-brick-accent')==='1').length }; })())`);
   await apply(); const Z1 = await heightsSettled(Z);
   checkRow('frame-ui', 'Accents: band 1 checker marks band 1 only, 3D moves', acc.b1 > 0 && acc.b0 === 0 && Z1 !== Z, `band 1 outlined ${acc.b1}/${acc.b1n}, band 0 outlined ${acc.b0}, 3D ${Z1 !== Z ? 'changed' : 'UNCHANGED'}`);
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900);
   await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
   await apply(); const Z2 = await heightsSettled(Z1);
   checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
   // F35 item 58 follow-up: a new preset drops the band accents (stored by band number; item 33's corner precedent)
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900);
   await click('brickFramePreset_soldier_stretcher', 2000);
   const dropped = await jsJSON(`(async()=>{ const { P } = await import('./core/state.js'); const n=window.svgEditor._sketchLayer.node;
     return JSON.stringify({ list: P.brickSettings.frameBandAccents, outlined: n.querySelectorAll('[data-brick="frame"][data-brick-accent="1"]').length, frames: n.querySelectorAll('[data-brick="frame"]').length }); })()`);
@@ -113,7 +113,7 @@ async function runFrameUi() {
   checkRow('frame-ui', 'Accents: a Wall preset (Checkerboard) reaches the top third of the wall', reach.wall > 0 && reach.high > 0, `${reach.high} outlined wall bricks in the top third (of ${reach.wall})`);
   await click('brickAccent_none', 1000);
   // 6. the brush's own accent outlines its bricks
-  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
+  await openEditorTab('row:brick'); await click('brickTool_brush', 900);
   if (await exists('brickAccent_brush_checker')) {
     await click('brickAccent_brush_checker', 800);
     await click('brickTool_brush', 300); await drag([[0.3, 0.5], [0.5, 0.55], [0.7, 0.5]]);
@@ -128,7 +128,7 @@ async function runFrameUi() {
     session.P.brickSettings.frameBandPreset = old;
     delete session.P.brickSettings.frameCorner;
     await reloadWithSession(MIGRATION.sessionKey, JSON.stringify(session));
-    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+    await openEditorTab('row:brick'); await click('brickTool_frame', 900);
     const st = await frameUiRead();
     checkRow('frame-ui', `Presets: a board saved on ${old} restores on its own preset and corner`, st.preset === old && st.pick === null && st.ownCorner === st.presetCorners[old] && st.activeChip.join() === old,
       `preset ${st.preset}, corner ${st.ownCorner} (its own ${st.presetCorners[old]}), pick ${st.pick}, active ${st.activeChip.join(',')}`);
@@ -148,9 +148,9 @@ export const CORNER_EFFECT_BOARD = { templateId: 'template_18', widthIn: 7, heig
 async function runCornerEffect() {
   const B = CORNER_EFFECT_BOARD;
   await setValue('widthIn', B.widthIn, 'change'); await setValue('heightIn', B.heightIn, 'change'); await sleep(1500);
-  await openEditorTab('editorTabBrick');
+  await openEditorTab('row:brick');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(B.templateId)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900);
   await setValue('brickSize', B.brickLengthIn, 'change'); await sleep(2000);
   await click('brickFramePreset_single_soldier', 2000);
   const r = await jsJSON(`(async()=>{ const { P }=await import('./core/state.js'); const BP=await import('./main/brick-panel.js'); const W=(ms)=>new Promise((r)=>setTimeout(r,ms));
@@ -205,7 +205,7 @@ async function runFanCentre() {
   checkRow('frame-ui', 'Fan centre: a pick is one undo step (Undo back to Eye, Redo to Stone)', u.hash === s1.hash && u.active.join() === 'eye' && r.hash === s2.hash && r.active.join() === 'stone',
     `undo: ${u.hash === s1.hash ? 'Eye frame' : 'OTHER frame'}, active ${u.active.join(',')}; redo: ${r.hash === s2.hash ? 'Stone frame' : 'OTHER frame'}, active ${r.active.join(',')}`);
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(R.noFanTemplate)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
-  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await sleep(1500);
+  await openEditorTab('row:brick'); await click('brickTool_frame', 900); await sleep(1500);
   const g = await fanState();
   checkRow('frame-ui', `Fan centre: greyed with no fan corner (${R.noFanTemplate}), the Needle live`, g.grey.eye && g.grey.stone && !g.grey.needle && g.eyeTitle === g.why,
     `eye ${g.grey.eye ? 'greyed' : 'LIVE'}, stone ${g.grey.stone ? 'greyed' : 'LIVE'}, needle ${g.grey.needle ? 'GREYED' : 'live'}; tooltip "${g.eyeTitle}"`);

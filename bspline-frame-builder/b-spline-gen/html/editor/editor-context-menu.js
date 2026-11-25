@@ -348,6 +348,20 @@ export function openContextMenu(editor, target, clientX, clientY, suppressDismis
   return menu;
 }
 
+/** The SAME popover for a menu declared elsewhere (the editor layer stack's per-row ⋯ menu, main/layer-stack.js
+ *  EDITOR_ROW_MENU): `rows` = [{ label, icon, run }] in order; one menu open at a time (it replaces the context menu and
+ *  vice versa); a pick closes it, then runs. Returns { close, el }. */
+export function openMenuRows(rows, clientX, clientY, suppressDismissUntil = 0) {
+  if (_openMenu) { _openMenu.close(); _openMenu = null; }
+  if (!rows.length) return null;
+  const menu = _buildPopover(rows.map((r) => ({ label: r.label, icon: r.icon, onSelect(rowEl) { menu.close(); r.run(rowEl); } })), clientX, clientY, {
+    onDismiss: () => { if (_openMenu === menu) _openMenu = null; },
+    suppressDismissUntil,
+  });
+  _openMenu = menu;
+  return menu;
+}
+
 // ─── touch hold-to-menu gesture ─────────────────────────────────────────
 // Mirrors editor-multiselect-gesture.js's own arm/cancel shape exactly —
 // see this file's own doc comment for why the two stay separate timers

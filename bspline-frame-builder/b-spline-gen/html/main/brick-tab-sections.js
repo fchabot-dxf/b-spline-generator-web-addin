@@ -90,10 +90,10 @@ export const BRICK_DRAWER_TREE = Object.freeze([
   branch('brush', 'Brush', 'stroke · accents', ['brickBrushSection', 'brickStripeSection'], { armsTool: 'brush', flat: true }),
   branch('raisedBrush', 'Raised', 'mode · height', ['brickRaisedSection'], { armsTool: 'raisedBrush', flat: true }), // retiring (E: heights move to Select)
   branch('general', 'General', 'brick size · look · crumble', ['brickSharedLayout'], { headerId: 'brickTab_general', flat: true }),
-  branch('layers', 'Layers', (doc) => { const n = doc.querySelectorAll('#editorLayersList .layer-row').length; return `${n} layer${n === 1 ? '' : 's'}`; }, ['brickLayersSlot']),
+  // (the Layers card retired with the editor layer stack, Fred 2026-11-24: the stack above the panel lists the layers)
 ]);
-// the free branches a device starts with: Layers open (Fred, phone: "We don't see layers still"), General folded
-export const BRICK_TREE_DEFAULT_OPEN = Object.freeze(['layers']);
+// the free branches a device starts with: General folded (the Layers card retired: the editor layer stack lists them)
+export const BRICK_TREE_DEFAULT_OPEN = Object.freeze([]);
 export const BRICK_TREE_OPEN_KEY = 'bspline.brick.drawerOpen';
 export const brickBranchDomId = (id) => `brickBranch_${id}`;
 
