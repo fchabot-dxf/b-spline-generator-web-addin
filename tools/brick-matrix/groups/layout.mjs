@@ -7,9 +7,11 @@ import { SIDEBAR_TABS } from '../../../bspline-frame-builder/b-spline-gen/html/m
 // tool's Generate must still show IN FULL there. One row per viewport x tool.
 export const PEEK_LAYOUT = {
   viewports: [
-    { name: 'phone 390x844', width: 390, height: 844, mobile: true },
-    { name: 'palette 700x850', width: 700, height: 850, mobile: false },
-    { name: 'palette 880x850', width: 880, height: 850, mobile: false },
+    // `drawer`: the editor's layout there (editor/breakpoints.js EDITOR_MOBILE_MAX_PX, Fred 2026-11-24: the bottom drawer only
+    // below 768 px -- from 768 the right column); either way Generate shows in full
+    { name: 'phone 390x844', width: 390, height: 844, mobile: true, drawer: true },
+    { name: 'palette 700x850', width: 700, height: 850, mobile: false, drawer: true },
+    { name: 'palette 880x850', width: 880, height: 850, mobile: false, drawer: false },
   ],
   tools: ['wall', 'frame'],
   element: 'brickGenerate',
@@ -133,12 +135,12 @@ function LAYOUT_PROBE(tool) { return `JSON.stringify((()=>{ const g=document.get
     drawerLayout: !!d && getComputedStyle(d).position === 'fixed', dragging: !!d && d.classList.contains('is-dragging'), peek: !!d && d.classList.contains('is-peek'),
     toolActive: !!document.getElementById(${JSON.stringify('brickTool_' + tool)})?.classList.contains('active'),
     shownPx: Math.round(Math.max(0, Math.min(b.bottom, innerHeight) - Math.max(b.top, 0))) }; })())`; }
-async function settledLayout(tool) {
+async function settledLayout(tool, drawer = true) {
   const SETTLE_SAMPLES = 4, SETTLE_POLL_MS = 300, SETTLE_MAX_MS = 20000;
   let last = null, same = 0, r = null;
   for (let t = 0; t < SETTLE_MAX_MS; t += SETTLE_POLL_MS) {
     r = (await jsJSON(LAYOUT_PROBE(tool)));
-    const ready = r.drawerLayout && !r.dragging && r.toolActive && r.h > 0;
+    const ready = r.drawerLayout === drawer && !r.dragging && r.toolActive && r.h > 0;
     const key = `${r.top}/${r.h}/${r.innerW}`;
     same = ready && key === last ? same + 1 : 0; last = key;
     if (same >= SETTLE_SAMPLES - 1) return { r, settled: true };
@@ -158,12 +160,12 @@ async function runLayout() {
     }
     for (const tool of PEEK_LAYOUT.tools) {
       for (let i = 0; i < 3 && !(await js(`!!document.getElementById(${JSON.stringify('brickTool_' + tool)})?.classList.contains('active')`)); i++) await click(`brickTool_${tool}`, 1000);
-      const { r, settled } = await settledLayout(tool);
+      const { r, settled } = await settledLayout(tool, vp.drawer);
       const ok = settled && r.top >= 0 && r.bottom <= r.innerH + 0.5;
-      const name = `Peek ${vp.name}: ${tool} Generate fully shown`;
+      const name = `${vp.drawer ? 'Peek' : 'Column'} ${vp.name}: ${tool} Generate fully shown`;
       rows.push({ name, kind: 'layout', result: settled ? 'ok' : 'setup: page never settled (see observed)', observed: r,
         verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', layout: ok ? 'PASS' : 'FAIL' } });
-      console.log(`${ok ? 'pass' : 'FAIL'}  Peek ${vp.name}: ${tool} Generate`.padEnd(54) + (settled ? ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${vp.drawer ? 'Peek' : 'Column'} ${vp.name}: ${tool} Generate`.padEnd(54) + (settled ? ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`
         : ` NOT SETTLED ${JSON.stringify(r)}`));
       if (!ok) await shot(`FAIL_peek_${vp.width}_${tool}`);
     }

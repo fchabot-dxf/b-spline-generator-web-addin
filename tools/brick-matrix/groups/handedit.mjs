@@ -4,7 +4,8 @@
 // ---- F35 item 65 (seat D): a brick moved BY HAND (Select tool, a real drag) follows in the 3D and survives Apply +
 // reopen. Measured before the fix: the move was stored as a transform the height mask never read -- 3D unchanged.
 export const HAND_EDIT = {
-  template: 'template_1', size: 'half1', // a BRICK_SIZE_PRESETS id, picked in the size dropdown selectTool: 'toolSelect',
+  template: 'template_1', size: 'half1', // size: a BRICK_SIZE_PRESETS id, picked in the size dropdown
+  selectTool: 'toolSelect', // (was eaten by the comment above: the row read 'not in this build' and skipped)
   dragBrickWidths: 0.6, // drag the middle wall brick right by this share of its own width
   introducedBy: 'item 65',
 };

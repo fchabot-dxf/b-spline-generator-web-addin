@@ -243,6 +243,8 @@ async function jsJSON(expr) {
   }
 }
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
+// the editor layer stack's row kinds (see pickLayerRow below): a group's 'row:<kind>' token -> the retired tab it replaces
+const LAYER_ROWS = Object.freeze({ frame: 'Frame', draw: 'Artwork', lattice: 'Lattice', brick: 'Brick', height: 'Height' });
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
 const setValue = (elId, v, event) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return 'MISSING'; if(e.disabled) return 'DISABLED'; e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event(${JSON.stringify(event)})); return 'ok'; })()`);
 // F35 item 43: a Brick-panel control is acted on / checked with ITS tab up (General for a global block) -- hidden by
@@ -619,7 +621,7 @@ async function openEditorTab(target) {
 // reaches a layer type's tools by SELECTING that layer's row with a REAL pointer, as a user does -- and when the board has
 // no layer of that type, by adding one through the stack's own '+ Add layer' picker (it selects the new row). A row token
 // in a group's data is 'row:<kind>'; LAYER_ROWS declares the kinds (the retired tab each replaces, for the reports).
-const LAYER_ROWS = Object.freeze({ frame: 'Frame', draw: 'Artwork', lattice: 'Lattice', brick: 'Brick', height: 'Height' });
+// (LAYER_ROWS is declared with the page helpers near the top: bindGroups hands it to the groups before this line runs)
 /** A real pointer press + release at the centre of element `elId` -- scrolled into view first, and only when the element
  *  itself is what the pointer hits there ('MISSING' / 'DISABLED' / 'HIDDEN' / 'COVERED by ...' otherwise). `tapper(x, y)`:
  *  the input to use (the mouse by default; a touch group passes its own). */
@@ -640,11 +642,11 @@ async function mouseTap(x, y) {
 }
 /** The row to pick for a layer kind: the Frame row; else the ACTIVE layer's row when it is of that kind (a pick keeps the
  *  layer the group was working on, as the retired tab did), else the first row of that kind ('' = none on the board). */
-const rowIdFor = (kind) => js(`(()=>{ const kind=${JSON.stringify(kind)}; if (kind === 'frame') return document.getElementById('edStackRow_frame') ? 'edStackRow_frame' : '';
+function rowIdFor(kind) { return js(`(()=>{ const kind=${JSON.stringify(kind)}; if (kind === 'frame') return document.getElementById('edStackRow_frame') ? 'edStackRow_frame' : '';
   const ed=window.svgEditor, act=ed && ed._activeLayer != null ? String(ed._activeLayer) : null;
   const cards=[...document.querySelectorAll('#editorLayerStackList > [data-stack-type="' + kind + '"]')];
   const c=cards.find((x) => act && x.dataset.stackKey === 'layer:' + act) || cards[0];
-  const b=c && c.querySelector(':scope > .layer-card-head [data-ed-select]'); return b ? b.id : ''; })()`);
+  const b=c && c.querySelector(':scope > .layer-card-head [data-ed-select]'); return b ? b.id : ''; })()`); }
 /** Select a layer kind's row in the editor stack with real input (see LAYER_ROWS). Returns 'ok' or what stopped it. */
 async function pickLayerRow(kind, { wait = 900, tapper = mouseTap } = {}) {
   if (!LAYER_ROWS[kind]) return `unknown layer row ${kind}`;
@@ -666,7 +668,7 @@ async function pickLayerRow(kind, { wait = 900, tapper = mouseTap } = {}) {
   return r;
 }
 /** A step of a group's script: a layer-row token ('row:<kind>') is picked in the stack, anything else clicked. */
-const go = (target, wait = 900) => (String(target).startsWith('row:') ? pickLayerRow(String(target).slice(4), { wait }) : click(target, wait));
+function go(target, wait = 900) { return String(target).startsWith('row:') ? pickLayerRow(String(target).slice(4), { wait }) : click(target, wait); }
 
 // ---------------------------------------------------------------- migration (hoisted; MIGRATION in groups/migration.mjs)
 async function loadFromStandIn(name) {
