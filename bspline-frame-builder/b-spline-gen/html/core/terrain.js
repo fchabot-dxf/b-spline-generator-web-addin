@@ -7,6 +7,7 @@
 import { PerlinNoise } from './noise.js';
 import { NoiseModes, NoiseMetadata } from './noise/index.js';
 import { SeedTypes } from './seed/index.js';
+import { bandActive, bandWeightGrid, bandLevelIn, BAND_APPLIES_TO, BAND_APPLIES_DEFAULT } from './flatten-band.js';
 
 // The board -> sample mapping generateHeightmap uses (Map Zoom + Map Offset, then the Symmetry fold). Its constants are
 // cached on the params object (a heightmap passes the same one throughout).
@@ -53,6 +54,7 @@ export function terrainFitRange(params) {
       if (this !== params) return v;
       if (k === 'nx' || k === 'nz' || k === 'carveZ' || k === 'terrainFit' || k === 'terrainFloorIn' || k === 'smoothIntensity' || k === 'smoothRadius' || k === 'smoothRespectSymmetry') return undefined;
       if (k === 'thickness' || k === 'thickenEnabled' || k === 'thickenDir' || k === 'backMode') return undefined; // the back: the floor only
+      if (k.startsWith('band')) return undefined; // the FLATTEN BAND (core/flatten-band.js) applies after the fit: never its range
       return typeof v === 'string' && v.length > 512 ? undefined : v;
     });
   } catch (_) { key = null; }
@@ -146,9 +148,14 @@ function makeTerrainSampler(params) {
   const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42; // the valley / peak shares of the fine value (Pass 2 below)
 
   const folded = { zu: 0, zv: 0, su: 0, sv: 0 }; // foldUV's output, one object for the whole heightmap
+  // FLATTEN BAND (core/flatten-band.js): `last.flatGrain` = the 'Flat (no hills)' grain g at the last sampled point, written
+  // when the caller asks (`wantGrain`) -- the band's flat is that formula at the band's own height
+  const last = { flatGrain: 0 };
 
   // ── Pass 1 + 2: fine detail & coarse redistribution, at one point ─────────
-  const sample = (u, v) => {
+  // `texFlat` (0..1, the FLATTEN BAND's texture weight here; 0 = absent = today's sample to the bit): the fine grain is
+  // flattened toward neutral by it -- 1 = Texture Strength 0 at this point.
+  const sample = (u, v, texFlat = 0, wantGrain = false) => {
 
         // H17 item 1 -- Map Zoom: a drawing-style zoom of the whole
         // generated terrain, centred on the board. Remapped ONCE here, at
@@ -221,14 +228,17 @@ function makeTerrainSampler(params) {
         const safeMargin = Math.max(0, Math.min(0.49, edgeMargin || 0));
 
         // ── Flat (no hills): no coarse pass -- the grain alone, from the surface height ──
-        if (shapeFlat) {
+        if (shapeFlat || wantGrain) {
             let g = params.isolateSkeleton ? 0 : fine * LOW;
             if (texS !== 1 && !params.isolateSkeleton) g *= texS; // the grain scales by the strength (0 = exactly Flat)
+            if (texFlat > 0) g *= 1 - texFlat; // the FLATTEN BAND's texture: toward flat like Texture Strength
             if (safeMargin > 0) g *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
-            return g; // generateHeightmap: surface height + max(0, g) * carveZ
+            last.flatGrain = g;
+            if (shapeFlat) return g; // generateHeightmap: surface height + max(0, g) * carveZ
         }
 
         if (texS !== 1) fine = lerp(0.5, fine, texS); // hills: the fine value toward the flat 0.5 (isolateSkeleton's value)
+        if (texFlat > 0) fine = texFlat >= 1 ? 0.5 : lerp(fine, 0.5, texFlat); // the FLATTEN BAND's texture (1 = Strength 0)
 
         // ── Pass 2: Coarse Redistribution ──────
         // Seed (raw pattern) → Skeleton transforms (peakShape, clustering,
@@ -292,7 +302,7 @@ function makeTerrainSampler(params) {
         if (safeMargin > 0) h *= edgeFade(u, safeMargin) * edgeFade(v, safeMargin);
         return h;
   };
-  return { sample, shapeFlat, surfaceZ };
+  return { sample, shapeFlat, surfaceZ, last };
 }
 
 /**
@@ -315,7 +325,7 @@ export function generateHeightmap(params, stampParams = null) {
   } = params;
 
   const heights = new Float32Array(nx * nz);
-  const { sample, shapeFlat, surfaceZ } = makeTerrainSampler(params);
+  const { sample, shapeFlat, surfaceZ, last } = makeTerrainSampler(params);
   // TERRAIN FIT 'fill' (TERRAIN_FIT_REF above): the reference range [lo, hi] maps onto 0..carveZ; a terrain with no range
   // (hi === lo) is left as built. Not on Flat (no hills): that shape is a flat base at its surface height plus grain.
   const fitRange = terrainFills(params) ? terrainFitRange(params) : null;
@@ -324,19 +334,34 @@ export function generateHeightmap(params, stampParams = null) {
   // the FILL FLOOR (Fred 2026-11-23): the height the lowest point maps to -- the body's bottom clearance under the terrain,
   // decided by the caller from the back (core/engine/build-thicken-data.js fillFloorIn); absent = 0. The highest stays carveZ.
   const fitFloor = Number(params.terrainFloorIn) || 0;
+  // FLATTEN BAND (core/flatten-band.js): its weight per point (null = off / no point in reach = the loop below as before).
+  // Applied here, after the fit and before stamps, layers, smoothing and Thicken -- like the terrain itself.
+  const band = bandActive(params) ? bandWeightGrid(params, nx, nz) : null;
+  const bandParts = band ? (BAND_APPLIES_TO[params.bandAppliesTo] || BAND_APPLIES_TO[BAND_APPLIES_DEFAULT]) : null;
+  const bandLevel = band ? bandLevelIn(params) : 0;
 
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
         const u = i / (nx - 1);
         const v = j / (nz - 1);
-        const h = sample(u, v);
+        const w = band ? band[j * nx + i] : 0;
+        const wTex = w > 0 && bandParts.texture ? w : 0;
+        const wShape = w > 0 && bandParts.shape ? w : 0;
+        const h = wTex > 0 || wShape > 0 ? sample(u, v, wTex, wShape > 0) : sample(u, v);
+        let H;
         if (shapeFlat) { // Flat (no hills): the grain alone, from the surface height
             const grainH = Math.max(0, h) * (carveZ || 0);
-            heights[j * nx + i] = surfaceZ + (isNaN(grainH) ? 0 : grainH);
-            continue;
+            H = surfaceZ + (isNaN(grainH) ? 0 : grainH);
+        } else {
+            const finalH = fitLo === null ? Math.max(0, h) * (carveZ || 0) : fitFloor + (Math.max(0, h) - fitLo) / fitSpan * ((carveZ || 0) - fitFloor);
+            H = isNaN(finalH) ? 0 : finalH;
         }
-        const finalH = fitLo === null ? Math.max(0, h) * (carveZ || 0) : fitFloor + (Math.max(0, h) - fitLo) / fitSpan * ((carveZ || 0) - fitFloor);
-        heights[j * nx + i] = isNaN(finalH) ? 0 : finalH;
+        if (wShape > 0) { // the band's flat: 'Flat (no hills)' at the band's height (its grain gone where TEXTURE is flattened)
+            const gH = Math.max(0, last.flatGrain) * (carveZ || 0);
+            const flat = bandLevel + (isNaN(gH) ? 0 : gH);
+            H = wShape >= 1 ? flat : H + (flat - H) * wShape;
+        }
+        heights[j * nx + i] = H;
     }
   }
 

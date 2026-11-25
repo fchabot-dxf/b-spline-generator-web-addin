@@ -704,13 +704,13 @@ export function polygonDifference(subject, clip) {
 /** A region whose lobes touch (a wall region bridged by a zero-width corridor: primitive-ribbon.js bridgeLobes; T14 at
  *  1.5 in: two halves joined by a slit along the centre line) split at its repeated vertices into simple lobes; a piece
  *  of no more than `minArea` (the slit itself) is dropped. Read by tip-fill.js bareTips and clipPolygonToBoard. */
-export function lobesOf(P, minArea = 0) {
-  for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
-    if (Math.hypot(P[i].x - P[j].x, P[i].y - P[j].y) > 1e-7) continue;
-    const a = P.slice(i, j), b = [...P.slice(j), ...P.slice(0, i)];
+export function lobesOf(poly, minArea = 0) {
+  for (let i = 0; i < poly.length; i++) for (let j = i + 1; j < poly.length; j++) {
+    if (Math.hypot(poly[i].x - poly[j].x, poly[i].y - poly[j].y) > 1e-7) continue;
+    const a = poly.slice(i, j), b = [...poly.slice(j), ...poly.slice(0, i)];
     return [...lobesOf(a, minArea), ...lobesOf(b, minArea)];
   }
-  return P.length >= 3 && Math.abs(signedArea(P)) > minArea ? [P] : [];
+  return poly.length >= 3 && Math.abs(signedArea(poly)) > minArea ? [poly] : [];
 }
 const LOBES = new WeakMap(); // outline -> its lobes (null: one lobe), per outline array -- every layout clips each cell
 const lobesCached = (outline) => {

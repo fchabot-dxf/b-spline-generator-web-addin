@@ -984,11 +984,16 @@
             </div>
           </div>
 
-          <label class="cad-label">Flat Border</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="edgeMarginIn" value="0">
+          <!-- Flat Border (P.edgeMarginIn), RETIRING (Fred 2026-11-25): the Flatten band replaces it. Shown only on a board that
+               uses it (edgeMarginIn > 0 when the board loads, main/flatten-band-ui.js FLAT_BORDER_RETIREMENT); it keeps building
+               exactly as before -->
+          <div data-legacy-row="flatBorder">
+            <label class="cad-label">Flat Border</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="edgeMarginIn" value="0">
+              </div>
             </div>
           </div>
 
@@ -1085,6 +1090,64 @@
             </div>
           </div>
 
+        </div>
+      </div>
+
+      <!-- FLATTEN BAND (Fred 2026-11-25, core/flatten-band.js + main/flatten-band-ui.js): a flat strip along the wood frame's
+           outline (the board edge with no frame), feathered into the terrain on both sides. Its own section, right after
+           Terrain Texture (main/sidebar-tabs.js). The rows under the switch show while it is on. -->
+      <div class="panel panel-band">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🔳 FLATTEN BAND</div>
+        <div class="panel-body hidden" data-job-lock="skeleton">
+          <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:8px; margin:0 0 2px;">
+            <input type="checkbox" id="bandEnabled" style="width:auto; margin:0; flex:0 0 auto;">
+            <span>Flatten along the frame outline</span>
+          </label>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 12px;">A flat strip on the wood frame's outline (the board edge with no frame), feathered into the terrain inside and outside.</div>
+
+          <div data-band-row="settings">
+            <label class="cad-label">Applies to</label>
+            <!-- P.bandAppliesTo: the buttons' data-value are core/flatten-band.js BAND_APPLIES_TO's keys -->
+            <div role="group" id="bandAppliesToGroup" class="segmented-group" aria-label="Applies to" style="box-sizing:content-box; height:28px; margin-bottom:12px;">
+              <button type="button" class="editor-fillmode-btn" data-value="shape" style="flex:1; min-width:44px; font-size:11px;">Shape</button>
+              <button type="button" class="editor-fillmode-btn" data-value="texture" style="flex:1; min-width:44px; font-size:11px;">Texture</button>
+              <button type="button" class="editor-fillmode-btn" data-value="both" style="flex:1; min-width:44px; font-size:11px;">Both</button>
+            </div>
+
+            <!-- P.bandHeightIn (in, from the stock bottom): the slider travels 0 .. carve depth; the typed field has no min / max -->
+            <label class="cad-label">Flat height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="bandHeightInSlider" class="cad-slider" min="0" max="1.5" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="bandHeightIn" value="0" step="0.01">
+              </div>
+            </div>
+
+            <label class="cad-label">Flat width (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="bandWidthInSlider" class="cad-slider" min="0" max="4" step="0.05" value="0.5">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="bandWidthIn" value="0.5" step="0.05">
+              </div>
+            </div>
+
+            <div class="cad-paired-steppers" style="display:flex; gap:8px; margin-bottom:12px;">
+              <div style="flex:1;">
+                <label class="cad-label cad-label-inline">Feather in <span style="font-size:10px; opacity:0.6; font-weight:400;">(in)</span></label>
+                <div class="cad-slider-row">
+                  <input type="range" id="bandInnerFeatherInSlider" class="cad-slider" min="0" max="6" step="0.05" value="1">
+                  <input type="number" id="bandInnerFeatherIn" class="no-stepper cad-slider-readout" value="1" step="0.05">
+                </div>
+              </div>
+              <div style="flex:1;">
+                <label class="cad-label cad-label-inline">Feather out <span style="font-size:10px; opacity:0.6; font-weight:400;">(in)</span></label>
+                <div class="cad-slider-row">
+                  <input type="range" id="bandOuterFeatherInSlider" class="cad-slider" min="0" max="6" step="0.05" value="0.25">
+                  <input type="number" id="bandOuterFeatherIn" class="no-stepper cad-slider-readout" value="0.25" step="0.05">
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -318,8 +318,20 @@ export const DEFAULT = {
     extraThickenThinFalloff: 0.05,
     // Export Configuration
     exportOrientation: 'z-up',
-    // Flat border
+    // Flat border (RETIRING, Fred 2026-11-25: the Flatten band replaces it; main/flatten-band-ui.js shows its slider only on a
+    // board that uses it, edgeMarginIn > 0, which keeps building exactly as before -- core/terrain.js edgeFade)
     edgeMarginIn: 0,
+    // the FLATTEN BAND (Fred 2026-11-25, core/flatten-band.js): a flat strip along the wood frame's outline (the board edge with
+    // no frame), feathered into the terrain inside and outside. Off = absent on every board saved before = the heights bit for
+    // bit as before (tests/flatten-band.test.js). bandHeightIn: the flat's height (in, from the stock bottom; the slider
+    // travels 0..carveZ, a typed value is kept as typed); null = the board's fill floor until the user sets one.
+    // (bandEnabled LAST: a load writes the inputs in this order, and the switch's 'change' re-syncs the band rows after.)
+    bandHeightIn: null,
+    bandAppliesTo: 'both',
+    bandWidthIn: 0.5,
+    bandInnerFeatherIn: 1,
+    bandOuterFeatherIn: 0.25,
+    bandEnabled: false,
     // FB-APP S2 (F6): the persisted frame record (core/frame-record.js).
     // null = no frame (Fred, Q2); every read goes through normalizeFrameRecord.
     frame: null,
@@ -416,6 +428,10 @@ export const SLIDER_PAIRS = {
     sculptTopNoiseScale: 'sculptTopNoiseScaleSlider',
     sculptBotNoiseScale: 'sculptBotNoiseScaleSlider',
     edgeMarginIn: 'edgeMarginInSlider',
+    bandHeightIn: 'bandHeightInSlider', // FLATTEN BAND (main/flatten-band-ui.js: the height's travel 0..carveZ)
+    bandWidthIn: 'bandWidthInSlider',
+    bandInnerFeatherIn: 'bandInnerFeatherInSlider',
+    bandOuterFeatherIn: 'bandOuterFeatherInSlider',
     extraThickenThin: 'extraThickenThinSlider',
     extraThickenThinFalloff: 'extraThickenThinFalloffSlider',
     thickenYellowOffset: 'thickenYellowOffsetSlider',
@@ -616,12 +632,12 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['terrainFit', 'backMode', 'symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
+    const stringParams = ['terrainFit', 'backMode', 'bandAppliesTo', 'symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
-        'isolateSkeleton', 'shapeFlat',
+        'isolateSkeleton', 'shapeFlat', 'bandEnabled',
         'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay',
         'sameAsDisplayResolution',
     ];
