@@ -60,6 +60,7 @@ import { initJobTimelineStrip } from './job-timeline-strip.js';
 import { openJobStepTarget } from './job-timeline-open.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { paintBuildInfo } from './build-badge.js';
+import { installErrorRing } from './copy-diagnostics.js';
 import { wireGlobalEvents } from './global-events.js';
 import { installGestureWatch, holdLoadingStage, releaseHeldStage } from '../core/loading-signal.js';
 import { applyFrameLabels } from '../core/frame-labels.js';
@@ -82,6 +83,8 @@ function hideSplashScreen() {
     splash.classList.add('app-splash-hidden');
     splash.addEventListener('transitionend', () => splash.remove(), { once: true });
 }
+
+installErrorRing(); // from app start: the last ~20 errors for Settings > Copy diagnostics
 
 document.addEventListener('DOMContentLoaded', () => {
     fusLog('[main.js] DOMContentLoaded: Initializing application');

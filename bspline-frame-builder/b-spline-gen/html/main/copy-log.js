@@ -6,6 +6,7 @@
  */
 import { P } from '../core/state.js';
 import { logReport } from '../core/action-log.js';
+import { diagnosticsData } from './copy-diagnostics.js';
 
 function _fileName() {
   const d = new Date();
@@ -39,7 +40,7 @@ function _flash(btn, text) {
 
 export async function copyLogToClipboard(e) {
   const btn = (e && e.currentTarget) || document.getElementById('btnCopyLog');
-  const text = logReport(typeof window !== 'undefined' ? window.svgEditor : null, P);
+  const text = logReport(typeof window !== 'undefined' ? window.svgEditor : null, P, diagnosticsData());
   const kb = Math.max(1, Math.round(text.length / 1024));
   const name = _fileName();
   const saved = _download(text, name);
