@@ -642,6 +642,7 @@ header {
     right: -320px;
     width: 320px;
     height: 100vh;
+    height: 100dvh;
     background: var(--surface);
     box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
     transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -701,6 +702,7 @@ header {
     left: 0;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(2px);
     z-index: 2001;
@@ -775,6 +777,7 @@ header {
     left: 0;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(2px);
     z-index: 9999;
@@ -956,13 +959,19 @@ header {
    ========================================================================= */
 .cad-app-shell,
 .cad-app-layout {
-    min-height: 100vh;
+    /* iPad / phone Chrome + Safari (Fred 2026-11-25, header scrolled off the top): `100vh` is the LARGE viewport (browser
+       toolbars retracted), taller than what is visible, so a min-height: 100vh shell ran past the bottom and the page
+       itself could scroll up under the toolbar. The shell is FIXED to the visible viewport (100dvh, 100vh only as the
+       fallback for a browser without dvh) and takes no min-height, so the DOCUMENT has nothing to scroll; only the
+       panels inside scroll. */
+    height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     font-family: var(--cad-font-family);
     background-color: #f5f5f5;
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
