@@ -17,6 +17,22 @@ export const PEEK_LAYOUT = {
   element: 'brickGenerate',
 };
 
+// ---- iPad shell (Fred 2026-11-25, live iPad Chrome, landscape AND portrait: the header + the top of the sidebar were scrolled off
+// the top). `100vh` is the large viewport on iPad / phone browsers (toolbars retracted), taller than what is visible, so a
+// shell sized by it overran the screen and the page itself scrolled up under the browser toolbar. Headless Chrome has no
+// dynamic toolbar (100vh == innerHeight there), so the row checks what makes it safe: the shell is declared in 100dvh (never a
+// bare 100vh height / min-height), is position:fixed, and the DOCUMENT never scrolls -- after a panel opens and the sidebar is
+// scrolled to its bottom, scrollTop is 0, nothing overflows, and the header sits fully on screen. One row per viewport:
+// landscape + portrait iPad, and the short visible heights Chrome's toolbar leaves.
+export const IPAD_SHELL = {
+  viewports: [
+    { name: 'iPad landscape 1180x820', width: 1180, height: 820 }, { name: 'iPad landscape 1024x768', width: 1024, height: 768 },
+    { name: 'iPad landscape 1180x700 (toolbar)', width: 1180, height: 700 }, { name: 'iPad portrait 820x1180', width: 820, height: 1180 },
+    { name: 'iPad portrait 768x1024', width: 768, height: 1024 }, { name: 'iPad portrait 820x1080 (toolbar)', width: 820, height: 1080 },
+  ],
+  shell: '.cad-app-shell', header: 'header.cad-navbar',
+};
+
 // ---- the floating 2D/3D pill + the Height readout stay off the phone drawer (Fred, 390 shots: raised, the drawer's tool
 // row -- Draw's Select, Brick's Wall -- sat under them). One row per editor tab x drawer state: whatever is VISIBLE
 // of the two does not intersect the drawer's rect, and the pill's buttons are real >= minPx tap targets that
@@ -155,7 +171,7 @@ export const ICON_FONT = {
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go, LAYER_ROWS;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go, LAYER_ROWS } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); await runIconFont(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); await runIpadShell(); await runIconFont(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -620,6 +636,38 @@ async function runFitEdgeHandles() {
       checkRow('layout', `Frame handles at Fit (${vp.name}, coarse pointer): none within ${E.zonePx} px of a screen edge, every template`,
         !r.missing && r.templates > 0 && r.handles >= r.templates && r.near.length === 0, // handles really measured (never a vacuous pass)
         r.missing ? 'no template select' : `${r.templates} templates, ${r.handles} handles measured, the last board ${r.boardLeft} / ${r.boardRight} px from the edges; in the zone: ${r.near.length ? r.near.slice(0, 8).join(', ') + (r.near.length > 8 ? ` (+${r.near.length - 8})` : '') : 'none'}`);
+    }
+  } finally {
+    await send('Emulation.setEmulatedMedia', { features: [] });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+  }
+}
+
+
+// ---------------------------------------------------------------- the iPad shell fills the visible viewport; the document never scrolls
+async function runIpadShell() {
+  const T = IPAD_SHELL;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  try {
+    for (const vp of T.viewports) {
+      await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+      await send('Page.reload', {}); await waitApp();
+      const r = await jsJSON(`(async () => { const W = (ms) => new Promise((r) => setTimeout(r, ms));
+        const shell = document.querySelector(${JSON.stringify(T.shell)}), hd = document.querySelector(${JSON.stringify(T.header)});
+        if (!shell || !hd) return JSON.stringify({ missing: true });
+        const decl = []; for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch (_) { continue; }
+          for (const ru of rules) if (ru.selectorText && ru.selectorText.split(',').some((x) => x.trim() === '.cad-app-shell')) decl.push(ru.style.getPropertyValue('height') + '|' + ru.style.getPropertyValue('min-height')); }
+        const aside = document.querySelector('aside'); aside.scrollTop = 1e6; await W(200);
+        [...aside.querySelectorAll('.panel-header')].pop()?.scrollIntoView({ block: 'start' }); window.scrollTo(0, 300); await W(200);
+        const se = document.scrollingElement, h = hd.getBoundingClientRect(), s = shell.getBoundingClientRect();
+        return JSON.stringify({ decl, pos: getComputedStyle(shell).position, scrollTop: se.scrollTop, overflowY: se.scrollHeight - se.clientHeight,
+          hTop: h.top, hBottom: h.bottom, hVisible: h.width > 0 && h.top >= 0 && h.bottom <= innerHeight, shellH: s.height, ih: innerHeight }); })()`);
+      const dvh = !r.missing && r.decl.some((d) => /100dvh/.test(d.split('|')[0])) && !r.decl.some((d) => /100vh/.test(d.split('|')[1]));
+      const ok = !r.missing && dvh && r.pos === 'fixed' && r.scrollTop === 0 && r.overflowY <= 0 && r.hVisible && Math.abs(r.shellH - r.ih) <= 0.5;
+      checkRow('layout', `iPad shell (${vp.name}, touch): 100dvh fixed shell, the document never scrolls, the header stays fully visible`, ok,
+        r.missing ? 'no shell / header' : `shell rule(s) height|min-height: ${r.decl.join(' ; ')} (dvh ${dvh}); position ${r.pos}; document scrollTop ${r.scrollTop}, overflow ${r.overflowY}px; header ${Math.round(r.hTop)}..${Math.round(r.hBottom)} of ${r.ih}; shell ${r.shellH} px`);
+      if (!ok) await shot(`FAIL_ipad_shell_${vp.width}x${vp.height}`);
     }
   } finally {
     await send('Emulation.setEmulatedMedia', { features: [] });
