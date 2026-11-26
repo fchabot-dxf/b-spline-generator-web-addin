@@ -1,12 +1,13 @@
 /**
- * Settings > Copy diagnostics (Fred 2026-11-25): the declared probe table yields every field, the clipboard-refused
- * path opens a selectable box, the button is in Settings and wired, and main.js installs the error ring at app start.
+ * Diagnostics folded into Settings > Log for Claude (Fred 2026-11-25): the declared probe table yields every field, the
+ * Save log JSON carries them in a `diagnostics` field, no second button, main.js installs the error ring at app start.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { logReport } from '../bspline-frame-builder/b-spline-gen/html/core/action-log.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
-  DIAG_PROBES, diagnosticsReport, copyDiagnostics, pushDiagError, diagErrors, ERROR_RING_SIZE,
+  DIAG_PROBES, diagnosticsReport, diagnosticsData, pushDiagError, diagErrors, ERROR_RING_SIZE,
 } from '../bspline-frame-builder/b-spline-gen/html/main/copy-diagnostics.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -55,37 +56,22 @@ describe('Copy diagnostics', () => {
     expect(diagnosticsReport()).toContain(`e${ERROR_RING_SIZE + 4}`);
   });
 
-  it('copies through the clipboard and flashes Copied', async () => {
-    const writeText = vi.fn().mockResolvedValue();
-    const w = { navigator: { clipboard: { writeText }, userAgent: 'ua', platform: 'pf' }, matchMedia: window.matchMedia?.bind(window), innerWidth: 390, innerHeight: 800, devicePixelRatio: 3 };
-    const btn = document.getElementById('btnCopyDiagnostics');
-    const how = await copyDiagnostics({ currentTarget: btn }, { w });
-    expect(how).toBe('copied');
-    expect(writeText).toHaveBeenCalledOnce();
-    expect(writeText.mock.calls[0][0]).toContain('bspline diagnostics');
-    expect(btn.textContent).toBe('Copied');
+  it('the Save log JSON gains a diagnostics field: structured fields, the ring entries and the text', () => {
+    pushDiagError('ring-entry-xyz');
+    const j = JSON.parse(logReport(null, P, diagnosticsData()));
+    expect(Object.keys(j.diagnostics.fields)).toEqual(LABELS);
+    expect(j.diagnostics.fields.board).toContain('7 x 9 in');
+    expect(j.diagnostics.errors).toContain('ring-entry-xyz');
+    expect(j.diagnostics.text).toContain('bspline diagnostics');
+    expect(j.log).toBeDefined();
   });
 
-  it('a refused clipboard opens a selectable box holding the report', async () => {
-    const w = { navigator: { clipboard: { writeText: () => Promise.reject(new Error('denied')) }, userAgent: 'ua', platform: 'pf' }, innerWidth: 390, innerHeight: 800, devicePixelRatio: 3 };
-    const how = await copyDiagnostics({ currentTarget: document.getElementById('btnCopyDiagnostics') }, { w });
-    expect(how).toBe('box');
-    const ta = document.querySelector('.diag-box textarea');
-    expect(ta).toBeTruthy();
-    expect(ta.value).toContain('bspline diagnostics');
-    expect(ta.readOnly).toBe(true);
-  });
-
-  it('no clipboard API at all also falls back to the box', async () => {
-    const w = { navigator: { userAgent: 'ua', platform: 'pf' }, innerWidth: 1, innerHeight: 1, devicePixelRatio: 1 };
-    expect(await copyDiagnostics(null, { w })).toBe('box');
-    expect(document.querySelector('.diag-box textarea')).toBeTruthy();
-  });
-
-  it('the button is in the Settings panel, wired, and the ring is installed at app start', () => {
+  it('copy-log.js hands diagnosticsData() to logReport; Settings has ONE log button and no second Diagnostics button', () => {
+    expect(readFileSync('bspline-frame-builder/b-spline-gen/html/main/copy-log.js', 'utf8')).toMatch(/logReport\([^)]*diagnosticsData\(\)\)/);
     const body = HTML.slice(HTML.indexOf('id="settings-panel-overlay"'), HTML.indexOf('id="close-settings-footer-btn"'));
-    expect(body).toContain('id="btnCopyDiagnostics"');
-    expect(HEADER_JS).toContain("getElementById('btnCopyDiagnostics')");
+    expect(body).toContain('id="btnCopyLog"');
+    expect(body).not.toContain('btnCopyDiagnostics');
+    expect(HEADER_JS).not.toContain('btnCopyDiagnostics');
     expect(MAIN_JS).toMatch(/^installErrorRing\(\)/m);
   });
 });

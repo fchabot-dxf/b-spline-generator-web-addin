@@ -1,8 +1,8 @@
 /**
- * Settings > Copy diagnostics (Fred 2026-11-25): one tap copies a short PLAIN-TEXT report of the device + layout state
- * to the clipboard so a glitch seen on a phone can be pasted into the chat. Nothing is sent anywhere automatically.
+ * Device + layout diagnostics (Fred 2026-11-25), folded into Settings > Log for Claude (main/copy-log.js, one save/copy path
+ * with its own clipboard-refused box): the log JSON's `diagnostics` field. Nothing is sent anywhere automatically.
  * DIAG_PROBES is the one declared table: a label + a getter each (a getter that throws prints "n/a", never breaks the
- * report). Extend the table to add a line. If the clipboard API is refused, the text opens in a selectable box.
+ * report). Extend the table to add a line.
  */
 import { P } from '../core/state.js';
 import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
@@ -94,46 +94,12 @@ export function diagnosticsReport(ctx = {}) {
   return lines.join('\n');
 }
 
-function _flash(btn, text) {
-  if (!btn) return;
-  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
-  btn.textContent = text;
-  clearTimeout(btn._flashTimer);
-  btn._flashTimer = setTimeout(() => { btn.textContent = btn.dataset.label; }, 3000);
-}
-
-/** Copy the report; returns 'copied' or 'box' (the clipboard was refused, the text is in a selectable box). */
-export async function copyDiagnostics(e, ctx = {}) {
-  const w = ctx.w || window;
-  const btn = (e && e.currentTarget) || document.getElementById('btnCopyDiagnostics');
-  const text = diagnosticsReport(ctx);
-  try {
-    if (!w.navigator.clipboard || !w.navigator.clipboard.writeText) throw new Error('no clipboard api');
-    await w.navigator.clipboard.writeText(text);
-    _flash(btn, 'Copied');
-    return 'copied';
-  } catch (_) {
-    showDiagnosticsBox(text, ctx.d || document);
-    return 'box';
+/** The structured form for the Save log JSON: { fields: {label: value}, errors: [..], text }. */
+export function diagnosticsData(ctx = {}) {
+  const c = { w: ctx.w || window, d: ctx.d || document, P: ctx.P || P };
+  const fields = {};
+  for (const pr of DIAG_PROBES) {
+    try { fields[pr.label] = pr.get(c); } catch (e) { fields[pr.label] = `n/a (${e && e.message})`; }
   }
-}
-
-export function showDiagnosticsBox(text, d = document) {
-  const overlay = d.createElement('div');
-  overlay.className = 'pm-prompt-overlay diag-box';
-  overlay.style.zIndex = '20000';
-  overlay.innerHTML = `
-    <div class="pm-prompt-dialog" role="dialog" aria-modal="true" style="width:min(92vw,520px);">
-      <div class="pm-prompt-message">Select all, copy, and paste it in the chat:</div>
-      <textarea readonly style="width:100%; height:40vh; font-size:11px; font-family:monospace; box-sizing:border-box;"></textarea>
-      <div class="pm-prompt-actions">
-        <button type="button" class="pm-prompt-btn pm-prompt-cancel" style="min-height:36px;">Close</button>
-      </div>
-    </div>`;
-  d.body.appendChild(overlay);
-  const ta = overlay.querySelector('textarea');
-  ta.value = text;
-  setTimeout(() => { try { ta.focus(); ta.select(); } catch (_) { /* detached */ } }, 0);
-  overlay.querySelector('.pm-prompt-cancel').addEventListener('click', () => overlay.remove());
-  return overlay;
+  return { fields, errors: diagErrors(), text: diagnosticsReport(ctx) };
 }

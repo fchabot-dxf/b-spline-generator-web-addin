@@ -119,12 +119,13 @@ export function modelSnapshot(editor, P) {
 }
 
 /** The JSON Fred copies: when, where, the log, the model. */
-export function logReport(editor, P) {
+export function logReport(editor, P, diagnostics) {
   return JSON.stringify({
     app: 'b-spline frame builder',
     copiedAt: new Date().toISOString(),
     screen: typeof window !== 'undefined' ? { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio, touch: 'ontouchstart' in window } : undefined,
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+    diagnostics, // main/copy-diagnostics.js diagnosticsData(): { fields, errors, text } -- device + layout state
     log: actionLog(),
     model: modelSnapshot(editor, P),
   });

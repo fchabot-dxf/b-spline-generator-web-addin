@@ -19,7 +19,6 @@ import { isJobTimelineEnabled, setJobTimelineEnabled } from '../core/job-timelin
 import { renderJobStrips } from './job-timeline-strip.js';
 import { onClearFusionDesign } from './export-flow.js';
 import { copyLogToClipboard } from './copy-log.js';
-import { copyDiagnostics } from './copy-diagnostics.js';
 import { pullSketchFromFusion } from '../core/fusion-bridge.js';
 import { offeredSendTargets } from './send-targets.js';
 import { bindAddinDownloadButton, renderAddinInstallSection } from './addin-download.js';
@@ -41,7 +40,6 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
 
     document.getElementById('btnClearFusionDesign')?.addEventListener('click', onClearFusionDesign);
     document.getElementById('btnCopyLog')?.addEventListener('click', copyLogToClipboard);
-    document.getElementById('btnCopyDiagnostics')?.addEventListener('click', copyDiagnostics);
     // the Clear section is Fusion-only; the settings panel is opened from the header (⚙)
     document.getElementById('settings-btn')?.addEventListener('click', () => {
         const sec = document.getElementById('clearFusionSection');
