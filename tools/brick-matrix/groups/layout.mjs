@@ -135,11 +135,27 @@ export const FIT_EDGE_HANDLES = { viewports: [{ name: 'phone 390x844', width: 39
 export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 'editorExpandCalloutDismiss'],
   legacyKey: 'bspline.editor.expandCalloutDismissed', formerArea: { left: 54, top: 60, width: 230, height: 98 } };
 
+// ---- the icon font never shows its ligature NAMES (Fred, iPad Chrome on the live site, Projects dialog: 'create_new_folder New
+// Folder', 'save_as Save As...', and the word 'image' huge in every tile -- the Google Fonts request had not delivered the font).
+// The font is now served same-origin (fonts/material-symbols-outlined.woff2). One row per viewport x block:
+// `cdn` blocks fonts.googleapis / gstatic (the reported failure: the icons must STILL be icons); `all` also blocks the app's own
+// font file (the worst case: the icon spans must render as empty boxes, never as words). The Projects dialog is opened over one
+// seeded project, so a tile placeholder (the 'image' icon) is on screen.
+export const ICON_FONT = {
+  viewports: [{ name: 'phone 390x844', width: 390, height: 844, mobile: true }, { name: 'iPad 820x1180', width: 820, height: 1180, mobile: true }],
+  blocks: [
+    { name: 'Google Fonts blocked', urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'], iconsDrawn: true },
+    { name: 'every font request blocked', urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*', '*material-symbols-outlined.woff2*'], iconsDrawn: false },
+  ],
+  project: 'Icon font probe', store: 'brickMatrixCloudStandIn', // run.mjs CLOUD_STAND_IN's localStorage key
+  maxWidthEm: 1.3, // a drawn icon is 1em wide; a ligature WORD in a fallback face is wider
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go, LAYER_ROWS;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow, go, LAYER_ROWS } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runToggleClear(); await runOutlineStroke(); await runPageZoom(); await runFitEdgeHandles(); await runIconFont(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -611,3 +627,47 @@ async function runFitEdgeHandles() {
   }
 }
 
+// ---------------------------------------------------------------- icon font: never the ligature words
+// An icon span shows a WORD when its face is not the loaded icon font and it is neither clipped to its 1em box nor transparent,
+// or when the loaded face still renders wider than one icon (a ligature that did not form).
+const ICON_WORDS_PROBE = (maxEm) => `JSON.stringify((() => {
+  const faces = []; document.fonts.forEach((f) => { if (f.family.replace(/["']/g, '') === 'Material Symbols Outlined') faces.push(f.status); });
+  const loaded = faces.includes('loaded'); const words = []; let seen = 0, drawn = 0;
+  for (const n of document.querySelectorAll('.material-symbols-outlined')) {
+    const r = n.getBoundingClientRect(); const cs = getComputedStyle(n);
+    if (!r.width && !r.height) continue; // not shown
+    let hidden = false; for (let e = n; e; e = e.parentElement) if (getComputedStyle(e).visibility === 'hidden' || getComputedStyle(e).display === 'none') hidden = true;
+    if (hidden) continue; seen++;
+    const fs = parseFloat(cs.fontSize), clipped = cs.overflow === 'hidden' && r.width <= fs * ${maxEm}, clear = cs.color === 'rgba(0, 0, 0, 0)' || cs.color === 'transparent';
+    const word = loaded ? r.width > fs * ${maxEm} : !(clipped && clear);
+    if (loaded) drawn++;
+    if (word) words.push((n.textContent || '').trim() + '@' + Math.round(r.width) + 'px');
+  }
+  return { faces, loaded, seen, drawn, words, waiting: document.documentElement.classList.contains('icons-wait') };
+})())`;
+
+async function runIconFont() {
+  const I = ICON_FONT;
+  await send('Network.enable', {}); await send('Network.setCacheDisabled', { cacheDisabled: true });
+  try {
+    for (const vp of I.viewports) for (const blk of I.blocks) {
+      await send('Network.setBlockedURLs', { urls: blk.urls });
+      await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: vp.mobile });
+      await js(`(() => { localStorage.setItem(${JSON.stringify(I.store)}, JSON.stringify({ ${JSON.stringify(I.project)}: { body: '{}', savedAt: Date.now() } })); return 1; })()`);
+      await send('Page.reload', {}); await waitApp();
+      await js(`document.getElementById('btnOpenProjectManager').click()`);
+      for (let i = 0; i < 40; i++) { if (await js(`!!document.querySelector('#fmToolbarActions button') && !!document.querySelector('.pm-tile')`)) break; await sleep(250); }
+      await sleep(1500); // the face has loaded or failed by now
+      const r = await jsJSON(ICON_WORDS_PROBE(I.maxWidthEm));
+      const tile = await jsJSON(`JSON.stringify({ tiles: document.querySelectorAll('.pm-tile:not(.pm-tile-folder)').length, buttons: document.querySelectorAll('#fmToolbarActions button').length })`);
+      const ok = tile.tiles > 0 && tile.buttons > 0 && r.seen > 0 && r.words.length === 0 && (!blk.iconsDrawn || (r.loaded && r.drawn === r.seen));
+      checkRow('layout', `Icon font (${vp.name}, ${blk.name}): the Projects dialog shows icons${blk.iconsDrawn ? '' : ' as empty boxes'}, never ligature words`, ok,
+        `${tile.tiles} project tile(s), ${tile.buttons} toolbar buttons, ${r.seen} icon spans (${r.drawn} drawn from the font); faces ${r.faces.join('/') || 'none'}; words shown: ${r.words.length ? r.words.slice(0, 8).join(', ') : 'none'}`);
+      await shot(`icons_${vp.width}_${blk.name.replace(/[^a-z0-9]+/gi, '_')}${ok ? '' : '_FAIL'}`);
+      await js(`(() => { localStorage.removeItem(${JSON.stringify(I.store)}); return 1; })()`);
+    }
+  } finally {
+    await send('Network.setBlockedURLs', { urls: [] }); await send('Network.setCacheDisabled', { cacheDisabled: false });
+    await send('Emulation.clearDeviceMetricsOverride', {});
+  }
+}

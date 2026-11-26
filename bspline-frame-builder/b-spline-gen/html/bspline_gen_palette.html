@@ -43,7 +43,48 @@
   <link rel="stylesheet" href="../../styles/editor.css">
   <link rel="stylesheet" href="../../styles/loading-stage.css"> <!-- item 41/70: the loading card, shared with the CAM palette -->
   <link rel="stylesheet" href="../../styles/fusion-memory.css"> <!-- the Fusion memory line, shared with the CAM palette -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+  <!-- Icon font: SELF-HOSTED (was a fonts.googleapis.com <link>; where that request failed -- iPad Chrome, a content blocker,
+       offline, the Fusion palette with no network -- every icon showed its raw ligature NAME as serif text).
+       A static subset of Material Symbols Outlined (Apache-2.0), rebuilt by tools/gen_icon_font.py; the icon list is in
+       fonts/material-symbols-outlined.json. The .material-symbols-outlined rule below is Google's own, so the look is unchanged.
+       Until the font is confirmed loaded (or if it never is) the span is an empty 1em box, never the ligature word. -->
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/material-symbols-outlined.woff2">
+  <style id="material-symbols-face">
+    @font-face {
+      font-family: 'Material Symbols Outlined';
+      font-style: normal;
+      font-weight: 100 700;
+      font-display: block;
+      src: url(fonts/material-symbols-outlined.woff2) format('woff2');
+    }
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+    }
+    html.icons-wait .material-symbols-outlined { width: 1em; overflow: hidden; color: transparent !important; }
+  </style>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      root.classList.add('icons-wait');
+      function ready() {
+        var ok = false;
+        try { document.fonts.forEach(function (f) { if (f.family.replace(/["']/g, '') === 'Material Symbols Outlined' && f.status === 'loaded') ok = true; }); } catch (e) {}
+        return ok;
+      }
+      function done() { if (ready()) root.classList.remove('icons-wait'); }
+      try { document.fonts.load("24px 'Material Symbols Outlined'", 'home').then(done, function () {}); } catch (e) {}
+    })();
+  </script>
 
   <!-- CSS Overrides for B-Spline Gen integration -->
   <style>
