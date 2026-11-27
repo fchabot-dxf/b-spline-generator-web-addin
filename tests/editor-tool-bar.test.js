@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   EDITOR_TOOL_BAR, TOOL_BAR_MAX_ITEMS, toolBarItems, toolBarItemCount, toolBarHostIds, initEditorToolBar, syncToolBar, openToolBarMore, activeToolBarKey,
+  syncToolBarScrollHint,
 } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tool-bar.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 import { initLatticeSideColumn, LATTICE_KIND_ROW_IDS } from '../bspline-frame-builder/b-spline-gen/html/editor/lattice-side-column.js';
@@ -124,6 +125,33 @@ describe('the bar in the real editor', () => {
     setMode('shapeLattice');
     expect(inBar(LATTICE_KIND_ROW_IDS.shapeLattice)).toBe(true);
     expect(inBar(LATTICE_KIND_ROW_IDS.lattice)).toBe(false);
+  });
+  it('pictograms: Draw\'s Style is icon-only segments in the bar, the word kept as title + aria-label; the wiring unchanged', () => {
+    setMode('draw');
+    for (const [id, word] of [['editorFillModeStroke', 'STROKE'], ['editorFillModeFill', 'FILL'], ['editorFillModeBoth', 'BOTH']]) {
+      const b = $(id);
+      expect(b.classList.contains('tool-bar-picto'), id).toBe(true);
+      expect(b.querySelector('svg'), id).toBeTruthy();
+      expect(b.getAttribute('aria-label'), id).toBe(word);
+      expect(b.textContent.trim(), id).toBe('');
+    }
+  });
+  it('the phone: the bar may scroll sideways (overflow-x auto); the edge with more content shows its fade hint, only then', () => {
+    const g = $('editorToolBarGroup');
+    expect(g.style.overflowX).toBe('auto');
+    const box = (scrollWidth, clientWidth, scrollLeft) => {
+      Object.defineProperty(g, 'scrollWidth', { configurable: true, value: scrollWidth });
+      Object.defineProperty(g, 'clientWidth', { configurable: true, value: clientWidth });
+      g.scrollLeft = scrollLeft;
+    };
+    box(370, 370, 0); expect(syncToolBarScrollHint()).toBe(''); expect(g.hasAttribute('data-scroll-more')).toBe(false);
+    box(620, 370, 0); expect(syncToolBarScrollHint()).toBe('right');
+    box(620, 370, 120); expect(syncToolBarScrollHint()).toBe('left right');
+    box(620, 370, 250); expect(syncToolBarScrollHint()).toBe('left');
+    expect(g.getAttribute('data-scroll-more')).toBe('left');
+    const css = readFileSync('bspline-frame-builder/styles/editor.css', 'utf8');
+    expect(css).toMatch(/#editorToolBarGroup\[data-scroll-more~="right"\]::after/);
+    expect(css).toMatch(/@media \(max-width: 767px\) \{\s*#editorToolBar \.tool-bar-label/); // no text labels on a phone
   });
   it('a tab without rows (the Wood frame) shows no bar and parks every hosted group', () => {
     setEditorTab('frame');

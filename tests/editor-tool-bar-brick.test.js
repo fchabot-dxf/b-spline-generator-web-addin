@@ -68,12 +68,13 @@ describe('the Brick rows', () => {
     expect(inBar('brickHeightPickRow_frame')).toBe(true);
     expect(inPanel('brickFramePresetRow')).toBe(true);
   });
-  it('Brush: Profile / Orientation / Width-pattern on the bar, Accent + Rustic in its \'⋯\'; a bar button writes the same setting', () => {
+  it('Brush: Profile / Orientation / Width-pattern on the bar, Rustic in its \'⋯\', the Accent row (too big) in its panel section; a bar button writes the same setting', () => {
     $('brickTool_brush').click();
     expect(brickToolBarKey()).toBe('brush');
     for (const id of ['brickSubTools_brush', 'brickBrushProfileRow', 'brickBrushOrientationRow', 'brickBrushPresetRow']) { expect(inBar(id), id).toBe(true); expect(inPanel(id), id).toBe(false); }
     const sheet = openToolBarMore();
-    for (const id of ['brickBrushAccentRow', 'brickRusticRow_brush']) expect(sheet.contains($(id)), id).toBe(true);
+    expect(sheet.contains($('brickRusticRow_brush'))).toBe(true);
+    expect(inPanel('brickBrushAccentRow')).toBe(true);
     $('brickBtnProfileContinuous').click();
     expect(P.brickSettings.profile).toBe('continuous');
     expect($('brickBtnProfileContinuous').classList.contains('active')).toBe(true);
@@ -84,12 +85,13 @@ describe('the Brick rows', () => {
     $('brickTool_raisedBrush').click();
     for (const id of ['brickSubTools_raisedBrush', 'brickRaisedModeRow', 'brickRaisedLevelRow']) expect(inBar(id), id).toBe(true);
   });
-  it('Stripe: the Brush\'s sub-tools + the stripe settings; the brick styles in its \'⋯\'', () => {
+  it('Stripe: the Brush\'s sub-tools + the stripe settings; the brick styles (thumbnails, too big) in its panel section', () => {
     $('brickTool_brush').click();
     $('brickSubTool_brush_stripe').click();
     expect(brickToolBarKey()).toBe('stripe');
     for (const id of ['brickSubTools_stripe', 'stripeDriveRow', 'stripeCountRow', 'stripePatternPresets']) expect(inBar(id), id).toBe(true);
-    expect(openToolBarMore().contains($('stripeBrickStyles'))).toBe(true);
+    expect(openToolBarMore().contains($('stripeThree'))).toBe(true);
+    expect($('brickStripeSection').contains($('stripeBrickStyles'))).toBe(true);
   });
   it('no SHARED_ROWS node is hosted by the bar (they stay in the element sections)', () => {
     const hosted = new Set(toolBarHostIds());

@@ -29,27 +29,59 @@ const h = (id, counts) => Object.freeze(counts ? { host: id, counts } : { host: 
 const row = (...items) => Object.freeze(items);
 const more = (...items) => Object.freeze({ more: Object.freeze(items) });
 
+/** PICTOGRAMS (owner 2026-11-27: "if we are adding picto in the top bar, we might as well convert other ones too, if it fits,
+ *  as long as it is not too big"): a small choice in the bar shows icon-only segments, the word in each button's title and
+ *  aria-label; an icon stays within the bar's control height (styles/editor.css .tool-bar-picto). A hosted group declares
+ *  `pictos: { <button id>: <svg> }`; a tab's own compact choice declares `picto: true` on its bar item (its tab module draws
+ *  the icons: main/height-panel.js BAR_PICTOS) -- both through pictoButton. */
+const svg16 = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">${body}</svg>`;
+export const TOOL_BAR_ICONS = Object.freeze({
+  styleStroke: svg16('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/>'),
+  styleFill: svg16('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" fill="currentColor" stroke="none"/>'),
+  styleBoth: svg16('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5" fill="currentColor" fill-opacity="0.35"/>'),
+  selReplace: svg16('<rect x="3" y="3" width="10" height="10" stroke-dasharray="2.5 1.5"/>'),
+  selAdd: svg16('<rect x="1.5" y="1.5" width="8" height="8" stroke-dasharray="2.5 1.5"/><path d="M12 8v7M8.5 11.5h7"/>'),
+  selSubtract: svg16('<rect x="1.5" y="1.5" width="8" height="8" stroke-dasharray="2.5 1.5"/><path d="M8.5 11.5h7"/>'),
+  shapeRect: svg16('<rect x="2" y="3.5" width="12" height="9" stroke-dasharray="2.5 1.5"/>'),
+  shapeEllipse: svg16('<ellipse cx="8" cy="8" rx="6" ry="4.5" stroke-dasharray="2.5 1.5"/>'),
+});
+/** One choice button as a pictogram (its word kept as its title and aria-label). */
+export function pictoButton(btn, icon) {
+  if (!btn || !icon || btn.dataset.picto) return;
+  const word = btn.getAttribute('aria-label') || btn.textContent.trim();
+  if (word) btn.setAttribute('aria-label', word);
+  if (!btn.title) btn.title = word;
+  btn.innerHTML = icon;
+  btn.dataset.picto = '1';
+  btn.classList.add('tool-bar-picto');
+}
+
 // ── Draw (artwork) ───────────────────────────────────────────────────────────────────────────────────────────────────
 // the drawing tools' look (Stroke width, Colour, Style), on the selection too; the Font group (its family, size and the
 // Symbols keyboard) shows in Select while a text is selected (editor-ui.js TOOLBAR_GROUPS hides the stroke for a text)
-const STROKE = h('editorStrokeGroup'), COLOUR = h('editorColorGroup'), STYLE = h('editorFillModeGroup'), FONT = h('editorFontGroup', 3);
+const STROKE = h('editorStrokeGroup'), COLOUR = h('editorColorGroup'), FONT = h('editorFontGroup', 3);
+const STYLE = Object.freeze({ host: 'editorFillModeGroup',
+  pictos: Object.freeze({ editorFillModeStroke: TOOL_BAR_ICONS.styleStroke, editorFillModeFill: TOOL_BAR_ICONS.styleFill, editorFillModeBoth: TOOL_BAR_ICONS.styleBoth }) });
 const DRAWING = row(STROKE, COLOUR, STYLE);
 // the Stripe tool (shared by Draw, Lattice and Brick; editor/properties-stripe.js): By Count / By Length, the count or the
 // length (one shows), the pattern chips, Colours A / B / C; in the '⋯' the ratio, its note, Use C + reset, the colour
-// presets. On the Brick tab the slots pick brick STYLES (main/brick-panel.js syncStripePanelContext), in the '⋯'.
+// presets. On the Brick tab the slots pick brick STYLES -- thumbnails, too big for the bar: its Stripe section in the panel
+// (main/brick-tab-sections.js BRICK_TAB_SECTIONS.stripe)
 const STRIPE_SIZE = [h('stripeDriveRow'), h('stripeCountRow'), h('stripeLengthRow'), h('stripePatternPresets')];
 const STRIPE_MORE = [h('stripePatternRatioRow'), h('stripePatternClampNote'), h('stripeColoursHead')];
 export const STRIPE_BAR = row(...STRIPE_SIZE, h('stripeColorSwatches'), more(...STRIPE_MORE, h('stripeColorPresets')));
-const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE, h('stripeBrickStyles')));
+const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE));
 
-// the Height tab's selection pieces (main/height-panel.js): compact controls built per row, and the buttons built once
+// the Height tab's selection pieces (main/height-panel.js): compact controls built per row (pictograms where an honest icon
+// exists), and the buttons built once
 const SEL = Object.freeze({
-  combine: Object.freeze({ control: 'selCombine', label: 'New' }), feather: Object.freeze({ control: 'featherIn', label: 'Feather', step: 0.01 }),
-  shape: Object.freeze({ control: 'selShape', label: 'Shape' }), move: Object.freeze({ widget: 'moveActions' }),
+  combine: Object.freeze({ control: 'selCombine', label: 'New', picto: true }), feather: Object.freeze({ control: 'featherIn', label: 'Feather', step: 0.01 }),
+  shape: Object.freeze({ control: 'selShape', label: 'Shape', picto: true }), move: Object.freeze({ widget: 'moveActions' }),
 });
-// the brush's own '⋯' (the Brush and the Eraser): the panel's controls, hosted. The VISUAL choices -- the Tip, the Falloff and its
-// custom curve, with the tip extras -- stay in the side panel (owner 2026-11-27: 'profile is something i'd want in the sidebar')
-const BRUSH_MORE = Object.freeze(['hardness', 'flow', 'spacing', 'pressureSize', 'pressureOpacity', 'buildUp'].map((id) => h(`heightCtl_${id}`)));
+// the brush's own '⋯' (the Brush and the Eraser): its small, rarely used settings (the panel's controls, hosted). Too big for
+// the bar's six (owner 2026-11-27: "if it's too big we'll keep them in the sidebar"): Hardness, Flow, Amount, Set height stay in
+// the panel's Brush section, with the VISUAL Tip and Falloff pickers ("profile is something i'd want in the sidebar")
+const BRUSH_MORE = Object.freeze(['spacing', 'pressureSize', 'pressureOpacity', 'buildUp'].map((id) => h(`heightCtl_${id}`)));
 const SEL_BTN = Object.freeze({ feather: h('heightSelFeather'), all: h('heightSelAll'), invert: h('heightSelInvert'), clear: h('heightSelClear'), fromShape: h('heightSelShapePick') });
 
 export const EDITOR_TOOL_BAR = Object.freeze({
@@ -84,19 +116,19 @@ export const EDITOR_TOOL_BAR = Object.freeze({
     frame: row(h('brickSubTools_frame')),
     'frame.heights': row(h('brickSubTools_frame'), h('brickHeightPickRow_frame', 5)),
     'frame.blocks': row(h('brickSubTools_frame'), h('brickBlocksRow_frame', 2)),
-    // the Brush's next stroke (or the selected stroke): Profile, Orientation, Width / pattern; its accent and Rustic in the '⋯'
+    // the Brush's next stroke (or the selected stroke): Profile, Orientation, Width / pattern (its picker chip); Rustic (one
+    // slider) in the '⋯'. Its Accent row (a grid of accent icons + its level) is too big for the bar: its panel section stays
     brush: row(h('brickSubTools_brush'), h('brickBrushProfileRow'), h('brickBrushOrientationRow'), h('brickBrushPresetRow'),
-      more(h('brickBrushAccentRow'), h('brickRusticRow_brush'))),
+      more(h('brickRusticRow_brush'))),
     raisedBrush: row(h('brickSubTools_raisedBrush'), h('brickRaisedModeRow'), h('brickRaisedLevelRow')),
     stripe: row(h('brickSubTools_stripe'), ...BRICK_STRIPE_BAR),
   }),
   // ── Height (the key: main/height-panel.js HEIGHT_TOOLS id; its items rendered by that module) ───────────────────────
   height: Object.freeze({
-    // the brush (owner 2026-11-27): Size, Mode, the Set grey, Opacity on the bar; the rest of its settings in its '⋯' -- the
-    // panel's own controls (heightCtl_*, built once by main/height-panel.js in the bar's parked home: no Brush section in the
-    // panel); its Tip and Falloff pickers stay the panel's ('Tip & falloff')
-    brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'opacity', label: 'Opacity', step: 0.05 },
-      more(h('heightCtl_hardness'), h('heightCtl_flow'), h('heightCtl_invert'), { control: 'greyZero', label: 'Grey' }, h('heightCtl_amountIn'), h('heightCtl_targetIn'), ...BRUSH_MORE.slice(2))),
+    // the brush (owner 2026-11-27): Size, Mode (its ▲ ▼ ＝ ≈ glyphs), the Set grey, Opacity on the bar; Invert, the grey system
+    // and the small rarely used ones in its '⋯'; Hardness, Flow, Amount, Set height and the Tip / Falloff pickers: the panel's
+    brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode', picto: true }, { widget: 'greyChip', label: 'Set' }, { control: 'opacity', label: 'Opacity', step: 0.05 },
+      more(h('heightCtl_invert'), { control: 'greyZero', label: 'Grey' }, ...BRUSH_MORE)),
     eraser: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'opacity', label: 'Opacity', step: 0.05 }, more(...BRUSH_MORE)),
     // the selection tools (marquee-move, owner 2026-11-27: "those extra features are better in a contextual toolbar"): each
     // tool's row holds the selection's settings and buttons -- the most used on the bar, the rest in its '⋯'. The buttons
@@ -202,6 +234,7 @@ const rowOf = (bar, tab, tool) => bar.querySelector(`[data-tool-bar-tab="${tab}"
 /** Puts `items` into `box` in their declared order (hosts moved in, built nodes kept); moves only what is out of place --
  *  a re-append of a node already there would blur a field being typed in. */
 function place(box, items, nodes) {
+  for (const it of items) if (it.host && it.pictos) for (const [bid, icon] of Object.entries(it.pictos)) pictoButton($(bid), icon);
   const want = items.map((it, i) => (it.host ? $(it.host) : nodes[i])).filter(Boolean);
   const have = [...box.children];
   if (want.length === have.length && want.every((n, i) => n === have[i])) return want;
@@ -291,6 +324,18 @@ export function syncToolBar() {
   }
   const group = $(TOOL_BAR_IDS.group);
   if (group) { group.hidden = !shown; group.style.display = shown ? 'flex' : 'none'; }
+  syncToolBarScrollHint();
+}
+
+/** Owner 2026-11-27 (phone: "oh scrolling may work"): the bar may scroll sideways on a narrow screen; an edge that has more
+ *  content shows a fade (styles/editor.css #editorToolBarGroup[data-scroll-more]). `data-scroll-more` = 'left' / 'right' /
+ *  'left right' / absent. */
+export function syncToolBarScrollHint(group = $(TOOL_BAR_IDS.group)) {
+  if (!group) return '';
+  const left = group.scrollLeft > 1, right = group.scrollLeft + group.clientWidth < group.scrollWidth - 1;
+  const v = [left ? 'left' : '', right ? 'right' : ''].filter(Boolean).join(' ');
+  if (v) group.setAttribute('data-scroll-more', v); else group.removeAttribute('data-scroll-more');
+  return v;
 }
 
 let _wired = false;
@@ -301,6 +346,9 @@ function _wire() {
   // the '⋯' sheet closes on a click outside it, on Esc
   document.addEventListener('click', (e) => { if (_open && !_open.contains(e.target)) closeSheet(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  // the edge hint follows the scroll and the width
+  $(TOOL_BAR_IDS.group)?.addEventListener('scroll', () => syncToolBarScrollHint(), { passive: true });
+  if (typeof window !== 'undefined') window.addEventListener('resize', () => syncToolBarScrollHint());
 }
 
 /** Wires the bar (main.js, once): its rows follow the tab and the tool from now on. */

@@ -56,7 +56,7 @@ describe('the Height rows', () => {
     setEditorTab('frame');
     expect(g.style.display).toBe('none');
   });
-  it('the brush row: Size, Mode, the grey chip, Opacity on the bar; Invert, Hardness, Flow, Spacing ... in its \'⋯\' (Tip / Falloff: the panel\'s)', () => {
+  it('the brush row: Size, Mode (pictograms), the grey chip, Opacity on the bar; Invert, Spacing, the pen pressure, Build up in its \'⋯\' (Hardness, Flow, Tip, Falloff ...: the panel\'s)', () => {
     const r = shown('brush');
     expect(r).toBeTruthy();
     expect(barNum('brush', 'sizeIn')).toBeTruthy();
@@ -66,11 +66,16 @@ describe('the Height rows', () => {
     const sheet = openToolBarMore();
     expect(sheet.hidden).toBe(false);
     expect(r.contains(sheet)).toBe(true);
-    for (const id of ['hardness', 'flow', 'spacing', 'pressureSize', 'pressureOpacity', 'buildUp', 'invert', 'amountIn', 'targetIn']) {
+    for (const id of ['spacing', 'pressureSize', 'pressureOpacity', 'buildUp', 'invert']) {
       expect(sheet.contains(document.getElementById(`heightCtl_${id}`)), id).toBe(true);
     }
-    // the visual choices stay in the side panel (owner 2026-11-27): the brush's Tip & falloff section, its pickers
-    for (const id of ['tip', 'falloff']) expect(inPanel(document.querySelector(`[data-height-control="${id}"]`)), id).toBe(true);
+    // the mode: icon-only segments (its glyphs), the word in the title / aria-label
+    const raise = barChoice('brush', 'mode', 'raise');
+    expect(raise.classList.contains('tool-bar-picto')).toBe(true);
+    expect(raise.getAttribute('aria-label')).toBe('Raise');
+    expect(raise.textContent.trim()).toBe('▲');
+    // the visual choices and the sliders the bar has no room for stay in the side panel (owner 2026-11-27): the brush's section
+    for (const id of ['tip', 'falloff', 'hardness', 'flow', 'amountIn', 'targetIn']) expect(inPanel(document.querySelector(`[data-height-control="${id}"]`)), id).toBe(true);
     expect(r.querySelector('[data-height-choice^="tip:"], [data-height-choice^="falloff:"]')).toBeNull();
     expect(sheet.querySelector('[data-height-choice="invert:true"]')).toBeTruthy();
     expect(sheet.querySelector('[data-height-control-bar="greyZero"]')).toBeTruthy();
@@ -86,7 +91,7 @@ describe('the Height rows', () => {
     expect(r.querySelector('[data-height-bar="sizeIn"]')).toBeTruthy();
     expect(r.querySelector('[data-height-choice^="mode:"]')).toBeNull();
     openToolBarMore();
-    expect(r.contains(document.getElementById('heightCtl_hardness'))).toBe(true);
+    expect(r.contains(document.getElementById('heightCtl_spacing'))).toBe(true);
     expect(r.querySelector('[data-height-choice^="invert:"]')).toBeNull();
   });
   it('the selection tools: New + Feather on each row; Clear / Invert hosted (one node); the wand adds tolerance + contiguous; gradient and fill their fields', () => {
@@ -131,7 +136,7 @@ describe('one setting, one place', () => {
   });
   it('the side panel shows none of the tools\' compact settings: no Brush, Selection, Wand, Sample, Gradient or Fill section', () => {
     for (const g of ['brush', 'select', 'wand', 'sample', 'gradient', 'fill']) expect(inPanel(document.getElementById(`heightGroup_${g}`)), g).toBe(false);
-    for (const id of ['hardness', 'opacity', 'flow', 'gradOpacity', 'fillHeightIn', 'wandToleranceIn', 'sampleFrom', 'selCombine', 'featherIn']) {
+    for (const id of ['opacity', 'spacing', 'gradOpacity', 'fillHeightIn', 'wandToleranceIn', 'sampleFrom', 'selCombine', 'featherIn']) {
       expect(inPanel(document.querySelector(`[data-height-control="${id}"]`)), id).toBe(false);
     }
   });
@@ -143,13 +148,13 @@ describe('one setting, one place', () => {
     for (const t of ['marquee', 'selectLasso', 'wand', 'move']) { shown(t); expect(shownInPanel('featherProfile'), t).toBe(true); }
     shown('fill'); expect(shownInPanel('featherProfile')).toBe(false); // no selection, no selection tool
   });
-  it('a hosted control in the \'⋯\' writes the same brush value its panel section did (Hardness); the panel\'s Tip pick shows the tip extras', () => {
+  it('a hosted control in the \'⋯\' writes the same brush value its panel section did (Spacing); the panel\'s Tip pick shows the tip extras', () => {
     shown('brush');
     openToolBarMore();
-    const h = document.getElementById('height_hardness');
+    const h = document.getElementById('height_spacing');
     expect(row('brush').contains(h)).toBe(true);
     h.value = '0.3'; h.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(heightBrush().hardness).toBeCloseTo(0.3, 6);
+    expect(heightBrush().spacing).toBeCloseTo(0.3, 6);
     document.querySelector('#heightPanelBody [data-height-choice="tip:square"]').click();
     expect(heightBrush().tip).toBe('square');
     expect(document.querySelector('[data-height-control="roundness"]').hidden).toBe(false); // the square tip's extras show
@@ -207,8 +212,8 @@ describe('one setting, one place', () => {
   });
   it('every brush setting the panel section had is in the brush row (on the bar or in its \'⋯\') or in its visual section, never both', () => {
     const ids = new Set(flat(HEIGHT_OPTIONS_BAR.brush).map((i) => i.control || (i.host || '').replace(/^heightCtl_/, '')));
-    for (const id of ['invert', 'mode', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn', 'pressureSize', 'pressureOpacity', 'buildUp']) expect(ids.has(id), id).toBe(true);
-    for (const id of ['tip', 'falloff', 'customCurve', 'roundness', 'angle', 'followStroke']) {
+    for (const id of ['invert', 'mode', 'sizeIn', 'opacity', 'spacing', 'pressureSize', 'pressureOpacity', 'buildUp']) expect(ids.has(id), id).toBe(true);
+    for (const id of ['tip', 'falloff', 'customCurve', 'roundness', 'angle', 'followStroke', 'hardness', 'flow', 'amountIn', 'targetIn']) {
       expect(ids.has(id), id).toBe(false);
       expect(inPanel(document.querySelector(`[data-height-control="${id}"]`)), id).toBe(true);
     }

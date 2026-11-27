@@ -65,11 +65,12 @@ describe('the Brush section: no presets, Tip and Falloff picked separately', () 
     const ids = controlsIn('heightGroup_brush');
     // Fred 2026-11-23 (slice 5): the Invert toggle heads the section
     expect(ids[0]).toBe('invert');
-    expect(ids.slice(1, 9)).toEqual(['mode', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn']);
-    // owner 2026-11-27 (the visual choices stay in the side panel): Tip, Falloff (+ its curve) are the brush's own section
-    expect(controlsIn('heightGroup_brushShape')).toEqual(['tip', 'falloff', 'customCurve']);
+    // the context bar (owner 2026-11-27): this group is the bar's (its row and '⋯'); the visual choices and the sliders the
+    // bar has no room for are the brush's own side-panel section, in the declared order
+    expect(ids.slice(1, 5)).toEqual(['mode', 'sizeIn', 'opacity', 'spacing']);
+    expect(controlsIn('heightGroup_brushShape')).toEqual(['tip', 'falloff', 'customCurve', 'hardness', 'flow', 'amountIn', 'targetIn']);
     expect(ids).toContain('buildUp');
-    expect(ids.indexOf('buildUp')).toBeGreaterThan(ids.indexOf('targetIn'));
+    expect(ids.indexOf('buildUp')).toBeGreaterThan(ids.indexOf('spacing'));
     // the tip extras: their own group right after, each shown only for a square / chisel tip (the context bar's brush '⋯'
     // hosts them one by one, so each carries the rule: owner 2026-11-27)
     expect(controlsIn('heightGroup_tip')).toEqual(['roundness', 'angle', 'followStroke']);

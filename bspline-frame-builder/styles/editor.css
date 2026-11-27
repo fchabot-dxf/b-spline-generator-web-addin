@@ -2456,3 +2456,30 @@
 .tool-bar-row #brickWallAreasClear { flex: 0 0 auto !important; }
 /* in the '⋯' sheet a choice row may wrap */
 .tool-bar-more-sheet .relief-toggle, .tool-bar-more-sheet .height-bar-item { flex-wrap: wrap !important; }
+/* pictograms (main/editor-tool-bar.js pictoButton): icon-only segments within the bar's control height */
+.tool-bar-row .tool-bar-picto { display: inline-flex; align-items: center; justify-content: center; width: 28px; min-width: 28px; height: 28px; padding: 0 !important; }
+/* a picker chip in the bar (main/icon-select.js): the bar's control height, never a big tile (tiles only in its popover) */
+.tool-bar-row .icon-select-button { height: 28px !important; min-width: 28px !important; }
+.tool-bar-row .icon-select-button svg { width: 22px; height: 22px; }
+@media (pointer: coarse) {
+    .tool-bar-row button, .tool-bar-row input, .tool-bar-row select { min-height: 32px; }
+    .tool-bar-row .tool-bar-picto, .tool-bar-row .icon-select-button { width: 32px; min-width: 32px !important; height: 32px !important; }
+}
+/* the phone (the editor's breakpoint, editor/breakpoints.js EDITOR_MOBILE_MAX_PX): no text labels on the bar (each control's
+   title / aria-label carries the word; a '⋯' sheet keeps them), the most used items first; the bar scrolls sideways */
+@media (max-width: 767px) {
+    #editorToolBar .tool-bar-label:not(.tool-bar-more-sheet .tool-bar-label),
+    #editorToolBar .tool-bar-row .cad-label:not(.tool-bar-more-sheet .cad-label),
+    #editorToolBar .height-bar-move-hint,
+    #editorToolBar .tool-bar-row .icon-select-name,
+    #editorToolBar .lattice-piece-colour label, #editorToolBar .lattice-piece-colour .lattice-piece-panel-kind { display: none !important; }
+    .tool-bar-row { gap: 8px; }
+}
+/* the sideways scroll is obvious (owner 2026-11-27, phone: "oh scrolling may work"): the edge with more content fades */
+#editorToolBarGroup { overscroll-behavior-x: contain; scrollbar-width: none; }
+#editorToolBarGroup::-webkit-scrollbar { display: none; }
+/* (a sticky edge, not a mask: a mask would hide the fixed '⋯' sheet drawn outside the group) */
+#editorToolBarGroup::before, #editorToolBarGroup::after { content: ''; position: sticky; flex: none; width: 28px; align-self: stretch; pointer-events: none; z-index: 1; display: none; }
+#editorToolBarGroup::before { left: 0; margin-right: -28px; background: linear-gradient(to left, rgba(255, 255, 255, 0), #fff); }
+#editorToolBarGroup::after { right: 0; margin-left: -28px; background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff); }
+#editorToolBarGroup[data-scroll-more~="left"]::before, #editorToolBarGroup[data-scroll-more~="right"]::after { display: block; }

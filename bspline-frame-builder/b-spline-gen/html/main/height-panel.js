@@ -38,7 +38,7 @@ import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { createDrawerTree } from './drawer-tree.js';
 import { toolGlyphSvg } from '../editor/tool-icons.js';
-import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, registerToolBarTab, syncToolBar, toolBarParked } from './editor-tool-bar.js';
+import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, TOOL_BAR_ICONS, registerToolBarTab, syncToolBar, toolBarParked, pictoButton } from './editor-tool-bar.js';
 import { mountIconGrid } from './icon-select.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
@@ -53,9 +53,10 @@ export const HEIGHT_GROUPS = Object.freeze([
   // bar's parked home (each `heightCtl_<id>`) and the tool's row of the bar (main/editor-tool-bar.js EDITOR_TOOL_BAR.height)
   // shows them, on the bar or in its '⋯'
   Object.freeze({ id: 'brush', label: 'Brush', note: 'Alt while painting: Raise <-> Lower', showWhen: (ctx) => !ctx || usesBrush(ctx.tool), inBar: true }),
-  // owner 2026-11-27 ("profile is something i'd want in the sidebar, because it's visual"): the brush's VISUAL choices -- the
-  // Tip and the Falloff (icon pickers, main/icon-select.js) and the custom falloff curve -- stay in the side panel, the brush's section
-  Object.freeze({ id: 'brushShape', label: 'Tip & falloff', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
+  // owner 2026-11-27 ("profile is something i'd want in the sidebar, because it's visual"; "if it's too big we'll keep them in the
+  // sidebar"): the brush's VISUAL choices -- the Tip and the Falloff (icon pickers, main/icon-select.js), the custom falloff curve --
+  // and the sliders the bar's six have no room for (Hardness, Flow, Amount, Set height) stay in the side panel, the brush's section
+  Object.freeze({ id: 'brushShape', label: 'Brush', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
   Object.freeze({ id: 'patch', label: 'Patch', note: 'inches from the board centre; +Y is up the screen' }),
   Object.freeze({ id: 'stamp', label: 'Stamp' }),
 ]);
@@ -113,12 +114,12 @@ export const HEIGHT_CONTROLS = Object.freeze([
   // A curve control without valueRange keeps the box's 0..1 (the gradient's and the feather's curves).
   { id: 'customCurve', group: 'brushShape', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', valueRange: [-1, 1], showWhen: (brush) => brush.falloff === 'custom' },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
-  { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
+  { id: 'hardness', group: 'brushShape', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
-  { id: 'flow', group: 'brush', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
+  { id: 'flow', group: 'brushShape', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },
-  { id: 'amountIn', group: 'brush', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser' },
-  { id: 'targetIn', group: 'brush', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
+  { id: 'amountIn', group: 'brushShape', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser' },
+  { id: 'targetIn', group: 'brushShape', target: 'brush', kind: 'slider', path: ['targetIn'], label: 'Set to height (in)', step: 0.005, range: () => [-1, 1.5], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     note: '0 = transparent (no effect on the board)' },
   { id: 'pressureSize', group: 'brush', target: 'brush', kind: 'check', path: ['pressureSize'], label: 'Pen pressure → size' },
   { id: 'pressureOpacity', group: 'brush', target: 'brush', kind: 'check', path: ['pressureOpacity'], label: 'Pen pressure → opacity' },
@@ -1797,9 +1798,17 @@ const BAR_LABEL_STYLE = 'color:#666; text-transform:uppercase; font-weight:700; 
 const BAR_TOUCH = 'min-height:var(--touch-target-min, 24px);';
 /** One bar control: a stepper (number) for a slider, the segmented buttons for a choice (the panel's own data-height-choice
  *  buttons: one wiring and one active-state sync serve both), a check. `data-height-bar` names its control. */
+/** The bar's pictograms for a compact choice declared `picto: true` (main/editor-tool-bar.js pictoButton): option key -> icon.
+ *  The brush modes wear their own glyphs (MODE_LABELS), the selection's ones the bar's drawn icons (TOOL_BAR_ICONS). */
+const BAR_PICTOS = Object.freeze({
+  mode: (k) => (MODE_LABELS[k] ? `<span aria-hidden="true" style="font-size:15px; line-height:1;">${MODE_LABELS[k][0]}</span>` : null),
+  selCombine: (k) => ({ replace: TOOL_BAR_ICONS.selReplace, add: TOOL_BAR_ICONS.selAdd, subtract: TOOL_BAR_ICONS.selSubtract })[k] || null,
+  selShape: (k) => ({ rect: TOOL_BAR_ICONS.shapeRect, ellipse: TOOL_BAR_ICONS.shapeEllipse })[k] || null,
+});
 function renderBarControl(c, item, tool) {
   const label = item.label || c.label;
-  const wrap = el('div', { class: 'height-bar-item', 'data-height-control-bar': c.id, style: 'display:flex; align-items:center; gap:5px;' }, [el('span', { text: label, style: BAR_LABEL_STYLE })]);
+  // `tool-bar-label`: a phone hides it (styles/editor.css), the control's title / aria-label carry the word
+  const wrap = el('div', { class: 'height-bar-item', 'data-height-control-bar': c.id, title: label, style: 'display:flex; align-items:center; gap:5px;' }, [el('span', { class: 'tool-bar-label', text: label, style: BAR_LABEL_STYLE })]);
   if (c.kind === 'slider') {
     const [min, max] = c.range(P), step = item.step || c.step;
     // the app's own number stepper (main/ui-bindings.js attachNumberSteppers adds its - / + around a bare number input; its
@@ -1809,7 +1818,12 @@ function renderBarControl(c, item, tool) {
   } else if (c.kind === 'check') {
     wrap.appendChild(el('input', { type: 'checkbox', 'data-height-bar': c.id, id: `heightBar_${tool}_${c.id}`, 'aria-label': label, style: 'min-width:var(--touch-target-min, 0px); min-height:var(--touch-target-min, 0px);' }));
   } else if (c.kind === 'choice') {
-    wrap.appendChild(el('div', { class: 'relief-toggle', style: 'flex-wrap:nowrap;' }, c.options.map(([key, text, title]) => el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text: String(text), style: `${BAR_TOUCH} padding:0 8px;` }))));
+    const pic = item.picto && BAR_PICTOS[c.id];
+    wrap.appendChild(el('div', { class: 'relief-toggle', style: 'flex-wrap:nowrap;' }, c.options.map(([key, text, title]) => {
+      const b = el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title: `${text}: ${title}`, 'aria-label': String(text), text: String(text), style: `${BAR_TOUCH} padding:0 8px;` });
+      if (pic) pictoButton(b, pic(key));
+      return b;
+    })));
   }
   return wrap;
 }
@@ -1818,7 +1832,7 @@ const HEIGHT_BAR_WIDGETS = Object.freeze({
   // the Set target as its grey and its height ('60% · +0.05 in'); a tap goes to the grey palette
   greyChip: {
     build: (item) => el('div', { class: 'height-bar-item', style: 'display:flex; align-items:center; gap:5px;' }, [
-      el('span', { text: item.label, style: BAR_LABEL_STYLE }),
+      el('span', { class: 'tool-bar-label', text: item.label, style: BAR_LABEL_STYLE }),
       el('button', { type: 'button', class: 'cad-btn cad-btn-secondary height-bar-chip', 'data-height-bar-action': 'greyChip', title: 'The Set height as a grey: tap for the grey palette', style: `display:inline-flex; align-items:center; gap:6px; padding:0 8px; ${BAR_TOUCH}` }, [
         el('span', { class: 'height-bar-chip-dot', style: 'width:14px; height:14px; border:1px solid #888; border-radius:3px; flex:none;' }), el('span', { class: 'height-bar-chip-text' })]),
     ]),

@@ -47,11 +47,13 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('surround', 'Window surround', 'brick-surround', ['brickWindowSurroundRow'], { titleOf: 'brickSurroundLabel' }),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
-  // the context bar (owner 2026-11-27): the Brush's next-stroke settings (Profile, Orientation, Width / pattern, its Accent
-  // and Rustic) and the Raised brush's Mode + Level are the tool's row of the bar (main/editor-tool-bar.js), not sections
+  // the context bar (owner 2026-11-27): the Brush's next-stroke settings (Profile, Orientation, Width / pattern, Rustic) and
+  // the Raised brush's Mode + Level are the tool's row of the bar (main/editor-tool-bar.js), not sections; the Brush's Accent
+  // row (a grid of icons + its level) is too big for the bar ("if it's too big we'll keep them in the sidebar"): its section
   brush: Object.freeze({ host: 'brickBrushSection', after: 'brickElementLabel_brush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     COLOUR(),
+    sec('accent', 'Accent relief', 'brick-accent', ['brickBrushAccentRow']),
     sec('height', 'Height', 'brick-height', ['brickEdgeTaperRow']),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
@@ -59,6 +61,11 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     COLOUR(),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
+  ]) }),
+  // the Stripe tool's brick STYLES for its A / B / C runs (main/brick-panel.js renderStripeBrickStyles): thumbnails, too big
+  // for the context bar (its other Stripe settings are there) -- its section in the Stripe tool's panel host
+  stripe: Object.freeze({ host: 'brickStripeSection', after: null, sections: Object.freeze([
+    sec('styles', 'Brick styles', 'brick-pattern', ['stripeBrickStyles']),
   ]) }),
 });
 

@@ -43,7 +43,8 @@ describe('the declaration', () => {
     const branchTabs = BRICK_DRAWER_TREE.map((b) => b.armsTool || b.id), stripIds = brickTabs().map((t) => t.id);
     for (const b of BRICK_DRAWER_TREE) if (b.armsTool) expect(stripIds, b.id).toContain(b.armsTool); // an element branch arms a tool of the row
     for (const [tab, def] of Object.entries(BRICK_TAB_SECTIONS)) {
-      expect(branchTabs, tab).toContain(tab);
+      // (the Stripe tool, a sub-tool of Brush's tab: its section host sits in the Brush branch)
+      expect(branchTabs.includes(tab) || BRICK_DRAWER_TREE.some((b) => b.hosts.includes(def.host)), tab).toBe(true);
       const titles = def.sections.map((s) => s.title);
       expect(new Set(titles).size, tab).toBe(titles.length);
     }
@@ -71,9 +72,7 @@ describe('the declaration', () => {
     expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toEqual(['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']);
   });
   it('the accent sections are titled "Accent relief" (Fred); item 9\'s Frame Crumble + Window surround are Frame sections', () => {
-    // (the Brush's own accent row is its context-bar row's now, main/editor-tool-bar.js: only the Wall has the section)
-    expect(BRICK_TAB_SECTIONS.wall.sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
-    expect(BRICK_TAB_SECTIONS.brush.sections.some((s) => s.kind === 'brick-accent')).toBe(false);
+    for (const tab of ['wall', 'brush']) expect(BRICK_TAB_SECTIONS[tab].sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
     const frame = BRICK_TAB_SECTIONS.frame.sections;
     expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Colour', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Size & joint']); // + Colour (2026-10-15) // Corners -> Fan centre (2026-10-11)
     expect(frame.find((s) => s.id === 'crumble').kind).toBe(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').kind);
