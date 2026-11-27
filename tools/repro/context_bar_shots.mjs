@@ -64,8 +64,9 @@ const barState = () => evalJS(`(()=>{ const top = document.getElementById('edito
   return JSON.stringify({ topH, row: row.dataset.toolBarTab + ':' + row.dataset.toolBarTool, items: items.length, inView, hint: g.getAttribute('data-scroll-more'), w: Math.round(r.width), h: Math.round(r.height), groupW: Math.round(gr.width), groupH: Math.round(gr.height), scrolls: g.scrollWidth > g.clientWidth + 1, minControlPx: min }); })()`);
 const note = async (name) => console.log(TAG, name, await barState());
 
-async function run(tag, metrics, touchOn) {
-  TAG = tag;
+let touchOn = false;
+async function run(tag, metrics, touch) {
+  TAG = tag; touchOn = touch;
   await send('Emulation.setDeviceMetricsOverride', metrics);
   await send('Emulation.setTouchEmulationEnabled', { enabled: touchOn, maxTouchPoints: touchOn ? 5 : 1 });
   await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
@@ -110,6 +111,51 @@ async function run(tag, metrics, touchOn) {
   await click('#height_featherProfileChip'); await shot('height-feather-picker');
   await click('[data-height-tool="gradient"]'); await note('height-gradient'); await shot('height-gradient');
   await click('#height_gradFalloffChip'); await shot('height-gradient-curve-picker');
+  if (touchOn) await pickBrickRowByTouch();
+}
+
+/** The advisor's audit could not pick the Brick row on the phone: a REAL touch on the editor stack's '+ Add layer' chip,
+ *  its Brick tile, then (a brick layer now on the board) a touch on that row from the Draw tab. Reports the tab reached. */
+const touchAt = async ([x, y]) => {
+  const pt = [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt });
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(900);
+};
+const centreOf = (sel) => evalJS(`(()=>{ const e=document.querySelector(${JSON.stringify(sel)}); if (!e || !e.getClientRects().length) return null; e.scrollIntoView({ block: 'nearest' }); const r=e.getBoundingClientRect(); return JSON.stringify([Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]); })()`);
+const tabNow = () => evalJS(`(async()=>(await import('./main/editor-tabs.js')).getEditorTab())()`);
+async function pickBrickRowByTouch() {
+  await click('#editorTabArtwork', 800);
+  let c = await centreOf('#editorLayerStackAddBtn');
+  console.log(TAG, 'brick-pick: add chip at', c);
+  if (!c) return;
+  await sleep(300); await touchAt(JSON.parse(await centreOf('#editorLayerStackAddBtn')));
+  await shot('brick-pick-1-add-open');
+  c = await centreOf('#editorLayerStackAdd_brick');
+  console.log(TAG, 'brick-pick: Brick tile at', c);
+  if (!c) return;
+  await touchAt(JSON.parse(c)); await sleep(1500);
+  console.log(TAG, 'brick-pick: tab after the Brick tile', await tabNow());
+  await shot('brick-pick-2-after-tile');
+  await click('#editorTabArtwork', 800);
+  // the row's NAME (its title text: 'Bricks', then its element 'Wall'), scrolled into view first, its centre checked by
+  // elementFromPoint before the touch
+  for (const name of ['Bricks', 'Wall']) {
+    await click('#editorTabArtwork', 600);
+    await evalJS(`(()=>{ const e=[...document.querySelectorAll('#editorLayerStack *')].find((n)=>n.childElementCount===0 && n.textContent.trim()===${JSON.stringify(name)} && n.getClientRects().length); if (e) e.scrollIntoView({ block: 'center' }); return 1; })()`);
+    await sleep(600);
+    const at = await evalJS(`(()=>{ const e=[...document.querySelectorAll('#editorLayerStack *')].find((n)=>n.childElementCount===0 && n.textContent.trim()===${JSON.stringify(name)} && n.getClientRects().length); if (!e) return null; const r=e.getBoundingClientRect(); const x=Math.round(r.x + r.width / 2), y=Math.round(r.y + r.height / 2); const hit=document.elementFromPoint(x, y); return JSON.stringify({ xy: [x, y], hitIsIt: hit === e || e.contains(hit), hit: hit ? (hit.id || hit.className || hit.tagName) : null }); })()`);
+    console.log(TAG, `brick-pick: '${name}' row`, at);
+    if (!at) continue;
+    await touchAt(JSON.parse(at).xy); await sleep(1200);
+    console.log(TAG, `brick-pick: tab after a touch on '${name}'`, await tabNow());
+    const trace = await evalJS(`(async()=>{ const tabs = await import('./main/editor-tabs.js'); const log = []; const h = (e) => log.push('tab:' + (e.detail && e.detail.tab)); document.addEventListener('editorTabChanged', h);
+      const e=[...document.querySelectorAll('#editorLayerStack *')].find((n)=>n.childElementCount===0 && n.textContent.trim()===${JSON.stringify(name)} && n.getClientRects().length);
+      if (tabs.getEditorTab() !== 'artwork') tabs.setEditorTab('artwork'); log.length = 0;
+      e && e.click(); await new Promise((r) => setTimeout(r, 800)); document.removeEventListener('editorTabChanged', h); return JSON.stringify({ after: tabs.getEditorTab(), events: log }); })()`);
+    console.log(TAG, `brick-pick: JS click on '${name}'`, trace);
+    await shot(`brick-pick-3-after-${name.toLowerCase()}`);
+  }
 }
 
 try {
