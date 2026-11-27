@@ -15,6 +15,7 @@ import { layerHasBrickPieces, brickDepth, elementGroutWidth, elementGroutDepth, 
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { placementOf } from '../core/stamp/placement.js';
+import { strengthOf } from '../core/stamp/strength.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -219,6 +220,9 @@ export async function updateStampMasks(nx, nz) {
     layer._brickMask = brickResult;
     layer._brickDepth = bDepth;
     layer._brickPlacement = placementOf(P.brickSettings && P.brickSettings.placement); // Fred 2026-11-23: Before / After thicken
+    // Fred 2026-11-27: the bricks' Strength (core/stamp/strength.js), read with their depth; absent = no field = as before
+    const bStrength = strengthOf(P.brickSettings && P.brickSettings.strength).strength;
+    if (bStrength !== undefined) layer._brickStrength = bStrength; else delete layer._brickStrength;
   });
   await Promise.all(promises);
   const latest = myGeneration === _refreshGeneration;

@@ -11,6 +11,7 @@ import { renderDepth } from './raster.js';
 import { gaussianSmooth } from '../gaussian.js';
 import { cropFalloffOf, applyCropFalloff, placedFootprint } from './crop.js';
 import { STAMP_PLACEMENTS } from '../stamp/placement.js';
+import { strengthOf } from '../stamp/strength.js';
 
 export const STL_BLENDS = Object.freeze(['max', 'add']);
 /** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
@@ -189,6 +190,7 @@ export function stlPass(rawRec, grid) {
     carve: !rec.raise,
     blend: rec.blend,
     placement: rec.placement, // 'afterBack': stamped on the top only (core/engine/rebuild.js buildHeights backBase)
+    ...strengthOf(rec.strength), // the record's Strength (core/stamp/strength.js; absent = 100 %: no key)
     surface: rec.surface,     // 'level': one rigid object at the terrain under `pivot` (core/engine/apply-stamp-layers.js)
     // the record's position in FRACTIONAL grid coordinates of this build's grid (column i at x = -W/2 + i*dx, row j at
     // y = -H/2 + j*dy: a LARGER row = up, buildHeightField's frame)

@@ -26,8 +26,9 @@ import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
 import {
   isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName,
   setLayerVisible, setLayerShowColor, setLayerLocked, isUserLocked, removeLayer, renameLayer, eyeIconSVG, flashLayerGeometry,
-  syncLayerZOrder, applyLayerState, renderLayersPanel,
+  syncLayerZOrder, applyLayerState, renderLayersPanel, setLayerStampField,
 } from '../editor/layers.js';
+import { strengthPercent, writeStrength, STAMP_STRENGTH } from '../core/stamp/strength.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { patchLayers } from '../core/height/compose.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
@@ -37,7 +38,7 @@ import { commitEdit } from '../editor/editor-commit.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
 import {
-  openStlId, toggleStlCard, closeStlCards, setStlEnabled, removeStlLayer, setStlField, syncStlPanel, openStlAddSheet, LAYER_STACK_STALE,
+  openStlId, toggleStlCard, closeStlCards, setStlEnabled, removeStlLayer, setStlField, setStlStampField, syncStlPanel, openStlAddSheet, LAYER_STACK_STALE,
 } from './stl-panel.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { THICKEN_SETTINGS_SYNCED } from './back-flat-ui.js';
@@ -58,6 +59,13 @@ async function openEditorTab(tab) {
   const m = await lazy.framePanel(); return m.openEditorOn(tab);
 }
 const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
+/** A card's Strength percent as the value its layer stores (core/stamp/strength.js): undefined at 100 % (the field removed). */
+const strengthValue = (pct) => writeStrength({}, pct)[STAMP_STRENGTH.field];
+/** An editor layer's Strength (Draw / Lattice): its own `strength` field, through the layer's stamp-field commit. */
+const editorLayerStrength = Object.freeze({
+  get: (item) => strengthPercent(item.ref.strength),
+  set: (item, pct) => setLayerStampField(editor(), item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)),
+});
 
 /**
  * The layer kinds, declared once (step 1 of the stack; their sub-layers are step 2, the editor's layer tabs step 3):
@@ -68,6 +76,8 @@ const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
  *   enabled         { get(item), set(item, on), title }: the header's Stamp switch (absent: none)
  *   remove(item)    the header's trash (absent: none)
  *   add()           '+ Add layer': its app's existing create path; resolves to the new item's key (or null)
+ *   strength        { get(item) -> 0..100, set(item, percent) }: the open card's Strength row (LAYER_CARD_ROWS,
+ *                   core/stamp/strength.js), through the type's own commit path; shown while the layer carves (cardCarves)
  *  The EDITOR view (STACK_VIEWS.editor, Fred 2026-11-23: the editor's layer tabs became this same stack):
  *   stackTab        the editor tab (main/editor-tabs.js EDITOR_TABS id) whose tools + settings a selected row shows
  *   pick(item, sub) make the row the one the editor edits (its app's own active-layer / active-patch call; UI state only)
@@ -88,6 +98,15 @@ export const LAYER_TYPES = Object.freeze({
       if (v === 'afterBack') P.brickSettings.placement = 'afterBack'; else delete P.brickSettings.placement;
       (await lazy.brickPanel()).commitBrickSetting('surface'); // a 3D-only brick setting: re-masks, no re-lay (SURFACE_ONLY_SETTING_KEYS)
     },
+    // every brick pass at once (the stack shows the bricks as ONE item): P.brickSettings.strength, a 3D-only brick setting
+    strength: Object.freeze({
+      get: () => strengthPercent(brickSettings() && brickSettings().strength),
+      async set(_item, pct) {
+        if (!P.brickSettings) return;
+        writeStrength(P.brickSettings, pct);
+        (await lazy.brickPanel()).commitBrickSetting('surface');
+      },
+    }),
     stackTab: 'brick',
     // a part row = its layer becomes the active one (bricks land on the ACTIVE layer, item 22 slice 3)
     pick: (_item, sub) => { const ed = editor(); if (ed && sub != null) { setActiveLayer(ed, sub); flashLayerGeometry(ed, sub); } },
@@ -107,6 +126,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    strength: editorLayerStrength,
     stackTab: 'artwork',
     pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     async add() {
@@ -124,6 +144,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    strength: editorLayerStrength,
     stackTab: 'lattice',
     pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     // a new layer holding a fresh Lattice pattern (the Lattice panel's own lazy create, editor-lattice-pattern.js freshPattern),
@@ -151,6 +172,8 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     async setPlacement(item, v) { (await lazy.heightPanel()).setHeightField('placement', v, { id: item.ref.id }); },
     enabled: { get: (item) => item.ref.enabled !== false, async set(item, on) { (await lazy.heightPanel()).setHeightEnabled(item.ref.id, on); }, title: 'Stamp this patch' },
+    strength: Object.freeze({ get: (item) => strengthPercent(item.ref.strength),
+      async set(item, pct) { (await lazy.heightPanel()).setHeightStampField(item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)); } }),
     async select(item) { (await lazy.heightPanel()).pickHeightPatch(item.ref.id); },
     stackTab: 'height',
     async pick(item, sub) { const hp = await lazy.heightPanel(); hp.pickHeightPatch(item.ref.id); if (sub != null) hp.selectPatchLayer(sub); },
@@ -165,6 +188,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setStlField('placement', v, item.ref.id),
     enabled: { get: (item) => item.ref.enabled !== false, set: (item, on) => setStlEnabled(item.ref.id, on), title: 'Stamp this STL' },
+    strength: Object.freeze({ get: (item) => strengthPercent(item.ref.strength), set: (item, pct) => setStlStampField(item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)) }),
     remove: (item) => removeStlLayer(item.ref.id),
     stackTab: 'stl', // no 2D view yet (planned): its panel points to the sidebar card
     pick: (item) => { _edStlKey = item.key; },
@@ -174,6 +198,17 @@ export const LAYER_TYPES = Object.freeze({
 });
 /** '+ Add layer's tiles, in Fred's order (no Photo: deferred). */
 export const LAYER_ADD_TYPES = Object.freeze(['brick', 'draw', 'lattice', 'height', 'stl']);
+/** The open card's SETTING ROWS (Fred 2026-11-27: "can some show at least a general strength override, 0-100%?"), declared
+ *  once and rendered by ONE row component (cardRow) for every type that declares the row's id in LAYER_TYPES (its get / set).
+ *  A row shows only while its layer carves 3D (cardCarves: the type's Stamp box on; a type without one -- the Bricks --
+ *  always). The slider commits on RELEASE (its 'change'; the number box on its own 'change'): one write, one undo step, one
+ *  rebuild through the type's own commit path; a drag only moves the number. min / max are the slider's travel only. */
+export const LAYER_CARD_ROWS = Object.freeze([
+  Object.freeze({ id: 'strength', label: 'Strength', kind: 'slider', min: 0, max: 100, step: 1, unit: '%',
+    title: 'How strongly this layer stamps: its height x this (100 % = as set; 0 % = no relief)' }),
+]);
+/** The layer stamps into the 3D right now (its card's rows show): the type's Stamp box, else always. */
+export const cardCarves = (item) => { const T = LAYER_TYPES[item.type]; return !T.enabled || !!T.enabled.get(item); };
 /** Fred (2026-11-23, "are layers expandable into their full previous panel fields?"): the blocks of the old panels an OPEN
  *  card shows, after its summary and its editor door -- MOVED in, parked back (never copied, every id stays unique).
  *    content  the block's id;  park  where it lives while no card shows it;  hide  hide it while parked
@@ -373,6 +408,7 @@ function cardFor(item, after) {
   if (box) box.checked = !!T.enabled.get(item);
   const body = el('div', { class: `panel-body layer-card-body${stl ? ' stl-card-body' : ''}` });
   if (!stl && open) fillBody(item, body);
+  else if (stl && open) fillRows(item, body); // the STL panel's own settings (#stlActive) follow, moved in by syncStlPanel
   card.append(head, body);
   return card;
 }
@@ -383,10 +419,56 @@ function fillBody(item, body) {
   const text = T.summary(item);
   if (text) body.appendChild(el('div', { class: 'layer-card-summary', text }));
   if (T.enabled && !T.enabled.get(item)) body.appendChild(el('div', { class: 'layer-card-note', text: 'Not stamped (its box is off).' }));
+  fillRows(item, body);
   if (T.editorTab) {
     const b = el('button', { type: 'button', class: 'cad-btn cad-btn-secondary layer-card-door', id: cardNameId(item.key).replace('layerCardName_', 'layerCardDoor_'), 'data-stack-door': item.key, text: `Open in the ${T.tabLabel} tab ›` });
     b.addEventListener('click', () => openItemInEditor(item));
     body.appendChild(b);
+  }
+}
+
+/** The card's LAYER_CARD_ROWS its type declares, while the layer carves 3D. */
+function fillRows(item, body) {
+  if (!cardCarves(item)) return;
+  const T = LAYER_TYPES[item.type];
+  for (const row of LAYER_CARD_ROWS) if (T[row.id]) body.appendChild(cardRow(item, row));
+}
+/** A card row's ids: layerCardRow_<row>_<key> (the slider) / layerCardRowNum_<row>_<key> (its number box), ':' as '_'. */
+export const cardRowId = (rowId, key, part = 'slider') => `layerCard${part === 'number' ? 'RowNum' : 'Row'}_${rowId}_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+/** ONE row component: the app's slider + number pair (.cad-slider-row / .cad-slider / .cad-stepper, as Texture Strength). */
+function cardRow(item, row) {
+  const spec = LAYER_TYPES[item.type][row.id];
+  const v = String(spec.get(item));
+  const label = `${row.label} (${row.unit})`;
+  const s = el('input', { type: 'range', class: 'cad-slider', id: cardRowId(row.id, item.key), min: String(row.min), max: String(row.max), step: String(row.step),
+    'aria-label': label, 'data-card-row': row.id, title: row.title });
+  const n = el('input', { type: 'number', id: cardRowId(row.id, item.key, 'number'), min: String(row.min), max: String(row.max), step: String(row.step),
+    'aria-label': label, 'data-card-row': row.id });
+  s.value = v; n.value = v;
+  const commit = (val) => {
+    const x = parseFloat(val);
+    if (!Number.isFinite(x)) { n.value = String(spec.get(item)); return null; } // an empty box writes nothing
+    return spec.set(item, x);
+  };
+  s.addEventListener('input', () => { n.value = s.value; }); // a drag moves the number only
+  s.addEventListener('change', () => commit(s.value));     // the release is the one write
+  n.addEventListener('change', () => { s.value = n.value; commit(n.value); });
+  return el('div', { class: 'layer-card-row', 'data-card-row-wrap': row.id }, [
+    el('label', { class: 'cad-label', for: s.id, text: label, title: row.title }),
+    el('div', { class: 'cad-slider-row' }, [s, el('div', { class: 'cad-stepper' }, [n])]),
+  ]);
+}
+/** The rows on screen re-read their layer (an undo, a load, a write elsewhere): only their values change. */
+function syncRows(card, item) {
+  const T = LAYER_TYPES[item.type];
+  const focused = typeof document !== 'undefined' ? document.activeElement : null;
+  for (const row of LAYER_CARD_ROWS) {
+    if (!T[row.id]) continue;
+    const v = String(T[row.id].get(item));
+    for (const part of ['slider', 'number']) {
+      const x = byId(cardRowId(row.id, item.key, part));
+      if (x && card.contains(x) && x !== focused) x.value = v;
+    }
   }
 }
 
@@ -453,6 +535,7 @@ export function refreshLayerStack() {
       for (const c of listEl.children) {
         const it = items.find((i) => i.key === c.dataset.stackKey), line = c.querySelector(':scope > .layer-card-body > .layer-card-summary');
         if (it && line) line.textContent = LAYER_TYPES[it.type].summary(it);
+        if (it) syncRows(c, it);
       }
       const st = byId('layerStackThickenState'); if (st) st.textContent = thickenState();
     } else {

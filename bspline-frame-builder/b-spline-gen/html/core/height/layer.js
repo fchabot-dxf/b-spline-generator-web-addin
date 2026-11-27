@@ -15,6 +15,7 @@
 import { encodeRaster } from './raster.js';
 import { patchComposite, compositeKey, patchGrid, patchReady, ensurePatchDecoded } from './compose.js';
 import { STAMP_PLACEMENTS } from '../stamp/placement.js';
+import { strengthOf } from '../stamp/strength.js';
 
 export const HEIGHT_BLENDS = Object.freeze(['add', 'max']);
 export const HEIGHT_PLACEMENTS = STAMP_PLACEMENTS; // the one table: core/stamp/placement.js
@@ -157,6 +158,7 @@ export function heightPass(rawRec, grid) {
     carve: !rec.raise,
     blend: rec.blend,
     placement: rec.placement,
+    ...strengthOf(rec.strength), // the record's Strength (core/stamp/strength.js; absent = 100 %: no key)
     zOffset: rec.zOffset,
     profile: 'flat',
     suppression: 0,

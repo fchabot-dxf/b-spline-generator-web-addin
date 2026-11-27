@@ -1144,6 +1144,13 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .layer-card-summary { font-size: 12px; }
 .layer-card-note { font-size: 11px; opacity: 0.7; }
 .layer-card-door { width: 100%; min-height: 32px; font-size: 12px; }
+/* the open card's setting rows (main/layer-stack.js LAYER_CARD_ROWS): the app's slider + number pair, one per row; the
+   range is 28 px tall (its 4 px track drawn centred) so the whole row is a touch target, 32 px on a coarse pointer */
+.layer-card-row .cad-label { margin: 0 0 2px; }
+.layer-card-row .cad-slider-row { gap: 8px; }
+.layer-card-row input[type="range"].cad-slider { height: 28px; background: linear-gradient(#e0e0e0, #e0e0e0) center / 100% 4px no-repeat; }
+.layer-card-row .cad-stepper { flex: 0 0 66px; width: 66px; }
+.layer-card-row input[type="number"] { min-height: 28px; box-sizing: border-box; }
 .layer-hosted-body { display: flex; flex-direction: column; gap: 6px; }
 /* below the Thicken line: top-only detail -- a dashed stripe on top of the type's colour */
 .cad-sidebar .layer-card-after.section-themed > .panel-header, .cad-sidebar .layer-card-after.section-themed > .panel-body { border-left-style: dashed; }
@@ -1158,6 +1165,7 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
   .cad-sidebar .layer-card > .layer-card-head { min-height: 44px; }
   .layer-card-enable { min-width: 28px; min-height: 28px; }
   .layer-card-handle { min-width: 32px; min-height: 32px; }
+  .layer-card-row input[type="range"].cad-slider, .layer-card-row input[type="number"] { min-height: 32px; height: 32px; }
 }
 
 /* SMITHSONIAN-BROWSER (SMITHSONIAN-BROWSER-DESIGN.md): the full-screen library sheet (main/stl-library-sheet.js). The grid's

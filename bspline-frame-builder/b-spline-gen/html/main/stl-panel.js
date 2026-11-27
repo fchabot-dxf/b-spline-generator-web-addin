@@ -170,6 +170,16 @@ export function setStlField(controlId, value, id = null) {
   return true;
 }
 
+/** An optional stamp field of record `id` with no STL_CONTROLS entry (the layer stack's card rows, main/layer-stack.js
+ *  LAYER_CARD_ROWS, e.g. `strength`): `value` undefined REMOVES the field (absent = its default, the record as before). One
+ *  copy-on-write write, one commit (one undo step, one rebuild). */
+export function setStlStampField(id, field, value) {
+  if (!find(id)) return false;
+  updateRecord(id, (r) => { const n = { ...r }; if (value === undefined) delete n[field]; else n[field] = value; return n; });
+  commit(field);
+  return true;
+}
+
 /** One falloff edge box (STL_CROP_EDGE_BOXES) of the ACTIVE record: on / off, one copy-on-write write + one undo step. */
 export function setStlCropEdge(key, on) {
   const box = STL_CROP_EDGE_BOXES.find((b) => b.key === key);

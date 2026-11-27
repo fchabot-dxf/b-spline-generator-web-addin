@@ -81,6 +81,7 @@ const _PERSISTED_LAYER_FIELDS = [
     'brickKind', // F35 item 64: a brick kind's own layer (layers.js BRICK_KIND_LAYERS)
     'userLocked', // the manual layer lock (layers.js isUserLocked); written only when true, absent = unlocked
     'placement', // Fred 2026-11-23: the layer's Thicken (core/stamp/placement.js); written only once set, absent = 'withSurface'
+    'strength', // Fred 2026-11-27: the layer's Strength (core/stamp/strength.js); written only when not 100 %, absent = 100 %
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
