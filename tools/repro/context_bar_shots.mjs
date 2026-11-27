@@ -41,15 +41,27 @@ const send = (method, params = {}, ms = 60000) => new Promise((r) => {
 const evalJS = async (expr, ms = 180000) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }, ms); if (r.error || r.result?.exceptionDetails) return `EVAL ERROR ${JSON.stringify(r.error || r.result.exceptionDetails).slice(0, 300)}`; return r.result?.result?.value; };
 let TAG = '';
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); if (!r.result) { console.log('shot failed', name); return; } const f = `${OUT}/${TAG}-${name}.png`; writeFileSync(f, Buffer.from(r.result.data, 'base64')); console.log('shot', f); };
-const click = async (sel, wait = 500) => { const v = await evalJS(`(()=>{ const b=document.querySelector(${JSON.stringify(sel)}); if (!b) return 'missing ' + ${JSON.stringify(sel)}; b.scrollIntoView?.({ block: 'nearest' }); b.click(); return 'ok'; })()`); if (v !== 'ok') console.log(TAG, v); await sleep(wait); return v; };
+// scrolled into view FIRST, then clicked a moment later (a picker's grid closes on any scroll: main/icon-select.js)
+const click = async (sel, wait = 500) => {
+  const q = JSON.stringify(sel);
+  let v = await evalJS(`(()=>{ const b=document.querySelector(${q}); if (!b) return 'missing ' + ${q}; b.scrollIntoView?.({ block: 'nearest' }); return 'ok'; })()`);
+  if (v === 'ok') { await sleep(350); v = await evalJS(`(()=>{ const b=document.querySelector(${q}); if (!b) return 'missing'; b.click(); return 'ok'; })()`); }
+  if (v !== 'ok') console.log(TAG, v);
+  await sleep(wait);
+  return v;
+};
 /** The active bar row: its box, whether it scrolls sideways, its items, its smallest control (the touch floor check). */
-const barState = () => evalJS(`(()=>{ const bar = document.getElementById('editorToolBar'); if (!bar) return 'no context bar';
+const barState = () => evalJS(`(()=>{ const top = document.getElementById('editorToolbarTop'); const topH = top ? Math.round(top.getBoundingClientRect().height) : null;
+  const bar = document.getElementById('editorToolBar'); if (!bar) return JSON.stringify({ topH, bar: 'none (before)' });
+  const g0 = document.getElementById('editorToolBarGroup'); if (g0) { g0.scrollLeft = 0; g0.dispatchEvent(new Event('scroll')); }
   const row = [...bar.querySelectorAll('[data-tool-bar-row]')].find((r) => r.style.display !== 'none'); const g = document.getElementById('editorToolBarGroup');
   if (!row) return JSON.stringify({ row: null, group: g && getComputedStyle(g).display });
   const r = row.getBoundingClientRect(), gr = g.getBoundingClientRect();
   const ctrls = [...row.querySelectorAll('button, input, select')].filter((c) => c.getClientRects().length && !c.closest('.tool-bar-more-sheet') && !c.closest('[style*="display: none"]'));
   const min = ctrls.reduce((m, c) => Math.min(m, Math.round(c.getBoundingClientRect().height)), 999);
-  return JSON.stringify({ row: row.dataset.toolBarTab + ':' + row.dataset.toolBarTool, items: row.children.length, w: Math.round(r.width), h: Math.round(r.height), groupW: Math.round(gr.width), groupH: Math.round(gr.height), scrolls: g.scrollWidth > g.clientWidth + 1, minControlPx: min }); })()`);
+  const items = [...row.children].filter((c) => c.getClientRects().length && getComputedStyle(c).display !== 'none');
+  const inView = items.filter((c) => c.getBoundingClientRect().right <= gr.right + 1).length;
+  return JSON.stringify({ topH, row: row.dataset.toolBarTab + ':' + row.dataset.toolBarTool, items: items.length, inView, hint: g.getAttribute('data-scroll-more'), w: Math.round(r.width), h: Math.round(r.height), groupW: Math.round(gr.width), groupH: Math.round(gr.height), scrolls: g.scrollWidth > g.clientWidth + 1, minControlPx: min }); })()`);
 const note = async (name) => console.log(TAG, name, await barState());
 
 async function run(tag, metrics, touchOn) {
@@ -58,7 +70,7 @@ async function run(tag, metrics, touchOn) {
   await send('Emulation.setTouchEmulationEnabled', { enabled: touchOn, maxTouchPoints: touchOn ? 5 : 1 });
   await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
   // a fresh start is a random board (Math.random): seed it so before / after open the same board
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: 'let s=12345; Math.random=()=>{ s=(s*16807)%2147483647; return (s-1)/2147483646; };' });
+  if (!run.seeded) { run.seeded = true; await send('Page.addScriptToEvaluateOnNewDocument', { source: '(()=>{ let s=12345; Math.random=()=>{ s=(s*16807)%2147483647; return (s-1)/2147483646; }; })();' }); }
   await send('Page.navigate', { url: URL }); await sleep(9000);
   const v = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
     for (let i = 0; i < 60 && !document.getElementById('viewMode_2d'); i++) await W(250); await W(1500);

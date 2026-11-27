@@ -2462,7 +2462,7 @@
 .tool-bar-row .icon-select-button { height: 28px !important; min-width: 28px !important; }
 .tool-bar-row .icon-select-button svg { width: 22px; height: 22px; }
 @media (pointer: coarse) {
-    .tool-bar-row button, .tool-bar-row input, .tool-bar-row select { min-height: 32px; }
+    .tool-bar-row button, .tool-bar-row input, .tool-bar-row select { min-height: 32px !important; }
     .tool-bar-row .tool-bar-picto, .tool-bar-row .icon-select-button { width: 32px; min-width: 32px !important; height: 32px !important; }
 }
 /* the phone (the editor's breakpoint, editor/breakpoints.js EDITOR_MOBILE_MAX_PX): no text labels on the bar (each control's
@@ -2483,3 +2483,16 @@
 #editorToolBarGroup::before { left: 0; margin-right: -28px; background: linear-gradient(to left, rgba(255, 255, 255, 0), #fff); }
 #editorToolBarGroup::after { right: 0; margin-left: -28px; background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff); }
 #editorToolBarGroup[data-scroll-more~="left"]::before, #editorToolBarGroup[data-scroll-more~="right"]::after { display: block; }
+/* the Draw groups lay out on one line in the bar (setEditorTab clears their inline display on the Draw tab) */
+#editorToolBar #editorStrokeGroup, #editorToolBar #editorColorGroup, #editorToolBar #editorFillModeGroup,
+#editorToolBar #editorFontGroup, #editorToolBar #editorExpandGroup { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+#editorToolBar #editorFontGroup > div, #editorToolBar #editorExpandGroup > div { display: flex; align-items: center; gap: 6px; }
+/* a picker in the bar: the chip alone (it shows the picked option), on the bar's line */
+.tool-bar-row .icon-select { flex-wrap: nowrap !important; margin: 0 !important; }
+.tool-bar-row .icon-select-name { display: none !important; }
+.tool-bar-row .icon-select-button { padding: 0 6px !important; white-space: nowrap; }
+/* the Stripe colours A / B / C: each letter beside its swatch (one line: the bar's height) */
+.tool-bar-row #stripeColorSwatches > label { flex-direction: row !important; gap: 4px !important; }/* the bar shares the top row with Grid / the touch actions: it shrinks (and scrolls sideways) rather than pushing them to a
+   second line (measured at 390 px: a wide Stripe row wrapped Grid under it, the top bar 89 px instead of 38) */
+#editorToolbarTop { flex-wrap: nowrap !important; }
+#editorToolbarTop > #editorToolBarGroup { flex: 0 1 auto !important; flex-shrink: 1 !important; min-width: 0 !important; }

@@ -90,7 +90,7 @@ export const EDITOR_TOOL_BAR = Object.freeze({
     node: DRAWING,
     draw: DRAWING, line: DRAWING, rect: DRAWING, circle: DRAWING,
     erase: row(STROKE), // the eraser's width is the stroke width
-    text: row(FONT, COLOUR),
+    text: row(COLOUR, FONT), // the colour first: on a phone it stays in view (the font group is wider than the screen's bar)
     expand: row(h('editorExpandGroup', 3)), // Detail, EXPAND, UN-EXPAND
     stripe: STRIPE_BAR,
   }),
@@ -349,6 +349,8 @@ function _wire() {
   // the edge hint follows the scroll and the width
   $(TOOL_BAR_IDS.group)?.addEventListener('scroll', () => syncToolBarScrollHint(), { passive: true });
   if (typeof window !== 'undefined') window.addEventListener('resize', () => syncToolBarScrollHint());
+  // a hosted row re-rendering itself (the Brick Heights row) changes the bar's width with no sync of ours
+  if (typeof ResizeObserver === 'function' && $(TOOL_BAR_IDS.bar)) new ResizeObserver(() => syncToolBarScrollHint()).observe($(TOOL_BAR_IDS.bar));
 }
 
 /** Wires the bar (main.js, once): its rows follow the tab and the tool from now on. */
