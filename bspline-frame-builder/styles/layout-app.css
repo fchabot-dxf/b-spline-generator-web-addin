@@ -480,8 +480,11 @@ body.fusion-mode .send-menu-wrap { display: inline-flex; }
 .cad-sidebar .section-themed > .panel-header:hover {
     background: var(--section-header);
     color: var(--section-text);
-    border-left: var(--section-stripe-w) solid var(--section-stripe);
 }
+/* the stripe is set on the header itself, never in its :hover state: a hover that re-declared border-left reset the stripe's
+   width (the edge gap below), so the stripe shrank and the header jumped under the pointer (Fred 2026-11-27: "make it
+   simpler"). Hover = a slight darkening, nothing moves. */
+.cad-sidebar .section-themed > .panel-header { border-left: var(--section-stripe-w) solid var(--section-stripe); }
 .cad-sidebar .section-themed > .panel-header:hover { filter: brightness(0.97); }
 .cad-sidebar .section-themed > .panel-body {
     background: var(--section-body);
