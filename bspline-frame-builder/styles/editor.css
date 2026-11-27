@@ -2359,6 +2359,7 @@
 .ed-stack-name { min-height: 28px; line-height: 28px; }
 .ed-stack-lock { cursor: default !important; font-size: 12px; opacity: 0.6; }
 .ed-stack-caret { flex: 0 0 auto; min-width: 22px; min-height: 28px; border: 0; background: none; color: inherit; font-size: 12px; cursor: pointer; padding: 0; opacity: 0.75; }
+.ed-stack-caret-none { cursor: default; } /* a row with no sub-layers: the chevron's room only, so the icons line up */
 .ed-stack-unfold { display: none; flex: 0 0 auto; font-size: 13px; opacity: 0.7; }
 .ed-stack-subs { display: none; flex-direction: column; gap: 2px; margin: 2px 0 2px 26px; }
 .ed-stack-card.subs-open > .ed-stack-subs { display: flex; }

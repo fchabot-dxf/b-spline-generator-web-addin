@@ -627,6 +627,7 @@ export const EDITOR_STACK_LAYOUTS = Object.freeze([
 const FRAME_ROW_KEY = EDITOR_FIXED_ROWS[0].key;
 let _edFolded = true;          // the phone layout's fold (UI state)
 const _edSubsOpen = new Set(); // rows whose sub-layers are folded open (the selected row's open when it is picked)
+let _edSubSelSig = null;       // the sub-layer selection last opened its row: a NEW one opens it once; the caret may then fold it
 let _edStlKey = null;          // the STL row selected (an STL has no editor state of its own yet)
 let _edMods = { tabs: null, height: null };
 const loadTabs = async () => (_edMods.tabs = _edMods.tabs || await import('./editor-tabs.js'));
@@ -831,8 +832,10 @@ function editorCard(item, after, sel) {
   const name = T.name(item);
   const head = el('div', { class: 'panel-header layer-card-head' }, [
     el('span', { class: 'layer-card-handle', title: 'Drag to move (stamp order; across the Thicken line: body or top only)', 'aria-label': `Move ${name}`, role: 'button', text: '≡' }),
+    // the chevron BEFORE the icon (Fred 2026-11-27); a row with no sub-layers keeps the chevron's room, so icons line up
+    subs.length ? el('button', { type: 'button', class: 'ed-stack-caret', 'data-ed-caret': item.key, 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Unfold'} the layers of ${name}`, text: open ? '▾' : '▸' })
+      : el('span', { class: 'ed-stack-caret ed-stack-caret-none', 'aria-hidden': 'true' }),
     el('span', { class: 'layer-card-icon', 'aria-hidden': 'true', text: T.icon }),
-    subs.length ? el('button', { type: 'button', class: 'ed-stack-caret', 'data-ed-caret': item.key, 'aria-expanded': String(open), 'aria-label': `${open ? 'Fold' : 'Unfold'} the layers of ${name}`, text: open ? '▾' : '▸' }) : null,
     el('button', { type: 'button', class: 'layer-card-name ed-stack-name', id: edRowId(item.key), 'data-ed-select': item.key, 'aria-pressed': String(selected && sel.sub == null), title: `${name} — ${T.label}${after ? ', top only' : ''}` },
       // a new layer's name says its type (typedLayerName) and its icon + colour do too: the type line only for 'top only'
       [el('span', { class: 'layer-card-title', text: name }), after ? el('span', { class: 'layer-card-type', text: 'top only' }) : null]),
@@ -861,7 +864,11 @@ export function refreshEditorStack() {
   if (!listEl || _drag || _edRenaming) return;
   const items = stackItems();
   const sel = editorSelection(items);
-  if (sel.key && sel.sub != null) _edSubsOpen.add(sel.key);
+  // a sub-layer picked elsewhere (the Height panel's list, a Brick tab) opens its row ONCE so it shows; every redraw used to
+  // re-open it, so the caret could never fold a row holding the selected layer (Fred 2026-11-27: "thats confusing")
+  const subSig = sel.key && sel.sub != null ? `${sel.key}|${sel.sub}` : null;
+  if (subSig && subSig !== _edSubSelSig) _edSubsOpen.add(sel.key);
+  _edSubSelSig = subSig;
   const L = editorStackLayout();
   const folded = L.fold && _edFolded && !!sel.key;
   const scroll = listEl.scrollTop;
@@ -1010,5 +1017,5 @@ let _docWired = false;
 /** Tests: forget the UI state. */
 export function _resetLayerStackForTests() {
   _lastSig = null; _openKey = null; _drag = null; _dirty = false; _rendering = false; _pendingAdd = null; _hooks = { onChange: () => {} };
-  _edFolded = true; _edSubsOpen.clear(); _edStlKey = null; _edRenaming = false;
+  _edFolded = true; _edSubsOpen.clear(); _edSubSelSig = null; _edStlKey = null; _edRenaming = false;
 }
