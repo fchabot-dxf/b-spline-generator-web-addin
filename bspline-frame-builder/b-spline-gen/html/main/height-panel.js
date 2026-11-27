@@ -38,6 +38,7 @@ import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { createDrawerTree } from './drawer-tree.js';
 import { toolGlyphSvg } from '../editor/tool-icons.js';
+import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, registerToolBarTab, syncToolBar } from './editor-tool-bar.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -277,25 +278,14 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
 ]);
 /**
  * The Height tab's OPTIONS BAR (Fred 2026-11-23: "In height this space is dead, use it to display information or input fields"):
- * the strip under the tab row, the shared #editorToolbarTop bar the other tabs fill (editor-tabs.js TOOLBAR_TOP_GROUPS_BY_TAB).
- * One row per HEIGHT_TOOLS id, declared here: an item is { control } (a HEIGHT_CONTROLS / HEIGHT_TOOL_CONTROLS id -- the SAME
- * setting as the panel's control, read and written through setHeightField, so both views stay in sync; its showWhen still
- * applies) with an optional short `label` and `step`, or { widget } (HEIGHT_BAR_WIDGETS: a read-out or a button, never a
- * setting). HEIGHT_BAR_END is appended to every row (the stock line, from the one function that writes the panel's).
+ * the first user of the editor's CONTEXT BAR (main/editor-tool-bar.js), whose one table declares its rows: EDITOR_TOOL_BAR.height,
+ * one row per HEIGHT_TOOLS id. An item is { control } (a HEIGHT_CONTROLS / HEIGHT_TOOL_CONTROLS id -- read and written through
+ * setHeightField; its showWhen still applies) with an optional short `label` and `step`, or { widget } (HEIGHT_BAR_WIDGETS: a
+ * read-out or a button, never a setting). HEIGHT_BAR_END (TOOL_BAR_END.height) ends every row (the stock line, from the one
+ * function that writes the panel's). This module renders and refreshes its own items (registerToolBarTab, renderHeightPanel).
  */
-export const HEIGHT_OPTIONS_BAR = Object.freeze({
-  brush: Object.freeze([{ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'greyZero', label: 'Grey' }, { control: 'invert', label: 'Paint' }]),
-  eraser: Object.freeze([{ control: 'sizeIn', label: 'Size', step: 0.05 }]),
-  selectRect: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
-  selectEllipse: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
-  selectLasso: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }]),
-  wand: Object.freeze([{ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }, { control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }]),
-  eyedropper: Object.freeze([{ control: 'sampleFrom', label: 'Sample' }, { widget: 'greyChip', label: 'Picked' }, { control: 'greyZero', label: 'Grey' }]),
-  move: Object.freeze([{ widget: 'moveActions' }]),
-  gradient: Object.freeze([{ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }]),
-  fill: Object.freeze([{ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }]),
-});
-export const HEIGHT_BAR_END = Object.freeze([{ widget: 'stock' }]);
+export const HEIGHT_OPTIONS_BAR = EDITOR_TOOL_BAR.height;
+export const HEIGHT_BAR_END = TOOL_BAR_END.height;
 /** Both tables, the one list the renderer and the setter read. */
 const allControls = () => [...HEIGHT_CONTROLS, ...HEIGHT_TOOL_CONTROLS];
 
@@ -1758,43 +1748,34 @@ const HEIGHT_BAR_WIDGETS = Object.freeze({
     sync: (node) => { const { short, warn } = heightStockLines(); node.textContent = short; node.hidden = !short; node.style.color = warn ? '#c0392b' : '#555'; node.style.fontWeight = warn ? '700' : ''; node.classList.toggle('stl-error', warn); },
   },
 });
-/** Build the bar's rows (one per HEIGHT_TOOLS id; syncHeightBar shows the active tool's) into `bar`. */
-function renderHeightBar(bar) {
-  bar.innerHTML = '';
-  for (const t of HEIGHT_TOOLS) {
-    const row = el('div', { class: 'height-bar-row', 'data-height-bar-tool': t.id, style: 'display:none; align-items:center; gap:8px 14px;' });
-    for (const item of [...(HEIGHT_OPTIONS_BAR[t.id] || []), ...HEIGHT_BAR_END]) {
-      let n = null;
-      if (item.widget) { n = HEIGHT_BAR_WIDGETS[item.widget].build(item); n.setAttribute('data-height-bar-widget', item.widget); } else { const c = allControls().find((x) => x.id === item.control); n = c ? renderBarControl(c, item, t.id) : null; }
-      if (n) row.appendChild(n);
-    }
-    bar.appendChild(row);
-  }
+/** This tab's pieces of the context bar (main/editor-tool-bar.js): its rows keyed by the armed HEIGHT_TOOLS id, each item
+ *  built here (renderBarControl / HEIGHT_BAR_WIDGETS) and refreshed by syncBarItem. */
+const HEIGHT_BAR_HOOKS = Object.freeze({
+  tool: () => _tool,
+  decorate: (row, tool) => { row.classList.add('height-bar-row'); row.setAttribute('data-height-bar-tool', tool); },
+  build: (item, tool) => {
+    if (item.widget) { const n = HEIGHT_BAR_WIDGETS[item.widget].build(item); n.setAttribute('data-height-bar-widget', item.widget); return n; }
+    const c = allControls().find((x) => x.id === item.control);
+    return c ? renderBarControl(c, item, tool) : null;
+  },
+  sync: (w) => syncBarItem(w),
+});
+/** One bar item from the SAME state the panel reads: a control's value and showWhen, the chip, the Move actions, the stock. */
+function syncBarItem(w) {
+  const id = w.getAttribute('data-height-control-bar'), widget = w.getAttribute('data-height-bar-widget');
+  if (id) {
+    const rec = activeHeightLayer(), n = rec ? placed(rec) : null, ctx = panelCtx();
+    const c = allControls().find((x) => x.id === id), src = controlSource(c, rec), v = src ? getPath(src, c.path) : undefined;
+    const hide = !!c.showWhen && !c.showWhen(_brush, n, ctx);
+    w.style.display = hide ? 'none' : 'flex';
+    const x = w.querySelector('[data-height-bar]');
+    if (x && c.kind === 'slider') { const [min, max] = c.range(P); x.min = String(min); x.max = String(max); if (v !== undefined && document.activeElement !== x) x.value = String(Math.round(v * 1e6) / 1e6); x.disabled = !src; }
+    else if (x && c.kind === 'check') x.checked = !!v;
+    else for (const b of w.querySelectorAll('[data-height-choice]')) b.classList.toggle('active', b.getAttribute('data-height-choice') === `${c.id}:${v}`);
+  } else if (widget && HEIGHT_BAR_WIDGETS[widget]) HEIGHT_BAR_WIDGETS[widget].sync(w);
 }
-/** Refresh the bar from the SAME state the panel reads: the active tool's row, each control's value and showWhen, the chip,
- *  the Move actions, the stock line. Safe any time. */
-export function syncHeightBar() {
-  const bar = byId('editorHeightOptions');
-  if (!bar) return;
-  const rec = activeHeightLayer(), n = rec ? placed(rec) : null, ctx = panelCtx();
-  for (const row of bar.querySelectorAll('[data-height-bar-tool]')) {
-    const on = row.getAttribute('data-height-bar-tool') === _tool;
-    row.style.display = on ? 'flex' : 'none';
-    if (!on) continue;
-    for (const w of row.children) {
-      const id = w.getAttribute('data-height-control-bar'), widget = w.getAttribute('data-height-bar-widget');
-      if (id) {
-        const c = allControls().find((x) => x.id === id), src = controlSource(c, rec), v = src ? getPath(src, c.path) : undefined;
-        const hide = !!c.showWhen && !c.showWhen(_brush, n, ctx);
-        w.style.display = hide ? 'none' : 'flex';
-        const x = w.querySelector('[data-height-bar]');
-        if (x && c.kind === 'slider') { const [min, max] = c.range(P); x.min = String(min); x.max = String(max); if (v !== undefined && document.activeElement !== x) x.value = String(Math.round(v * 1e6) / 1e6); x.disabled = !src; }
-        else if (x && c.kind === 'check') x.checked = !!v;
-        else for (const b of w.querySelectorAll('[data-height-choice]')) b.classList.toggle('active', b.getAttribute('data-height-choice') === `${c.id}:${v}`);
-      } else if (widget && HEIGHT_BAR_WIDGETS[widget]) HEIGHT_BAR_WIDGETS[widget].sync(w);
-    }
-  }
-}
+/** Refresh the bar (the context bar's one sync: the active tool's row and its items). Safe any time. */
+export function syncHeightBar() { syncToolBar(); }
 /** The bar's own events (one delegate): a number (typed, or by the app's stepper) or a check writes the setting (setHeightField); the chip goes to the palette; Drop / Cancel are the canvas bar's functions. */
 function wireHeightBar(bar) {
   const write = (id, value) => { setHeightField(id, value); syncHeightPanel(); };
@@ -1872,8 +1853,8 @@ const GROUP_HEADS = Object.freeze({
 
 /** Build the panel from the declared tables into `body` (its groups in the collapse tree, HEIGHT_DRAWER_TREE), and the tools
  *  into `rail`: the tool row, pinned at the head of the panel (#heightToolsHead; EDITOR_TABS height). */
-export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar = byId('editorHeightOptions')) {
-  if (bar) renderHeightBar(bar); // the options bar (HEIGHT_OPTIONS_BAR)
+export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
+  registerToolBarTab('height', HEIGHT_BAR_HOOKS); // the options bar: this tab's rows of the context bar (EDITOR_TOOL_BAR.height)
   if (rail) {
     rail.innerHTML = '';
     // a row's `key` = the editor's own single-key shortcut (editor-interaction.js clicks the modal's [data-key] button)
@@ -2005,7 +1986,7 @@ const onBuilt = () => syncCarveRange();
 export function initHeightPanel(hooks = {}) {
   _hooks = { onChange: hooks.onChange || (() => {}) };
   renderHeightPanel(byId('heightPanelBody'));
-  { const ob = byId('editorHeightOptions'); if (ob) wireHeightBar(ob); }
+  { const ob = byId(TOOL_BAR_IDS.bar); if (ob && !ob.dataset.heightBarWired) { ob.dataset.heightBarWired = '1'; wireHeightBar(ob); } }
   registerUndoPart('heightLayers', {
     take: () => P.heightLayers, // the copy-on-write list itself: an entry costs a reference
     restore: (v) => { if (v === P.heightLayers) return; cancelStroke(); cancelHeightMove(); P.heightLayers = v; syncHeightPanel(); syncHeightOverlay(); },

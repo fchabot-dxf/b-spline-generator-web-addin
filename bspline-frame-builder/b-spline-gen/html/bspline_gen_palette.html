@@ -1860,6 +1860,14 @@
       <!-- F35 item 53 (Fred: the option bar clipped its GRID label + STYLE chips): it sizes to its content and wraps to a
            second row when narrow -- measured before: a fixed 38 px + overflow hidden cut the Artwork groups by 25 px -->
       <div class="editor-toolbar-top" id="editorToolbarTop" style="min-height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; flex-wrap: wrap; align-items: center; padding: 0 12px; gap: 4px 16px; flex-shrink: 0;">
+        <!-- CONTEXT BAR (owner 2026-11-27): the ACTIVE tool's settings, one row per tool (main/editor-tool-bar.js
+             EDITOR_TOOL_BAR; the Height tab's options bar was its first user). It scrolls sideways inside itself when a phone is
+             too narrow for the row; a '⋯' at a row's end opens the rest. The groups below it (Stroke, Colour, Style, Font,
+             Expand) and the tools' own rows elsewhere are MOVED in while their tool is active, else parked (hidden) here. -->
+        <div id="editorToolBarGroup" hidden style="min-width:0; max-width:100%; align-items:center; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;">
+          <div id="editorToolBar" style="display:flex; align-items:center; gap:8px 14px; flex-wrap:nowrap; white-space:nowrap; min-height:34px;"></div>
+        </div>
+        <div id="editorToolBarParked" hidden></div>
         <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Stroke</span>
           <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
@@ -1888,13 +1896,6 @@
           </button>
           <input type="color" id="editorColor" value="#000000" title="Custom color"
                  style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; border:0; opacity:0; overflow:hidden; pointer-events:none;">
-        </div>
-
-        <!-- HEIGHT-PAINTER: the Height tab's options bar (main/height-panel.js HEIGHT_OPTIONS_BAR): the active tool's key controls
-             + the stock line. Shown on the Height tab only (editor-tabs.js TOOLBAR_TOP_GROUPS_BY_TAB.height; the hidden attribute
-             keeps it away from the other tabs). It scrolls sideways inside itself when a phone is too narrow for the row. -->
-        <div id="editorHeightOptionsGroup" hidden style="min-width:0; max-width:100%; align-items:center; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;">
-          <div id="editorHeightOptions" style="display:flex; align-items:center; gap:8px 14px; flex-wrap:nowrap; white-space:nowrap; min-height:34px;"></div>
         </div>
 
         <!--
@@ -2813,7 +2814,7 @@
             <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Size</span>
               <!-- Fred ("just make it a switch no readout"): stripe by Count OR by Length -- only the chosen field shows -->
-              <div role="group" class="segmented-group">
+              <div role="group" class="segmented-group" id="stripeDriveRow">
                 <button type="button" id="stripeByCount" class="editor-fillmode-btn active" style="flex:1;" title="Each line gets this many equal stripes">Count</button>
                 <button type="button" id="stripeByLength" class="editor-fillmode-btn" style="flex:1;" title="Each line gets as many equal stripes as fit at about this length">Length</button>
               </div>
@@ -2826,13 +2827,13 @@
               <!-- F32 item 2 (Fred: "dashed ratio"): one chip per STRIPE_PATTERNS entry, rendered by
                    properties-stripe.js -- never hand-added here per pattern. -->
               <div id="stripePatternPresets" role="group" class="segmented-group" style="margin-top:4px;"></div>
-              <label style="display:flex; flex-direction:column; gap:2px;">Ratio (e.g. 3:1)
+              <label id="stripePatternRatioRow" style="display:flex; flex-direction:column; gap:2px;">Ratio (e.g. 3:1)
                 <input id="stripePatternRatio" type="text" placeholder="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
               <div id="stripePatternClampNote" style="display:none; color:#b45309;">Too fine for this line -- fewer repeats fit so no stripe is thinner than the line.</div>
             </div>
             <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
-              <div style="display:flex; align-items:center; gap:6px;">
+              <div id="stripeColoursHead" style="display:flex; align-items:center; gap:6px;">
                 <span id="stripeColoursLabel" style="font-weight:600; flex:1;">Colours</span>
                 <label style="display:flex; flex-direction:row; align-items:center; gap:3px; white-space:nowrap;" title="A third colour, C"><input id="stripeThree" type="checkbox" style="margin:0;">Use C</label>
                 <button id="stripeColorsReset" type="button" title="Back to the lattice's Rails / Ties / Nodes colours" style="height:20px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">&#8634;</button>
@@ -3355,9 +3356,6 @@
               </svg>
             </button>
             </div>
-            <div id="artGeneralBody"></div>
-            <!-- phase 4: the Draw tree's other branch bodies (main/draw-tree.js); EDITOR_TABS artwork panelHosts fill them -->
-            <div id="artTextBody"></div><div id="artExpandBody"></div>
             <!-- DRAW-STAMP U (Fred 2026-11-22): the Draw tree's Stamp branch (main/draw-tree.js) -- the SELECTED layer's
                  stamp settings, MOVED here from the sidebar VECTOR STAMPING panel (ids, bindings, P keys / layer fields,
                  ranges unchanged; main/stamp/* binds them, every read / write through core/stamp/target.js stampTarget).

@@ -244,9 +244,8 @@ export const TOOLBAR_GROUPS = {
   editorAutoNodesGroup: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7a
   editorLatticePanel: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7b slice 3
   editorShapeLatticePanel: (rawMode, el, currentMode) => currentMode === 'shapeLattice', // T58 (SE14 Slice 3)
-  // F27 item 3; turn 195: and only while it still HOLDS its own settings -- a tab may host them in its
-  // own panel instead (main/editor-tabs.js EDITOR_TABS `modeHosts`: the Brick tab's Stripe)
-  editorStripePanel: (rawMode, el, currentMode) => currentMode === 'stripe' && panelHoldsContent('editorStripePanel', 'editorStripePanelBody'),
+  // (editorStripePanel's entry retired, F27 item 3 / turn 195: the Stripe settings are the context bar's Stripe row,
+  // main/editor-tool-bar.js; the panel stays hidden)
 };
 
 /** Does `panelId` still contain its own `contentId` (true when either is absent -- the old behaviour)? */

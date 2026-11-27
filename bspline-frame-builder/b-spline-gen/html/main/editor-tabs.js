@@ -18,7 +18,6 @@
 // Shape Lattice mode carried into the Brick tab ran lattice gestures there. main/global-events.js
 // returns the editor to Select (the Esc path) when the new tab doesn't list the current mode.
 // cut/stripe are shared: Artwork's Cut/Stripe tools and Brick's Scissors/Stripe arm the same modes.
-import { TOOLBAR_GROUPS } from '../editor/editor-ui.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
 
 // `clears` (F35 item 28): what the editor header's Clear menu clears for this tab -- a main/editor-clear-menu.js
@@ -38,19 +37,10 @@ export const EDITOR_TABS = [
     modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe'],
     artTabs: ['general', 'draw', 'text', 'edit'], artDefault: 'edit',
     tools: [...SHARED_ART_TOOLS, 'toolNode', 'toolDraw', 'toolLine', 'toolRect', 'toolCircle', 'toolExpand', 'toolText'],
-    // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js
-    // ART_GENERAL_GROUPS); on any other editor tab they are back in the top bar (hidden there by TOOLBAR_TOP_GROUPS_BY_TAB)
-    // phase 4: the Draw drawer is a collapse tree (main/draw-tree.js); the Art-tab strip hides on this tab
-    drawerTree: 'drawDrawerTree',
-    panelHosts: [
-      { content: 'editorStrokeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
-      { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
-      { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
-      // phase 4: the Text and Expand branches hold the mode groups (the Layers branch retired: the editor layer stack)
-      { content: 'editorFontGroup', host: 'artTextBody', panel: 'editorToolbarTop' },
-      { content: 'editorSymbolKeyboardToggle', host: 'artTextBody', panel: 'editorToolbarTop' },
-      { content: 'editorExpandGroup', host: 'artExpandBody', panel: 'editorToolbarTop' },
-    ] },
+    // phase 4: the Draw drawer is a collapse tree (main/draw-tree.js); the Art-tab strip hides on this tab.
+    // The CONTEXT BAR (owner 2026-11-27): the stroke / colour / style, font and expand groups (the drawer's former General,
+    // Text and Expand branches) are the active tool's row of the bar (main/editor-tool-bar.js EDITOR_TOOL_BAR.artwork)
+    drawerTree: 'drawDrawerTree' },
   { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
     artTabs: ['lattice', 'shape'], artDefault: 'lattice',
@@ -64,13 +54,9 @@ export const EDITOR_TABS = [
     // F35 item 40: + the hosted Layers (Fred, phone: "We don't see layers still") -- at peek the drawer shows Generate AND
     // the layer list (it grows with the number of layers; no cap)
     peekEssentials: ['#editorBrickPanel > .sticky-actions', '#brickLayersSlot'],
-    // `modeHosts` (turn 195, advisor: "one contextual panel"): which panel a mode's settings open in, per
-    // tab. Here the stripe mode's settings (#editorStripePanelBody) live INSIDE this tab's own panel
-    // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
-    // without an entry keeps the mode's own panel (Artwork's Stripe is unchanged).
-    modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } },
-    // (its `panelHosts` -- the ONE Layers list hosted under Generate, F35 item 40 -- retired with the editor layer stack,
-    // Fred 2026-11-24: the stack above the panel lists the layers; the Brick start hint lives in #brickLayersSlot itself)
+    // (its `modeHosts` -- the Stripe settings hosted in #brickStripeSection, turn 195 -- and `panelHosts` -- the Layers
+    // list, F35 item 40 -- retired: the Stripe settings are the context bar's Stripe row (main/editor-tool-bar.js), the
+    // editor layer stack lists the layers; the Brick start hint lives in #brickLayersSlot itself)
   },
   // HEIGHT-PAINTER (HEIGHT-PAINTER-DESIGN.md slice 1): paint height patches ON the shared canvas (main/height-panel.js);
   // its brush is the 'heightBrush' gesture mode (editor/editor-height-tool.js).
@@ -87,30 +73,9 @@ export const EDITOR_TABS = [
  *  phone folded to the selected row, main/layer-stack.js EDITOR_STACK_LAYOUTS). */
 export const SHARED_PEEK_ESSENTIALS = Object.freeze(['#editorLayerStack']);
 
-/** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;
- *  every other hosted block goes back to its own declared `panel` (its home). The mode's side panel then
- *  re-evaluates its declared visibility (editor-ui.js TOOLBAR_GROUPS: it shows only while it holds its
- *  own content). Homes are declared, never remembered, so a rebuilt DOM can't leave a stale one. */
-export function applyModeHosts(tab = _editorTab) {
-  const panels = new Set();
-  // the ACTIVE tab last: two tabs may host the same block (the Layers: Brick and Draw), and an inactive tab's
-  // "back home" must never undo the active tab's move (phase 4, measured)
-  for (const t of [...EDITOR_TABS.filter((x) => x.id !== tab), ...EDITOR_TABS.filter((x) => x.id === tab)]) {
-    for (const h of [...Object.values(t.modeHosts || {}), ...(t.panelHosts || [])]) { // item 40: panelHosts move the same way
-      panels.add(h.panel);
-      const content = document.getElementById(h.content);
-      const target = document.getElementById(t.id === tab ? h.host : h.panel);
-      if (content && target && content.parentElement !== target) target.appendChild(content);
-    }
-  }
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  const mode = editor && editor._currentMode;
-  for (const panelId of panels) {
-    const visible = TOOLBAR_GROUPS[panelId];
-    const node = document.getElementById(panelId);
-    if (node && visible) node.classList.toggle('hidden', !visible(mode, null, mode));
-  }
-}
+// (applyModeHosts -- the EDITOR_TABS `modeHosts` / `panelHosts` moves -- retired with its last two users, the Draw tab's
+// General / Text / Expand groups and the Brick tab's Stripe settings: they are the context bar's rows now,
+// main/editor-tool-bar.js, the ONE mechanism that moves a tool's settings to where they show)
 
 let _editorTab = 'artwork';
 
@@ -127,12 +92,13 @@ let _editorTab = 'artwork';
 // independent of mode OR tab by design (editor-ui.js's own TOOLBAR_GROUPS doc comment).
 const ALL_TAB_GATED_TOOLBAR_GROUPS = [
   'editorStrokeGroup', 'editorColorGroup', 'editorGridGroup', 'editorFillModeGroup',
-  'editorFontGroup', 'editorExpandGroup', 'editorHeightOptionsGroup',
+  'editorFontGroup', 'editorExpandGroup',
 ];
+// (the context bar, #editorToolBarGroup, is not gated here: main/editor-tool-bar.js shows it with the active tool's row)
 const TOOLBAR_TOP_GROUPS_BY_TAB = {
   brick: ['editorGridGroup'],
   frame: [],
-  height: ['editorHeightOptionsGroup'], // HEIGHT-PAINTER: none of the drawing's groups; its own options bar (main/height-panel.js HEIGHT_OPTIONS_BAR)
+  height: [], // HEIGHT-PAINTER: none of the drawing's groups; its tools' rows are the context bar's (main/editor-tool-bar.js)
   stl: [],
 };
 
@@ -163,7 +129,6 @@ export function setEditorTab(tab) {
     if (!el) continue;
     el.style.display = visibleGroups ? (visibleGroups.includes(groupId) ? 'flex' : 'none') : '';
   }
-  applyModeHosts(_editorTab);
   document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: _editorTab } }));
   return _editorTab;
 }

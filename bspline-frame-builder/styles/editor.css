@@ -2413,3 +2413,26 @@
     .ed-stack-caret { min-width: 28px; min-height: 32px; }
     .ed-stack-eye, .ed-stack-more { min-width: 32px; min-height: 32px; }
 }
+
+/* ===================================================================================================================
+   CONTEXT BAR (owner 2026-11-27; main/editor-tool-bar.js): the active tool's settings, one row at the top of the canvas.
+   A hosted group keeps its own markup; these rules only lay it out on ONE line (the bar scrolls sideways on a phone).
+   =================================================================================================================== */
+.tool-bar-row { align-items: center; gap: 8px 14px; flex-wrap: nowrap; white-space: nowrap; }
+/* the groups' own dividers: the row's gap separates them */
+#editorToolBar .property-divider { display: none !important; }
+.tool-bar-more { display: flex; align-items: center; }
+.tool-bar-more-btn { min-width: 32px; height: 28px; font-size: 16px; font-weight: 700; line-height: 1; padding: 0 8px; }
+/* the '⋯' sheet: fixed (the bar's own sideways scroll would clip it), kept on screen by main/editor-tool-bar.js */
+.tool-bar-more-sheet {
+    position: fixed; z-index: 10002; display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+    background: #fff; border: 1px solid #ccc; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    padding: 8px 10px; width: max-content; max-width: min(320px, calc(100vw - 8px)); max-height: 60vh; overflow-y: auto;
+    white-space: normal; font-size: 11px;
+}
+.tool-bar-more-sheet[hidden] { display: none; }
+/* the Stripe tool's pieces (editor/properties-stripe.js keeps toggling their display): a label beside its field */
+.tool-bar-row #stripeCountRow, .tool-bar-row #stripeLengthRow { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.tool-bar-row #stripeCount, .tool-bar-row #stripeLength { width: 56px !important; }
+.tool-bar-row #stripePatternPresets { margin-top: 0 !important; }
+.tool-bar-row #stripeColorSwatches { width: 132px; }

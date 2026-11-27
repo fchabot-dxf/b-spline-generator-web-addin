@@ -201,15 +201,7 @@ const TOOL_PANEL_MOUNTS = {
     generateId: 'shapeLatticeGenerate',
     unprotectAllId: 'shapeLatticeUnprotectAll',
   },
-  // the Art tabs: Artwork's Stripe settings join the column too (no Generate, no footer)
-  stripe: {
-    tabs: ['artwork', 'lattice'],
-    panelId: 'editorStripePanel',
-    bodyId: 'editorStripePanelBody',
-    footerId: null,
-    generateId: null,
-    unprotectAllId: null,
-  },
+  // (the Stripe settings' mount retired: they are the Stripe tool's row of the context bar, main/editor-tool-bar.js)
 };
 
 // Same shared breakpoint bucket editor-drawer.js's own landscape query

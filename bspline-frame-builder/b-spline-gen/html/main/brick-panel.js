@@ -59,6 +59,7 @@ import { applyBrickPalette } from '../editor/brick-palette-style.js';
 import { paletteOf, lookModeOf, ROLES_FOR_KIND, ROLE_LABELS, BRICK_PALETTE_CHANGED } from '../core/bricks/palette.js';
 import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
+import { EDITOR_TOOL_BAR, registerToolBarTab, syncToolBar } from './editor-tool-bar.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
@@ -2158,6 +2159,14 @@ function syncToolButtons() {
   syncToolSections();
   syncEmptySelectionPanel();
   syncGenerateVisibility();
+  syncToolBar(); // the context bar follows the armed tool
+}
+/** The context bar's key on the Brick tab (main/editor-tool-bar.js EDITOR_TOOL_BAR.brick): the armed tool, or
+ *  `tool.subTool` where that sub-tool declares its own row (the Wall's Area, a Heights pick...). Null: no tool. */
+export function brickToolBarKey() {
+  if (!_activeTool) return null;
+  const sub = `${_activeTool}.${_subTool}`;
+  return EDITOR_TOOL_BAR.brick && EDITOR_TOOL_BAR.brick[sub] ? sub : _activeTool;
 }
 
 /** Audit C9: the pinned Generate shows only where it applies -- the active tab's declared `generates` (General's own,
@@ -3075,6 +3084,7 @@ function _renderSubTools() {
 function _syncSubTools() {
   queueMicrotask(renderHeightPickRow); // the Heights row follows the sub-tool
   queueMicrotask(renderBlocksRow); // so does the Blocks row
+  syncToolBar(); // and the context bar's row (a sub-tool may have its own)
   for (const tool of BRICK_TOOLS) {
     for (const sid of tool.subTools || []) {
       document.getElementById(`brickSubTool_${tool.id}_${sid}`)?.classList.toggle('active', tool.id === _activeTool && sid === _subTool);
@@ -3633,6 +3643,7 @@ export function initBrickPanel() {
   renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());
+  registerToolBarTab('brick', { tool: brickToolBarKey }); // the context bar's Brick rows follow the armed tool / sub-tool
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
   // Fred 2026-10-11 (EDGE TAPER): the active element's shoulder width, its range from the declaration
   for (const id of ['brickEdgeTaperSlider', 'brickEdgeTaper']) {

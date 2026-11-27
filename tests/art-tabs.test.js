@@ -5,8 +5,9 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { ART_TABS, ART_GENERAL_GROUPS, artTabOfMode, modeOfToolButton, setArtTab, activeArtTab, initArtTabs } from '../bspline-frame-builder/b-spline-gen/html/main/art-tabs.js';
+import { ART_TABS, artTabOfMode, modeOfToolButton, setArtTab, activeArtTab, initArtTabs } from '../bspline-frame-builder/b-spline-gen/html/main/art-tabs.js';
 import { EDITOR_TABS, SHARED_ART_TOOLS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
+import { EDITOR_TOOL_BAR } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tool-bar.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 // the <body> only, without its scripts (markup checks; the head's web fonts would be fetched)
@@ -31,12 +32,12 @@ describe('Art tabs: the declaration against the real markup', () => {
     expect(head.firstElementChild.nextElementSibling.id).toBe('editorToolbarArtwork');
     expect(doc.querySelector('aside.editor-sidebar #editorToolbarArtwork')).toBeNull();
   });
-  it("General's groups are the Artwork tab's declared panelHosts (home: the top bar)", () => {
-    // phase 4: the Draw tab hosts its other branches too (Text, Expand, Layers): General's are the ones hosted in its body
-    const hosts = EDITOR_TABS.find((t) => t.id === 'artwork').panelHosts.filter((h) => h.host === 'artGeneralBody');
-    expect(hosts.map((h) => h.content)).toEqual([...ART_GENERAL_GROUPS]);
-    for (const h of hosts) { expect(h.host).toBe('artGeneralBody'); expect(h.panel).toBe('editorToolbarTop'); }
-    for (const g of ART_GENERAL_GROUPS) expect(doc.getElementById(g)?.closest('#editorToolbarTop'), g).not.toBeNull();
+  it("General's former groups are the drawing tools' context-bar row (main/editor-tool-bar.js), in the top bar", () => {
+    // the context bar (owner 2026-11-27): no panel hosts them any more; they sit in the top bar's markup until a tool's row takes them
+    expect(EDITOR_TABS.find((t) => t.id === 'artwork').panelHosts).toBeUndefined();
+    expect(EDITOR_TOOL_BAR.artwork.draw.map((i) => i.host)).toEqual(['editorStrokeGroup', 'editorColorGroup', 'editorFillModeGroup']);
+    for (const g of ['editorStrokeGroup', 'editorColorGroup', 'editorFillModeGroup']) expect(doc.getElementById(g)?.closest('#editorToolbarTop'), g).not.toBeNull();
+    expect(doc.getElementById('artGeneralBody')).toBeNull();
   });
   it('modes: the `tool<Mode>` convention; the action buttons arm none', () => {
     expect(modeOfToolButton('toolShapeLattice')).toBe('shapeLattice');
@@ -78,10 +79,9 @@ describe('Art tabs: behaviour', () => {
     setArtTab('edit'); setArtTab('draw');
     expect(clicks.at(-1)).toBe('toolSelect'); // Edit armed Select; Draw then kept the current Rect
   });
-  it('General shows the shared groups host, keeps the permanent tool row, and leaves the tool as it is', () => {
+  it('General keeps the permanent tool row and leaves the tool as it is', () => {
     document.getElementById('artTab_general').click();
     expect(clicks).toEqual([]);
-    expect(document.getElementById('artGeneralBody').style.display).toBe('');
     expect(document.getElementById('editorToolbarArtwork').style.display).toBe('flex');
   });
   // 2026-11-23 (measured with a real tap, desktop and phone): Draw with Line armed, ONE tap on the Lattice tab landed back on

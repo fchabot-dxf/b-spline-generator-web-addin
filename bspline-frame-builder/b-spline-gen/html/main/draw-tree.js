@@ -1,8 +1,8 @@
 /**
  * main/draw-tree.js -- the Draw tab's drawer as ONE collapse tree (redesign phase 4, Fred's mockups
- * shots/seatD/redesign/mock_Draw_*; advisor 2026-10-15: no "Pen" branch -- the pen's look IS General's stroke / colour
- * / fill; no "Edit" branch -- the selection bar covers it). The branches' content is moved in by the Draw tab's declared
- * `panelHosts` (main/editor-tabs.js), so a tab switch carries it out and back like the Brick tab's Layers.
+ * shots/seatD/redesign/mock_Draw_*; advisor 2026-10-15: no "Edit" branch -- the selection bar covers it). The pen's look
+ * (stroke / colour / fill), the font and Expand are the context bar's (main/editor-tool-bar.js); the tree holds the layer's
+ * own settings (Stamp).
  */
 import { createDrawerTree } from './drawer-tree.js';
 import { stampTarget, stampSummaryText } from '../core/stamp/target.js';
@@ -11,21 +11,19 @@ import { STAMP_TARGET_CHANGED } from './stamp/summary.js';
 export const drawBranchDomId = (id) => `drawBranch_${id}`;
 /** A tool branch arms an editor MODE (its tool button: `tool<Mode>`). */
 export const DRAW_DRAWER_TREE = Object.freeze([
-  Object.freeze({ id: 'general', title: 'General', summary: 'stroke · colour · fill', hosts: Object.freeze(['artGeneralBody']) }),
-  Object.freeze({ id: 'text', title: 'Text', summary: 'font · symbols', hosts: Object.freeze(['artTextBody']), armsTool: 'text' }),
-  Object.freeze({ id: 'expand', title: 'Expand', summary: 'offset a shape', hosts: Object.freeze(['artExpandBody']), armsTool: 'expand' }),
+  // (the General / Text / Expand branches retired with the context bar, owner 2026-11-27: the stroke, colour, style, font
+  // and expand settings are TOOL settings -- the active tool's row at the top of the canvas, main/editor-tool-bar.js)
   // (the Layers branch retired with the editor layer stack, Fred 2026-11-24: the stack above the panel lists the layers)
   // DRAW-STAMP U (Fred 2026-11-22: edited in the editor, summarised in the sidebar): the SELECTED layer's stamp settings
   // (#drawStampBody: moved from the sidebar VECTOR STAMPING panel); its summary = the sidebar row's own line
   Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze(['drawStampBody']),
     summary: () => { const t = stampTarget(); return t.layer ? stampSummaryText(t) : ''; } }),
 ]);
-// the first look: General open, and the Layers (Fred, phone: "We don't see layers" -- the Brick tree opens them too;
-// the layers matrix row reads the list on screen when the Draw tab is back); Text / Expand open with their tool
-export const DRAW_TREE_DEFAULT_OPEN = Object.freeze(['general']);
+// the first look: every branch folded as before (General, the one open at first, is the context bar now)
+export const DRAW_TREE_DEFAULT_OPEN = Object.freeze([]);
 export const DRAW_TREE_OPEN_KEY = 'bspline.draw.drawerOpen';
-// Fred 2026-11-24 (tool-row duplicates; the Brick and Height trees' rule): `armedOnly` -- the Text / Expand cards show
-// only while their tool is armed (the tool rail is the picker); General, Layers, Stamp unchanged
+// Fred 2026-11-24 (tool-row duplicates; the Brick and Height trees' rule): `armedOnly` -- a tool card shows only while its
+// tool is armed (the tool rail is the picker)
 export const DRAW_TREE = createDrawerTree({ id: 'drawDrawerTree', branches: DRAW_DRAWER_TREE, openKey: DRAW_TREE_OPEN_KEY,
   defaultOpen: DRAW_TREE_DEFAULT_OPEN, branchDomId: drawBranchDomId, armedOnly: true });
 

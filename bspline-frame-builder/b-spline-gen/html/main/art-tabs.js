@@ -5,8 +5,8 @@
  *
  * ART_TABS declares which Artwork tool button sits in which tab. The buttons are the existing ones (#editorToolbarArtwork
  * moved from the left rail into the panel head): their ids, keyboard shortcuts and active highlight are untouched; a tab
- * only shows its own. General is not a tool: it holds the shared stroke / colour / style groups (EDITOR_TABS artwork
- * `panelHosts` move them into #artGeneralBody) and leaves the tool as it is.
+ * only shows its own. General is not a tool: it leaves the tool as it is (the shared stroke / colour / style groups it
+ * held are the context bar's, main/editor-tool-bar.js).
  *
  * A tab pick arms the tab's first tool unless the current mode already belongs to it; a mode change from anywhere else
  * (a shortcut, Esc = Select) brings its tab up.
@@ -23,8 +23,8 @@ export const ART_TABS = Object.freeze([
   Object.freeze({ id: 'edit', label: 'Edit', tools: Object.freeze(['toolSelect', 'toolNode', 'toolCut', 'toolStripe', 'toolFit', 'toolDelete', 'toolResetTransform', 'toolFlattenTransform']) }),
 ]);
 export const ART_DEFAULT_TAB = 'edit';
-/** The groups General holds (moved there by EDITOR_TABS artwork `panelHosts`, home = the top bar). */
-export const ART_GENERAL_GROUPS = Object.freeze(['editorStrokeGroup', 'editorColorGroup', 'editorFillModeGroup']);
+// (ART_GENERAL_GROUPS retired: the stroke / colour / style groups are the drawing tools' row of the context bar,
+// main/editor-tool-bar.js EDITOR_TOOL_BAR.artwork)
 
 /** Pure: the editor mode a tool button arms (the editor's own `tool<Mode>` id convention, editor-ui.js setMode); the
  *  action buttons (Fit, Delete, the transforms) arm none. */
