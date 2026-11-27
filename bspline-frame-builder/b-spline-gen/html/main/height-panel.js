@@ -95,7 +95,7 @@ export const HEIGHT_CONTROLS = Object.freeze([
   { id: 'invert', group: 'brush', target: 'brush', kind: 'choice', path: ['invert'], label: 'Paint', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     options: [[false, 'Normal', 'Paint as set'], [true, '⇅ Inverted', 'Paint the opposite: Raise <-> Lower, a Set height T paints -T (Alt flips it for one stroke)']] },
   // Fred 2026-11-22 (slice 3b): ONE Brush tool on the rail; its modes are this row in the panel, and erase is the Eraser tool
-  { id: 'mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
+  { id: 'mode', short: 'Mode', group: 'brush', target: 'brush', kind: 'choice', path: ['mode'], label: 'Mode', showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser',
     options: BRUSH_MODES.filter((m) => m !== 'erase').map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
   // Fred 2026-11-22 (slice 3c, "we just pick square or round and pick separately a falloff profile"): no presets -- the TIP
   // row, then the FALLOFF row, each option with its own small drawn icon (an option's 4th entry, read by renderControl)
@@ -113,9 +113,9 @@ export const HEIGHT_CONTROLS = Object.freeze([
   // slice 5 (Fred 2026-11-23): its values run -1..1 (valueRange; the part below 0 paints the opposite: a moat round a bump).
   // A curve control without valueRange keeps the box's 0..1 (the gradient's and the feather's curves).
   { id: 'customCurve', group: 'brushShape', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', valueRange: [-1, 1], showWhen: (brush) => brush.falloff === 'custom' },
-  { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
+  { id: 'sizeIn', short: 'Size', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brushShape', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
-  { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
+  { id: 'opacity', short: 'Opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
   { id: 'flow', group: 'brushShape', target: 'brush', kind: 'slider', path: ['flow'], label: 'Flow', step: 0.01, range: () => [0, 1], note: 'how fast a stroke builds up to its opacity' },
   { id: 'spacing', group: 'brush', target: 'brush', kind: 'slider', path: ['spacing'], label: 'Spacing (x size)', step: 0.01, range: () => [0.01, 1] },
   { id: 'amountIn', group: 'brushShape', target: 'brush', kind: 'slider', path: ['amountIn'], label: 'Amount (in, raise / lower)', step: 0.005, range: () => [0, 1], showWhen: (b, p, ctx) => !ctx || ctx.tool !== 'eraser' },
@@ -237,30 +237,30 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
     showWhen: (b, p, ctx) => !!ctx && !!ctx.layer && ctx.layer.kind === 'image' },
   { id: 'imageDarkIn', group: 'layers', target: 'layer', kind: 'slider', path: ['mapping', 'darkIn'], label: 'Black depth (in)', step: 0.005, range: () => [0, 2],
     showWhen: (b, p, ctx) => !!ctx && !!ctx.layer && ctx.layer.kind === 'image' && ctx.layer.mapping && ctx.layer.mapping.zero === 'mid' },
-  { id: 'gradType', group: 'gradient', target: 'gradient', kind: 'choice', path: ['type'], label: 'Gradient',
+  { id: 'gradType', short: 'Type', group: 'gradient', target: 'gradient', kind: 'choice', path: ['type'], label: 'Gradient',
     options: [['linear', 'Linear', 'Along the drag'], ['radial', 'Radial', 'Round the start point; the drag length is the radius']] },
-  { id: 'gradStartIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['startIn'], label: 'Start height (in)', step: 0.001, range: () => [-1, 1.5],
+  { id: 'gradStartIn', short: 'Start', group: 'gradient', target: 'gradient', kind: 'slider', path: ['startIn'], label: 'Start height (in)', step: 0.001, range: () => [-1, 1.5],
     note: 'exact at the start point; type any value' },
-  { id: 'gradEndIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['endIn'], label: 'End height (in)', step: 0.001, range: () => [-1, 1.5] },
+  { id: 'gradEndIn', short: 'End', group: 'gradient', target: 'gradient', kind: 'slider', path: ['endIn'], label: 'End height (in)', step: 0.001, range: () => [-1, 1.5] },
   { id: 'gradFalloff', group: 'gradientCurve', target: 'gradient', kind: 'choice', picker: true, path: ['falloff'], label: 'Curve',
     options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title, falloffIcon(k)]),
     alsoSet: (prev, next, st) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(st.customCurve, BRUSH_DEFAULTS.customCurve)
       ? { customCurve: curvePointsFromProfile(prev, 6) } : null) },
   { id: 'gradCurve', group: 'gradientCurve', target: 'gradient', kind: 'curve', path: ['customCurve'], label: 'Custom curve (start -> end)',
     showWhen: (b, p, ctx) => !!ctx && ctx.tools.gradient.falloff === 'custom' },
-  { id: 'gradOpacity', group: 'gradient', target: 'gradient', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
-  { id: 'gradMode', group: 'gradient', target: 'gradient', kind: 'choice', path: ['mode'], label: 'Mode',
+  { id: 'gradOpacity', short: 'Opacity', group: 'gradient', target: 'gradient', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
+  { id: 'gradMode', short: 'Mode', group: 'gradient', target: 'gradient', kind: 'choice', path: ['mode'], label: 'Mode',
     options: [['normal', 'Normal', 'The gradient covers what is there by the opacity'], ['add', 'Add', 'Adds the gradient'], ['max', 'Max', 'Only where the gradient is higher']] },
-  { id: 'fillHeightIn', group: 'fill', target: 'fill', kind: 'slider', path: ['heightIn'], label: 'Fill height (in)', step: 0.001, range: () => [-1, 1.5],
+  { id: 'fillHeightIn', short: 'Height', group: 'fill', target: 'fill', kind: 'slider', path: ['heightIn'], label: 'Fill height (in)', step: 0.001, range: () => [-1, 1.5],
     note: '0 = transparent (no effect on the board); type any value' },
-  { id: 'fillOpacity', group: 'fill', target: 'fill', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
+  { id: 'fillOpacity', short: 'Opacity', group: 'fill', target: 'fill', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
   { id: 'importAsNew', group: 'file', target: 'file', kind: 'check', path: ['asNewPatch'], label: 'Import as a new patch (sized to the image)' },
   // slice 4 (Fred 2026-11-23): the WAND's settings (TOOL_DEFAULTS.wand)
-  { id: 'wandToleranceIn', group: 'wand', target: 'wand', kind: 'slider', path: ['toleranceIn'], label: 'Tolerance (in)', step: 0.001, range: () => [0, 0.5],
+  { id: 'wandToleranceIn', short: 'Tolerance', group: 'wand', target: 'wand', kind: 'slider', path: ['toleranceIn'], label: 'Tolerance (in)', step: 0.001, range: () => [0, 0.5],
     note: 'heights within this of the tapped one' },
-  { id: 'wandContiguous', group: 'wand', target: 'wand', kind: 'check', path: ['contiguous'], label: 'Contiguous (only the connected area)' },
+  { id: 'wandContiguous', short: 'Contiguous', group: 'wand', target: 'wand', kind: 'check', path: ['contiguous'], label: 'Contiguous (only the connected area)' },
   // slice 5: ONE Sample setting for the wand and the eyedropper (was the wand's own 'wandSample' in slice 4)
-  { id: 'sampleFrom', group: 'sample', target: 'sample', kind: 'choice', path: ['from'], label: 'Sample',
+  { id: 'sampleFrom', short: 'Sample', group: 'sample', target: 'sample', kind: 'choice', path: ['from'], label: 'Sample',
     options: [['view', 'As the view', 'The Show choice: this layer, or all the patch\'s layers'], ['layer', 'Active layer', 'The heights of the layer the tools edit'],
       ['patch', 'All layers', 'This patch\'s layers together (its composite)'], ['board', 'Whole board', 'The board as last built (terrain, reliefs, every layer), on this patch']] },
   // slice 5: the canvas look (core/height/shade.js HEIGHT_LOOKS)
@@ -281,13 +281,13 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'greyZero', group: 'palette', target: 'greyMap', field: 'greyZero', kind: 'choice', path: ['zero'], label: 'Grey system',
     options: [['black', 'Black = 0', 'Black is no change; white raises by the Range (a height below 0 shows black)'], ['mid', 'Mid-grey = 0', 'Mid-grey is no change; white raises, black lowers by the Range']] },
   // owner 2026-11-27: the Marquee's shape (the rail button's icon follows it)
-  { id: 'selShape', group: 'select', target: 'select', kind: 'choice', path: ['shape'], label: 'Marquee shape',
+  { id: 'selShape', short: 'Shape', group: 'select', target: 'select', kind: 'choice', path: ['shape'], label: 'Marquee shape',
     options: [['rect', 'Rectangle', 'Drag a rectangle'], ['ellipse', 'Ellipse', 'Drag an ellipse']],
     showWhen: (b, p, ctx) => !!ctx && ctx.tool === 'marquee' },
   // slice 4: how a new selection meets the current one -- the touch way to Shift (add) / Alt (subtract)
-  { id: 'selCombine', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
+  { id: 'selCombine', short: 'New', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
     options: Object.entries(SELECTION_COMBINE).map(([k, s]) => [k, s.label, s.title]) },
-  { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
+  { id: 'featherIn', short: 'Feather', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
   // slice 4 (Fred 2026-11-23): the fade's PROFILE, inward from the outline (Smooth = the slice-2 soft blur, unchanged)
   { id: 'featherProfile', group: 'feather', target: 'select', kind: 'choice', picker: true, path: ['featherProfile'], label: 'Feather profile',
@@ -340,7 +340,7 @@ function controlText(id, label = '') {
   return '';
 }
 /** A tool branch's summary: the first two settings of its options-bar row (HEIGHT_OPTIONS_BAR), e.g. 'Size 0.5 · Raise'. */
-const toolSummary = (toolId) => (HEIGHT_OPTIONS_BAR[toolId] || []).filter((i) => i.control).map((i) => controlText(i.control, i.label)).filter(Boolean).slice(0, 2).join(' · ');
+const toolSummary = (toolId) => (HEIGHT_OPTIONS_BAR[toolId] || []).filter((i) => i.control).map((i) => controlText(i.control, i.label || allControls().find((c) => c.id === i.control)?.short)).filter(Boolean).slice(0, 2).join(' · ');
 const layerCount = (rec) => { const n = patchLayers(rec).length; return `${n} layer${n === 1 ? '' : 's'}`; };
 export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
   Object.freeze({ id: 'patch', title: 'Patch & layers', hosts: Object.freeze(['heightPatchActions', groupDom('layers')]),
@@ -1806,7 +1806,7 @@ const BAR_PICTOS = Object.freeze({
   selShape: (k) => ({ rect: TOOL_BAR_ICONS.shapeRect, ellipse: TOOL_BAR_ICONS.shapeEllipse })[k] || null,
 });
 function renderBarControl(c, item, tool) {
-  const label = item.label || c.label;
+  const label = item.label || c.short || c.label; // a control's `short`: its name on the context bar (declared once, on the control)
   // `tool-bar-label`: a phone hides it (styles/editor.css), the control's title / aria-label carry the word
   const wrap = el('div', { class: 'height-bar-item', 'data-height-control-bar': c.id, title: label, style: 'display:flex; align-items:center; gap:5px;' }, [el('span', { class: 'tool-bar-label', text: label, style: BAR_LABEL_STYLE })]);
   if (c.kind === 'slider') {

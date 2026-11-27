@@ -93,6 +93,28 @@ describe('the Brick rows', () => {
     expect(openToolBarMore().contains($('stripeThree'))).toBe(true);
     expect($('brickStripeSection').contains($('stripeBrickStyles'))).toBe(true);
   });
+  it('the Grid (the brushes\' drawing aid) shows with Brush / Raised only, not with Wall / Frame', () => {
+    $('brickTool_wall').click();
+    expect($('editorGridGroup').style.display).toBe('none');
+    $('brickTool_brush').click();
+    expect($('editorGridGroup').style.display).toBe('flex');
+    $('brickTool_raisedBrush').click();
+    expect($('editorGridGroup').style.display).toBe('flex');
+    $('brickTool_frame').click();
+    expect($('editorGridGroup').style.display).toBe('none');
+  });
+  it('a section with no control on screen hides (Window surround while the frame has no inset window)', async () => {
+    const { syncBrickSectionVisibility, sectionDomId } = await import('../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js');
+    $('brickTool_frame').click();
+    const rows = $('brickSurroundRows');
+    rows.style.display = 'none'; // what brick-panel does without an inset window: only the hint is left
+    syncBrickSectionVisibility();
+    expect($(sectionDomId('frame', 'surround')).style.display).toBe('none');
+    rows.style.display = '';
+    $('brickSurroundPresetList').innerHTML = '<button type="button">x</button>';
+    syncBrickSectionVisibility();
+    expect($(sectionDomId('frame', 'surround')).style.display).toBe('');
+  });
   it('no SHARED_ROWS node is hosted by the bar (they stay in the element sections)', () => {
     const hosted = new Set(toolBarHostIds());
     for (const r of SHARED_ROWS) expect(hosted.has(r), r).toBe(false);

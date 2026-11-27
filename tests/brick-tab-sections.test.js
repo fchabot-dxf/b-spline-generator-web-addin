@@ -74,7 +74,7 @@ describe('the declaration', () => {
   it('the accent sections are titled "Accent relief" (Fred); item 9\'s Frame Crumble + Window surround are Frame sections', () => {
     for (const tab of ['wall', 'brush']) expect(BRICK_TAB_SECTIONS[tab].sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
     const frame = BRICK_TAB_SECTIONS.frame.sections;
-    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Colour', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Size & joint']); // + Colour (2026-10-15) // Corners -> Fan centre (2026-10-11)
+    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Colour', 'Bands', 'Fan centre', 'Height', 'Frame crumble', 'Window surround', 'Size & joint']); // + Colour (2026-10-15) // Corners -> Fan centre (2026-10-11) // 'Frame crumble': General has 'Crumble' (2026-11-27)
     expect(frame.find((s) => s.id === 'crumble').kind).toBe(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').kind);
   });
 });

@@ -78,7 +78,9 @@ describe('the Height rows', () => {
     for (const id of ['tip', 'falloff', 'hardness', 'flow', 'amountIn', 'targetIn']) expect(inPanel(document.querySelector(`[data-height-control="${id}"]`)), id).toBe(true);
     expect(r.querySelector('[data-height-choice^="tip:"], [data-height-choice^="falloff:"]')).toBeNull();
     expect(sheet.querySelector('[data-height-choice="invert:true"]')).toBeTruthy();
-    expect(sheet.querySelector('[data-height-control-bar="greyZero"]')).toBeTruthy();
+    expect(r.querySelector('[data-height-control-bar="greyZero"]')).toBeNull(); // the patch's grey system: the panel's palette
+    // one name per setting, declared on the control (`short`): the bar's Size is the brush's 'Size'
+    expect(r.querySelector('[data-height-control-bar="sizeIn"] .tool-bar-label').textContent).toBe('Size');
   });
   it('only the active tool\'s row shows; a tool switch swaps it', () => {
     shown('brush');

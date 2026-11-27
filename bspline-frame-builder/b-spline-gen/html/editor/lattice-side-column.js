@@ -127,9 +127,14 @@ function _readSwatchRgb(swatchEl) {
  *  panel, or mounted into the side column), so colour tracking survives
  *  the AMEND 2 mount/unmount moves for free. */
 function _applyKindColor(bodyEl, kind, { r, g, b }) {
-  bodyEl.style.setProperty(`--kind-${kind}`, `rgb(${r}, ${g}, ${b})`);
-  bodyEl.style.setProperty(`--kind-${kind}-tint`, `rgba(${r}, ${g}, ${b}, 0.12)`);
+  // + the body's add-kind icon row, which the context bar hosts OUTSIDE the body (its icons read the same properties)
+  const row = el(KIND_ROW_OF_BODY[bodyEl.id]);
+  for (const node of row ? [bodyEl, row] : [bodyEl]) {
+    node.style.setProperty(`--kind-${kind}`, `rgb(${r}, ${g}, ${b})`);
+    node.style.setProperty(`--kind-${kind}-tint`, `rgba(${r}, ${g}, ${b}, 0.12)`);
+  }
 }
+const _colorSyncs = []; // each swatch's sync (re-run once the icon rows exist)
 
 /** Live sync (Fred: the bar colour "follows the Colors row live") — a
  *  MutationObserver on each swatch's own `style` attribute, since
@@ -150,6 +155,7 @@ function _wireLiveColors(panelId, bodyEl) {
     if (!swatchEl) continue;
     const sync = () => _applyKindColor(bodyEl, kind, _readSwatchRgb(swatchEl));
     sync();
+    _colorSyncs.push(sync);
     new MutationObserver(sync).observe(swatchEl, { attributes: true, attributeFilter: ['style'] });
   }
 }
@@ -528,6 +534,7 @@ function _buildLatticeIconSVG(kind) {
 const _iconRowSetters = [];
 /** The add-kind rows' ids, per lattice tool (the context bar hosts them: main/editor-tool-bar.js). */
 export const LATTICE_KIND_ROW_IDS = Object.freeze({ lattice: 'editorLatticeKindRow', shapeLattice: 'editorShapeLatticeKindRow' });
+const KIND_ROW_OF_BODY = Object.freeze({ editorLatticePanelBody: LATTICE_KIND_ROW_IDS.lattice, editorShapeLatticePanelBody: LATTICE_KIND_ROW_IDS.shapeLattice });
 
 function _buildLatticeIconRow(editor, bodyEl, kinds, rowId) {
   if (!bodyEl) return;
@@ -589,6 +596,7 @@ function _buildLatticeIconRow(editor, bodyEl, kinds, rowId) {
 // Init
 // =========================================================================
 export function initLatticeSideColumn(editor) {
+  _colorSyncs.length = 0; // this init's swatches only
   // Hide Fill seed BEFORE any section gets wired collapsible below —
   // _wireCollapse appends a chevron INTO the label, which would corrupt
   // this title-text match (`label.textContent` stops being exactly
@@ -612,6 +620,7 @@ export function initLatticeSideColumn(editor) {
   // Rail/Tie/Node presses on empty space to latticeHandler.
   _buildLatticeIconRow(editor, latticeBody, ['select', 'rail', 'tie', 'node'], LATTICE_KIND_ROW_IDS.lattice);
   _buildLatticeIconRow(editor, shapeBody, ['select', 'rail', 'tie', 'node'], LATTICE_KIND_ROW_IDS.shapeLattice);
+  for (const sync of _colorSyncs) sync(); // the rows exist now: their icons take the live kind colours too
 
   let lastMode = null;
   document.addEventListener('editorModeChanged', (e) => {

@@ -75,8 +75,8 @@ const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE));
 // the Height tab's selection pieces (main/height-panel.js): compact controls built per row (pictograms where an honest icon
 // exists), and the buttons built once
 const SEL = Object.freeze({
-  combine: Object.freeze({ control: 'selCombine', label: 'New', picto: true }), feather: Object.freeze({ control: 'featherIn', label: 'Feather', step: 0.01 }),
-  shape: Object.freeze({ control: 'selShape', label: 'Shape', picto: true }), move: Object.freeze({ widget: 'moveActions' }),
+  combine: Object.freeze({ control: 'selCombine', picto: true }), feather: Object.freeze({ control: 'featherIn', step: 0.01 }),
+  shape: Object.freeze({ control: 'selShape', picto: true }), move: Object.freeze({ widget: 'moveActions' }),
 });
 // the brush's own '⋯' (the Brush and the Eraser): its small, rarely used settings (the panel's controls, hosted). Too big for
 // the bar's six (owner 2026-11-27: "if it's too big we'll keep them in the sidebar"): Hardness, Flow, Amount, Set height stay in
@@ -127,26 +127,37 @@ export const EDITOR_TOOL_BAR = Object.freeze({
   height: Object.freeze({
     // the brush (owner 2026-11-27): Size, Mode (its ▲ ▼ ＝ ≈ glyphs), the Set grey, Opacity on the bar; Invert, the grey system
     // and the small rarely used ones in its '⋯'; Hardness, Flow, Amount, Set height and the Tip / Falloff pickers: the panel's
-    brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode', picto: true }, { widget: 'greyChip', label: 'Set' }, { control: 'opacity', label: 'Opacity', step: 0.05 },
-      more(h('heightCtl_invert'), { control: 'greyZero', label: 'Grey' }, ...BRUSH_MORE)),
-    eraser: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'opacity', label: 'Opacity', step: 0.05 }, more(...BRUSH_MORE)),
+    brush: row({ control: 'sizeIn', step: 0.05 }, { control: 'mode', picto: true }, { widget: 'greyChip', label: 'Set' }, { control: 'opacity', step: 0.05 },
+      more(h('heightCtl_invert'), ...BRUSH_MORE)),
+    eraser: row({ control: 'sizeIn', step: 0.05 }, { control: 'opacity', step: 0.05 }, more(...BRUSH_MORE)),
     // the selection tools (marquee-move, owner 2026-11-27: "those extra features are better in a contextual toolbar"): each
     // tool's row holds the selection's settings and buttons -- the most used on the bar, the rest in its '⋯'. The buttons
     // (Feather, Select all, Invert, Clear, From a Draw shape) are built ONCE (main/height-panel.js) and hosted by every row. The
     // Feather PROFILE (a visual picker) and its curve are the side panel's 'Feather profile' section (owner 2026-11-27)
     marquee: row(SEL.shape, SEL.combine, SEL.feather, SEL_BTN.clear, more(SEL_BTN.invert, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
     selectLasso: row(SEL.combine, SEL.feather, SEL_BTN.invert, SEL_BTN.clear, more(SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
-    wand: row({ control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }, SEL.combine, SEL.feather,
-      more({ control: 'sampleFrom', label: 'Sample' }, SEL_BTN.invert, SEL_BTN.clear, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
-    eyedropper: row({ control: 'sampleFrom', label: 'Sample' }, { widget: 'greyChip', label: 'Picked' }, { control: 'greyZero', label: 'Grey' }),
+    wand: row({ control: 'wandToleranceIn', step: 0.005 }, { control: 'wandContiguous' }, SEL.combine, SEL.feather,
+      more({ control: 'sampleFrom' }, SEL_BTN.invert, SEL_BTN.clear, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+    // (the grey system, greyZero, is the PATCH's setting -- the panel's grey palette section, not the bar: advisor audit 2026-11-27)
+    eyedropper: row({ control: 'sampleFrom' }, { widget: 'greyChip', label: 'Picked' }),
     // the Select tool (id 'move', marquee-move)
     move: row({ widget: 'moveActions', hint: 'Drag to move the selection (none: the whole layer)' }, SEL_BTN.all, SEL_BTN.invert, SEL_BTN.clear,
       more(SEL.combine, SEL.feather, SEL_BTN.feather, SEL_BTN.fromShape)),
-    gradient: row({ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }, { control: 'gradType', label: 'Type' }, { control: 'gradMode', label: 'Mode' },
-      { control: 'gradOpacity', label: 'Opacity', step: 0.05 }), // its Curve picker (visual) and the custom curve: the side panel's
-    fill: row({ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }, h('heightFillApply')),
+    gradient: row({ control: 'gradStartIn', step: 0.01 }, { control: 'gradEndIn', step: 0.01 }, { control: 'gradType' }, { control: 'gradMode' },
+      { control: 'gradOpacity', step: 0.05 }), // its Curve picker (visual) and the custom curve: the side panel's
+    fill: row({ control: 'fillHeightIn', step: 0.01 }, { control: 'fillOpacity', step: 0.05 }, h('heightFillApply')),
   }),
 });
+/** The drawing AIDS beside the bar in the top strip (#editorToolbarTop): per tab, which tools show each ('*': every tool).
+ *  The Grid (show / snap / size) is the drawing tools' aid -- on the Brick tab only for the brushes that draw strokes
+ *  (advisor audit 2026-11-27: it showed for Wall / Frame / Scissors too). The strip itself hides when neither the bar nor an
+ *  aid has anything for the active tool (the Wood frame and STL tabs: no blank band). */
+export const TOOL_BAR_AIDS = Object.freeze({
+  artwork: Object.freeze({ editorGridGroup: '*' }),
+  lattice: Object.freeze({ editorGridGroup: '*' }),
+  brick: Object.freeze({ editorGridGroup: Object.freeze(['brush', 'raisedBrush']) }),
+});
+const aidShows = (tools, tool) => tools === '*' || (tool != null && tools.includes(String(tool).split('.')[0]));
 /** Appended to every row of a tab: the Height tab's stock line (main/height-panel.js heightStockLines). */
 export const TOOL_BAR_END = Object.freeze({ height: row({ widget: 'stock' }) });
 
@@ -324,6 +335,18 @@ export function syncToolBar() {
   }
   const group = $(TOOL_BAR_IDS.group);
   if (group) { group.hidden = !shown; group.style.display = shown ? 'flex' : 'none'; }
+  // the aids beside the bar, per tool (TOOL_BAR_AIDS; '*' = left to the tab's own rules), then the strip itself
+  const tt = _tabs[tab];
+  const rawTool = tt && tt.tool ? tt.tool() : editorMode();
+  let aids = false;
+  for (const [gid, tools] of Object.entries(TOOL_BAR_AIDS[tab] || {})) {
+    const on = aidShows(tools, rawTool);
+    aids = aids || on;
+    const n = $(gid);
+    if (n && tools !== '*') n.style.display = on ? 'flex' : 'none';
+  }
+  const top = group ? group.parentElement : null;
+  if (top && top.id === 'editorToolbarTop') top.style.display = shown || aids ? 'flex' : 'none';
   syncToolBarScrollHint();
 }
 

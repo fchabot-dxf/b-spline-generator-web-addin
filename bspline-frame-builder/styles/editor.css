@@ -2495,4 +2495,9 @@
 .tool-bar-row #stripeColorSwatches > label { flex-direction: row !important; gap: 4px !important; }/* the bar shares the top row with Grid / the touch actions: it shrinks (and scrolls sideways) rather than pushing them to a
    second line (measured at 390 px: a wide Stripe row wrapped Grid under it, the top bar 89 px instead of 38) */
 #editorToolbarTop { flex-wrap: nowrap !important; }
-#editorToolbarTop > #editorToolBarGroup { flex: 0 1 auto !important; flex-shrink: 1 !important; min-width: 0 !important; }
+#editorToolbarTop > #editorToolBarGroup { flex: 0 1 auto !important; flex-shrink: 1 !important; min-width: 0 !important; }/* ONE strip height on every tab and tool (advisor audit 2026-11-27: the strip's height moved the canvas -- Lattice 66 px,
+   the Height tab 45 vs 38 on a phone): a fixed height per pointer, the bar one row inside it (it scrolls, never wraps) */
+#editorToolbarTop { height: 38px !important; min-height: 38px !important; box-sizing: border-box; padding-top: 0 !important; padding-bottom: 0 !important; overflow-y: hidden !important; }
+@media (max-width: 767px), (pointer: coarse) {
+    #editorToolbarTop { height: 48px !important; min-height: 48px !important; }
+}

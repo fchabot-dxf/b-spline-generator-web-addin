@@ -43,7 +43,8 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('fanCentre', 'Fan centre', 'brick-fan-centre', ['brickFrameFanCentreRow'], { titleOf: 'brickFrameFanCentreLabel' }), // T86 item 16e
     sec('height', 'Height', 'brick-height', ['brickLevelRow_frame', 'brickEdgeTaperRow']),
     // item 9 (Fred: the frame crumbles by the wall's rule; the inset window's brick surround)
-    sec('crumble', 'Crumble', 'brick-crumble', ['brickFrameCrumbleRow']),
+    // (titled for what it is: General has the board-wide 'Crumble' -- advisor audit 2026-11-27, two sections one name)
+    sec('crumble', 'Frame crumble', 'brick-crumble', ['brickFrameCrumbleRow']),
     sec('surround', 'Window surround', 'brick-surround', ['brickWindowSurroundRow'], { titleOf: 'brickSurroundLabel' }),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
@@ -186,7 +187,16 @@ function _rowShown(el) {
   return kids.length === 0 || kids.some((k) => !_isHidden(k));
 }
 
-/** Each section shows only in its own tab (General's always: its own branch), and only while at least one of its rows shows. */
+/** A section's body holds at least one control on screen (advisor audit 2026-11-27: Window surround showed with a hint and
+ *  no control while the frame has no inset window -- a section with nothing to set hides). */
+function _controlShown(body) {
+  return [...body.querySelectorAll('button, input:not([type="hidden"]), select, textarea')].some((c) => {
+    for (let n = c; n && n !== body; n = n.parentElement) if (n.hidden || _isHidden(n)) return false;
+    return true;
+  });
+}
+/** Each section shows only in its own tab (General's always: its own branch), and only while at least one of its rows shows
+ *  a control. */
 export function syncBrickSectionVisibility(doc = _state.doc) {
   if (!doc) return;
   _state.syncing = true;
@@ -197,7 +207,7 @@ export function syncBrickSectionVisibility(doc = _state.doc) {
         if (!shell) continue;
         const body = shell.querySelector(':scope > .panel-body');
         // phase 4: General's sections live in the General branch (its fold hides them), shown whatever tool is armed
-        const show = (tab === _state.active || tab === 'general') && [...body.children].some(_rowShown);
+        const show = (tab === _state.active || tab === 'general') && [...body.children].some(_rowShown) && _controlShown(body);
         const want = show ? '' : 'none';
         if (shell.style.display !== want) shell.style.display = want;
       }

@@ -119,6 +119,8 @@ describe('the bar in the real editor', () => {
     setMode('lattice');
     expect(inBar(LATTICE_KIND_ROW_IDS.lattice)).toBe(true);
     expect($(LATTICE_KIND_ROW_IDS.lattice).querySelectorAll('button.tool-btn').length).toBe(4);
+    // out of its panel body, the row keeps the live kind colours its icons draw with (lattice-side-column.js _applyKindColor)
+    expect($(LATTICE_KIND_ROW_IDS.lattice).style.getPropertyValue('--kind-rails')).toMatch(/^rgb\(/);
     expect(inBar(PIECE_COLOUR_IDS.editorLatticePanelBody)).toBe(true);
     const width = $('editorLatticePanelBody').querySelector('.lattice-piece-width-row');
     expect(width && !activeRow().contains(width)).toBe(true);
@@ -153,9 +155,17 @@ describe('the bar in the real editor', () => {
     expect(css).toMatch(/#editorToolBarGroup\[data-scroll-more~="right"\]::after/);
     expect(css).toMatch(/@media \(max-width: 767px\) \{\s*#editorToolBar \.tool-bar-label/); // no text labels on a phone
   });
-  it('a tab without rows (the Wood frame) shows no bar and parks every hosted group', () => {
+  it('a tab without rows (the Wood frame) shows no bar, no blank strip, and parks every hosted group', () => {
+    expect($('editorToolbarTop').style.display).toBe('flex');
     setEditorTab('frame');
     expect($('editorToolBarGroup').hidden).toBe(true);
+    expect($('editorToolbarTop').style.display).toBe('none'); // advisor audit 2026-11-27: no empty 38 px band
+    setEditorTab('stl');
+    expect($('editorToolbarTop').style.display).toBe('none');
+    setEditorTab('artwork');
+    setMode('cut'); // no row, but the Grid (a drawing aid of every Draw tool) keeps the strip
+    expect($('editorToolbarTop').style.display).toBe('flex');
+    setEditorTab('frame');
     for (const id of ['editorStrokeGroup', 'stripeCountRow']) expect($(id).closest('#editorToolBarParked'), id).not.toBeNull();
     syncToolBar();
     expect(activeRow()).toBeNull();
