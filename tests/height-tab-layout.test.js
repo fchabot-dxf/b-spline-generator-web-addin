@@ -77,31 +77,27 @@ describe('the Height panel is a collapse tree', () => {
     for (const t of HEIGHT_TOOLS) {
       setHeightTool(t.id);
       const vis = branches().filter(shown);
+      if (!t.leads.length) { expect(vis.some((b) => b.dataset.branch === t.id), t.id).toBe(false); continue; } // its row is in the options bar
       expect(vis[0].dataset.branch, t.id).toBe(t.id);
       expect(vis[0].classList.contains('open'), t.id).toBe(true);
       expect(groupsIn(vis[0]), t.id).toEqual(t.leads);
       expect(vis.filter((b) => HEIGHT_TOOLS.some((x) => x.id === b.dataset.branch)).length, t.id).toBe(1);
     }
   });
-  it('then the free branches: Patch & layers (open on a first visit), View, Stamp, Selection, Position & size, Heightmap file', () => {
+  it('then the free branches: Patch & layers (open on a first visit), View, Stamp, Position & size, Heightmap file (no Selection section: its controls are in the options bar)', () => {
     const vis = branches().filter(shown);
     expect(vis.map((b) => b.querySelector('.drawer-branch-title').textContent))
-      .toEqual(['Brush', 'Patch & layers', 'View', 'Stamp', 'Selection', 'Position & size', 'Heightmap file']);
+      .toEqual(['Brush', 'Patch & layers', 'View', 'Stamp', 'Position & size', 'Heightmap file']);
     expect(vis[1].classList.contains('open')).toBe(true);
     expect(vis[2].classList.contains('open')).toBe(false);
   });
-  it('the Selection follows a select tool and goes home after; every group sits in exactly one branch', async () => {
+  it('every panel group sits in exactly one branch, except the bar groups (the Selection: its controls are in the options bar, its curve a sheet)', async () => {
     await newHeightPatch();
-    const home = document.getElementById('heightBranch_selection');
-    expect(groupsIn(home)).toEqual(['select']);
-    setHeightTool('wand');
-    expect(groupsIn(home)).toEqual([]);
-    expect(groupsIn(document.getElementById('heightBranch_wand'))).toEqual(['wand', 'sample', 'select']);
-    setHeightTool('brush');
-    expect(groupsIn(home)).toEqual(['select']);
-    const all = [...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS].map((g) => g.id);
+    expect(document.getElementById('heightBranch_selection')).toBeNull();
+    const all = [...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS].filter((g) => !g.bar).map((g) => g.id);
     for (const g of all) expect(document.getElementById(`heightGroup_${g}`).parentElement.closest('.drawer-branch'), g).toBeTruthy();
     expect(branches().flatMap(groupsIn).sort()).toEqual([...all].sort());
+    expect(document.getElementById('heightGroup_select').parentElement.id).toBe('heightFeatherSheet');
   });
   it('each branch header has a short summary (the armed tool: its first options-bar settings)', async () => {
     await newHeightPatch();
@@ -122,14 +118,25 @@ describe('the Height panel is a collapse tree', () => {
     _resetHeightPanelForTests();
     initHeightPanel({});
     const svgOf = (sel) => document.querySelector(sel)?.querySelector('svg');
-    for (const [tool, draw] of [['eraser', 'toolErase'], ['selectRect', 'toolRect'], ['selectEllipse', 'toolCircle']]) {
+    for (const [tool, draw] of [['eraser', 'toolErase'], ['marquee', 'toolRect'], ['move', 'toolSelect']]) {
       expect(HEIGHT_TOOLS.find((t) => t.id === tool).iconFrom, tool).toBe(draw);
       const mine = svgOf(`#editorToolbarHeight [data-height-tool="${tool}"]`), theirs = svgOf(`#${draw}`);
       expect(mine, tool).toBeTruthy();
       expect([...mine.children].map((n) => n.outerHTML.replace(/ stroke-dasharray="[^"]*"/, '')), tool).toEqual([...theirs.children].map((n) => n.outerHTML));
     }
     expect(document.querySelector('#editorToolbarHeight [data-height-tool="eraser"]').textContent).not.toContain('⌫');
-    expect(svgOf('#editorToolbarHeight [data-height-tool="selectRect"]').querySelector('[stroke-dasharray]')).toBeTruthy();
+    expect(svgOf('#editorToolbarHeight [data-height-tool="marquee"]').querySelector('[stroke-dasharray]')).toBeTruthy();
+  });
+  it('the Marquee button wears the icon of its current shape (Rectangle / Ellipse)', () => {
+    document.body.innerHTML = page().getElementById('editorLayersPanel').outerHTML + page().getElementById('editorHeightPanel').outerHTML;
+    _resetHeightPanelForTests();
+    initHeightPanel({});
+    const mine = () => [...document.querySelector('#editorToolbarHeight [data-height-tool="marquee"] svg').children].map((n) => n.outerHTML.replace(/ stroke-dasharray="[^"]*"/, ''));
+    const draw = (id) => [...document.querySelector(`#${id} svg`).children].map((n) => n.outerHTML);
+    expect(mine()).toEqual(draw('toolRect'));
+    setHeightField('selShape', 'ellipse');
+    expect(mine()).toEqual(draw('toolCircle'));
+    expect(document.querySelectorAll('#editorToolbarHeight [data-height-tool="marquee"] svg').length).toBe(1);
   });
   // owner 2026-11-23 ("reuse tool icons where it makes sense"): the Height Brush and the Brick brushes paint -- ONE paintbrush
   // glyph, the shared table's (editor/tool-icons.js), referenced by both (Brick's no longer holds its own)

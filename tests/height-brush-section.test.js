@@ -125,7 +125,7 @@ describe('kept from slice 3b', () => {
       .querySelector(':scope > .drawer-branch-body > [id^="heightGroup_"]:not([hidden])').id;
     expect(first()).toBe('heightGroup_brush');
     await newHeightPatch();
-    for (const [tool, group] of [['eraser', 'heightGroup_brush'], ['move', 'heightGroup_move'], ['selectLasso', 'heightGroup_select'], ['gradient', 'heightGroup_gradient'], ['fill', 'heightGroup_fill']]) {
+    for (const [tool, group] of [['eraser', 'heightGroup_brush'], ['move', 'heightGroup_move'], ['gradient', 'heightGroup_gradient'], ['fill', 'heightGroup_fill']]) {
       setHeightTool(tool);
       expect(first(), tool).toBe(group);
     }
@@ -160,5 +160,45 @@ describe('kept from slice 3b', () => {
     expect(heightBrush().mode).toBe('raise');
     await drag({ pointerType: 'mouse' });
     expect(at(100, 99)).toBeCloseTo(0, 2);
+  });
+});
+
+describe('the selection controls live in a contextual bar row, not a side-panel section', () => {
+  // the page the other tests mount has no options bar: give it one (the palette's #editorHeightOptions) and render into it
+  const barRow = () => document.querySelector('#editorHeightOptions [data-height-bar-tool="__selection"]');
+  const shownRow = () => !!barRow() && barRow().style.display !== 'none';
+  const mountBar = async () => {
+    document.body.innerHTML = '<div id="heightPanelBody"></div><div id="editorToolbarHeight"></div><div id="editorHeightOptions"></div><div id="editorCanvasContainer"></div>';
+
+    _resetHeightPanelForTests();
+    initHeightPanel({});
+  };
+  it('a selection tool or a selection shows the row; a brush with no selection hides it; Invert and Clear work', async () => {
+    await mountBar();
+    const { selectHeightRect, heightSelection } = await import('../bspline-frame-builder/b-spline-gen/html/main/height-panel.js');
+    await newHeightPatch();
+    setHeightTool('brush');
+    expect(shownRow()).toBe(false);                                 // no selection tool, no selection: nothing to show
+    expect(document.getElementById('heightBranch_selection')).toBeNull(); // and no side-panel Selection section at all
+    selectHeightRect([-0.5, -0.5], [0, 0]);
+    expect(shownRow()).toBe(true);                                  // brush + a selection: the row is there
+    expect(barRow().querySelectorAll('[data-height-choice^="selCombine:"]').length).toBe(3);
+    expect(barRow().querySelector('[data-height-bar="featherIn"]')).toBeTruthy();
+    const before = Array.from(heightSelection().mask);
+    document.getElementById('heightSelInvert').click();
+    expect(Array.from(heightSelection().mask)).not.toEqual(before);
+    expect(heightSelection().mask[0]).toBe(1 - before[0]);
+    document.getElementById('heightSelClear').click();
+    expect(heightSelection()).toBeNull();
+    expect(shownRow()).toBe(false);                                 // cleared, brush again: hidden
+    for (const tool of ['marquee', 'selectLasso', 'wand', 'move']) { setHeightTool(tool); expect(shownRow(), tool).toBe(true); } // no selection yet: the tool's own row
+    setHeightTool('eraser');
+    expect(shownRow()).toBe(false);
+  });
+  it('the buttons are 28 px or more on a coarse pointer (the touch floor var), the row scrolls sideways rather than covering the canvas', async () => {
+    await mountBar();
+    await newHeightPatch();
+    setHeightTool('marquee');
+    for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear', 'heightSelAll', 'heightSelFromShape']) expect(document.getElementById(id).style.minHeight, id).toContain('--touch-target-min');
   });
 });

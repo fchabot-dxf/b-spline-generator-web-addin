@@ -17,7 +17,7 @@ import { f16Round, decodedRaster } from '../bspline-frame-builder/b-spline-gen/h
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   initHeightPanel, newHeightPatch, activeHeightLayer, _resetHeightPanelForTests, setHeightTool, selectHeightRect, fillHeight,
-  heightSelection, paintHeightStroke, HEIGHT_TOOLS, heightMoveState,
+  heightSelection, paintHeightStroke, HEIGHT_TOOLS, heightMoveState, setHeightField, heightToolSettings,
 } from '../bspline-frame-builder/b-spline-gen/html/main/height-panel.js';
 import { heightBrushHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-height-tool.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -213,5 +213,120 @@ describe('the Move tool in the panel', () => {
     await paintHeightStroke([[0.8, 0.8], [0.85, 0.8]], { sizeIn: 0.05 });
     const d = decodedRaster(activeHeightLayer().raster);
     expect(at(d, 100, 60)).toBe(f16Round(0.2)); // the dropped piece is in the stored raster under the new stroke
+  });
+
+  // owner 2026-11-27 ("in pixel, the marquee selection should move pixel"): the selection tools move their pixels too
+  describe('a selection tool: a drag that starts inside the selection moves its pixels', () => {
+    const rasterNow = () => Array.from(decodedRaster(activeHeightLayer().raster));
+    it('the Marquee is ONE tool with a Rectangle / Ellipse shape; old selectRect / selectEllipse ids open on it', () => {
+      const ids = HEIGHT_TOOLS.map((t) => t.id);
+      expect(ids).toContain('marquee'); expect(ids).not.toContain('selectRect'); expect(ids).not.toContain('selectEllipse');
+      expect(ids).toContain('move'); expect(HEIGHT_TOOLS.find((t) => t.id === 'move').label).toBe('Select');
+      setHeightField('selShape', 'ellipse');
+      setHeightTool('move'); setHeightTool('marquee');
+      expect(heightMoveState().tool).toBe('marquee');
+      setHeightTool('selectRect');                       // a stored old id
+      expect(heightMoveState().tool).toBe('marquee'); expect(heightToolSettings('select').shape).toBe('rect');
+      setHeightTool('selectEllipse');
+      expect(heightMoveState().tool).toBe('marquee'); expect(heightToolSettings('select').shape).toBe('ellipse');
+      expect(document.querySelector('#editorToolbarHeight [data-height-tool="marquee"]')).toBeTruthy();
+      for (const id of ['marquee', 'selectLasso']) expect(HEIGHT_TOOLS.find((x) => x.id === id).title).toMatch(/drag inside the selection to move its pixels/i);
+    });
+    it('the shape setting switches what a drag makes (rect <-> ellipse) and the rail icon follows it', async () => {
+      await newHeightPatch();
+      setHeightTool('marquee');
+      await drag({ x: 0.5, y: 0.5 }, { x: 1.5, y: 1.5 }); // rectangle: the corner pixel is in
+      expect(at(heightSelection().mask, 55, 55)).toBe(1);
+      setHeightField('selShape', 'ellipse');
+      await drag({ x: 0.5, y: 0.5 }, { x: 1.5, y: 1.5 }); // ellipse: the corner is out
+      expect(at(heightSelection().mask, 55, 55)).toBe(0); expect(at(heightSelection().mask, 100, 100)).toBe(1);
+    });
+    it('inside: the pixels float and Enter stores ONE step; outside: a new selection, the pixels untouched', async () => {
+      await block();
+      const h0 = activeHeightLayer().raster.h, steps = ed._undoStack.length;
+      setHeightTool('marquee');
+      await drag({ x: 1.5, y: 0.5 }, { x: 1.8, y: 0.7 }); // starts OUTSIDE the block: a new selection
+      expect(heightMoveState().floating).toBe(false);
+      expect(activeHeightLayer().raster.h).toBe(h0);
+      expect(at(heightSelection().mask, 160, 140)).toBe(1); expect(at(heightSelection().mask, 60, 60)).toBe(0);
+      selectHeightRect([-0.5, -0.5], [0, 0]);
+      await drag({ x: 0.75, y: 1.25 }, { x: 1.05, y: 1.45 }); // starts INSIDE: +30 px right, 20 px down the screen
+      expect(heightMoveState()).toMatchObject({ floating: true, dc: 30, dr: -20 });
+      key('Enter');
+      await vi.waitFor(() => expect(activeHeightLayer().raster.h).not.toBe(h0));
+      expect(ed._undoStack.length).toBe(steps + 1);
+      const d = decodedRaster(activeHeightLayer().raster);
+      expect(at(d, 100, 40)).toBe(f16Round(0.2)); expect(at(d, 60, 90)).toBe(0);
+    });
+    it('Esc after an inside drag restores the layer exactly; one undo step undoes an Enter', async () => {
+      const { takeUndoParts, restoreUndoParts } = await import('../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js');
+      ed.pushState = function () { this._undoStack.push(takeUndoParts()); };
+      await block();
+      const h0 = activeHeightLayer().raster.h, before = ed._undoStack.length, was = rasterNow();
+      setHeightTool('marquee');
+      await drag({ x: 0.75, y: 1.25 }, { x: 0.95, y: 1.25 });
+      expect(heightMoveState().floating).toBe(true);
+      key('Escape');
+      expect(heightMoveState().floating).toBe(false);
+      expect(rasterNow()).toEqual(was);
+      expect(ed._undoStack.length).toBe(before);
+      await drag({ x: 0.75, y: 1.25 }, { x: 0.95, y: 1.25 });
+      key('Enter');
+      await vi.waitFor(() => expect(ed._undoStack.length).toBe(before + 1));
+      restoreUndoParts(ed._undoStack[before - 1]);
+      expect(activeHeightLayer().raster.h).toBe(h0);
+    });
+    it('a click inside lifts nothing; a click outside deselects; with a piece floating it is committed first, then deselected', async () => {
+      await block();
+      const h0 = activeHeightLayer().raster.h;
+      setHeightTool('marquee');
+      heightBrushHandler.start(ed, { x: 0.75, y: 1.25 }, {}); await heightBrushHandler.finish(ed); // a click INSIDE
+      expect(heightMoveState().floating).toBe(false); expect(heightSelection()).toBeTruthy();
+      heightBrushHandler.start(ed, { x: 1.7, y: 0.3 }, {}); await heightBrushHandler.finish(ed);   // a click OUTSIDE
+      expect(heightSelection()).toBeNull();
+      expect(activeHeightLayer().raster.h).toBe(h0);
+      selectHeightRect([-0.5, -0.5], [0, 0]);
+      await drag({ x: 0.75, y: 1.25 }, { x: 0.95, y: 1.25 });
+      expect(heightMoveState().floating).toBe(true);
+      heightBrushHandler.start(ed, { x: 1.7, y: 0.3 }, {}); await heightBrushHandler.finish(ed);
+      expect(heightMoveState().floating).toBe(false);
+      expect(heightSelection()).toBeNull();
+      await vi.waitFor(() => expect(activeHeightLayer().raster.h).not.toBe(h0)); // committed
+      expect(at(decodedRaster(activeHeightLayer().raster), 110, 60)).toBe(f16Round(0.2));
+    });
+    it('Shift / Alt outside never deselect on a click; Shift (add) and Alt (subtract) inside select instead of moving', async () => {
+      await block();
+      const h0 = activeHeightLayer().raster.h;
+      setHeightTool('marquee');
+      heightBrushHandler.start(ed, { x: 1.7, y: 0.3 }, { shiftKey: true }); await heightBrushHandler.finish(ed);
+      heightBrushHandler.start(ed, { x: 1.7, y: 0.3 }, { altKey: true }); await heightBrushHandler.finish(ed);
+      expect(heightSelection()).toBeTruthy();
+      await drag({ x: 0.9, y: 1.25 }, { x: 1.2, y: 1.5 }, { shiftKey: true });
+      expect(heightMoveState().floating).toBe(false);
+      expect(activeHeightLayer().raster.h).toBe(h0);
+    });
+    it('the Lasso and a touch drag move too; the Wand: a drag inside moves, a click still picks', async () => {
+      await block();
+      setHeightTool('selectLasso');
+      await drag({ x: 0.75, y: 1.25 }, { x: 0.95, y: 1.25 }, { pointerType: 'touch' });
+      expect(heightMoveState().floating).toBe(true);
+      key('Escape');
+      setHeightTool('wand');
+      await drag({ x: 0.75, y: 1.25 }, { x: 0.95, y: 1.25 });
+      expect(heightMoveState().floating).toBe(true);
+      key('Escape');
+      heightBrushHandler.start(ed, { x: 0.75, y: 1.25 }, {}); await heightBrushHandler.finish(ed); // a click inside: the wand picks
+      expect(heightMoveState().floating).toBe(false);
+      expect(heightSelection()).toBeTruthy();
+    });
+    it('the canvas shows a move cursor over the selection with a selection tool', async () => {
+      await block();
+      setHeightTool('marquee');
+      const box = document.getElementById('editorCanvasContainer');
+      heightBrushHandler.hover(ed, { x: 0.75, y: 1.25 });
+      expect(box.style.cursor).toBe('move');
+      heightBrushHandler.hover(ed, { x: 1.7, y: 0.3 });
+      expect(box.style.cursor).toBe('');
+    });
   });
 });

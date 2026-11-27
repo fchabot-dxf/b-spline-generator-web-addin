@@ -145,8 +145,6 @@ describe('the panel', () => {
   });
   it('the touch row (Replace / Add / Subtract) does the same for every selection tool, the wand included', async () => {
     await ridges();
-    const row = [...document.querySelectorAll('[data-height-choice^="selCombine:"]')].map((b) => b.getAttribute('data-height-choice'));
-    expect(row).toEqual(['selCombine:replace', 'selCombine:add', 'selCombine:subtract']);
     setHeightTool('wand'); setHeightField('wandToleranceIn', 0.01);
     await tap([-0.7, 0]);
     setHeightField('selCombine', 'add');
