@@ -739,8 +739,8 @@ export const EDITOR_ROW_MENU = Object.freeze([
     async run(s) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.movePatchLayer(s.id, 1); } }),
   Object.freeze({ id: 'down', applies: (s) => s.kind === 'paint' && canMovePaint(s, -1), label: () => 'Move down', icon: () => '▼',
     async run(s) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.movePatchLayer(s.id, -1); } }),
-  // never the only layer, never a locked one (the old row's rules); a paint layer never its patch's last (the patch's Delete)
-  Object.freeze({ id: 'delete', applies: (s) => (s.kind === 'layer' ? edLayers().length > 1 && !isUserLocked(edLayer(s.id))
+  // never a locked one (Fred 2026-11-27: the only layer too -- a board may hold no editor layer, ensureActiveLayer makes one at the next drawing action); a paint layer never its patch's last (the patch's Delete)
+  Object.freeze({ id: 'delete', applies: (s) => (s.kind === 'layer' ? !isUserLocked(edLayer(s.id))
     : s.kind === 'paint' ? patchLayers(heightRec(s.patch)).length > 1 : s.kind === 'patch' || s.kind === 'stl'), label: () => 'Delete', icon: () => '🗑',
     async run(s) {
       if (s.kind === 'layer') removeLayer(editor(), s.id);

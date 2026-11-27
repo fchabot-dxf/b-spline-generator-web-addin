@@ -256,4 +256,19 @@ async function runBrickLayers() {
     vis.above && vis.shown && vis.rows >= 3 && vis.bricksSelected && vis.active === pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick,
     `stack above the Brick panel ${vis.above}, shown ${vis.shown}, rows ${vis.rows}, Bricks selected ${vis.bricksSelected}; active ${vis.active} (picked ${pick}): wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'})`);
   if (await editorOpen()) await apply();
+  // 9. Fred 2026-11-27 (draw cant be deleted ... can we open with none?): a fresh board's stack has NO Draw row; a lone Draw layer
+  // added by hand offers Delete in its menu, and deleting it leaves no layer (nothing re-creates one)
+  await reloadWithStorage({});
+  if (!(await editorOpen())) await click('viewMode_2d', 2500);
+  const drawRows = () => js(`document.querySelectorAll('[id^="edStackRow_layer_"]').length`);
+  const fresh = await drawRows();
+  await addDrawLayer();
+  const lone = (await layersRead()).layers.filter((l) => !l.brickKind);
+  const loneId = lone.length === 1 ? lone[0].id : '';
+  const del = loneId ? await layerMenu(loneId, 'Delete') : 'no lone layer';
+  await sleep(600);
+  const after = await layersRead();
+  checkRow('layers', 'Draw layer: a fresh board has none; the only one can be deleted, leaving none',
+    fresh === 0 && !!loneId && del === 'ok' && after.layers.length === 0 && (await drawRows()) === 0,
+    `fresh Draw rows ${fresh}; lone layer ${loneId || 'none'}; Delete tap ${del}; layers after ${after.layers.length}`);
 }

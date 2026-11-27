@@ -1255,16 +1255,8 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   del.type = 'button';
   del.className = 'layer-delete';
   del.textContent = '×';
-  // Disable delete when this is the only layer — removing the last layer
-  // would leave the editor in an invalid state with no editable target
-  // until the user manually adds one back. See BUG-12.
-  const isOnlyLayer = (Array.isArray(editor._layers) && editor._layers.length <= 1);
-  if (isOnlyLayer) {
-    del.disabled = true;
-    del.title = 'Cannot delete the only remaining layer';
-    del.style.opacity = '0.4';
-    del.style.cursor = 'not-allowed';
-  } else if (lockedNow) { // a locked layer is never deleted (Fred 2026-10-18)
+  // Fred 2026-11-27: the only layer may be deleted too (the editor can hold no layer; ensureActiveLayer makes one at the next draw).
+  if (lockedNow) { // a locked layer is never deleted (Fred 2026-10-18)
     del.disabled = true;
     del.title = 'Locked: unlock this layer to delete it';
     del.style.opacity = '0.4';
@@ -1367,22 +1359,10 @@ export function initLayerControls(editor) {
   if (!Array.isArray(editor._layers)) editor._layers = [];
   if (editor._activeLayer === undefined) editor._activeLayer = null;
 
-  // Pre-create "Layer 1" synchronously so the legacy <select
-  // id="editorLayerSelect"> has an option from the moment the editor
-  // opens. Without this, callers (incl. external tooling) that read
-  // .options on the first DOM tick saw an empty list — the previous
-  // design lazily added Layer 1 on first draw via ensureActiveLayer().
-  // See BUG-10.
-  //
-  // Safe alongside open()/restore: editor-io.js explicitly resets
-  // `_layers = []` and rebuilds the roster from the loaded SVG, so this
-  // placeholder is simply replaced when a saved project is opened.
-  // skipUndo:true prevents the auto-create from polluting the undo stack
-  // with a noop snapshot before the user has done anything.
-  if (editor._layers.length === 0) {
-    const layer = addLayer(editor, { skipUndo: true });
-    editor._activeLayer = layer.id;
-  }
+  // Fred 2026-11-23 (a new file has no layers) + 2026-11-27 (draw can't be deleted, can we open with none?): the editor
+  // starts with NO layer. It used to pre-create an empty Draw 1 here (BUG-10: a legacy <select> option for tooling that read
+  // .options on the first tick) -- that empty layer showed in the stack on every fresh start and, being the only one, could
+  // not be deleted. The first drawing action makes its layer (ensureActiveLayer); open()/restore rebuild the roster anyway.
 
   const addBtn = document.getElementById('editorAddLayer');
   if (addBtn) {
