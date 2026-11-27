@@ -40,14 +40,16 @@ const DRAWING = row(STROKE, COLOUR, STYLE);
 const STRIPE_SIZE = [h('stripeDriveRow'), h('stripeCountRow'), h('stripeLengthRow'), h('stripePatternPresets')];
 const STRIPE_MORE = [h('stripePatternRatioRow'), h('stripePatternClampNote'), h('stripeColoursHead')];
 export const STRIPE_BAR = row(...STRIPE_SIZE, h('stripeColorSwatches'), more(...STRIPE_MORE, h('stripeColorPresets')));
-export const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE, h('stripeBrickStyles')));
+const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE, h('stripeBrickStyles')));
 
 // the Height tab's selection pieces (main/height-panel.js): compact controls built per row, and the buttons built once
 const SEL = Object.freeze({
   combine: Object.freeze({ control: 'selCombine', label: 'New' }), feather: Object.freeze({ control: 'featherIn', label: 'Feather', step: 0.01 }),
-  profile: Object.freeze({ control: 'featherProfile', label: 'Profile' }), curve: Object.freeze({ widget: 'featherCurveButton' }),
   shape: Object.freeze({ control: 'selShape', label: 'Shape' }), move: Object.freeze({ widget: 'moveActions' }),
 });
+// the brush's own '⋯' (the Brush and the Eraser): the panel's controls, hosted. The VISUAL choices -- the Tip, the Falloff and its
+// custom curve, with the tip extras -- stay in the side panel (owner 2026-11-27: 'profile is something i'd want in the sidebar')
+const BRUSH_MORE = Object.freeze(['hardness', 'flow', 'spacing', 'pressureSize', 'pressureOpacity', 'buildUp'].map((id) => h(`heightCtl_${id}`)));
 const SEL_BTN = Object.freeze({ feather: h('heightSelFeather'), all: h('heightSelAll'), invert: h('heightSelInvert'), clear: h('heightSelClear'), fromShape: h('heightSelShapePick') });
 
 export const EDITOR_TOOL_BAR = Object.freeze({
@@ -62,31 +64,55 @@ export const EDITOR_TOOL_BAR = Object.freeze({
   }),
   // ── Lattice ──────────────────────────────────────────────────────────────────────────────────────────────────────
   lattice: Object.freeze({
+    // the add-kind row (Select / Rail / Tie / Node: editor/lattice-side-column.js) and the selected piece's Colour / Reset
+    // (editor/lattice-piece-panel.js); the generator settings and the piece Width (all) -- the lattice's own width -- stay in
+    // the panel
+    lattice: row(h('editorLatticeKindRow'), h('editorLatticePieceColour')),
+    shapeLattice: row(h('editorShapeLatticeKindRow'), h('editorShapeLatticePieceColour')),
     select: DRAWING,
     erase: row(STROKE),
     stripe: STRIPE_BAR,
   }),
   // ── Brick (the key: main/brick-panel.js brickToolBarKey -- its tool, or tool.subTool) ───────────────────────────────
+  // each armed tool's sub-tools first (main/brick-panel.js BRICK_SUB_TOOLS: Draw / Select / Heights / Blocks / Stripe / Area),
+  // then what the sub-tool or the next stroke uses. The Wall / Frame / General settings (the element's own: how it lays and
+  // carves) stay in the panel's sections (main/brick-tab-sections.js); none of the SHARED_ROWS moves.
   brick: Object.freeze({
-    stripe: BRICK_STRIPE_BAR,
+    wall: row(h('brickSubTools_wall'), h('brickAccentClick')), // Select: + 'Click bricks' (the Wall accent's click mode)
+    'wall.heights': row(h('brickSubTools_wall'), h('brickHeightPickRow_wall', 5)), // the picked chip, Lower / step / Raise, Set to value, Reset height, the count + clear all
+    'wall.area': row(h('brickSubTools_wall'), h('brickWallAreaRow', 2)), // the Area width chips, Clear areas at its end
+    frame: row(h('brickSubTools_frame')),
+    'frame.heights': row(h('brickSubTools_frame'), h('brickHeightPickRow_frame', 5)),
+    'frame.blocks': row(h('brickSubTools_frame'), h('brickBlocksRow_frame', 2)),
+    // the Brush's next stroke (or the selected stroke): Profile, Orientation, Width / pattern; its accent and Rustic in the '⋯'
+    brush: row(h('brickSubTools_brush'), h('brickBrushProfileRow'), h('brickBrushOrientationRow'), h('brickBrushPresetRow'),
+      more(h('brickBrushAccentRow'), h('brickRusticRow_brush'))),
+    raisedBrush: row(h('brickSubTools_raisedBrush'), h('brickRaisedModeRow'), h('brickRaisedLevelRow')),
+    stripe: row(h('brickSubTools_stripe'), ...BRICK_STRIPE_BAR),
   }),
   // ── Height (the key: main/height-panel.js HEIGHT_TOOLS id; its items rendered by that module) ───────────────────────
   height: Object.freeze({
-    brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'greyZero', label: 'Grey' }, { control: 'invert', label: 'Paint' }),
-    eraser: row({ control: 'sizeIn', label: 'Size', step: 0.05 }),
+    // the brush (owner 2026-11-27): Size, Mode, the Set grey, Opacity on the bar; the rest of its settings in its '⋯' -- the
+    // panel's own controls (heightCtl_*, built once by main/height-panel.js in the bar's parked home: no Brush section in the
+    // panel); its Tip and Falloff pickers stay the panel's ('Tip & falloff')
+    brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'opacity', label: 'Opacity', step: 0.05 },
+      more(h('heightCtl_hardness'), h('heightCtl_flow'), h('heightCtl_invert'), { control: 'greyZero', label: 'Grey' }, h('heightCtl_amountIn'), h('heightCtl_targetIn'), ...BRUSH_MORE.slice(2))),
+    eraser: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'opacity', label: 'Opacity', step: 0.05 }, more(...BRUSH_MORE)),
     // the selection tools (marquee-move, owner 2026-11-27: "those extra features are better in a contextual toolbar"): each
     // tool's row holds the selection's settings and buttons -- the most used on the bar, the rest in its '⋯'. The buttons
-    // (Feather, Select all, Invert, Clear, From a Draw shape) are built ONCE (main/height-panel.js) and hosted by every row
-    marquee: row(SEL.shape, SEL.combine, SEL.feather, SEL_BTN.clear, more(SEL_BTN.invert, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
-    selectLasso: row(SEL.combine, SEL.feather, SEL_BTN.invert, SEL_BTN.clear, more(SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+    // (Feather, Select all, Invert, Clear, From a Draw shape) are built ONCE (main/height-panel.js) and hosted by every row. The
+    // Feather PROFILE (a visual picker) and its curve are the side panel's 'Feather profile' section (owner 2026-11-27)
+    marquee: row(SEL.shape, SEL.combine, SEL.feather, SEL_BTN.clear, more(SEL_BTN.invert, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+    selectLasso: row(SEL.combine, SEL.feather, SEL_BTN.invert, SEL_BTN.clear, more(SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
     wand: row({ control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }, SEL.combine, SEL.feather,
-      more({ control: 'sampleFrom', label: 'Sample' }, SEL_BTN.invert, SEL_BTN.clear, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+      more({ control: 'sampleFrom', label: 'Sample' }, SEL_BTN.invert, SEL_BTN.clear, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
     eyedropper: row({ control: 'sampleFrom', label: 'Sample' }, { widget: 'greyChip', label: 'Picked' }, { control: 'greyZero', label: 'Grey' }),
     // the Select tool (id 'move', marquee-move)
     move: row({ widget: 'moveActions', hint: 'Drag to move the selection (none: the whole layer)' }, SEL_BTN.all, SEL_BTN.invert, SEL_BTN.clear,
-      more(SEL.combine, SEL.feather, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.fromShape)),
-    gradient: row({ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }),
-    fill: row({ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }),
+      more(SEL.combine, SEL.feather, SEL_BTN.feather, SEL_BTN.fromShape)),
+    gradient: row({ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }, { control: 'gradType', label: 'Type' }, { control: 'gradMode', label: 'Mode' },
+      { control: 'gradOpacity', label: 'Opacity', step: 0.05 }), // its Curve picker (visual) and the custom curve: the side panel's
+    fill: row({ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }, h('heightFillApply')),
   }),
 });
 /** Appended to every row of a tab: the Height tab's stock line (main/height-panel.js heightStockLines). */
@@ -158,6 +184,7 @@ function renderTab(bar, tab) {
   for (const tool of Object.keys(EDITOR_TOOL_BAR[tab] || {})) {
     const r = document.createElement('div');
     r.className = 'tool-bar-row';
+    r.dataset.toolBarRow = '';
     r.dataset.toolBarTab = tab;
     r.dataset.toolBarTool = tool;
     r.style.display = 'none';

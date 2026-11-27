@@ -65,15 +65,19 @@ describe('the Brush section: no presets, Tip and Falloff picked separately', () 
     const ids = controlsIn('heightGroup_brush');
     // Fred 2026-11-23 (slice 5): the Invert toggle heads the section
     expect(ids[0]).toBe('invert');
-    expect(ids.slice(1, 12)).toEqual(['mode', 'tip', 'falloff', 'customCurve', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn']);
+    expect(ids.slice(1, 9)).toEqual(['mode', 'sizeIn', 'hardness', 'opacity', 'flow', 'spacing', 'amountIn', 'targetIn']);
+    // owner 2026-11-27 (the visual choices stay in the side panel): Tip, Falloff (+ its curve) are the brush's own section
+    expect(controlsIn('heightGroup_brushShape')).toEqual(['tip', 'falloff', 'customCurve']);
     expect(ids).toContain('buildUp');
     expect(ids.indexOf('buildUp')).toBeGreaterThan(ids.indexOf('targetIn'));
-    // the tip extras: their own group right after, only for a square / chisel tip
+    // the tip extras: their own group right after, each shown only for a square / chisel tip (the context bar's brush '⋯'
+    // hosts them one by one, so each carries the rule: owner 2026-11-27)
     expect(controlsIn('heightGroup_tip')).toEqual(['roundness', 'angle', 'followStroke']);
-    expect(hidden(document.getElementById('heightGroup_tip'))).toBe(true);
-    for (const t of ['square', 'chisel']) { choice('tip', t).click(); expect(hidden(document.getElementById('heightGroup_tip')), t).toBe(false); }
+    const extras = () => ['roundness', 'angle', 'followStroke'].map((id) => document.querySelector(`[data-height-control="${id}"]`).hidden);
+    expect(extras()).toEqual([true, true, true]);
+    for (const t of ['square', 'chisel']) { choice('tip', t).click(); expect(extras(), t).toEqual([false, false, false]); }
     choice('tip', 'round').click();
-    expect(hidden(document.getElementById('heightGroup_tip'))).toBe(true);
+    expect(extras()).toEqual([true, true, true]);
   });
   it('each Tip and each Falloff option shows a drawn icon (with its name)', () => {
     for (const k of Object.keys(BRUSH_TIPS)) { const b = choice('tip', k); expect(b.querySelector('svg'), k).toBeTruthy(); expect(b.textContent).toMatch(BRUSH_TIPS[k].label); }
@@ -115,20 +119,21 @@ describe('kept from slice 3b', () => {
     expect([...document.querySelectorAll('#heightGroup_brush [data-height-choice^="mode:"]')].map((b) => b.getAttribute('data-height-choice')))
       .toEqual(['mode:raise', 'mode:lower', 'mode:set', 'mode:smooth']);
     setHeightTool('eraser');
-    expect(hidden(document.getElementById('heightGroup_brush'))).toBe(false);
-    expect(hidden(document.querySelector('[data-height-control="mode"]'))).toBe(true);
-    expect(hidden(document.querySelector('[data-height-control="tip"]'))).toBe(false);
+    expect(document.querySelector('[data-height-control="mode"]').hidden).toBe(true); // its own showWhen: not for the Eraser
+    expect(document.querySelector('[data-height-control="tip"]').hidden).toBe(false);
   });
-  // owner 2026-11-23: the panel is a collapse tree -- the active tool's section is the first group of its branch, the first branch
-  it('the active tool\'s section comes first (its leads, in the armed tool\'s branch)', async () => {
-    const first = () => [...document.querySelectorAll('#heightDrawerTree > .drawer-branch')].find((b) => b.style.display !== 'none')
-      .querySelector(':scope > .drawer-branch-body > [id^="heightGroup_"]:not([hidden])').id;
-    expect(first()).toBe('heightGroup_brush');
+  // owner 2026-11-23: the panel is a collapse tree -- the active tool's section is the first group of its branch, the first branch.
+  // The context bar (owner 2026-11-27): the brush, gradient and fill settings are the tool's row of the bar -- not panel sections
+  it('the active tool\'s section comes first (its leads, in the armed tool\'s branch); a tool whose settings are all in the bar has no card', async () => {
+    const armed = () => [...document.querySelectorAll('#heightDrawerTree > .drawer-branch')].find((b) => b.classList.contains('armed') && b.style.display !== 'none');
+    const first = () => armed()?.querySelector(':scope > .drawer-branch-body > [id^="heightGroup_"]:not([hidden])')?.id || null;
     await newHeightPatch();
-    for (const [tool, group] of [['eraser', 'heightGroup_brush'], ['move', 'heightGroup_move'], ['gradient', 'heightGroup_gradient'], ['fill', 'heightGroup_fill']]) {
+    for (const [tool, group] of [['brush', 'heightGroup_brushShape'], ['eraser', 'heightGroup_brushShape'], ['move', 'heightGroup_move'], ['eyedropper', 'heightGroup_eyedropper'],
+      ['gradient', 'heightGroup_gradientCurve'], ['marquee', 'heightGroup_feather'], ['wand', 'heightGroup_feather']]) {
       setHeightTool(tool);
       expect(first(), tool).toBe(group);
     }
+    setHeightTool('fill'); expect(armed()).toBeUndefined(); // all its settings are in the context bar
   });
   const at = (c, r) => decodedRaster(activeHeightLayer().raster)[r * 200 + c];
   const drag = async (e) => {
@@ -164,36 +169,37 @@ describe('kept from slice 3b', () => {
 });
 
 describe('the selection controls live in a contextual bar row, not a side-panel section', () => {
-  // the page the other tests mount has no options bar: give it one (the palette's #editorHeightOptions) and render into it
-  const barRow = () => document.querySelector('#editorHeightOptions [data-height-bar-tool="__selection"]');
-  const shownRow = () => !!barRow() && barRow().style.display !== 'none';
+  // the page the other tests mount has no options bar: give it one (the palette's context bar, #editorToolBar) and render into it.
+  // The context bar (owner 2026-11-27: at most six items a row): each selection tool's OWN row holds the selection's settings and
+  // buttons (one node each, hosted), the most used on the bar, the rest in its '⋯'; another tool's row shows none of them
+  const rowOf = (tool) => document.querySelector(`#editorToolBar [data-height-bar-tool="${tool}"]`);
+  const holdsSelection = (tool) => !!rowOf(tool) && rowOf(tool).style.display !== 'none' && rowOf(tool).contains(document.getElementById('heightSelClear'));
   const mountBar = async () => {
-    document.body.innerHTML = '<div id="heightPanelBody"></div><div id="editorToolbarHeight"></div><div id="editorHeightOptions"></div><div id="editorCanvasContainer"></div>';
-
+    document.body.innerHTML = '<div id="heightPanelBody"></div><div id="editorToolbarHeight"></div><div id="editorToolBarGroup"><div id="editorToolBar"></div></div><div id="editorCanvasContainer"></div>';
     _resetHeightPanelForTests();
     initHeightPanel({});
+    setEditorTab('height');
   };
-  it('a selection tool or a selection shows the row; a brush with no selection hides it; Invert and Clear work', async () => {
+  it('each selection tool\'s row holds the selection controls; the brush\'s does not; Invert and Clear work', async () => {
     await mountBar();
     const { selectHeightRect, heightSelection } = await import('../bspline-frame-builder/b-spline-gen/html/main/height-panel.js');
     await newHeightPatch();
     setHeightTool('brush');
-    expect(shownRow()).toBe(false);                                 // no selection tool, no selection: nothing to show
+    expect(holdsSelection('brush')).toBe(false);
     expect(document.getElementById('heightBranch_selection')).toBeNull(); // and no side-panel Selection section at all
+    for (const tool of ['marquee', 'selectLasso', 'wand', 'move']) { setHeightTool(tool); expect(holdsSelection(tool), tool).toBe(true); }
+    setHeightTool('marquee');
+    expect(rowOf('marquee').querySelectorAll('[data-height-choice^="selCombine:"]').length).toBe(3);
+    expect(rowOf('marquee').querySelector('[data-height-bar="featherIn"]')).toBeTruthy();
     selectHeightRect([-0.5, -0.5], [0, 0]);
-    expect(shownRow()).toBe(true);                                  // brush + a selection: the row is there
-    expect(barRow().querySelectorAll('[data-height-choice^="selCombine:"]').length).toBe(3);
-    expect(barRow().querySelector('[data-height-bar="featherIn"]')).toBeTruthy();
     const before = Array.from(heightSelection().mask);
     document.getElementById('heightSelInvert').click();
     expect(Array.from(heightSelection().mask)).not.toEqual(before);
     expect(heightSelection().mask[0]).toBe(1 - before[0]);
     document.getElementById('heightSelClear').click();
     expect(heightSelection()).toBeNull();
-    expect(shownRow()).toBe(false);                                 // cleared, brush again: hidden
-    for (const tool of ['marquee', 'selectLasso', 'wand', 'move']) { setHeightTool(tool); expect(shownRow(), tool).toBe(true); } // no selection yet: the tool's own row
     setHeightTool('eraser');
-    expect(shownRow()).toBe(false);
+    expect(holdsSelection('eraser')).toBe(false);
   });
   it('the buttons are 28 px or more on a coarse pointer (the touch floor var), the row scrolls sideways rather than covering the canvas', async () => {
     await mountBar();

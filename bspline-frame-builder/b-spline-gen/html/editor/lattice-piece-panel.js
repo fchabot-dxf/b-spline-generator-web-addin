@@ -110,6 +110,9 @@ function _hasOverride(editor, el, kind) {
   return kind === 'contour' ? hasContourSegmentColor(editor, el) : hasColorOverride(el);
 }
 
+/** The selected piece's kind + Colour / Reset block id, per lattice panel body (the context bar hosts it by this id). */
+export const PIECE_COLOUR_IDS = Object.freeze({ editorLatticePanelBody: 'editorLatticePieceColour', editorShapeLatticePanelBody: 'editorShapeLatticePieceColour' });
+
 export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   if (!bodyEl) return;
 
@@ -117,8 +120,13 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   section.dataset.noCollapse = '';
   section.className = 'lattice-piece-panel';
   section.style.display = 'none';
+  // the context bar (owner 2026-11-27): the kind + Colour / Reset act on the SELECTION -- a tool setting, hosted by the
+  // lattice tool's row of the bar (main/editor-tool-bar.js) by its id; the Width (all) row edits the LATTICE's own width
+  // (a layer value), so it stays here in the panel
+  const colourId = PIECE_COLOUR_IDS[bodyEl.id];
   section.innerHTML = `
     <span style="font-weight:600; display:block; margin-bottom:6px;">Selected piece</span>
+    <div class="lattice-piece-colour"${colourId ? ` id="${colourId}"` : ''} style="display:none;">
     <div class="lattice-piece-panel-kind" style="font-size:11px; color:#666; margin-bottom:6px;"></div>
     <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
       <label style="font-size:11px; flex:1;">Colour</label>
@@ -128,6 +136,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
       <button type="button" class="lattice-piece-color-reset" title="Reset to layer colour"
         style="font-size:10px; padding:2px 6px; cursor:pointer;">Reset</button>
     </div>
+    </div>
     <div class="lattice-piece-width-row" style="display:flex; gap:8px; align-items:center;">
       <label class="lattice-piece-width-label" style="font-size:11px; flex:1;"></label>
       <input type="number" class="lattice-piece-width" min="0" step="0.01"
@@ -135,6 +144,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     </div>`;
   bodyEl.insertBefore(section, bodyEl.firstChild);
 
+  const colourBox = section.querySelector('.lattice-piece-colour');
   const kindEl = section.querySelector('.lattice-piece-panel-kind');
   const colorBtn = section.querySelector('.lattice-piece-color');
   const colorMixedEl = section.querySelector('.lattice-piece-color-mixed');
@@ -151,7 +161,7 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
   let current = null; // { pieces: [{el, kind}], layerId } -- layerId is any one piece's own (rewidthOwnedKind/resolvePatternLayer both resolve through it to the shared pattern regardless of which kind-layer it names)
 
   function refresh() {
-    if (!current) { section.style.display = 'none'; return; }
+    if (!current) { section.style.display = 'none'; colourBox.style.display = 'none'; return; }
     const { pieces, layerId } = current;
     const kindCounts = {};
     for (const { kind } of pieces) kindCounts[kind] = (kindCounts[kind] || 0) + 1;
@@ -187,7 +197,9 @@ export function mountSelectedPiecePanel(editor, bodyEl, scope) {
     } else {
       widthRow.style.display = 'none';
     }
-    section.style.display = '';
+    colourBox.style.display = '';
+    // the panel's part is the Width (all) row alone (the colour is in the context bar): no width to edit, no section
+    section.style.display = widthRow.style.display === 'none' ? 'none' : '';
   }
 
   document.addEventListener('editorSelectionChanged', (e) => {

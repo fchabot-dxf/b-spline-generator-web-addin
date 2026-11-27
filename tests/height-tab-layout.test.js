@@ -91,13 +91,15 @@ describe('the Height panel is a collapse tree', () => {
     expect(vis[1].classList.contains('open')).toBe(true);
     expect(vis[2].classList.contains('open')).toBe(false);
   });
-  it('every panel group sits in exactly one branch, except the bar groups (the Selection: its controls are in the options bar, its curve a sheet)', async () => {
+  it('every panel group sits in exactly one branch, except the bar groups (the Selection: its controls are in the options bar, its curve a sheet; the context bar\'s tool groups)', async () => {
     await newHeightPatch();
     expect(document.getElementById('heightBranch_selection')).toBeNull();
-    const all = [...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS].filter((g) => !g.bar).map((g) => g.id);
+    const all = [...HEIGHT_GROUPS, ...HEIGHT_TOOL_GROUPS].filter((g) => !g.bar && !g.inBar).map((g) => g.id);
     for (const g of all) expect(document.getElementById(`heightGroup_${g}`).parentElement.closest('.drawer-branch'), g).toBeTruthy();
     expect(branches().flatMap(groupsIn).sort()).toEqual([...all].sort());
-    expect(document.getElementById('heightGroup_select').parentElement.id).toBe('heightFeatherSheet');
+    // the context bar (owner 2026-11-27): the tools' compact groups are in no branch of the side panel (the visual ones are)
+    for (const g of ['brush', 'select', 'wand', 'sample', 'gradient', 'fill']) expect(document.getElementById(`heightGroup_${g}`).closest('#heightPanelBody'), g).toBeNull();
+    for (const g of ['brushShape', 'tip', 'feather', 'gradientCurve']) expect(document.getElementById(`heightGroup_${g}`).closest('#heightPanelBody'), g).not.toBeNull();
   });
   it('each branch header has a short summary (the armed tool: its first options-bar settings)', async () => {
     await newHeightPatch();
@@ -109,7 +111,7 @@ describe('the Height panel is a collapse tree', () => {
     expect(sum('view')).toBe('Lit');
     expect(sum('stamp')).toBe('Raised · Add');
     setHeightTool('gradient');
-    expect(sum('gradient')).toMatch(/^Start .* · End /);
+    expect(sum('gradient')).toMatch(/^Start .* · End /); // its branch: the Gradient curve picker (its other settings: the context bar)
   });
   // owner 2026-11-23: '⌫' read as a keyboard backspace -- a tool Draw has too wears Draw's own icon (its button's svg, the
   // one source), declared per HEIGHT_TOOLS row (`iconFrom`); the select marquees are Draw's shapes drawn dashed

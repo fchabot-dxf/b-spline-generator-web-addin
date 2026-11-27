@@ -39,6 +39,7 @@ import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { createDrawerTree } from './drawer-tree.js';
 import { toolGlyphSvg } from '../editor/tool-icons.js';
 import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, registerToolBarTab, syncToolBar, toolBarParked } from './editor-tool-bar.js';
+import { mountIconGrid } from './icon-select.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -48,7 +49,13 @@ export const HEIGHT_VIEW = Object.freeze({
 
 export const HEIGHT_GROUPS = Object.freeze([
   // the Brush AND the Eraser (HEIGHT_TOOLS rows with rush) share this section: the picker + the brush settings (slice 3b)
-  Object.freeze({ id: 'brush', label: 'Brush', note: 'Alt while painting: Raise <-> Lower', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
+  // `inBar` (the context bar, owner 2026-11-27): a TOOL's settings -- no side-panel section; its controls are built once in the
+  // bar's parked home (each `heightCtl_<id>`) and the tool's row of the bar (main/editor-tool-bar.js EDITOR_TOOL_BAR.height)
+  // shows them, on the bar or in its '⋯'
+  Object.freeze({ id: 'brush', label: 'Brush', note: 'Alt while painting: Raise <-> Lower', showWhen: (ctx) => !ctx || usesBrush(ctx.tool), inBar: true }),
+  // owner 2026-11-27 ("profile is something i'd want in the sidebar, because it's visual"): the brush's VISUAL choices -- the
+  // Tip and the Falloff (icon pickers, main/icon-select.js) and the custom falloff curve -- stay in the side panel, the brush's section
+  Object.freeze({ id: 'brushShape', label: 'Tip & falloff', showWhen: (ctx) => !ctx || usesBrush(ctx.tool) }),
   Object.freeze({ id: 'patch', label: 'Patch', note: 'inches from the board centre; +Y is up the screen' }),
   Object.freeze({ id: 'stamp', label: 'Stamp' }),
 ]);
@@ -91,12 +98,12 @@ export const HEIGHT_CONTROLS = Object.freeze([
     options: BRUSH_MODES.filter((m) => m !== 'erase').map((m) => [m, MODE_LABELS[m][1], MODE_LABELS[m][2]]) },
   // Fred 2026-11-22 (slice 3c, "we just pick square or round and pick separately a falloff profile"): no presets -- the TIP
   // row, then the FALLOFF row, each option with its own small drawn icon (an option's 4th entry, read by renderControl)
-  { id: 'tip', group: 'brush', target: 'brush', kind: 'choice', path: ['tip'], label: 'Tip',
+  { id: 'tip', group: 'brushShape', target: 'brush', kind: 'choice', picker: true, path: ['tip'], label: 'Tip',
     options: Object.entries(BRUSH_TIPS).map(([k, t]) => [k, t.label, t.title, tipIcon(k)]),
     // a tip with a declared seedRoundness (the chisel's flat blade) starts there while the roundness is still 1
     alsoSet: (prev, next, brush) => (next !== prev && BRUSH_TIPS[next] && BRUSH_TIPS[next].seedRoundness && brush.roundness === 1 ? { roundness: BRUSH_TIPS[next].seedRoundness } : null) },
   // Fred 2026-11-22: the shape of the roll-off outside the hard core (core/height/brush.js BRUSH_FALLOFFS)
-  { id: 'falloff', group: 'brush', target: 'brush', kind: 'choice', path: ['falloff'], label: 'Falloff',
+  { id: 'falloff', group: 'brushShape', target: 'brush', kind: 'choice', picker: true, path: ['falloff'], label: 'Falloff',
     options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title, falloffIcon(k)]),
     // Custom starts from the shape the brush had: while the curve is still the default, seed it from the previous profile
     alsoSet: (prev, next, brush) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(brush.customCurve, BRUSH_DEFAULTS.customCurve)
@@ -104,7 +111,7 @@ export const HEIGHT_CONTROLS = Object.freeze([
   // Fred 2026-11-22: a small widget to design a custom falloff (points [t, value]; t 0 = the hardness edge, 1 = the rim)
   // slice 5 (Fred 2026-11-23): its values run -1..1 (valueRange; the part below 0 paints the opposite: a moat round a bump).
   // A curve control without valueRange keeps the box's 0..1 (the gradient's and the feather's curves).
-  { id: 'customCurve', group: 'brush', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', valueRange: [-1, 1], showWhen: (brush) => brush.falloff === 'custom' },
+  { id: 'customCurve', group: 'brushShape', target: 'brush', kind: 'curve', path: ['customCurve'], label: 'Custom falloff', valueRange: [-1, 1], showWhen: (brush) => brush.falloff === 'custom' },
   { id: 'sizeIn', group: 'brush', target: 'brush', kind: 'slider', path: ['sizeIn'], label: 'Size (in)', step: 0.01, range: () => [0.02, 4] },
   { id: 'hardness', group: 'brush', target: 'brush', kind: 'slider', path: ['hardness'], label: 'Hardness', step: 0.01, range: () => [0, 1], note: '1 = a hard edge, 0 = all soft' },
   { id: 'opacity', group: 'brush', target: 'brush', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1], note: 'the most one stroke can do' },
@@ -147,30 +154,30 @@ export const HEIGHT_TOOL_SHAPES = Object.freeze({ selectRect: 'rect', selectElli
 export const HEIGHT_TOOLS = Object.freeze([
   // owner 2026-11-23 ("reuse tool icons"): `iconGlyph` = the editor's shared glyph for the action (editor/tool-icons.js
   // TOOL_GLYPHS: the Brick brushes' paintbrush); `icon` is kept only where no tab has the action (lasso, wand, ...)
-  Object.freeze({ id: 'brush', icon: '🖌', iconGlyph: 'paintbrush', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brush', 'palette', 'tip'] }),
+  Object.freeze({ id: 'brush', icon: '🖌', iconGlyph: 'paintbrush', label: 'Brush', title: 'Paint heights: pick a brush and a mode in the panel (Alt: Raise <-> Lower)', brush: { mode: null }, leads: ['brushShape', 'tip', 'palette'] }),
   // Fred 2026-11-22 ("we need an eraser too"): the SAME brush (picker + settings), its mode 'erase' (toward transparent 0)
   // owner 2026-11-23 ('⌫' read as a keyboard backspace): `iconFrom` = the Draw tool button whose own svg this tool wears (the
   // one icon source; `icon` stays the fallback where that button is absent); `iconDashed`: drawn dashed, a selection marquee
   // `key` e (Fred 2026-11-23, "have you tried erasing? it doesnt work"): E is the eraser in every tab -- here it was Draw's
   // hidden one (the vector eraser, which leaves heights untouched); editor-interaction.js clicks the [data-key] button on screen
-  Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', key: 'e', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
+  Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', key: 'e', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brushShape', 'tip'] }),
   // owner 2026-11-27 ("marquee can be bundled with diff shapes"): ONE Marquee button; its shape (Rectangle | Ellipse) is the
   // `selShape` setting; `iconShapes` = the Draw button whose svg the rail button wears for each shape. The gestures stay
   // GESTURES.selectRect / selectEllipse (GESTURES.marquee dispatches to the chosen one)
-  Object.freeze({ id: 'marquee', icon: '⬚', iconFrom: 'toolRect', iconShapes: Object.freeze({ rect: 'toolRect', ellipse: 'toolCircle' }), iconDashed: true, label: 'Marquee', title: 'Drag a rectangle or an ellipse (the Shape setting): the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect', leads: [], selectionBar: true }),
-  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect.', leads: [], selectionBar: true }),
+  Object.freeze({ id: 'marquee', icon: '⬚', iconFrom: 'toolRect', iconShapes: Object.freeze({ rect: 'toolRect', ellipse: 'toolCircle' }), iconDashed: true, label: 'Marquee', title: 'Drag a rectangle or an ellipse (the Shape setting): the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect', leads: ['feather'], selectionBar: true }),
+  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect.', leads: ['feather'], selectionBar: true }),
   // slice 4 (Fred 2026-11-23): the MAGIC WAND -- a tap selects the heights within the tolerance of the tapped one
-  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'sample'], selectionBar: true }),
+  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['feather'], selectionBar: true }),
   // slice 5 (Fred 2026-11-23, a classic heightmap editor): the EYEDROPPER -- `key` is its keyboard letter (the rail button's
   // data-key: the editor's own single-key shortcut mechanism)
-  Object.freeze({ id: 'eyedropper', icon: '💧', key: 'i', label: 'Eyedropper', title: 'Tap a height (I): it becomes the Set target and the Brush comes back in Set mode', leads: ['eyedropper', 'sample', 'palette'] }),
+  Object.freeze({ id: 'eyedropper', icon: '💧', key: 'i', label: 'Eyedropper', title: 'Tap a height (I): it becomes the Set target and the Brush comes back in Set mode', leads: ['eyedropper', 'palette'] }),
   // owner 2026-11-27 ("i'd rather have a selection tool"): no separate Move tool -- a drag that starts INSIDE a selection with a
   // selection tool moves its pixels (the slice-3 lift / float / drop gesture below)
   // owner 2026-11-27: the Move tool is the 'Select' tool (the Draw tab's arrow); id 'move' kept (old stored sessions). Bounding-box
   // scale / rotate handles are a later task
-  Object.freeze({ id: 'move', icon: '✥', iconFrom: 'toolSelect', label: 'Select', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the outline only; arrows nudge; Enter drops, Esc cancels', leads: ['move'], selectionBar: true }),
-  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
-  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height', leads: ['fill'] }),
+  Object.freeze({ id: 'move', icon: '✥', iconFrom: 'toolSelect', label: 'Select', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the outline only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'feather'], selectionBar: true }),
+  Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradientCurve'] }),
+  Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height', leads: [] }),
 ]);
 /** Each precision tool's settings at the start of a session (UI state; HEIGHT_TOOL_CONTROLS targets them by key). */
 export const TOOL_DEFAULTS = Object.freeze({
@@ -196,18 +203,24 @@ export const HEIGHT_TOOL_GROUPS = Object.freeze([
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
   // the tip extras show only for a square / chisel tip (a round brush is set by its falloff; slice 3b / 3c)
   Object.freeze({ id: 'move', label: 'Select', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the outline only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
-  Object.freeze({ id: 'tip', label: 'Square / chisel tip', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
-  Object.freeze({ id: 'wand', label: 'Magic wand', note: 'tap a height on the patch', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' }),
+  Object.freeze({ id: 'tip', label: 'Square / chisel tip', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brushShape' }),
+  Object.freeze({ id: 'wand', label: 'Magic wand', note: 'tap a height on the patch', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand', inBar: true }),
   // slice 5: the eyedropper's note, the shared Sample choice, and the grey palette (the patch's grey mapping + swatches)
   Object.freeze({ id: 'eyedropper', label: 'Eyedropper', note: 'tap the patch: its height becomes the Set target', needsPatch: true, showWhen: (ctx) => ctx.tool === 'eyedropper' }),
-  Object.freeze({ id: 'sample', label: 'Sample', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' || ctx.tool === 'eyedropper' }),
+  Object.freeze({ id: 'sample', label: 'Sample', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' || ctx.tool === 'eyedropper', inBar: true }),
   Object.freeze({ id: 'palette', label: 'Grey palette', note: 'pick a grey: the Set height (mid-grey = no change)', showWhen: (ctx) => ctx.tool === 'brush' || ctx.tool === 'eyedropper' }),
-  // owner 2026-11-27 ("those extra features are better in a contextual toolbar"): the selection controls live in the options bar's
-  // selection row (HEIGHT_SELECTION_BAR); `bar: true` = no side-panel section -- only the custom feather curve is built here, into
-  // the sheet the bar's Curve button opens
-  Object.freeze({ id: 'select', label: 'Custom feather curve', bar: true, needsPatch: true }),
-  Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
-  Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
+  // owner 2026-11-27 ("those extra features are better in a contextual toolbar"): the selection's compact controls are each
+  // selection tool's row of the context bar -- no side-panel section (`inBar`)
+  Object.freeze({ id: 'select', label: 'Selection', needsPatch: true, inBar: true }),
+  // owner 2026-11-27 ("in pixel, profile is something i'd want in the sidebar, because it's visual"): the feather PROFILE (an
+  // icon picker) and its custom curve -- the selection tools' section, and with any tool while a selection exists (its free
+  // branch, HEIGHT_TREE_FREE_BRANCHES 'feather')
+  Object.freeze({ id: 'feather', label: 'Feather profile', note: 'the fade inward from the outline', needsPatch: true,
+    showWhen: (ctx) => !!HEIGHT_TOOLS.find((t) => t.id === ctx.tool)?.selectionBar || !!heightSelection() }),
+  Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient', inBar: true }),
+  // the gradient's Curve (an icon picker) and its custom curve: visual, the side panel's (the owner's rule above)
+  Object.freeze({ id: 'gradientCurve', label: 'Gradient curve', note: 'start -> end', showWhen: (ctx) => ctx.tool === 'gradient' }),
+  Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill', inBar: true }),
   Object.freeze({ id: 'file', label: 'Heightmap file', note: '8 / 16-bit PNG, JPG, WebP, EXR', after: true }),
 ]);
 const BLEND_LABELS = Object.freeze({ normal: ['Normal', 'Covers what is under it by the opacity'], add: ['Add', 'Adds its heights'], max: ['Max', 'Only where it stands higher'], min: ['Min', 'Only where it is lower'], subtract: ['Subtract', 'Takes its heights away'] });
@@ -228,11 +241,11 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'gradStartIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['startIn'], label: 'Start height (in)', step: 0.001, range: () => [-1, 1.5],
     note: 'exact at the start point; type any value' },
   { id: 'gradEndIn', group: 'gradient', target: 'gradient', kind: 'slider', path: ['endIn'], label: 'End height (in)', step: 0.001, range: () => [-1, 1.5] },
-  { id: 'gradFalloff', group: 'gradient', target: 'gradient', kind: 'choice', path: ['falloff'], label: 'Curve',
-    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title]),
+  { id: 'gradFalloff', group: 'gradientCurve', target: 'gradient', kind: 'choice', picker: true, path: ['falloff'], label: 'Curve',
+    options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, p.title, falloffIcon(k)]),
     alsoSet: (prev, next, st) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(st.customCurve, BRUSH_DEFAULTS.customCurve)
       ? { customCurve: curvePointsFromProfile(prev, 6) } : null) },
-  { id: 'gradCurve', group: 'gradient', target: 'gradient', kind: 'curve', path: ['customCurve'], label: 'Custom curve (start -> end)',
+  { id: 'gradCurve', group: 'gradientCurve', target: 'gradient', kind: 'curve', path: ['customCurve'], label: 'Custom curve (start -> end)',
     showWhen: (b, p, ctx) => !!ctx && ctx.tools.gradient.falloff === 'custom' },
   { id: 'gradOpacity', group: 'gradient', target: 'gradient', kind: 'slider', path: ['opacity'], label: 'Opacity', step: 0.01, range: () => [0, 1] },
   { id: 'gradMode', group: 'gradient', target: 'gradient', kind: 'choice', path: ['mode'], label: 'Mode',
@@ -276,21 +289,22 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   { id: 'featherIn', group: 'select', target: 'select', kind: 'slider', path: ['featherIn'], label: 'Feather (in)', step: 0.01, range: () => [0, 1],
     note: 'Feather softens the selection edge by this much' },
   // slice 4 (Fred 2026-11-23): the fade's PROFILE, inward from the outline (Smooth = the slice-2 soft blur, unchanged)
-  { id: 'featherProfile', group: 'select', target: 'select', kind: 'choice', path: ['featherProfile'], label: 'Feather profile',
+  { id: 'featherProfile', group: 'feather', target: 'select', kind: 'choice', picker: true, path: ['featherProfile'], label: 'Feather profile',
     options: Object.entries(BRUSH_FALLOFFS).map(([k, p]) => [k, p.label, k === 'smooth' ? 'A soft blur across the edge (the slice-2 feather)' : `${p.title}: 0 on the outline, full at the Feather width inside`, falloffIcon(k)]),
     alsoSet: (prev, next, st) => (next === 'custom' && prev !== 'custom' && BRUSH_FALLOFFS[prev] && !BRUSH_FALLOFFS[prev].custom && sameCurve(st.featherCurve, BRUSH_DEFAULTS.customCurve)
       ? { featherCurve: curvePointsFromProfile(prev, 6) } : null) },
-  { id: 'featherCurve', group: 'select', target: 'select', kind: 'curve', path: ['featherCurve'], label: 'Custom feather (outline -> inside)',
+  { id: 'featherCurve', group: 'feather', target: 'select', kind: 'curve', path: ['featherCurve'], label: 'Custom feather (outline -> inside)',
     showWhen: (b, p, ctx) => !!ctx && ctx.tools.select.featherProfile === 'custom' },
   // slice 3b: build-up on (default; slice 1: each dab adds to the stroke) / off (the stroke keeps the brush's profile).
   // Only the user switches it (slice 3c: nothing sets it automatically)
   { id: 'buildUp', group: 'brush', target: 'brush', kind: 'check', path: ['buildUp'], label: 'Build up (off: a stroke keeps the brush profile)' },
   // slice 3: the tip extras (core/height/brush.js BRUSH_TIPS) -- the 'tip' group shows them for a square / chisel tip only
+  // (each shows for a square / chisel tip only: its own showWhen too, the bar's '⋯' hosts them one by one)
   { id: 'roundness', group: 'tip', target: 'brush', kind: 'slider', path: ['roundness'], label: 'Roundness', step: 0.01, range: () => [0.05, 1],
-    note: '1 = a full circle / square; lower = squashed across the tip' },
+    note: '1 = a full circle / square; lower = squashed across the tip', showWhen: (b) => (b.tip || 'round') !== 'round' },
   { id: 'angle', group: 'tip', target: 'brush', kind: 'slider', path: ['angle'], label: 'Angle (degrees)', step: 1, range: () => [0, 180],
-    note: 'counter-clockwise; with Turn with the stroke, from the drag direction' },
-  { id: 'followStroke', group: 'tip', target: 'brush', kind: 'check', path: ['followStroke'], label: 'Turn with the stroke' },
+    note: 'counter-clockwise; with Turn with the stroke, from the drag direction', showWhen: (b) => (b.tip || 'round') !== 'round' },
+  { id: 'followStroke', group: 'tip', target: 'brush', kind: 'check', path: ['followStroke'], label: 'Turn with the stroke', showWhen: (b) => (b.tip || 'round') !== 'round' },
 ]);
 /**
  * The Height tab's OPTIONS BAR (Fred 2026-11-23: "In height this space is dead, use it to display information or input fields"):
@@ -334,6 +348,9 @@ export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
     summary: () => [controlText('viewLook'), controlText('viewShow')].filter(Boolean).join(' · ') }),
   Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze([groupDom('stamp')]),
     summary: () => [controlText('raise'), controlText('blend')].filter(Boolean).join(' · ') }),
+  // the feather profile with ANY tool while a selection exists (a selection tool's own branch holds it then: its `leads`)
+  Object.freeze({ id: 'feather', title: 'Feather profile', hosts: Object.freeze([groupDom('feather')]), summary: () => controlText('featherProfile'),
+    showWhen: () => !!heightSelection() && !(HEIGHT_TOOLS.find((t) => t.id === _tool)?.leads || []).includes('feather') }),
   Object.freeze({ id: 'place', title: 'Position & size', hosts: Object.freeze([groupDom('patch')]),
     summary: () => { const w = controlText('sizeW'), h = controlText('sizeH'); return w && h ? `${w} × ${h} in` : ''; } }),
   Object.freeze({ id: 'file', title: 'Heightmap file', hosts: Object.freeze([groupDom('file'), 'heightStored']), summary: 'import · export' }),
@@ -1747,15 +1764,21 @@ function renderControl(c) {
     return box;
   }
   if (c.kind === 'choice') {
-    return el('div', {}, [cad(c.label), el('div', { class: 'relief-toggle', id: `height_${c.id}`, style: 'margin-bottom:10px; flex-wrap:wrap;' },
+    const row = el('div', { class: 'relief-toggle', id: `height_${c.id}`, style: 'margin-bottom:10px; flex-wrap:wrap;' },
       c.options.map(([key, text, title, icon]) => {
-        const b = el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text });
+        const b = el('button', { type: 'button', class: 'relief-toggle-btn', 'data-height-choice': `${c.id}:${key}`, title, text, 'aria-label': String(text) });
         // an option's optional 4th entry: its drawn icon (svg markup made by this module), shown before its name
         // the icon over the name, three to a line (the STL crop falloff row's precedent, layout-app.css #stl_cropFalloffProfile):
         // measured at 390 px, seven icon + name buttons on one line overlapped their names
         if (icon) { b.insertAdjacentHTML('afterbegin', icon); Object.assign(b.style, { flex: '1 0 30%', flexDirection: 'column', gap: '2px', padding: '4px 2px', fontSize: '11px' }); }
         return b;
-      }))]);
+      }));
+    const box = el('div', {}, [cad(c.label), row]);
+    // `picker` (owner 2026-11-27, the Brick tab's pattern picker: "this picker is amazing, reuse it"): a VISUAL choice shows as
+    // the app's ONE picker -- a chip with the active option's icon + name, tapped open to a grid of icon tiles (main/icon-select.js
+    // mountIconGrid over these same buttons: their data-height-choice wiring, active state and ids are unchanged)
+    if (c.picker) mountIconGrid(row, { label: c.label, ids: { wrap: `height_${c.id}Picker`, chip: `height_${c.id}Chip` } });
+    return box;
   }
   if (c.kind === 'check') {
     // the box itself reaches the touch floor on a coarse pointer (--touch-target-min is declared only there, styles/editor.css;
@@ -1818,11 +1841,6 @@ const HEIGHT_BAR_WIDGETS = Object.freeze({
       node.querySelector('.height-bar-move-hint').style.display = _float ? 'none' : '';
       for (const b of node.querySelectorAll('[data-height-bar-action]')) b.style.display = _float ? '' : 'none';
     },
-  },
-  // the custom feather curve: a button (only with the Custom profile) that opens the curve's sheet
-  featherCurveButton: {
-    build: () => el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'featherCurve', text: 'Curve…', title: 'Draw the custom feather curve', style: `${BAR_TOUCH} padding:0 8px; display:none;` }),
-    sync: (node) => { const on = _tools.select.featherProfile === 'custom'; node.style.display = on ? '' : 'none'; if (!on) { const sh = byId('heightFeatherSheet'); if (sh) sh.hidden = true; } },
   },
   // the stock range, short, from heightStockLines (the panel's own function)
   stock: {
@@ -1887,7 +1905,6 @@ function wireHeightBar(bar) {
     const a = e.target.closest('[data-height-bar-action]');
     const kind = a && a.getAttribute('data-height-bar-action');
     if (kind === 'greyChip') { const g = byId('heightGroup_palette'); if (g && typeof g.scrollIntoView === 'function') g.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
-    else if (kind === 'featherCurve') { const sh = byId('heightFeatherSheet'); if (sh) sh.hidden = !sh.hidden; }
     else if (kind === 'moveDrop') dropHeightMove();
     else if (kind === 'moveCancel') cancelHeightMove();
   });
@@ -1961,15 +1978,6 @@ function syncToolIcons() {
   }
 }
 
-/** The sheet under the options bar that holds the custom feather curve (the bar's Curve button toggles it). */
-function ensureFeatherSheet() {
-  let sheet = byId('heightFeatherSheet');
-  if (sheet) return sheet;
-  const container = byId('editorCanvasContainer') || document.body;
-  sheet = el('div', { id: 'heightFeatherSheet', hidden: '', style: 'position:absolute; top:8px; right:8px; width:min(260px, calc(100% - 16px)); z-index:12; background:#fff; border:1px solid #bbb; border-radius:6px; padding:8px; box-shadow:0 2px 8px rgba(0,0,0,.25);' });
-  container.appendChild(sheet);
-  return sheet;
-}
 /** Build the panel from the declared tables into `body` (its groups in the collapse tree, HEIGHT_DRAWER_TREE), and the tools
  *  into `rail`: the tool row, pinned at the head of the panel (#heightToolsHead; EDITOR_TABS height). */
 export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
@@ -2007,16 +2015,23 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
   body.appendChild(el('div', { id: 'heightCarveRange', class: 'photo-layer-note', role: 'status', hidden: '' }));
   const ctx = panelCtx();
   for (const g of panelGroups()) {
+    // a context-bar group lives outside `body` (parked / in the bar): a re-render replaces the earlier one, never twins it
+    if (g.inBar) { byId(`heightGroup_${g.id}`)?.remove(); for (const c of allControls().filter((x) => x.group === g.id)) byId(`heightCtl_${c.id}`)?.remove(); }
     const box = el('div', { id: `heightGroup_${g.id}` });
     box.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
     if (GROUP_HEADS[g.id]) box.appendChild(GROUP_HEADS[g.id]());
-    for (const c of allControls().filter((x) => x.group === g.id && (!g.bar || x.kind === 'curve'))) {
-      const w = el('div', { 'data-height-control': c.id }, [renderControl(c)]);
+    for (const c of allControls().filter((x) => x.group === g.id)) {
+      // a context-bar group's control: its own id, the bar's rows host it (EDITOR_TOOL_BAR.height)
+      const w = el('div', { 'data-height-control': c.id, ...(g.inBar ? { id: `heightCtl_${c.id}` } : {}) }, [renderControl(c)]);
       if (c.showWhen) w.hidden = !c.showWhen(_brush, null, ctx);
       box.appendChild(w);
     }
     if (g.showWhen) box.hidden = !g.showWhen(ctx);
-    if (g.bar) ensureFeatherSheet().appendChild(box); else body.appendChild(box);
+    if (g.inBar) { // no side-panel section: the bar's parked home (an earlier render's twin of any of its ids goes)
+      for (const n of box.querySelectorAll('[id]')) byId(n.id)?.remove();
+      (toolBarParked() || body).appendChild(box);
+    }
+    else body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
   HEIGHT_TREE.build(body, (toolId) => setHeightTool(toolId));

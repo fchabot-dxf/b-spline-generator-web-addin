@@ -526,8 +526,10 @@ function _buildLatticeIconSVG(kind) {
  *  on the new row too — same "always visible, never a collapsible
  *  section" exemption Add always had). */
 const _iconRowSetters = [];
+/** The add-kind rows' ids, per lattice tool (the context bar hosts them: main/editor-tool-bar.js). */
+export const LATTICE_KIND_ROW_IDS = Object.freeze({ lattice: 'editorLatticeKindRow', shapeLattice: 'editorShapeLatticeKindRow' });
 
-function _buildLatticeIconRow(editor, bodyEl, kinds) {
+function _buildLatticeIconRow(editor, bodyEl, kinds, rowId) {
   if (!bodyEl) return;
   // T81 item 4 (Fred screenshot: the OLD "Add [Rail|Tie|Node]" text row
   // was STILL VISIBLE alongside the new icon row): a panel body can carry
@@ -546,6 +548,9 @@ function _buildLatticeIconRow(editor, bodyEl, kinds) {
   const row = document.createElement('div');
   row.dataset.noCollapse = '';
   row.className = 'lattice-icon-tool-row';
+  // the context bar (owner 2026-11-27): the add-kind row is a TOOL setting -- the lattice tool's row of the bar hosts it by
+  // this id (main/editor-tool-bar.js EDITOR_TOOL_BAR.lattice)
+  if (rowId) row.id = rowId;
 
   const buttons = {};
   for (const kind of kinds) {
@@ -605,8 +610,8 @@ export function initLatticeSideColumn(editor) {
   // T80 item 2 (Fred: "where are add geometry tools"): Shape Lattice gets
   // the same row -- one drawKind for both tools; shapeLatticeHandler hands
   // Rail/Tie/Node presses on empty space to latticeHandler.
-  _buildLatticeIconRow(editor, latticeBody, ['select', 'rail', 'tie', 'node']);
-  _buildLatticeIconRow(editor, shapeBody, ['select', 'rail', 'tie', 'node']);
+  _buildLatticeIconRow(editor, latticeBody, ['select', 'rail', 'tie', 'node'], LATTICE_KIND_ROW_IDS.lattice);
+  _buildLatticeIconRow(editor, shapeBody, ['select', 'rail', 'tie', 'node'], LATTICE_KIND_ROW_IDS.shapeLattice);
 
   let lastMode = null;
   document.addEventListener('editorModeChanged', (e) => {

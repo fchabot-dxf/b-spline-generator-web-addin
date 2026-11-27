@@ -47,19 +47,17 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('surround', 'Window surround', 'brick-surround', ['brickWindowSurroundRow'], { titleOf: 'brickSurroundLabel' }),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
+  // the context bar (owner 2026-11-27): the Brush's next-stroke settings (Profile, Orientation, Width / pattern, its Accent
+  // and Rustic) and the Raised brush's Mode + Level are the tool's row of the bar (main/editor-tool-bar.js), not sections
   brush: Object.freeze({ host: 'brickBrushSection', after: 'brickElementLabel_brush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     COLOUR(),
-    sec('stroke', 'Stroke', 'brick-pattern', ['brickBrushProfileRow', 'brickBrushOrientationRow', 'brickBrushPresetRow']),
-    sec('accent', 'Accent relief', 'brick-accent', ['brickBrushAccentRow']),
-    sec('height', 'Height', 'brick-height', ['brickRusticRow_brush', 'brickEdgeTaperRow']),
+    sec('height', 'Height', 'brick-height', ['brickEdgeTaperRow']),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
   raisedBrush: Object.freeze({ host: 'brickRaisedSection', after: 'brickElementLabel_raisedBrush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     COLOUR(),
-    sec('mode', 'Mode', 'brick-pattern', ['brickRaisedModeRow'], { titleOf: 'brickRaisedModeLabel' }),
-    sec('height', 'Height', 'brick-height', ['brickRaisedLevelRow']),
     sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
 });

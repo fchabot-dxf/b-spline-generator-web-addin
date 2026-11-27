@@ -16,7 +16,7 @@ import { decodedRaster, f16Round } from '../bspline-frame-builder/b-spline-gen/h
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   initHeightPanel, newHeightPatch, activeHeightLayer, _resetHeightPanelForTests, setHeightField, setHeightTool, heightTool, heightBrush,
-  paintHeightStroke, fillHeight, selectHeightRect, clearHeightSelection, HEIGHT_TOOLS, HEIGHT_TOOL_CONTROLS, heightToolSettings, pickHeightGrey, addPaintLayer,
+  paintHeightStroke, fillHeight, selectHeightRect, clearHeightSelection, HEIGHT_TOOLS, HEIGHT_TOOL_CONTROLS, HEIGHT_OPTIONS_BAR, heightToolSettings, pickHeightGrey, addPaintLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/main/height-panel.js';
 import { heightBrushHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-height-tool.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -143,7 +143,9 @@ describe('the panel', () => {
     await newHeightPatch();
     selectHeightRect([-0.8, -1], [-0.6, 1]); await fillHeight({ heightIn: 0.2 }); clearHeightSelection();
     setHeightTool('eyedropper');
-    expect(eye.leads).toContain('sample');
+    // the context bar (owner 2026-11-27): the Sample choice is the eyedropper's row of the bar (EDITOR_TOOL_BAR.height)
+    expect(eye.leads).not.toContain('sample');
+    expect(HEIGHT_OPTIONS_BAR.eyedropper.some((i) => i.control === 'sampleFrom')).toBe(true);
     heightBrushHandler.start(ed, { x: 0.3, y: 1 }, {}); // board (-0.7, 0): on the ridge
     await heightBrushHandler.finish(ed);
     expect(heightTool()).toBe('brush');
@@ -159,7 +161,10 @@ describe('the panel', () => {
     // + 'view' (the default: as the greyscale view's Show) and 'patch' (all the patch's layers)
     expect(c.options.map((o) => o[0])).toEqual(['view', 'layer', 'patch', 'board']);
     expect(heightToolSettings('sample').from).toBe('view');
-    expect(HEIGHT_TOOLS.find((t) => t.id === 'wand').leads).toContain('sample');
+    // one setting, on the wand's and the eyedropper's rows of the context bar (the wand's in its '⋯'), no panel section
+    const flat = (items) => items.flatMap((i) => (i.more ? flat(i.more) : [i]));
+    for (const t of ['wand', 'eyedropper']) expect(flat(HEIGHT_OPTIONS_BAR[t]).some((i) => i.control === 'sampleFrom'), t).toBe(true);
+    expect(HEIGHT_TOOLS.find((t) => t.id === 'wand').leads).not.toContain('sample');
     expect(HEIGHT_TOOL_CONTROLS.some((x) => x.id === 'wandSample')).toBe(false);
   });
 });

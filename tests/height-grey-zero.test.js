@@ -39,7 +39,8 @@ describe('the grey system is a declared per-patch choice', () => {
     expect(c.options.map((o) => o[0])).toEqual(['black', 'mid']);
     expect(c.options.map((o) => o[1])).toEqual(z.options.map((o) => o[1]));
     expect(c.options.map((o) => o[1])).toEqual(['Black = 0', 'Mid-grey = 0']);
-    expect(HEIGHT_OPTIONS_BAR.brush.some((i) => i.control === 'greyZero')).toBe(true);
+    // the context bar's six-item rule (owner 2026-11-27): on the brush row it sits in the '⋯'
+    expect(HEIGHT_OPTIONS_BAR.brush.find((i) => i.more).more.some((i) => i.control === 'greyZero')).toBe(true);
     expect(HEIGHT_OPTIONS_BAR.eyedropper.some((i) => i.control === 'greyZero')).toBe(true);
   });
   it('absent = mid (today): the palette reads mid-grey = 0 until the choice is made', () => {

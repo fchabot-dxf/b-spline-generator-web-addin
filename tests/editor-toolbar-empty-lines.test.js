@@ -57,7 +57,7 @@ describe('the editor top bar: nothing empty takes a line', () => {
     const spacer = [...bar.children].at(-1);
     expect(spacer.children.length).toBe(0);
     expect(matchesAny(spacer, gone)).toBe(true);
-    for (const id of ['editorGridGroup', 'editorHeightOptionsGroup', 'editorStrokeGroup']) expect(matchesAny(document.getElementById(id), gone), id).toBe(false);
+    for (const id of ['editorGridGroup', 'editorToolBarGroup', 'editorStrokeGroup']) expect(matchesAny(document.getElementById(id), gone), id).toBe(false);
     const rail = document.querySelector('.editor-sidebar');
     const frame = document.getElementById('editorToolbarFrame');
     // the Height / Draw / Brick tabs: every toolbar in the rail hidden -> the rail goes

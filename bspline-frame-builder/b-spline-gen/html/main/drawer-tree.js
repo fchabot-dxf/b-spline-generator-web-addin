@@ -7,7 +7,8 @@
  * MOVED in: ids and handlers kept) under a header -- a caret, the title, a short `summary` (text, or a function of the
  * document). `armsTool`: an ELEMENT / TOOL branch opens by arming its tool -- an accordion in step with the tool row
  * (the settings follow the armed tool); a branch without it folds on its own, remembered per device. `headerId`: the
- * header keeps a retired control's id (a tab the tree replaced), for the brick matrix.
+ * header keeps a retired control's id (a tab the tree replaced), for the brick matrix. `showWhen(doc)`: a free branch that
+ * shows only while it applies (the Height tree's Feather profile: while a selection exists).
  *
  * A host declared by SEVERAL branches (the Height tree: a group several tools lead with, e.g. the Selection) lives in the
  * armed tool's branch while that branch declares it, else in its HOME: the first free branch declaring it, else the first
@@ -130,6 +131,7 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
         const shell = doc.getElementById(branchDomId(b.id));
         if (!shell) continue;
         if (armedOnly && b.armsTool) shell.style.display = b.armsTool === armed && b.hosts.length ? '' : 'none'; // a tool with no group of its own has no branch (its row is in the options bar)
+        else if (b.showWhen) shell.style.display = b.showWhen(doc) ? '' : 'none'; // a free branch shown only while it applies
         const o = isOpen(b);
         shell.classList.toggle('open', o);
         shell.classList.toggle('armed', !!b.armsTool && b.armsTool === armed);

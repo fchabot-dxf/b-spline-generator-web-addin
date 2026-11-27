@@ -2436,3 +2436,23 @@
 .tool-bar-row #stripeCount, .tool-bar-row #stripeLength { width: 56px !important; }
 .tool-bar-row #stripePatternPresets { margin-top: 0 !important; }
 .tool-bar-row #stripeColorSwatches { width: 132px; }
+/* the Lattice tools' pieces: the add-kind icons, the selected piece's kind + Colour / Reset on one line */
+.tool-bar-row .lattice-icon-tool-row .tool-btn { width: 32px; height: 32px; }
+.tool-bar-row .lattice-piece-colour { display: flex; align-items: center; gap: 8px; }
+.tool-bar-row .lattice-piece-colour > div { margin: 0 !important; }
+/* the Brick tools' pieces (main/brick-panel.js keeps re-rendering them): each row's label beside its control, one line */
+.tool-bar-row [id^="brickSubTools_"] { margin: 0 !important; flex-wrap: nowrap !important; }
+.tool-bar-row #brickBrushProfileRow, .tool-bar-row #brickBrushOrientationRow, .tool-bar-row #brickBrushPresetRow,
+.tool-bar-row #brickRaisedModeRow, .tool-bar-row #brickRaisedLevelRow { display: flex; align-items: center; gap: 6px; }
+.tool-bar-row #brickBrushProfileRow > .cad-label, .tool-bar-row #brickBrushOrientationRow > .cad-label, .tool-bar-row #brickBrushPresetRow > .cad-label,
+.tool-bar-row #brickRaisedModeRow > .cad-label, .tool-bar-row #brickRaisedLevelRow > .cad-label { margin: 0 !important; white-space: nowrap; }
+.tool-bar-row .relief-toggle, .tool-bar-row #brickBrushPresetList { margin-bottom: 0 !important; flex-wrap: nowrap !important; }
+.tool-bar-row #brickRaisedLevel { width: 72px !important; margin: 0 !important; }
+.tool-bar-row [id^="brickHeightPickRow_"], .tool-bar-row #brickBlocksRow_frame, .tool-bar-row #brickWallAreaRow { display: flex; align-items: center; gap: 10px; margin: 0 !important; flex-wrap: nowrap !important; }
+.tool-bar-row [id^="brickHeightPickRow_"] > div, .tool-bar-row #brickBlocksRow_frame > div { margin: 0 !important; flex-wrap: nowrap !important; }
+/* the picked chip's how-to line: the Heights sub-tool's own tooltip says it */
+.tool-bar-row [id^="brickHeightPickRow_"] > div:first-child > span + span { display: none; }
+.tool-bar-row #brickBlocksHint { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 !important; }
+.tool-bar-row #brickWallAreasClear { flex: 0 0 auto !important; }
+/* in the '⋯' sheet a choice row may wrap */
+.tool-bar-more-sheet .relief-toggle, .tool-bar-more-sheet .height-bar-item { flex-wrap: wrap !important; }

@@ -460,9 +460,9 @@ describe('F27 item 3: the tool is registered like the scissors (button + shortcu
     expect(html.match(/data-key="s"/g)).toHaveLength(1);
     expect(html).toMatch(/id="toolStripe"[^>]*data-key="s"/);
   });
-  it('panel shown only in stripe mode; a declared tool panel (the Art tabs: mounted under Layers, no drawer tab); the tool places its own cuts (no pointer snap)', () => {
-    expect(TOOLBAR_GROUPS.editorStripePanel(undefined, null, 'stripe')).toBe(true);
-    expect(TOOLBAR_GROUPS.editorStripePanel('stripe', null, 'cut')).toBe(false);
+  it('its settings are the Stripe tool\'s row of the context bar (no side panel of its own any more); the tool places its own cuts (no pointer snap)', () => {
+    // the context bar (owner 2026-11-27): main/editor-tool-bar.js STRIPE_BAR; the old side panel stays hidden
+    expect(TOOLBAR_GROUPS.editorStripePanel).toBeUndefined();
     expect(TOOL_PANELS.stripe).toEqual({ panelId: 'editorStripePanel' });
     expect(SNAP_POLICY.stripe).toBe('none');
     for (const id of ['editorStripePanel', 'stripeCount', 'stripeLength', 'stripeThree', 'stripeColorA', 'stripeColorB', 'stripeColorC', 'stripeColorsReset']) {

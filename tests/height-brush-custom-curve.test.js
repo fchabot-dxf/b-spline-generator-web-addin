@@ -134,7 +134,8 @@ describe("the panel's 'customCurve' control", () => {
     const ids = HEIGHT_CONTROLS.map((c) => c.id);
     expect(ids[ids.indexOf('falloff') + 1]).toBe('customCurve');
     const c = HEIGHT_CONTROLS.find((x) => x.id === 'customCurve');
-    expect(c).toMatchObject({ group: 'brush', target: 'brush', kind: 'curve', path: ['customCurve'] });
+    // owner 2026-11-27 (visual choices stay in the side panel): the brush's 'Tip & falloff' section, with the Falloff picker
+    expect(c).toMatchObject({ group: 'brushShape', target: 'brush', kind: 'curve', path: ['customCurve'] });
     expect(c.showWhen({ falloff: 'smooth' })).toBe(false);
     expect(c.showWhen({ falloff: 'custom' })).toBe(true);
   });

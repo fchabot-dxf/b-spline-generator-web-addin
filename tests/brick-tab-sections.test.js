@@ -71,7 +71,9 @@ describe('the declaration', () => {
     expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toEqual(['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']);
   });
   it('the accent sections are titled "Accent relief" (Fred); item 9\'s Frame Crumble + Window surround are Frame sections', () => {
-    for (const tab of ['wall', 'brush']) expect(BRICK_TAB_SECTIONS[tab].sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
+    // (the Brush's own accent row is its context-bar row's now, main/editor-tool-bar.js: only the Wall has the section)
+    expect(BRICK_TAB_SECTIONS.wall.sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
+    expect(BRICK_TAB_SECTIONS.brush.sections.some((s) => s.kind === 'brick-accent')).toBe(false);
     const frame = BRICK_TAB_SECTIONS.frame.sections;
     expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Colour', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Size & joint']); // + Colour (2026-10-15) // Corners -> Fan centre (2026-10-11)
     expect(frame.find((s) => s.id === 'crumble').kind).toBe(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').kind);
@@ -147,7 +149,7 @@ describe('in the panel', () => {
   });
   it('Stripe (no sections of its own) shows none of the Brush sections', () => {
     $('brickTool_brush').click();
-    expect(shownSections('brush')).toContain('stroke');
+    expect(shownSections('brush')).toContain('bricks'); // (its Stroke settings: the context bar's Brush row)
     $('brickSubTool_brush_stripe').click();
     expect(shownSections('brush')).toEqual([]);
     expect(P.brickSettings).toBeTruthy();

@@ -93,17 +93,19 @@ describe('the panel', () => {
     clearHeightSelection();
   }
 
-  it('the Wand is a declared tool leading with its own section; its settings are declared controls', async () => {
+  it('the Wand is a declared tool; its settings are declared controls (the context bar\'s wand row), its section the Feather profile', async () => {
     const wand = HEIGHT_TOOLS.find((t) => t.id === 'wand');
     expect(wand).toBeTruthy();
-    expect(wand.leads[0]).toBe('wand');
+    // the context bar (owner 2026-11-27): Tolerance / Contiguous are the wand's row of the bar; its side-panel section is the
+    // visual Feather profile (the selection tools' one)
+    expect(wand.leads).toEqual(['feather']);
     expect(document.querySelector('#editorToolbarHeight [data-height-tool="wand"]')).toBeTruthy();
     const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'wand').map((c) => c.id);
     // slice 5 (Fred 2026-11-23): Sample is one setting shared with the eyedropper ('sampleFrom', its own 'sample' section)
     expect(ids).toEqual(['wandToleranceIn', 'wandContiguous']);
-    await newHeightPatch(); // the wand's section needs a patch (like the selection's)
+    await newHeightPatch(); // the feather section needs a patch (like the selection's)
     setHeightTool('wand');
-    expect(document.getElementById('heightGroup_wand').hidden).toBe(false);
+    expect(document.getElementById('heightGroup_feather').hidden).toBe(false);
   });
   it('a wand tap on a ridge: contiguous selects that ridge only; contiguous off selects both', async () => {
     await ridges();
@@ -175,10 +177,10 @@ describe('the panel', () => {
     expect(dome(60)).toBeCloseTo(0.2 * Math.sqrt(1 - (1 - 0.105 / 0.2) ** 2), 3);
     expect(dome(60)).toBeGreaterThan(lin(60) + 0.05);      // round shoulders (the pillow)
   });
-  it('the feather profile is a declared control beside Feather; Custom opens the curve widget', () => {
-    const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'select').map((c) => c.id);
-    expect(ids.indexOf('featherProfile')).toBe(ids.indexOf('featherIn') + 1);
-    expect(ids).toContain('featherCurve');
+  it('the feather profile is a declared control (its own visual section, with its curve); Custom opens the curve widget', () => {
+    // owner 2026-11-27 ("profile is something i'd want in the sidebar, because it's visual"): the 'feather' section
+    const ids = HEIGHT_TOOL_CONTROLS.filter((c) => c.group === 'feather').map((c) => c.id);
+    expect(ids).toEqual(['featherProfile', 'featherCurve']);
     const curve = () => document.querySelector('[data-height-control="featherCurve"]');
     setHeightField('featherProfile', 'custom'); setHeightTool('selectRect');
     expect(curve().hidden).toBe(false);

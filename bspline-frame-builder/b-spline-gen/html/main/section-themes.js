@@ -90,7 +90,7 @@ export const BRICK_SECTION_THEMES = Object.freeze({
  *  A branch not listed takes shade 0. A `flat` branch (main/drawer-tree.js: the Brick element + General groups) is no
  *  card and takes no tint: its BRICK_SECTION_THEMES sections are the cards. */
 export const EDITOR_CARD_THEMES = Object.freeze({
-  drawDrawerTree: Object.freeze({ theme: 'stamp', tool: 0, shades: Object.freeze({ general: 1, stamp: 3 }) }), // (Layers retired: the editor layer stack)
+  drawDrawerTree: Object.freeze({ theme: 'stamp', tool: 0, shades: Object.freeze({ stamp: 3 }) }), // (Layers retired: the editor layer stack; General: the context bar)
   latticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
   shapeLatticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, contour: 1, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
   brickDrawerTree: Object.freeze({ theme: 'brick', tool: 0, shades: Object.freeze({}) }), // (its Layers card retired: the editor layer stack)

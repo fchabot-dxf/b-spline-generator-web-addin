@@ -616,50 +616,32 @@ describe('UI3 AMEND 1/2 — icon tool row replacing Add', () => {
   });
 });
 
-// The Art tabs: Artwork's Stripe settings mount under Layers like the lattice tools; the Brick tab hosts the SAME body in
-// its Stripe section (main/editor-tabs.js modeHosts) -- the mount must never pull it out of that host.
-describe('Artwork Stripe mounts under Layers; the Brick tab keeps its hosted body', () => {
+// The context bar (owner 2026-11-27): the Stripe settings are the Stripe tool's row of the bar (main/editor-tool-bar.js) --
+// no mount under Layers any more; the lattice tools keep theirs.
+describe('Stripe: no mount under Layers (its settings are the context bar\'s); the lattice tools keep theirs', () => {
   let editor;
   const fireTab = (tab) => document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab } }));
   beforeEach(() => {
     buildFixture();
-    document.body.insertAdjacentHTML('beforeend', `<aside id="editorStripePanel"><div id="editorStripePanelBody"><span>Stripe</span></div></aside>
-      <div id="brickStripeSection"></div>`);
+    document.body.insertAdjacentHTML('beforeend', `<aside id="editorStripePanel"><div id="editorStripePanelBody"><span>Stripe</span></div></aside>`);
     setDesktop(true);
     editor = { _lattice: { drawKind: 'select' } };
     initLatticeSideColumn(editor);
   });
   afterEach(() => { fireTab('artwork'); fireModeChanged(editor, 'select'); document.body.innerHTML = ''; });
 
-  // advisor: a phone reaches EVERY Artwork tool's settings after the tab pair's removal (900 px = the mobile bucket)
-  it.each([['lattice', 'editorLatticePanelBody'], ['shapeLattice', 'editorShapeLatticePanelBody'], ['stripe', 'editorStripePanelBody']])(
+  // advisor: a phone reaches EVERY lattice tool's settings after the tab pair's removal (900 px = the mobile bucket)
+  it.each([['lattice', 'editorLatticePanelBody'], ['shapeLattice', 'editorShapeLatticePanelBody']])(
     'PHONE: %s opens its settings under Layers (the only place the drawer shows)', (mode, body) => {
       setDesktop(false);
-      fireTab(mode === 'stripe' ? 'artwork' : 'lattice'); // phase 2: lattice tools in the Lattice tab; Stripe in both
+      fireTab('lattice');
       fireModeChanged(editor, mode);
       expect(document.getElementById('editorLayersPanel').contains(document.getElementById(body))).toBe(true);
     });
-  it('Lattice + stripe too (the shared tool set): the body sits under Layers', () => {
-    fireTab('lattice');
+  it.each(['artwork', 'lattice'])('%s + stripe: the stripe body is not mounted under Layers', (tab) => {
+    fireTab(tab);
     fireModeChanged(editor, 'stripe');
-    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
-  });
-  it('Artwork + stripe: the body sits under Layers, the panel is hidden', () => {
-    fireModeChanged(editor, 'stripe');
-    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
-    expect(document.getElementById('editorStripePanel').style.display).toBe('none');
-  });
-  it('switching to Brick: its host took the body (modeHosts runs first) -- the unmount leaves it there', () => {
-    fireModeChanged(editor, 'stripe');
-    document.getElementById('brickStripeSection').appendChild(document.getElementById('editorStripePanelBody')); // modeHosts
-    fireTab('brick');
-    expect(document.getElementById('editorStripePanelBody').parentElement.id).toBe('brickStripeSection');
-  });
-  it('back to Artwork (modeHosts sent the body home first): it mounts under Layers again', () => {
-    fireModeChanged(editor, 'stripe');
-    fireTab('brick');
-    document.getElementById('editorStripePanel').appendChild(document.getElementById('editorStripePanelBody')); // modeHosts: home
-    fireTab('artwork');
-    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
+    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(false);
+    expect(document.getElementById('editorStripePanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
   });
 });
