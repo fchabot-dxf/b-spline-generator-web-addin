@@ -10,7 +10,7 @@
  *     the Bricks layer stays. The Wall/Frame element RECORDS (item 22) are on that layer, so they go too: no
  *     element is left, nothing re-lays.
  */
-import { addLayer, setActiveLayer, isBricksLayer, isBrickToolNode, isUserLocked, isOnUserLockedLayer, BRICK_RECORD_ATTR } from './layers.js';
+import { setActiveLayer, isBricksLayer, isBrickToolNode, isUserLocked, isOnUserLockedLayer, BRICK_RECORD_ATTR } from './layers.js';
 
 const _layerIdOf = (child) => String(child.attr ? child.attr('data-layer') : child.node?.getAttribute?.('data-layer'));
 
@@ -31,14 +31,10 @@ export function clearArtworkLayers(editor) {
   editor._layers = kept;
   editor._activeLayer = null;
   // audit v3 #1: a kept PLAIN layer (it holds bricks, slice 3) is already an art layer -- it becomes the active one;
-  // a fresh "Layer 1" is added only when none is left (none kept, or only the legacy brick layer), as before
+  // none left (none kept, or only the legacy brick layer) = no layer, as on a new board
   const plain = kept.find((l) => !isBricksLayer(l) && !isUserLocked(l)); // a locked layer is never the one to draw on
   if (plain) { setActiveLayer(editor, plain.id); return; }
-  // a new board's first art layer (its default name counts every layer, the Bricks one too); the caller's commit
-  // makes it one undo step
-  const layer = addLayer(editor, { skipUndo: true, name: 'Layer 1' });
-  editor._layers = [layer, ...kept.filter((l) => l !== layer)]; // the art layer back in front, as before the clear
-  setActiveLayer(editor, layer.id);
+  // Fred 2026-11-27 (a new file has no layers): none is made here -- the first drawing action gets its layer (ensureActiveLayer)
 }
 
 export function clearBrickElements(editor) {

@@ -24,6 +24,7 @@ import {
   addLayer, removeLayer, setLayerLocked, initLayerControls, ensureActiveLayer, getActiveLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import '../bspline-frame-builder/b-spline-gen/html/editor/editor-context-menu.js';
+import { clearArtworkLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-clear.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const $ = (id) => document.getElementById(id);
@@ -185,5 +186,15 @@ describe('the Bricks row and a Brick part can be deleted (Fred 2026-11-27: brick
     await rowMenuItems(fsub).find((m) => m.id === 'delete').run(fsub);
     expect(ed._layers).toEqual([]);
     expect(ed._sketchLayer.node.querySelectorAll('[data-brick]').length).toBe(0);
+  });
+});
+describe('Clear > Artwork leaves no empty layer (a new file has no layers)', () => {
+  it('with no layer kept, clearArtworkLayers makes none and no active layer', () => {
+    const ed = brickEditor();
+    const L = addLayer(ed, { skipUndo: true }); ed._activeLayer = L.id;
+    ed._sketchLayer.rect = undefined;
+    clearArtworkLayers(ed);
+    expect(ed._layers).toEqual([]);
+    expect(ed._activeLayer).toBeNull();
   });
 });
