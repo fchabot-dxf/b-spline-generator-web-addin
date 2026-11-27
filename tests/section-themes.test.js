@@ -58,7 +58,9 @@ describe('item 30 step 2: wired', () => {
     const ed = readFileSync('bspline-frame-builder/styles/editor.css', 'utf-8');
     const block = (css, sel) => css.slice(css.indexOf(sel), css.indexOf('}', css.indexOf(sel)));
     expect(block(app, '.cad-sidebar .section-themed > .panel-body {')).toMatch(/background: var\(--section-body\)/);
-    expect(block(app, '.cad-sidebar .section-themed > .panel-header,')).toMatch(/var\(--section-header\)[\s\S]*var\(--section-stripe\)/);
+    expect(block(app, '.cad-sidebar .section-themed > .panel-header,')).toMatch(/var\(--section-header\)/);
+    // the stripe: the header's own rule, never its :hover (tests/sidebar-header-hover.test.js)
+    expect(block(app, '.cad-sidebar .section-themed > .panel-header {')).toMatch(/var\(--section-stripe\)/);
     expect(block(ed, '.editor-layers-panel.section-themed-panel > .layers-header {')).toMatch(/var\(--section-header\)/);
     expect(readFileSync('bspline-frame-builder/b-spline-gen/html/main/main.js', 'utf-8')).toMatch(/applySectionThemes\(\)/);
   });
