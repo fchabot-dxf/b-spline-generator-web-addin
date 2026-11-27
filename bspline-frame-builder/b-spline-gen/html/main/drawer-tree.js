@@ -129,7 +129,7 @@ export function createDrawerTree({ id, branches, openKey, defaultOpen = [], bran
       for (const b of branches) {
         const shell = doc.getElementById(branchDomId(b.id));
         if (!shell) continue;
-        if (armedOnly && b.armsTool) shell.style.display = b.armsTool === armed ? '' : 'none';
+        if (armedOnly && b.armsTool) shell.style.display = b.armsTool === armed && b.hosts.length ? '' : 'none'; // a tool with no group of its own has no branch (its row is in the options bar)
         const o = isOpen(b);
         shell.classList.toggle('open', o);
         shell.classList.toggle('armed', !!b.armsTool && b.armsTool === armed);

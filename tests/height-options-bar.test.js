@@ -74,14 +74,16 @@ describe('the bar is no longer empty on the Height tab', () => {
     expect(r.querySelector('[data-height-choice^="invert:"]')).toBeNull();
   });
   it('the selection tools: Replace / Add / Subtract + feather; the wand adds tolerance + contiguous; gradient and fill their fields', () => {
-    for (const t of ['selectRect', 'selectEllipse', 'selectLasso', 'wand']) {
-      const r = shown(t);
+    for (const t of ['marquee', 'selectLasso', 'wand']) {
+      expect(shown(t), t).toBeTruthy();
+      const r = row('__selection');                                   // the shared selection row: shown with each selection tool
+      expect(r.style.display, t).not.toBe('none');
       expect(r.querySelectorAll('[data-height-choice^="selCombine:"]').length, t).toBe(3);
-      expect(barNum(t, 'featherIn'), t).toBeTruthy();
+      expect(barNum('__selection', 'featherIn'), t).toBeTruthy();
     }
     expect(barNum('wand', 'wandToleranceIn')).toBeTruthy();
     expect(row('wand').querySelector('[data-height-bar="wandContiguous"]').type).toBe('checkbox');
-    expect(row('selectRect').querySelector('[data-height-bar="wandToleranceIn"]')).toBeNull();
+    expect(row('marquee').querySelector('[data-height-bar="wandToleranceIn"]')).toBeNull();
     shown('gradient'); expect(barNum('gradient', 'gradStartIn')).toBeTruthy(); expect(barNum('gradient', 'gradEndIn')).toBeTruthy();
     shown('fill'); expect(barNum('fill', 'fillHeightIn')).toBeTruthy();
   });
@@ -128,12 +130,12 @@ describe('one setting, two views', () => {
   });
   it('the selection row and the wand: combine, feather, tolerance, contiguous are the tool settings the panel reads', () => {
     shown('wand');
-    barChoice('wand', 'selCombine', 'add').click();
+    barChoice('__selection', 'selCombine', 'add').click();
     expect(heightToolSettings('select').combine).toBe('add');
-    expect(document.querySelector('#heightPanelBody [data-height-choice="selCombine:add"]').classList.contains('active')).toBe(true);
-    const f = barNum('wand', 'featherIn'); f.value = '0.2'; f.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(barChoice('__selection', 'selCombine', 'add').classList.contains('active')).toBe(true);
+    const f = barNum('__selection', 'featherIn'); f.value = '0.2'; f.dispatchEvent(new Event('change', { bubbles: true }));
     expect(heightToolSettings('select').featherIn).toBeCloseTo(0.2, 6);
-    expect(panelNum('featherIn').value).toBe('0.2');
+    expect(barNum('__selection', 'featherIn').value).toBe('0.2');
     const t = barNum('wand', 'wandToleranceIn'); t.value = '0.05'; t.dispatchEvent(new Event('change', { bubbles: true }));
     expect(heightToolSettings('wand').toleranceIn).toBeCloseTo(0.05, 6);
     const c = row('wand').querySelector('[data-height-bar="wandContiguous"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true }));

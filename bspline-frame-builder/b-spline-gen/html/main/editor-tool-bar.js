@@ -42,6 +42,14 @@ const STRIPE_MORE = [h('stripePatternRatioRow'), h('stripePatternClampNote'), h(
 export const STRIPE_BAR = row(...STRIPE_SIZE, h('stripeColorSwatches'), more(...STRIPE_MORE, h('stripeColorPresets')));
 export const BRICK_STRIPE_BAR = row(...STRIPE_SIZE, more(...STRIPE_MORE, h('stripeBrickStyles')));
 
+// the Height tab's selection pieces (main/height-panel.js): compact controls built per row, and the buttons built once
+const SEL = Object.freeze({
+  combine: Object.freeze({ control: 'selCombine', label: 'New' }), feather: Object.freeze({ control: 'featherIn', label: 'Feather', step: 0.01 }),
+  profile: Object.freeze({ control: 'featherProfile', label: 'Profile' }), curve: Object.freeze({ widget: 'featherCurveButton' }),
+  shape: Object.freeze({ control: 'selShape', label: 'Shape' }), move: Object.freeze({ widget: 'moveActions' }),
+});
+const SEL_BTN = Object.freeze({ feather: h('heightSelFeather'), all: h('heightSelAll'), invert: h('heightSelInvert'), clear: h('heightSelClear'), fromShape: h('heightSelShapePick') });
+
 export const EDITOR_TOOL_BAR = Object.freeze({
   artwork: Object.freeze({
     select: row(STROKE, COLOUR, STYLE, FONT),
@@ -66,12 +74,17 @@ export const EDITOR_TOOL_BAR = Object.freeze({
   height: Object.freeze({
     brush: row({ control: 'sizeIn', label: 'Size', step: 0.05 }, { control: 'mode', label: 'Mode' }, { widget: 'greyChip', label: 'Set' }, { control: 'greyZero', label: 'Grey' }, { control: 'invert', label: 'Paint' }),
     eraser: row({ control: 'sizeIn', label: 'Size', step: 0.05 }),
-    selectRect: row({ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }),
-    selectEllipse: row({ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }),
-    selectLasso: row({ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }),
-    wand: row({ control: 'selCombine', label: 'New' }, { control: 'featherIn', label: 'Feather', step: 0.01 }, { control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }),
+    // the selection tools (marquee-move, owner 2026-11-27: "those extra features are better in a contextual toolbar"): each
+    // tool's row holds the selection's settings and buttons -- the most used on the bar, the rest in its '⋯'. The buttons
+    // (Feather, Select all, Invert, Clear, From a Draw shape) are built ONCE (main/height-panel.js) and hosted by every row
+    marquee: row(SEL.shape, SEL.combine, SEL.feather, SEL_BTN.clear, more(SEL_BTN.invert, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+    selectLasso: row(SEL.combine, SEL.feather, SEL_BTN.invert, SEL_BTN.clear, more(SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
+    wand: row({ control: 'wandToleranceIn', label: 'Tolerance', step: 0.005 }, { control: 'wandContiguous', label: 'Contiguous' }, SEL.combine, SEL.feather,
+      more({ control: 'sampleFrom', label: 'Sample' }, SEL_BTN.invert, SEL_BTN.clear, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.all, SEL_BTN.fromShape, SEL.move)),
     eyedropper: row({ control: 'sampleFrom', label: 'Sample' }, { widget: 'greyChip', label: 'Picked' }, { control: 'greyZero', label: 'Grey' }),
-    move: row({ widget: 'moveActions' }),
+    // the Select tool (id 'move', marquee-move)
+    move: row({ widget: 'moveActions', hint: 'Drag to move the selection (none: the whole layer)' }, SEL_BTN.all, SEL_BTN.invert, SEL_BTN.clear,
+      more(SEL.combine, SEL.feather, SEL.profile, SEL.curve, SEL_BTN.feather, SEL_BTN.fromShape)),
     gradient: row({ control: 'gradStartIn', label: 'Start', step: 0.01 }, { control: 'gradEndIn', label: 'End', step: 0.01 }),
     fill: row({ control: 'fillHeightIn', label: 'Height', step: 0.01 }, { control: 'fillOpacity', label: 'Opacity', step: 0.05 }),
   }),
@@ -203,6 +216,19 @@ export function openToolBarMore() {
   return wrap ? wrap.querySelector('.tool-bar-more-sheet') : null;
 }
 
+/** The hidden home of every hosted group (#editorToolBarParked; made beside the bar when a page has none). A tab module
+ *  builds a group it hosts in several rows ONCE, here (the Height selection buttons). */
+export function toolBarParked() {
+  let p = $(TOOL_BAR_IDS.parked);
+  if (!p && typeof document !== 'undefined') {
+    p = document.createElement('div');
+    p.id = TOOL_BAR_IDS.parked;
+    p.hidden = true;
+    ($(TOOL_BAR_IDS.group)?.parentElement || $(TOOL_BAR_IDS.bar)?.parentElement || document.body).appendChild(p);
+  }
+  return p;
+}
+
 let _lastKey = null;
 /** Shows the active tab's tool row: its hosted groups moved in (every other hosted group parked), the tab's own items
  *  refreshed (its `sync`), the bar's group shown only when the row has something. Safe any time. */
@@ -217,7 +243,7 @@ export function syncToolBar() {
   const active = tool == null ? null : rowOf(bar, tab, tool);
   const items = active ? toolBarItems(tab, tool) : [];
   const wanted = new Set(hostsOf(items));
-  const parked = $(TOOL_BAR_IDS.parked);
+  const parked = toolBarParked();
   if (parked) for (const id of ALL_HOSTS) { const n = $(id); if (n && !wanted.has(id) && n.parentElement !== parked) parked.appendChild(n); }
   for (const r of bar.querySelectorAll('[data-tool-bar-row]')) r.style.display = r === active ? 'flex' : 'none';
   let shown = 0;

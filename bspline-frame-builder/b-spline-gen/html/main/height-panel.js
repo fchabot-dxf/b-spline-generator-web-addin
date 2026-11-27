@@ -38,7 +38,7 @@ import { EDITOR_TAB_FOCUS } from '../editor/editor-frame-profile.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { createDrawerTree } from './drawer-tree.js';
 import { toolGlyphSvg } from '../editor/tool-icons.js';
-import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, registerToolBarTab, syncToolBar } from './editor-tool-bar.js';
+import { EDITOR_TOOL_BAR, TOOL_BAR_END, TOOL_BAR_IDS, registerToolBarTab, syncToolBar, toolBarParked } from './editor-tool-bar.js';
 
 /** The canvas view: the shaded picture's longest side in pixels (display only; the raster keeps its 100 px/in). */
 export const HEIGHT_VIEW = Object.freeze({
@@ -140,6 +140,10 @@ export const HEIGHT_CONTROLS = Object.freeze([
 /** The canvas tools (the rail's first buttons, `data-height-tool`); the gesture each one runs is GESTURES[id] below.
  *  `leads`: the panel groups shown FIRST while the tool is active (advisor 2026-11-22: the active tool's own section
  *  on top, no scrolling past the patch and the layers to reach it); the others keep their declared order after them. */
+/** Tool ids that no longer exist -> the tool that took their place (a stored / old id must open on a real tool). */
+export const HEIGHT_TOOL_ALIASES = Object.freeze({ selectRect: 'marquee', selectEllipse: 'marquee' });
+/** An old tool id that was one SHAPE of the Marquee: the shape it opens the Marquee on . */
+export const HEIGHT_TOOL_SHAPES = Object.freeze({ selectRect: 'rect', selectEllipse: 'ellipse' });
 export const HEIGHT_TOOLS = Object.freeze([
   // owner 2026-11-23 ("reuse tool icons"): `iconGlyph` = the editor's shared glyph for the action (editor/tool-icons.js
   // TOOL_GLYPHS: the Brick brushes' paintbrush); `icon` is kept only where no tab has the action (lasso, wand, ...)
@@ -150,16 +154,21 @@ export const HEIGHT_TOOLS = Object.freeze([
   // `key` e (Fred 2026-11-23, "have you tried erasing? it doesnt work"): E is the eraser in every tab -- here it was Draw's
   // hidden one (the vector eraser, which leaves heights untouched); editor-interaction.js clicks the [data-key] button on screen
   Object.freeze({ id: 'eraser', icon: '⌫', iconFrom: 'toolErase', key: 'e', label: 'Eraser', title: 'Erase toward transparent (0) with the picked brush', brush: { mode: 'erase' }, leads: ['brush', 'tip'] }),
-  Object.freeze({ id: 'selectRect', icon: '⬚', iconFrom: 'toolRect', iconDashed: true, label: 'Rectangle select', title: 'Drag a rectangle: the tools work only inside it', leads: ['select'] }),
-  Object.freeze({ id: 'selectEllipse', icon: '◯', iconFrom: 'toolCircle', iconDashed: true, label: 'Ellipse select', title: 'Drag an ellipse: the tools work only inside it', leads: ['select'] }),
-  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it', leads: ['select'] }),
+  // owner 2026-11-27 ("marquee can be bundled with diff shapes"): ONE Marquee button; its shape (Rectangle | Ellipse) is the
+  // `selShape` setting; `iconShapes` = the Draw button whose svg the rail button wears for each shape. The gestures stay
+  // GESTURES.selectRect / selectEllipse (GESTURES.marquee dispatches to the chosen one)
+  Object.freeze({ id: 'marquee', icon: '⬚', iconFrom: 'toolRect', iconShapes: Object.freeze({ rect: 'toolRect', ellipse: 'toolCircle' }), iconDashed: true, label: 'Marquee', title: 'Drag a rectangle or an ellipse (the Shape setting): the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect', leads: [], selectionBar: true }),
+  Object.freeze({ id: 'selectLasso', icon: '➰', label: 'Lasso select', title: 'Draw round an area: the tools work only inside it. Drag inside the selection to move its pixels (Enter drops, Esc cancels, arrows nudge; Alt+drag moves the outline only). Click outside to deselect.', leads: [], selectionBar: true }),
   // slice 4 (Fred 2026-11-23): the MAGIC WAND -- a tap selects the heights within the tolerance of the tapped one
-  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'sample', 'select'] }),
+  Object.freeze({ id: 'wand', icon: '🪄', label: 'Magic wand', title: 'Tap a height: the pixels within the tolerance of it become the selection (Shift adds, Alt subtracts)', leads: ['wand', 'sample'], selectionBar: true }),
   // slice 5 (Fred 2026-11-23, a classic heightmap editor): the EYEDROPPER -- `key` is its keyboard letter (the rail button's
   // data-key: the editor's own single-key shortcut mechanism)
   Object.freeze({ id: 'eyedropper', icon: '💧', key: 'i', label: 'Eyedropper', title: 'Tap a height (I): it becomes the Set target and the Brush comes back in Set mode', leads: ['eyedropper', 'sample', 'palette'] }),
-  // slice 3 (Fred 2026-11-22: "even if height map is pixel we can still have a select or move tool")
-  Object.freeze({ id: 'move', icon: '✥', label: 'Move', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the marquee only; arrows nudge; Enter drops, Esc cancels', leads: ['move', 'select'] }),
+  // owner 2026-11-27 ("i'd rather have a selection tool"): no separate Move tool -- a drag that starts INSIDE a selection with a
+  // selection tool moves its pixels (the slice-3 lift / float / drop gesture below)
+  // owner 2026-11-27: the Move tool is the 'Select' tool (the Draw tab's arrow); id 'move' kept (old stored sessions). Bounding-box
+  // scale / rotate handles are a later task
+  Object.freeze({ id: 'move', icon: '✥', iconFrom: 'toolSelect', label: 'Select', title: 'Drag the selection (no selection: the whole layer); Alt+drag moves the outline only; arrows nudge; Enter drops, Esc cancels', leads: ['move'], selectionBar: true }),
   Object.freeze({ id: 'gradient', icon: '◩', label: 'Gradient', title: 'Drag from the start stop to the end stop (applied on release)', leads: ['gradient'] }),
   Object.freeze({ id: 'fill', icon: '▣', label: 'Fill', title: 'Tap the patch: the selection (or the whole layer) to the fill height', leads: ['fill'] }),
 ]);
@@ -167,7 +176,7 @@ export const HEIGHT_TOOLS = Object.freeze([
 export const TOOL_DEFAULTS = Object.freeze({
   // slice 4: combine = how a new selection meets the current one (Shift / Alt on a keyboard); featherProfile 'smooth' = the
   // slice-2 Gaussian feather (pinned), any other BRUSH_FALLOFFS profile fades inward from the outline
-  select: Object.freeze({ featherIn: 0.05, combine: 'replace', featherProfile: 'smooth', featherCurve: BRUSH_DEFAULTS.customCurve }),
+  select: Object.freeze({ shape: 'rect', featherIn: 0.05, combine: 'replace', featherProfile: 'smooth', featherCurve: BRUSH_DEFAULTS.customCurve }),
   wand: Object.freeze({ toleranceIn: 0.01, contiguous: true }),
   // slice 5: where the wand and the eyedropper read heights (one setting for both); the canvas look (HEIGHT_LOOKS)
   // sample 'view' = as the Greyscale view shows (This layer -> the active layer, All layers -> the patch's composite)
@@ -184,16 +193,19 @@ export const HEIGHT_TOOL_GROUPS = Object.freeze([
   // the patch / paint-layer ROWS moved to the editor layer stack (Fred 2026-11-24): its rows pick, show / hide, rename, move,
   // delete; this group keeps the selected paint layer's own settings and '+ Paint layer'
   Object.freeze({ id: 'layers', label: 'Layers', note: 'the selected paint layer (pick it in the layer list above)' }),
-  Object.freeze({ id: 'move', label: 'Move', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the marquee only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
   // slice 3 (Fred 2026-11-22: "a brush shape tool too, square, circle, bevel brush, angle adjustment")
   // the tip extras show only for a square / chisel tip (a round brush is set by its falloff; slice 3b / 3c)
+  Object.freeze({ id: 'move', label: 'Select', note: 'drag: lift the selection (none: the whole layer) -- it floats until Enter / Drop; Esc / Cancel puts it back; Alt+drag: the outline only; arrows: 1 px, Shift: 10 px', needsPatch: true, showWhen: (ctx) => ctx.tool === 'move' }),
   Object.freeze({ id: 'tip', label: 'Square / chisel tip', showWhen: (ctx) => usesBrush(ctx.tool) && (ctx.brush.tip || 'round') !== 'round', follows: 'brush' }),
   Object.freeze({ id: 'wand', label: 'Magic wand', note: 'tap a height on the patch', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' }),
   // slice 5: the eyedropper's note, the shared Sample choice, and the grey palette (the patch's grey mapping + swatches)
   Object.freeze({ id: 'eyedropper', label: 'Eyedropper', note: 'tap the patch: its height becomes the Set target', needsPatch: true, showWhen: (ctx) => ctx.tool === 'eyedropper' }),
   Object.freeze({ id: 'sample', label: 'Sample', needsPatch: true, showWhen: (ctx) => ctx.tool === 'wand' || ctx.tool === 'eyedropper' }),
   Object.freeze({ id: 'palette', label: 'Grey palette', note: 'pick a grey: the Set height (mid-grey = no change)', showWhen: (ctx) => ctx.tool === 'brush' || ctx.tool === 'eyedropper' }),
-  Object.freeze({ id: 'select', label: 'Selection', note: 'the tools work only inside it; Shift adds, Alt subtracts', needsPatch: true }),
+  // owner 2026-11-27 ("those extra features are better in a contextual toolbar"): the selection controls live in the options bar's
+  // selection row (HEIGHT_SELECTION_BAR); `bar: true` = no side-panel section -- only the custom feather curve is built here, into
+  // the sheet the bar's Curve button opens
+  Object.freeze({ id: 'select', label: 'Custom feather curve', bar: true, needsPatch: true }),
   Object.freeze({ id: 'gradient', label: 'Gradient', note: 'drag on the patch: start stop -> end stop', showWhen: (ctx) => ctx.tool === 'gradient' }),
   Object.freeze({ id: 'fill', label: 'Fill', note: 'the selection, or the whole layer', showWhen: (ctx) => ctx.tool === 'fill' }),
   Object.freeze({ id: 'file', label: 'Heightmap file', note: '8 / 16-bit PNG, JPG, WebP, EXR', after: true }),
@@ -254,6 +266,10 @@ export const HEIGHT_TOOL_CONTROLS = Object.freeze([
   // a paint layer stores inches, so no stored height changes.
   { id: 'greyZero', group: 'palette', target: 'greyMap', field: 'greyZero', kind: 'choice', path: ['zero'], label: 'Grey system',
     options: [['black', 'Black = 0', 'Black is no change; white raises by the Range (a height below 0 shows black)'], ['mid', 'Mid-grey = 0', 'Mid-grey is no change; white raises, black lowers by the Range']] },
+  // owner 2026-11-27: the Marquee's shape (the rail button's icon follows it)
+  { id: 'selShape', group: 'select', target: 'select', kind: 'choice', path: ['shape'], label: 'Marquee shape',
+    options: [['rect', 'Rectangle', 'Drag a rectangle'], ['ellipse', 'Ellipse', 'Drag an ellipse']],
+    showWhen: (b, p, ctx) => !!ctx && ctx.tool === 'marquee' },
   // slice 4: how a new selection meets the current one -- the touch way to Shift (add) / Alt (subtract)
   { id: 'selCombine', group: 'select', target: 'select', kind: 'choice', path: ['combine'], label: 'New selection',
     options: Object.entries(SELECTION_COMBINE).map(([k, s]) => [k, s.label, s.title]) },
@@ -318,7 +334,6 @@ export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
     summary: () => [controlText('viewLook'), controlText('viewShow')].filter(Boolean).join(' · ') }),
   Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze([groupDom('stamp')]),
     summary: () => [controlText('raise'), controlText('blend')].filter(Boolean).join(' · ') }),
-  Object.freeze({ id: 'selection', title: 'Selection', hosts: Object.freeze([groupDom('select')]), summary: () => (heightSelection() ? 'active' : 'none') }),
   Object.freeze({ id: 'place', title: 'Position & size', hosts: Object.freeze([groupDom('patch')]),
     summary: () => { const w = controlText('sizeW'), h = controlText('sizeH'); return w && h ? `${w} × ${h} in` : ''; } }),
   Object.freeze({ id: 'file', title: 'Heightmap file', hosts: Object.freeze([groupDom('file'), 'heightStored']), summary: 'import · export' }),
@@ -550,30 +565,68 @@ const TOOL = Object.freeze({
   start: (pt, e) => (getEditorTab() === 'height' ? gesture().start(pt, e) : false),
   move: (pt, e) => gesture().move(pt, e),
   end: () => gesture().end(),
-  hover: (pt) => { trackDir(pt); _hover = pt; drawCursor(); },
+  hover: (pt) => { trackDir(pt); _hover = pt; drawCursor(); syncMoveCursor(pt); },
   cancel: () => { for (const g of Object.values(GESTURES)) g.cancel(); },
 });
+/** The move cursor over the canvas while a selection tool hovers inside the selection. */
+function syncMoveCursor(pt) {
+  const box = byId('editorCanvasContainer');
+  if (box) box.style.cursor = SELECT_TOOLS.includes(_tool) && pt && getEditorTab() === 'height' && ((_selMove && _selMove.started) || insideSelection(pt, null)) ? 'move' : '';
+}
 function ensureTool() { const ed = editor(); if (ed && ed._heightTool !== TOOL) ed._heightTool = TOOL; }
 
 /** The canvas gesture of each HEIGHT_TOOLS entry: start(pt, e) -> true when it began, move, end -> a promise, cancel. */
-const selectGesture = (kind) => ({ start: (pt, e) => beginSelect(kind, pt, e), move: (pt) => moveSelect(pt), end: () => endSelect(), cancel: () => cancelSelect() });
+// owner 2026-11-27: a drag that STARTS inside the selection runs the Move gesture (lift / float / drop, below); anywhere else it
+// makes a new selection, and a plain click outside deselects (endSelect). Shift (add) and Alt (subtract) keep selecting; the Select tool's Alt+drag moves the
+// outline only (beginMove's marquee). The lift waits for the pointer to travel DRAG_START_PX, so a click inside lifts nothing.
+const DRAG_START_PX = 4;
+let _selMove = null;        // { pt, e, started }: a press inside the selection (the Move gesture once it has travelled)
+function selMoveMove(pt) {
+  const m = _selMove;
+  _hover = pt;
+  if (!m) return;
+  if (!m.started) {
+    if (Math.hypot(pt.x - m.pt.x, pt.y - m.pt.y) / cssPx() < DRAG_START_PX) return;
+    if (!beginMove(m.pt, m.e)) { _selMove = null; return; }
+    m.started = true;
+  }
+  moveMove(pt);
+}
+/** The release of a press inside the selection: a moved piece stays floating; a click inside does nothing. */
+function selMoveEnd() { const m = _selMove; _selMove = null; return m && m.started ? endMove() : Promise.resolve(); }
+function selMoveCancel() { const m = _selMove; _selMove = null; if (m && m.started) cancelMoveDrag(); }
+const selectGesture = (kind) => ({
+  start: (pt, e) => { if (insideSelection(pt, e)) { _selMove = { pt, e, started: false }; return true; } return beginSelect(kind, pt, e); },
+  move: (pt) => (_selMove ? selMoveMove(pt) : moveSelect(pt)),
+  end: () => (_selMove ? selMoveEnd() : endSelect()),
+  cancel: () => { if (_selMove) selMoveCancel(); else cancelSelect(); },
+});
+const MARQUEE_SHAPES = Object.freeze({ rect: 'selectRect', ellipse: 'selectEllipse' });
+let _marqueeId = 'selectRect';   // the gesture the Marquee press chose (a shape change mid-drag cannot split a drag)
 const GESTURES = {
   brush: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('brush', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
   eraser: { start: (pt, e) => beginStroke(pt, pressureOf(e), strokeBrush('eraser', e)), move: (pt, e) => moveStroke(pt, pressureOf(e)), end: () => endStroke(), cancel: () => cancelStroke() },
   selectRect: selectGesture('rect'),
   selectEllipse: selectGesture('ellipse'),
+  // slice 3: the Select tool: a drag moves the floating piece (lifting it first); its cancel puts back the drag in flight, the piece floats on
+  move: { start: (pt, e) => beginMove(pt, e), move: (pt) => moveMove(pt), end: () => endMove(), cancel: () => cancelMoveDrag() },
+  marquee: { start: (pt, e) => (_marqueeId = MARQUEE_SHAPES[_tools.select.shape] || 'selectRect', GESTURES[_marqueeId].start(pt, e)), move: (pt, e) => GESTURES[_marqueeId].move(pt, e), end: () => GESTURES[_marqueeId].end(), cancel: () => { GESTURES.selectRect.cancel(); GESTURES.selectEllipse.cancel(); } },
   selectLasso: selectGesture('lasso'),
   gradient: { start: (pt) => beginGradient(pt), move: (pt) => moveGradient(pt), end: () => endGradient(), cancel: () => cancelGradient() },
   fill: { start: (pt) => beginFill(pt), move: () => {}, end: () => endFill(), cancel: () => { _fillTap = false; } },
-  // slice 3: a drag moves the floating piece (lifting it first); its cancel puts back the drag in flight, the piece floats on
-  move: { start: (pt, e) => beginMove(pt, e), move: (pt) => moveMove(pt), end: () => endMove(), cancel: () => cancelMoveDrag() },
   // slice 4: the wand picks on release (a tap), at the press point, with the press's Shift / Alt
   eyedropper: { start: (pt) => { _eyeTap = pt; return true; }, move: () => {}, end: () => { const p = _eyeTap; _eyeTap = null; if (p) eyedropAt(p); return _chain; }, cancel: () => { _eyeTap = null; } },
-  wand: { start: (pt, e) => { _wandTap = { pt, combine: combineOf(e) }; return true; }, move: () => {}, end: () => { const t = _wandTap; _wandTap = null; if (t) wandAt(t.pt, t.combine); return _chain; }, cancel: () => { _wandTap = null; } },
+  // the wand's click is its selection gesture; a press INSIDE the selection that then travels is the Move instead (no wand pick)
+  wand: { start: (pt, e) => { _wandTap = { pt, combine: combineOf(e) }; _selMove = insideSelection(pt, e) ? { pt, e, started: false } : null; return true; },
+    move: (pt) => { if (_selMove) selMoveMove(pt); },
+    end: () => { if (_selMove && _selMove.started) { _wandTap = null; return selMoveEnd(); } _selMove = null; const t = _wandTap; _wandTap = null; if (t) wandAt(t.pt, t.combine); return _chain; },
+    cancel: () => { _wandTap = null; selMoveCancel(); } },
 };
 const gesture = () => GESTURES[_tool] || GESTURES.brush;
 /** The canvas tool (HEIGHT_TOOLS). In the Height tab its gesture mode is armed. A floating piece is dropped first. */
 export function setHeightTool(id) {
+  if (HEIGHT_TOOL_SHAPES[id]) _tools.select.shape = HEIGHT_TOOL_SHAPES[id];
+  id = HEIGHT_TOOL_ALIASES[id] || id;
   if (!HEIGHT_TOOLS.some((t) => t.id === id)) return false;
   if (id !== _tool) { dropHeightMove(); TOOL.cancel(); }
   _tool = id;
@@ -692,10 +745,33 @@ function syncSelectionSources() {
   const btn = byId('heightSelFromShape'); if (btn) btn.disabled = !layers.length;
 }
 
+/** The selection tools (the ones whose inside-drag moves pixels). */
+const SELECT_TOOLS = Object.freeze(['marquee', 'selectLasso', 'wand']);
+/** Is the pointer on a selected pixel of the active patch (mask > 0; a floating piece's selection rides with it)? Shift (add)
+ *  and Alt (subtract) make a selection as ever, so they never count; the Select tool's Alt+drag moves the outline. */
+function insideSelection(pt, e) {
+  if (e && (e.shiftKey || e.altKey)) return false;
+  const rec = activeHeightLayer();
+  const g = rec ? patchGrid(rec) : null;
+  const f = _float && rec && _float.id === rec.id ? _float : null;
+  const mask = f && f.sel ? f.sel : rec ? maskOf(rec) : null;
+  if (!g || !mask) return false;
+  const q = pixelOf(rec, pt);
+  const c = Math.round(q.c) - (f ? f.dc : 0), r = Math.round(q.r) - (f ? f.dr : 0);
+  return c >= 0 && r >= 0 && c < g.cols && r < g.rows && mask[r * g.cols + c] > 0;
+}
+/** Select the whole active layer (then a drag inside moves the whole layer). */
+export function selectAllHeight() {
+  const rec = activeHeightLayer();
+  const g = rec ? patchGrid(rec) : null;
+  return !!g && setSelection(new Float32Array(g.cols * g.rows).fill(1));
+}
+
 // the selection gestures: drag a rectangle / ellipse, draw a lasso; one selection on release (a tap clears it)
 function beginSelect(kind, pt, e) {
   const rec = activeHeightLayer();
   if (!rec || !patchGrid(rec)) return false;
+  dropHeightMove(); // a new selection starts: a floating piece is put down first
   const q = pixelOf(rec, pt);
   _drag = { kind, id: rec.id, pts: [[q.c, q.r]], combine: combineOf(e) };
   syncHeightOverlay();
@@ -1058,13 +1134,13 @@ export function nudgeHeightMove(sx, sy, n = MOVE_NUDGE_PX.step) {
 /** The move tool's state (the panel, tests, probes). */
 export const heightMoveState = () => ({ tool: _tool, floating: !!_float, dc: _float ? _float.dc : 0, dr: _float ? _float.dr : 0, marquee: !!_marq, pending: _pending });
 const editorShown = () => { const m = byId('svgEditorModal'); return !m || m.style.display !== 'none'; };
-/** The keys of the Move tool (window, capture phase: Esc cancels the piece without also leaving the tool). */
+/** The keys of a selection's move (window, capture phase: Esc cancels the piece without also leaving the tool). */
 function onMoveKey(e) {
-  if (_tool !== 'move' || getEditorTab() !== 'height' || !editorShown()) return;
+  if (!(_tool === 'move' || SELECT_TOOLS.includes(_tool)) || getEditorTab() !== 'height' || !editorShown()) return;
   if (e.ctrlKey || e.metaKey || e.altKey || _isTypingTarget(e.target) || _isTypingTarget(document.activeElement)) return;
   const dir = NUDGE_KEYS[e.key];
   let used = false;
-  if (dir) used = nudgeHeightMove(dir[0], dir[1], e.shiftKey ? MOVE_NUDGE_PX.shift : MOVE_NUDGE_PX.step);
+  if (dir) used = !!(_tool === 'move' || _float || heightSelection()) && nudgeHeightMove(dir[0], dir[1], e.shiftKey ? MOVE_NUDGE_PX.shift : MOVE_NUDGE_PX.step);
   else if (e.key === 'Enter' && _float) { dropHeightMove(); used = true; }
   else if (e.key === 'Escape' && (_float || _marq)) { cancelMoveDrag(); cancelHeightMove(); used = true; }
   if (used) { e.preventDefault(); e.stopPropagation(); }
@@ -1329,6 +1405,7 @@ export function setHeightField(controlId, value, { commit = true, id = null } = 
     _tools[c.target] = withPath({ ...st, ...(c.alsoSet ? c.alsoSet(getPath(st, c.path), v, st) : null) }, c.path, v);
     syncHeightOverlay();
     syncHeightBar();
+    syncToolIcons();
     return true;
   }
   const rec = id != null ? find(id) : activeHeightLayer();
@@ -1542,7 +1619,7 @@ function drawCursor() {
   ring.setAttribute('transform', `translate(${fmt(_hover.x)} ${fmt(_hover.y)}) rotate(${fmt(-deg)})`);
   ring.setAttribute('stroke', HEIGHT_VIEW.ring);
   ring.setAttribute('stroke-width', fmt(1.5 * px));
-  ring.style.display = _tool === 'move' ? 'none' : ''; // the Move tool has no brush
+  ring.style.display = _tool === 'move' || (SELECT_TOOLS.includes(_tool) && insideSelection(_hover, null)) ? 'none' : ''; // inside a selection the pointer moves it: a move cursor, no ring
   if (readout) {
     const rec = activeHeightLayer();
     const work = rec ? workingCopy(rec) : null;
@@ -1730,10 +1807,10 @@ const HEIGHT_BAR_WIDGETS = Object.freeze({
       if (text) text.textContent = `${Math.round(100 * g)}% · ${t >= 0 ? '+' : ''}${t.toFixed(2)} in`;
     },
   },
-  // the Move tool: Drop / Cancel while a piece floats (the canvas bar's own functions), else a one-line hint
+  // the selection tools' move: Drop / Cancel while a piece floats (the canvas bar's own functions), else a one-line hint
   moveActions: {
-    build: () => el('div', { class: 'height-bar-item', style: 'display:flex; align-items:center; gap:8px;' }, [
-      el('span', { class: 'height-bar-move-hint', text: 'Drag to lift the selection (none: the whole layer)', style: 'font-size:11px; color:#555;' }),
+    build: (item) => el('div', { class: 'height-bar-item', style: 'display:flex; align-items:center; gap:8px;' }, [
+      el('span', { class: 'height-bar-move-hint', text: item.hint || 'Drag inside the selection to move its pixels', style: 'font-size:11px; color:#555;' }),
       el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'moveDrop', text: '✓ Drop', style: `${BAR_TOUCH} display:none;` }),
       el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'moveCancel', text: '✕ Cancel', style: `${BAR_TOUCH} display:none;` }),
     ]),
@@ -1742,12 +1819,35 @@ const HEIGHT_BAR_WIDGETS = Object.freeze({
       for (const b of node.querySelectorAll('[data-height-bar-action]')) b.style.display = _float ? '' : 'none';
     },
   },
+  // the custom feather curve: a button (only with the Custom profile) that opens the curve's sheet
+  featherCurveButton: {
+    build: () => el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', 'data-height-bar-action': 'featherCurve', text: 'Curve…', title: 'Draw the custom feather curve', style: `${BAR_TOUCH} padding:0 8px; display:none;` }),
+    sync: (node) => { const on = _tools.select.featherProfile === 'custom'; node.style.display = on ? '' : 'none'; if (!on) { const sh = byId('heightFeatherSheet'); if (sh) sh.hidden = true; } },
+  },
   // the stock range, short, from heightStockLines (the panel's own function)
   stock: {
     build: () => el('div', { class: 'height-bar-item height-bar-stock', role: 'status', title: 'The board against the stock: the deepest point above the carve floor, the highest under the stock top', style: 'font-size:11px; margin-left:auto;' }),
     sync: (node) => { const { short, warn } = heightStockLines(); node.textContent = short; node.hidden = !short; node.style.color = warn ? '#c0392b' : '#555'; node.style.fontWeight = warn ? '700' : ''; node.classList.toggle('stl-error', warn); },
   },
 });
+/** The selection's buttons (the ids the panel's old Selection section had) and the Draw-tab shape source: built ONCE, in the
+ *  context bar's parked home, and hosted by every selection tool's row (EDITOR_TOOL_BAR.height: one node per id). */
+function ensureSelectionButtons() {
+  if (typeof document === 'undefined' || byId('heightSelClear')) return;
+  const home = toolBarParked();
+  if (!home) return;
+  const b = (id, text, title) => el('button', { type: 'button', id, class: 'cad-btn cad-btn-secondary', text, title, style: `${BAR_TOUCH} padding:0 8px;` });
+  home.append(
+    b('heightSelFeather', 'Feather', 'Soften the selection edge by the Feather amount'),
+    b('heightSelAll', 'Select all', 'The whole layer: then drag inside it to move the layer'),
+    b('heightSelInvert', 'Invert', 'Select what is not selected'),
+    b('heightSelClear', 'Clear', 'No selection: the tools work everywhere'),
+    el('div', { id: 'heightSelShapePick', class: 'height-bar-item', style: 'display:flex; align-items:center; gap:6px;' }, [
+      // a plain select in the row (the app's .cad-select is an overlay for a .cad-select-wrap: it would cover the canvas)
+      el('select', { id: 'heightSelSource', title: 'The Draw-tab layer whose shapes become the selection', style: `${BAR_TOUCH} min-width:0; max-width:120px; font-size:11px;` }),
+      b('heightSelFromShape', 'Select shape', 'The shapes of the chosen Draw-tab layer become the selection'),
+    ]));
+}
 /** This tab's pieces of the context bar (main/editor-tool-bar.js): its rows keyed by the armed HEIGHT_TOOLS id, each item
  *  built here (renderBarControl / HEIGHT_BAR_WIDGETS) and refreshed by syncBarItem. */
 const HEIGHT_BAR_HOOKS = Object.freeze({
@@ -1787,6 +1887,7 @@ function wireHeightBar(bar) {
     const a = e.target.closest('[data-height-bar-action]');
     const kind = a && a.getAttribute('data-height-bar-action');
     if (kind === 'greyChip') { const g = byId('heightGroup_palette'); if (g && typeof g.scrollIntoView === 'function') g.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    else if (kind === 'featherCurve') { const sh = byId('heightFeatherSheet'); if (sh) sh.hidden = !sh.hidden; }
     else if (kind === 'moveDrop') dropHeightMove();
     else if (kind === 'moveCancel') cancelHeightMove();
   });
@@ -1831,19 +1932,6 @@ const GROUP_HEADS = Object.freeze({
   fill: () => el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', id: 'heightFillApply', class: 'cad-btn cad-btn-secondary', text: '▣ Fill', title: 'The selection (or the whole layer) to the fill height' }),
   ]),
-  select: () => el('div', {}, [
-    el('div', { class: 'photo-layer-buttons', style: 'flex-wrap:wrap;' }, [
-      el('button', { type: 'button', id: 'heightSelFeather', class: 'cad-btn cad-btn-secondary', text: 'Feather', title: 'Soften the selection edge by the Feather amount' }),
-      el('button', { type: 'button', id: 'heightSelInvert', class: 'cad-btn cad-btn-secondary', text: 'Invert' }),
-      el('button', { type: 'button', id: 'heightSelClear', class: 'cad-btn cad-btn-secondary', text: 'Clear', title: 'No selection: the tools work everywhere' }),
-    ]),
-    el('label', { class: 'cad-label', text: 'From a Draw-tab shape' }),
-    el('div', { class: 'photo-layer-buttons' }, [
-      // a plain select in the row (the app's .cad-select is an overlay for a .cad-select-wrap: it would cover the canvas)
-      el('select', { id: 'heightSelSource', title: 'The Draw-tab layer whose shapes become the selection', style: 'flex:1 1 110px; min-width:0; min-height:32px; font-size:11px;' }),
-      el('button', { type: 'button', id: 'heightSelFromShape', class: 'cad-btn cad-btn-secondary', text: 'Select shape' }),
-    ]),
-  ]),
   layers: () => el('div', {}, [
     el('div', { class: 'photo-layer-buttons' }, [
       el('button', { type: 'button', id: 'heightLayerAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Paint layer', title: 'An unpainted layer above the selected one' }),
@@ -1851,9 +1939,41 @@ const GROUP_HEADS = Object.freeze({
   ]),
 });
 
+/** The rail icon of tool `t`: a copy of its Draw button's svg (`iconShapes` = one per value of the Marquee's shape setting). */
+function toolIconSvg(t) {
+  const from = t.iconShapes ? t.iconShapes[_tools.select.shape] || t.iconFrom : t.iconFrom;
+  const svg = from ? byId(from)?.querySelector('svg')?.cloneNode(true) : null;
+  if (svg && t.iconDashed) for (const n of svg.children) n.setAttribute('stroke-dasharray', '3 2.5');
+  if (svg) svg.setAttribute('aria-hidden', 'true');
+  return svg;
+}
+/** Re-draw the icons that follow a setting (the Marquee's shape). */
+function syncToolIcons() {
+  for (const t of HEIGHT_TOOLS.filter((x) => x.iconShapes)) {
+    const b = document.querySelector(`[data-height-tool="${t.id}"]`);
+    const svg = b && toolIconSvg(t);
+    if (!svg) continue;
+    const key = t.iconShapes[_tools.select.shape];
+    if (b.getAttribute('data-icon-from') === key) continue;
+    b.querySelector('svg')?.remove();
+    b.appendChild(svg);
+    b.setAttribute('data-icon-from', key);
+  }
+}
+
+/** The sheet under the options bar that holds the custom feather curve (the bar's Curve button toggles it). */
+function ensureFeatherSheet() {
+  let sheet = byId('heightFeatherSheet');
+  if (sheet) return sheet;
+  const container = byId('editorCanvasContainer') || document.body;
+  sheet = el('div', { id: 'heightFeatherSheet', hidden: '', style: 'position:absolute; top:8px; right:8px; width:min(260px, calc(100% - 16px)); z-index:12; background:#fff; border:1px solid #bbb; border-radius:6px; padding:8px; box-shadow:0 2px 8px rgba(0,0,0,.25);' });
+  container.appendChild(sheet);
+  return sheet;
+}
 /** Build the panel from the declared tables into `body` (its groups in the collapse tree, HEIGHT_DRAWER_TREE), and the tools
  *  into `rail`: the tool row, pinned at the head of the panel (#heightToolsHead; EDITOR_TABS height). */
 export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
+  ensureSelectionButtons();
   registerToolBarTab('height', HEIGHT_BAR_HOOKS); // the options bar: this tab's rows of the context bar (EDITOR_TOOL_BAR.height)
   if (rail) {
     rail.innerHTML = '';
@@ -1861,9 +1981,7 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
     for (const t of HEIGHT_TOOLS) {
       // `iconFrom`: a copy of that Draw button's own svg (dashed for a marquee); `iconGlyph`: the shared glyph
       // (editor/tool-icons.js); its glyph `icon` where neither is there (no other tab has the action)
-      const svg = t.iconFrom ? byId(t.iconFrom)?.querySelector('svg')?.cloneNode(true) : null;
-      if (svg && t.iconDashed) for (const n of svg.children) n.setAttribute('stroke-dasharray', '3 2.5');
-      if (svg) svg.setAttribute('aria-hidden', 'true');
+      const svg = toolIconSvg(t);
       const glyph = !svg && t.iconGlyph ? toolGlyphSvg(t.iconGlyph) : null;
       const b = el('button', { type: 'button', class: 'tool-btn', 'data-height-tool': t.id, title: `${t.label}${t.key ? ` (${t.key.toUpperCase()})` : ''}: ${t.title}`, 'aria-label': t.label, text: svg || glyph ? '' : t.icon, ...(t.key ? { 'data-key': t.key } : {}) });
       if (svg) b.appendChild(svg);
@@ -1892,13 +2010,13 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight')) {
     const box = el('div', { id: `heightGroup_${g.id}` });
     box.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
     if (GROUP_HEADS[g.id]) box.appendChild(GROUP_HEADS[g.id]());
-    for (const c of allControls().filter((x) => x.group === g.id)) {
+    for (const c of allControls().filter((x) => x.group === g.id && (!g.bar || x.kind === 'curve'))) {
       const w = el('div', { 'data-height-control': c.id }, [renderControl(c)]);
       if (c.showWhen) w.hidden = !c.showWhen(_brush, null, ctx);
       box.appendChild(w);
     }
     if (g.showWhen) box.hidden = !g.showWhen(ctx);
-    body.appendChild(box);
+    if (g.bar) ensureFeatherSheet().appendChild(box); else body.appendChild(box);
   }
   body.appendChild(el('div', { id: 'heightStored', class: 'photo-layer-note' }));
   HEIGHT_TREE.build(body, (toolId) => setHeightTool(toolId));
@@ -1954,6 +2072,7 @@ export function syncHeightPanel() {
   const hasSel = !!heightSelection();
   for (const id of ['heightSelFeather', 'heightSelInvert', 'heightSelClear']) { const b = byId(id); if (b) b.disabled = !hasSel; }
   syncSelectionSources();
+  syncToolIcons();
   syncTipGroup();
   syncGreyPalette();
   syncCarveRange(); // (it syncs the options bar too)
@@ -2008,6 +2127,7 @@ export function initHeightPanel(hooks = {}) {
     if (file) importHeightmap(file);
   });
   byId('heightSelFeather')?.addEventListener('click', () => featherHeightSelection(_tools.select.featherIn));
+  byId('heightSelAll')?.addEventListener('click', () => selectAllHeight());
   byId('heightSelInvert')?.addEventListener('click', () => invertHeightSelection());
   byId('heightSelClear')?.addEventListener('click', () => clearHeightSelection());
   byId('heightSelFromShape')?.addEventListener('click', () => {
@@ -2076,7 +2196,7 @@ export function syncHeightTab() {
 /** Test / host hook. */
 export function _resetHeightPanelForTests() {
   if (_boxRO.ro) _boxRO.ro.disconnect(); _boxRO.el = null; _boxRO.ro = null;
-  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _grad = null; _float = null; _marq = null; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
+  _active = null; _brush = { ...BRUSH_DEFAULTS }; _tools = freshTools(); _tool = 'brush'; _activeLayer.clear(); _selections.clear(); _drag = null; _selMove = null; _grad = null; _float = null; _marq = null; _cursorDir = 0; _dirFrom = null; _work = null; _stroke = null; _pending = 0; _chain = Promise.resolve(); _hover = null; _curveLive = null;
   _hooks = { onChange: () => {} };
   if (_g) _g.remove();
   _g = null; _images.clear(); _live.id = null; _live.canvas = null; _live.frame = 0;
