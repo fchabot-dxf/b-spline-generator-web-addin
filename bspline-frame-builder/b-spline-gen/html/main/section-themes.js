@@ -94,7 +94,7 @@ export const EDITOR_CARD_THEMES = Object.freeze({
   latticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
   shapeLatticeDrawerTree: Object.freeze({ theme: 'lattice', tool: 0, shades: Object.freeze({ boundary: 0, contour: 1, rails: 1, ties: 2, nodes: 3, look: 4 }) }),
   brickDrawerTree: Object.freeze({ theme: 'brick', tool: 0, shades: Object.freeze({}) }), // (its Layers card retired: the editor layer stack)
-  heightDrawerTree: Object.freeze({ theme: 'height', tool: 0, shades: Object.freeze({ patch: 1, view: 2, stamp: 3, selection: 1, place: 2, file: 3 }) }),
+  heightDrawerTree: Object.freeze({ theme: 'height', tool: 0, shades: Object.freeze({ patch: 1, view: 2, stamp: 3, place: 2, file: 3 }) }),
 });
 
 /** Derivation rules (HSL), one per token and theme. `shade` shifts lightness by SHADE_STEP per step. */
