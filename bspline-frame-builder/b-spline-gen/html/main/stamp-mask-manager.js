@@ -15,7 +15,8 @@ import { layerHasBrickPieces, brickDepth, elementGroutWidth, elementGroutDepth, 
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { placementOf } from '../core/stamp/placement.js';
-import { strengthOf } from '../core/stamp/strength.js';
+import { brickPassFieldsOf } from '../core/stamp/pass-fields.js';
+import { softenBody } from '../core/stamp/soften.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -216,13 +217,21 @@ export async function updateStampMasks(nx, nz) {
     if (myGeneration !== _refreshGeneration) return;
     for (const m of [result, brickResult]) if (m && windowHole) clearStampMaskInWindow(m, windowHole, nx, nz, P.widthIn, P.heightIn);
     if (brickResult) { const src = brickEdgeSource(); if (src) brickResult.edgeSource = src; }
+    // Fred 2026-11-27: the bricks' "Soften edges" (P.brickSettings.softness, inches): the one footprint softening
+    // (core/stamp/soften.js), on the fresh mask -- none set = the mask exactly as rasterized
+    const bSoft = P.brickSettings && P.brickSettings.softness;
+    if (brickResult && bSoft > 0) {
+      const soft = softenBody(brickResult.body, brickResult.isStamped || Uint8Array.from(brickResult.body, (v) => (v > 1e-6 ? 1 : 0)), bSoft, { nx, nz, widthIn: P.widthIn });
+      brickResult.body = soft.body;
+      brickResult.isStamped = soft.covered;
+    }
     layer._mask = result;
     layer._brickMask = brickResult;
     layer._brickDepth = bDepth;
     layer._brickPlacement = placementOf(P.brickSettings && P.brickSettings.placement); // Fred 2026-11-23: Before / After thicken
-    // Fred 2026-11-27: the bricks' Strength (core/stamp/strength.js), read with their depth; absent = no field = as before
-    const bStrength = strengthOf(P.brickSettings && P.brickSettings.strength).strength;
-    if (bStrength !== undefined) layer._brickStrength = bStrength; else delete layer._brickStrength;
+    // Fred 2026-11-27: the bricks' Strength / Z offset (core/stamp/pass-fields.js), read with their depth; none stored = no field
+    const bFields = brickPassFieldsOf(P.brickSettings);
+    if (Object.keys(bFields).length) layer._brickPassFields = bFields; else delete layer._brickPassFields;
   });
   await Promise.all(promises);
   const latest = myGeneration === _refreshGeneration;

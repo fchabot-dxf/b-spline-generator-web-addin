@@ -159,6 +159,11 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     const stlLevel = layer.kind === STAMP_PASS_KIND.stl && layer.surface === 'level'; // STL only: a height patch always follows (Fred: "No rigid")
     const fromRecord = RECORD_PASS_KINDS.includes(layer.kind);
     const levelBase = stlLevel ? sampleGridAt(cleanHeights, nx, nz, layer.pivot[0], layer.pivot[1]) : 0;
+    // Z OFFSET of a pass that is not a record (art, bricks; Fred 2026-11-27, the layer stack's Z offset row): the SAME meaning
+    // the STL / height branches give their record's zOffset -- (carve ? -1 : 1) * zOffset over the points the layer covers; a
+    // Flat brick's on top of its plane. Never scaled by the strength. Absent / 0 = nothing added (core/stamp/pass-fields.js).
+    const ownZ = !fromRecord && typeof layer.zOffset === 'number' && Number.isFinite(layer.zOffset) && layer.zOffset !== 0
+      ? (stlCarves ? -1 : 1) * layer.zOffset : 0;
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
@@ -167,6 +172,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       // grout (NaN) falls through and stays draped, exactly as in Organic
       if (planeZ && !Number.isNaN(planeZ[k])) {
         stampedHeights[k] = planeZ[k] + artDelta[k] + bodyVal * layerDepth + filletVal * filletAmplitude;
+        if (ownZ !== 0 && (isStamped ? isStamped[k] : bodyVal > 1e-6)) stampedHeights[k] += ownZ;
         continue;
       }
       const stamped   = isStamped ? isStamped[k] : (bodyVal > 1e-6);
@@ -200,6 +206,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
         if (stamped) stampedHeights[k] += (stlCarves ? -1 : 1) * ((layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
       } else {
         stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
+        if (ownZ !== 0 && stamped) stampedHeights[k] += ownZ;
       }
       if (isArt) { artDelta[k] += stampedHeights[k] - before; anyArt = true; }
     }

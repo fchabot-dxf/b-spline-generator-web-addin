@@ -163,13 +163,13 @@ describe('each pass builder carries its layer\'s own stored strength (absent: no
   const tri = (a, b, c) => [...a, ...b, ...c];
   const pyramid = () => { const A = [-5, -5, 0], B = [5, -5, 0], C = [5, 5, 0], D = [-5, 5, 0], T = [0, 0, 4]; return Float32Array.from([tri(A, B, T), tri(B, C, T), tri(C, D, T), tri(D, A, T), tri(A, C, B), tri(A, D, C)].flat()); };
 
-  it('an editor layer\'s art (layer.strength) and its bricks (layer._brickStrength, from P.brickSettings.strength)', () => {
+  it('an editor layer\'s art (layer.strength) and its bricks (layer._brickPassFields, from P.brickSettings.strength)', () => {
     const body = blob(8, 9, 4);
     const layer = { id: 'a', name: 'A', visible: true, carve: true, depth: 0.2, profile: 'flat', suppression: 0, smoothing: 0, _mask: { body, fillet: null, isStamped: covered(body) },
       _brickMask: { body, fillet: null, isStamped: covered(body) }, _brickDepth: 0.1 };
     window.svgEditor = { _layers: [layer] };
     expect(_collectStampPasses().map((p) => 'strength' in p)).toEqual([false, false]);
-    layer.strength = 0.4; layer._brickStrength = 0.7;
+    layer.strength = 0.4; layer._brickPassFields = { strength: 0.7 };
     expect(_collectStampPasses().map((p) => [p.kind, p.strength])).toEqual([['art', 0.4], ['bricks', 0.7]]);
   });
   it('an STL record (rec.strength) and a height patch record (rec.strength)', async () => {
@@ -188,9 +188,9 @@ describe('each pass builder carries its layer\'s own stored strength (absent: no
     const layer = { id: 'a', visible: true, carve: true, depth: 0.2, _brickMask: { body }, _brickDepth: 0.1 };
     window.svgEditor = { _layers: [layer] };
     const a = heightsInputDigest(NX, NZ);
-    layer._brickStrength = 0.5;
+    layer._brickPassFields = { strength: 0.5 };
     expect(heightsInputDigest(NX, NZ)).not.toBe(a);
-    delete layer._brickStrength;
+    delete layer._brickPassFields;
     layer.strength = 0.5;
     expect(heightsInputDigest(NX, NZ)).not.toBe(a);
   });

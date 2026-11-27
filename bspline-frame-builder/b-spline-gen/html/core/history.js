@@ -23,7 +23,7 @@ export const globalRedoLog = [];
 /** Tooling fields with NO entry in TOOLING_DEFAULTS: absent on a layer = their default (a saved roster is never back-filled
  *  with them, AGENTS.md rule 3). Fred 2026-11-23: 'placement' (core/stamp/placement.js, absent = 'withSurface'). A restore
  *  of a snapshot taken while one was absent removes it again. */
-export const OPTIONAL_LAYER_TOOLING_FIELDS = Object.freeze(['placement', 'strength']); // 'strength': Fred 2026-11-27, core/stamp/strength.js (absent = 100 %)
+export const OPTIONAL_LAYER_TOOLING_FIELDS = Object.freeze(['placement', 'strength', 'zOffset']); // Fred 2026-11-27: 'strength' (core/stamp/strength.js, absent = 100 %), 'zOffset' (core/stamp/pass-fields.js, absent = 0)
 export const LAYER_TOOLING_FIELDS = Object.keys(TOOLING_DEFAULTS).concat(['visible'], OPTIONAL_LAYER_TOOLING_FIELDS);
 
 /**

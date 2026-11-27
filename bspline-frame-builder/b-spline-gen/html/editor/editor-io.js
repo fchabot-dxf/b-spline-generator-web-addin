@@ -82,6 +82,7 @@ const _PERSISTED_LAYER_FIELDS = [
     'userLocked', // the manual layer lock (layers.js isUserLocked); written only when true, absent = unlocked
     'placement', // Fred 2026-11-23: the layer's Thicken (core/stamp/placement.js); written only once set, absent = 'withSurface'
     'strength', // Fred 2026-11-27: the layer's Strength (core/stamp/strength.js); written only when not 100 %, absent = 100 %
+    'zOffset', // Fred 2026-11-27: the layer's own Z offset (core/stamp/pass-fields.js); written only once set, absent = 0
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto

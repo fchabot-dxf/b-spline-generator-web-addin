@@ -66,10 +66,10 @@ async function release(key, v) {
 
 describe('the declared row', () => {
   it('one Strength row, 0..100 %; every one of the five types declares its get / set', () => {
-    expect(LAYER_CARD_ROWS.map((r) => [r.id, r.min, r.max, r.unit])).toEqual([['strength', 0, 100, '%']]);
+    expect(LAYER_CARD_ROWS.find((r) => r.id === 'strength')).toMatchObject({ kind: 'slider', min: 0, max: 100, unit: '%' });
     for (const t of ['brick', 'draw', 'lattice', 'height', 'stl']) {
-      expect(typeof LAYER_TYPES[t].strength.get, t).toBe('function');
-      expect(typeof LAYER_TYPES[t].strength.set, t).toBe('function');
+      expect(typeof LAYER_TYPES[t].rows.strength.get, t).toBe('function');
+      expect(typeof LAYER_TYPES[t].rows.strength.set, t).toBe('function');
     }
   });
 });
@@ -148,7 +148,7 @@ describe('shown only while the layer carves 3D', () => {
     for (const key of ['layer:2', 'stl:s2', 'height:h2']) {
       openLayerStackItem(key);
       expect(card(key).classList.contains('collapsed'), key).toBe(false);
-      expect(card(key).querySelector('[data-card-row]'), key).toBeNull();
+      expect(card(key).querySelector('[data-card-row], [data-card-row-wrap]'), key).toBeNull();
     }
   });
   it('turning a layer\'s Stamp box off removes its slider; on brings it back', () => {
