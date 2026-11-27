@@ -34,6 +34,7 @@ import { FRAME_LABELS } from '../core/frame-labels.js';
 import { EDITOR_MOBILE_QUERY, EDITOR_LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
 import { STACK_UNFOLDED_EVENT } from '../editor/editor-drawer.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { clearBrickElements } from '../editor/editor-clear.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
 import {
@@ -740,10 +741,15 @@ export const EDITOR_ROW_MENU = Object.freeze([
   Object.freeze({ id: 'down', applies: (s) => s.kind === 'paint' && canMovePaint(s, -1), label: () => 'Move down', icon: () => '▼',
     async run(s) { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.movePatchLayer(s.id, -1); } }),
   // never a locked one (Fred 2026-11-27: the only layer too -- a board may hold no editor layer, ensureActiveLayer makes one at the next drawing action); a paint layer never its patch's last (the patch's Delete)
-  Object.freeze({ id: 'delete', applies: (s) => (s.kind === 'layer' ? !isUserLocked(edLayer(s.id))
+  Object.freeze({ id: 'delete', applies: (s) => (s.kind === 'layer' ? !isUserLocked(edLayer(s.id)) : s.kind === 'bricks' ? s.ids.some((id) => !isUserLocked(edLayer(id)))
     : s.kind === 'paint' ? patchLayers(heightRec(s.patch)).length > 1 : s.kind === 'patch' || s.kind === 'stl'), label: () => 'Delete', icon: () => '🗑',
     async run(s) {
       if (s.kind === 'layer') removeLayer(editor(), s.id);
+      else if (s.kind === 'bricks') { // Fred 2026-11-27 (bricks cant be deleted): Clear > Bricks' own path (every brick element + record), then the brick layers, ONE undo step
+        const ed = editor(); clearBrickElements(ed);
+        for (const id of s.ids) if (!isUserLocked(edLayer(id))) removeLayer(ed, id, { commit: false });
+        commitEdit(ed);
+      }
       else if (s.kind === 'patch') (await heightMod()).removeHeightPatch(s.id);
       else if (s.kind === 'paint') { const hp = await heightMod(); hp.pickHeightPatch(s.patch); hp.removePatchLayer(s.id); }
       else removeStlLayer(s.id);

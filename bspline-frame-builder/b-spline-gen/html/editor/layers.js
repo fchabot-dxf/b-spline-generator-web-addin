@@ -497,7 +497,8 @@ export function flashLayerGeometry(editor, layerId) {
   }, LAYER_FLASH_DURATION_MS);
 }
 
-export function removeLayer(editor, id) {
+/** opts.commit === false: the caller makes the ONE commit (the Bricks row's Delete removes several layers in one undo step). */
+export function removeLayer(editor, id, opts = {}) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
@@ -523,7 +524,7 @@ export function removeLayer(editor, id) {
   }
   renderLayersPanel(editor);
   applyLayerState(editor);
-  commitEdit(editor); // audit batch 3: the one commit
+  if (opts.commit !== false) commitEdit(editor); // audit batch 3: the one commit
 }
 
 export function renameLayer(editor, id, newName) {

@@ -271,4 +271,18 @@ async function runBrickLayers() {
   checkRow('layers', 'Draw layer: a fresh board has none; the only one can be deleted, leaving none',
     fresh === 0 && !!loneId && del === 'ok' && after.layers.length === 0 && (await drawRows()) === 0,
     `fresh Draw rows ${fresh}; lone layer ${loneId || 'none'}; Delete tap ${del}; layers after ${after.layers.length}`);
+  // 10. Fred 2026-11-27 (bricks cant be deleted): the Bricks row's menu > Delete removes every brick + brick layer; one Ctrl+Z restores
+  await reloadWithStorage({});
+  await openEditorTab('row:brick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  const b0 = await layersRead();
+  const m = await realTap('edStackMenu_bricks'); await sleep(600);
+  const item = await js(`(()=>{ const b=[...document.querySelectorAll('.context-menu-popover .context-menu-row')].find((r)=>(r.querySelector('.context-menu-row-label')?.textContent||'').trim()==='Delete'); if(!b) return ''; b.id='__mxMenuRow'; return b.id; })()`);
+  const d = item ? await realTap(item) : 'no Delete item'; await sleep(1200);
+  const b1 = await layersRead();
+  await key('z'); await sleep(1500);
+  const b2 = await layersRead();
+  checkRow('layers', 'Bricks row > Delete: every brick + brick layer goes; one undo brings them back',
+    m === 'ok' && d === 'ok' && b0.wallN > 0 && b1.wallN === 0 && !b1.layers.some((l) => l.brickKind) && b2.wallN === b0.wallN && b2.layers.filter((l) => l.brickKind).length === b0.layers.filter((l) => l.brickKind).length,
+    `menu ${m}, Delete ${d}; wall bricks ${b0.wallN} -> ${b1.wallN} -> undo ${b2.wallN}; brick layers ${b0.layers.filter((l) => l.brickKind).length} -> ${b1.layers.filter((l) => l.brickKind).length} -> ${b2.layers.filter((l) => l.brickKind).length}`);
 }
