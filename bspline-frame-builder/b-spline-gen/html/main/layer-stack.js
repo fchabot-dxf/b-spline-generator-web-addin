@@ -270,18 +270,65 @@ export const LAYER_ADD_TYPES = Object.freeze(['brick', 'draw', 'lattice', 'heigh
  *  A row shows only while its layer carves 3D (cardCarves: the type's Stamp box on; a type without one -- the Bricks --
  *  always). The slider commits on RELEASE (its 'change'; the number box on its own 'change'): one write, one undo step, one
  *  rebuild through the type's own commit path; a drag only moves the number. min / max are the slider's travel only. */
+/** A hosted control a card row SUPERSEDES (the same field; see `supersedes` below), as the block to hide:
+ *    rowBlock(id)   the control's row in the palette markup (its .relief-toggle / .cad-slider-row) + the label just before it
+ *    selfBlock(id)  that element itself (an STL control's own field wrapper, main/stl-panel.js renderControl stl_<id>Field) */
+const rowBlock = (id) => Object.freeze({ id, block: 'row' });
+const selfBlock = (id) => Object.freeze({ id, block: 'self' });
+const EDITOR_STAMP = (blocks) => ({ draw: blocks, lattice: blocks }); // Draw + Lattice share #stampLayerSettings
+/**
+ * `supersedes` (advisor 2026-11-27, Fred rejects duplicated controls): per type, the controls of that type's HOSTED block
+ * (HOSTED below: #stampLayerSettings, #brickPanelBody, the STL panel's #stlActive) that edit the SAME field as this row.
+ * While an open card shows this row they are hidden (syncSuperseded); anywhere else -- parked, or #stampLayerSettings in the
+ * 2D editor's Draw tab (no card rows there) -- they show as before.
+ */
 export const LAYER_CARD_ROWS = Object.freeze([
   Object.freeze({ id: 'relief', label: 'Relief', kind: 'choice', options: Object.freeze([['raised', 'Raised'], ['carved', 'Carved']]),
-    title: 'Raised: the layer stands out of the surface; Carved: it is cut into it' }),
+    title: 'Raised: the layer stands out of the surface; Carved: it is cut into it',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampReliefToggle')]), brick: [rowBlock('brickReliefToggle')], stl: [selfBlock('stl_raiseField')] }) }),
   Object.freeze({ id: 'strength', label: 'Strength', kind: 'slider', min: 0, max: 100, step: 1, unit: '%',
     title: 'How strongly this layer stamps: its height x this (100 % = as set; 0 % = no relief)' }),
   Object.freeze({ id: 'zOffset', label: 'Z offset', kind: 'slider', min: -1, max: 1, step: 0.005, unit: 'in',
-    title: 'Added over the layer (into the surface when Carved); not scaled by the Strength' }),
+    title: 'Added over the layer (into the surface when Carved); not scaled by the Strength',
+    supersedes: Object.freeze({ stl: [selfBlock('stl_posZField')] }) }),
   Object.freeze({ id: 'soften', label: 'Soften edges', kind: 'slider', min: 0, max: 2, step: 0.01, unit: 'in',
-    title: 'Blur the layer\'s footprint by this many inches (0 = sharp edges)' }),
+    title: 'Soften the layer\'s edges over this many inches (0 = sharp edges)',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampEdgeFilletRadius')]), stl: [selfBlock('stl_softnessField')] }) }),
   Object.freeze({ id: 'ground', label: 'Ground under it', kind: 'slider', min: 0, max: 100, step: 1, unit: '%',
-    title: 'Smooth the terrain under the layer toward its smoothed copy (0 % = the terrain as it is)' }),
+    title: 'Smooth the terrain under the layer toward its smoothed copy (0 % = the terrain as it is)',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampTextureSuppression')]) }) }),
 ]);
+/** The attribute a superseded block carries while hidden (styles/layout-app.css: display none). */
+export const SUPERSEDED_ATTR = 'data-card-superseded';
+/** A declared block's elements: its row + the label before it, or the element itself (none when not in the page). */
+function supersededEls(spec) {
+  const e = byId(spec.id);
+  if (!e) return [];
+  if (spec.block === 'self') return [e];
+  const r = e.closest('.relief-toggle, .cad-slider-row') || e;
+  const lab = r.previousElementSibling;
+  return lab && lab.matches('label.cad-label') ? [lab, r] : [r];
+}
+/** THE one place the superseded controls are hidden / shown: each declared block is hidden exactly while it sits inside an
+ *  open card of its type that shows the row superseding it, shown everywhere else (parked, or in the 2D editor). */
+export function syncSuperseded() {
+  const by = new Map(); // element -> the row hiding it (null: none). One block may be declared for several types (Draw + Lattice)
+  for (const r of LAYER_CARD_ROWS) {
+    for (const [type, specs] of Object.entries(r.supersedes || {})) {
+      for (const spec of specs) {
+        for (const e of supersededEls(spec)) {
+          const card = e.closest('#layerStackList [data-stack-type]');
+          const hide = !!card && card.dataset.stackType === type && !!card.querySelector(`[data-card-row-wrap="${r.id}"]`);
+          if (hide) by.set(e, r.id); else if (!by.has(e)) by.set(e, null);
+        }
+      }
+    }
+  }
+  for (const [e, rowId] of by) {
+    if (rowId) { e.setAttribute(SUPERSEDED_ATTR, rowId); e.hidden = true; }
+    else if (e.hasAttribute(SUPERSEDED_ATTR)) { e.removeAttribute(SUPERSEDED_ATTR); e.hidden = false; }
+  }
+}
 /** The layer stamps into the 3D right now (its card's rows show): the type's Stamp box, else always. */
 export const cardCarves = (item) => { const T = LAYER_TYPES[item.type]; return !T.enabled || !!T.enabled.get(item); };
 /** Fred (2026-11-23, "are layers expandable into their full previous panel fields?"): the blocks of the old panels an OPEN
@@ -642,6 +689,7 @@ export function refreshLayerStack() {
     }
   } finally { _rendering = false; }
   syncStlPanel(); // the STL cards' state + its settings in the open one (and the job-timeline lock back on them)
+  syncSuperseded(); // after every block has moved: a hosted control a card row supersedes is hidden in that card only
   if (_dirty) { _dirty = false; refreshLayerStack(); return; }
   refreshEditorStack(); // the editor's view of the same stack
 }
