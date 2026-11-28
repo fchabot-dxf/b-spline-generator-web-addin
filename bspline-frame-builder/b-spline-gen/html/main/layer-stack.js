@@ -26,8 +26,9 @@ import { stampSummaryText, layerStampTarget } from '../core/stamp/target.js';
 import {
   isLatticeLayer, isCarved, setLayerCarve, setLayerPlacement, setActiveLayer, addLayer, brickKindLayer, getActiveLayer, typedLayerName,
   setLayerVisible, setLayerShowColor, setLayerLocked, isUserLocked, removeLayer, renameLayer, eyeIconSVG, flashLayerGeometry,
-  syncLayerZOrder, applyLayerState, renderLayersPanel,
+  syncLayerZOrder, applyLayerState, renderLayersPanel, setLayerStampField,
 } from '../editor/layers.js';
+import { strengthPercent, writeStrength, STAMP_STRENGTH } from '../core/stamp/strength.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { patchLayers } from '../core/height/compose.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
@@ -37,7 +38,7 @@ import { commitEdit } from '../editor/editor-commit.js';
 import { themeSectionEl, SECTION_ICONS } from './section-themes.js';
 import { mountIconGrid } from './icon-select.js';
 import {
-  openStlId, toggleStlCard, closeStlCards, setStlEnabled, removeStlLayer, setStlField, syncStlPanel, openStlAddSheet, LAYER_STACK_STALE,
+  openStlId, toggleStlCard, closeStlCards, setStlEnabled, removeStlLayer, setStlField, setStlStampField, syncStlPanel, openStlAddSheet, LAYER_STACK_STALE,
 } from './stl-panel.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { THICKEN_SETTINGS_SYNCED } from './back-flat-ui.js';
@@ -58,6 +59,88 @@ async function openEditorTab(tab) {
   const m = await lazy.framePanel(); return m.openEditorOn(tab);
 }
 const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
+/** A card's Strength percent as the value its layer stores (core/stamp/strength.js): undefined at 100 % (the field removed). */
+const strengthValue = (pct) => writeStrength({}, pct)[STAMP_STRENGTH.field];
+const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const round3 = (v) => Math.round(v * 1000) / 1000;
+/** An optional own field written as ABSENT at its default (0): a board never touched keeps no field. */
+const unlessZero = (v) => (v === 0 ? undefined : v);
+
+/**
+ * Each type's CARD ROWS (LAYER_CARD_ROWS ids): { get(item), set(item, v) } -- the value in the row's own unit (Raised /
+ * Carved: 'raised' | 'carved'; % / in). Where the type ALREADY has the field, the row edits THAT field through the type's
+ * existing write (no second copy); only the fields a type lacked are new (core/stamp/strength.js, pass-fields.js).
+ *   relief    Draw / Lattice: the sign of layer.depth; Bricks: P.brickSettings.invert (the Brick panel's setInvert);
+ *             STL / Height: the record's raise (the panels' own 'raise' control)
+ *   strength  NEW everywhere: layer.strength / P.brickSettings.strength / rec.strength
+ *   zOffset   STL: position.z (the panel's Z control, the pass's zOffset); Height: rec.zOffset (its Z offset control);
+ *             NEW for Draw / Lattice (layer.zOffset) and Bricks (P.brickSettings.zOffset)
+ *   soften    STL: rec.softness (its Edge softness); Draw / Lattice: layer.edgeFilletRadius (Edge fillet: the relief's edge
+ *             rolled off over that many inches -- its Blur, in grid cells, only rounds a flat layer's outline: measured)
+ *             NEW for Height (rec.softness) and Bricks (P.brickSettings.softness)
+ *   ground    Draw / Lattice: layer.suppression ('Smooth the terrain'); Bricks: every brick layer's suppression (the field
+ *             their passes read); NEW for STL / Height (rec.suppression)
+ */
+const EDITOR_LAYER_ROWS = Object.freeze({
+  relief: Object.freeze({
+    get: (item) => (num(item.ref.depth) < 0 ? 'carved' : 'raised'),
+    set: (item, v) => { const d = Math.abs(num(item.ref.depth)); return setLayerStampField(editor(), item.ref.id, 'depth', v === 'carved' ? -d : d); },
+  }),
+  strength: Object.freeze({
+    get: (item) => strengthPercent(item.ref.strength),
+    set: (item, pct) => setLayerStampField(editor(), item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)),
+  }),
+  zOffset: Object.freeze({ get: (item) => num(item.ref.zOffset), set: (item, v) => setLayerStampField(editor(), item.ref.id, 'zOffset', unlessZero(v)) }),
+  soften: Object.freeze({
+    get: (item) => round3(num(item.ref.edgeFilletRadius)),
+    set: (item, v) => setLayerStampField(editor(), item.ref.id, 'edgeFilletRadius', v),
+  }),
+  ground: Object.freeze({ get: (item) => Math.round(num(item.ref.suppression) * 100), set: (item, pct) => setLayerStampField(editor(), item.ref.id, 'suppression', pct / 100) }),
+});
+/** A brick setting written (absent at its default) and committed as the 3D-only brick setting it is ('surface': re-masks). */
+async function setBrickSurfaceField(field, v) {
+  if (!P.brickSettings) return;
+  if (v === undefined) delete P.brickSettings[field]; else P.brickSettings[field] = v;
+  (await lazy.brickPanel()).commitBrickSetting('surface');
+}
+const BRICK_ROWS = Object.freeze({
+  relief: Object.freeze({
+    get: () => (brickSettings() && brickSettings().invert ? 'carved' : 'raised'),
+    async set(_item, v) { if (P.brickSettings) (await lazy.brickPanel()).setInvert(v === 'carved', 'auto'); }, // the panel's own toggle
+  }),
+  // every brick pass at once (the stack shows the bricks as ONE item): P.brickSettings.strength, a 3D-only brick setting
+  strength: Object.freeze({
+    get: () => strengthPercent(brickSettings() && brickSettings().strength),
+    async set(_item, pct) { if (!P.brickSettings) return; writeStrength(P.brickSettings, pct); (await lazy.brickPanel()).commitBrickSetting('surface'); },
+  }),
+  zOffset: Object.freeze({ get: () => num(brickSettings() && brickSettings().zOffset), set: (_item, v) => setBrickSurfaceField('zOffset', unlessZero(v)) }),
+  soften: Object.freeze({ get: () => num(brickSettings() && brickSettings().softness), set: (_item, v) => setBrickSurfaceField('softness', v > 0 ? v : undefined) }),
+  ground: Object.freeze({
+    get: (item) => Math.round(num((item.ref[0] || {}).suppression) * 100),
+    set: (item, pct) => setLayerStampField(editor(), item.ref.map((l) => l.id), 'suppression', pct / 100), // ONE commit for all
+  }),
+});
+const HEIGHT_ROWS = Object.freeze({
+  relief: Object.freeze({
+    get: (item) => (item.ref.raise === false ? 'carved' : 'raised'),
+    async set(item, v) { (await lazy.heightPanel()).setHeightField('raise', v !== 'carved', { id: item.ref.id }); },
+  }),
+  strength: Object.freeze({ get: (item) => strengthPercent(item.ref.strength),
+    async set(item, pct) { (await lazy.heightPanel()).setHeightStampField(item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)); } }),
+  zOffset: Object.freeze({ get: (item) => num(item.ref.zOffset), async set(item, v) { (await lazy.heightPanel()).setHeightField('zOffset', v, { id: item.ref.id }); } }),
+  soften: Object.freeze({ get: (item) => num(item.ref.softness),
+    async set(item, v) { (await lazy.heightPanel()).setHeightStampField(item.ref.id, 'softness', v > 0 ? v : undefined); } }),
+  ground: Object.freeze({ get: (item) => Math.round(num(item.ref.suppression) * 100),
+    async set(item, pct) { (await lazy.heightPanel()).setHeightStampField(item.ref.id, 'suppression', pct > 0 ? pct / 100 : undefined); } }),
+});
+const STL_ROWS = Object.freeze({
+  relief: Object.freeze({ get: (item) => (item.ref.raise === false ? 'carved' : 'raised'), set: (item, v) => setStlField('raise', v !== 'carved', item.ref.id) }),
+  strength: Object.freeze({ get: (item) => strengthPercent(item.ref.strength), set: (item, pct) => setStlStampField(item.ref.id, STAMP_STRENGTH.field, strengthValue(pct)) }),
+  zOffset: Object.freeze({ get: (item) => num(item.ref.position && item.ref.position.z), set: (item, v) => setStlField('posZ', v, item.ref.id) }),
+  soften: Object.freeze({ get: (item) => num(item.ref.softness), set: (item, v) => setStlField('softness', v, item.ref.id) }),
+  ground: Object.freeze({ get: (item) => Math.round(num(item.ref.suppression) * 100),
+    set: (item, pct) => setStlStampField(item.ref.id, 'suppression', pct > 0 ? pct / 100 : undefined) }),
+});
 
 /**
  * The layer kinds, declared once (step 1 of the stack; their sub-layers are step 2, the editor's layer tabs step 3):
@@ -68,6 +151,9 @@ const inches = (v) => String(Number(Math.abs(Number(v) || 0).toFixed(3)));
  *   enabled         { get(item), set(item, on), title }: the header's Stamp switch (absent: none)
  *   remove(item)    the header's trash (absent: none)
  *   add()           '+ Add layer': its app's existing create path; resolves to the new item's key (or null)
+ *   rows            { <LAYER_CARD_ROWS id>: { get(item), set(item, v) } }: the open card's setting rows (Raised / Carved,
+ *                   Strength, Z offset, Soften edges, Ground under it), each through the type's own write; shown while the
+ *                   layer carves (cardCarves). EDITOR_LAYER_ROWS / BRICK_ROWS / HEIGHT_ROWS / STL_ROWS above.
  *  The EDITOR view (STACK_VIEWS.editor, Fred 2026-11-23: the editor's layer tabs became this same stack):
  *   stackTab        the editor tab (main/editor-tabs.js EDITOR_TABS id) whose tools + settings a selected row shows
  *   pick(item, sub) make the row the one the editor edits (its app's own active-layer / active-patch call; UI state only)
@@ -88,6 +174,7 @@ export const LAYER_TYPES = Object.freeze({
       if (v === 'afterBack') P.brickSettings.placement = 'afterBack'; else delete P.brickSettings.placement;
       (await lazy.brickPanel()).commitBrickSetting('surface'); // a 3D-only brick setting: re-masks, no re-lay (SURFACE_ONLY_SETTING_KEYS)
     },
+    rows: BRICK_ROWS,
     stackTab: 'brick',
     // a part row = its layer becomes the active one (bricks land on the ACTIVE layer, item 22 slice 3)
     pick: (_item, sub) => { const ed = editor(); if (ed && sub != null) { setActiveLayer(ed, sub); flashLayerGeometry(ed, sub); } },
@@ -107,6 +194,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    rows: EDITOR_LAYER_ROWS,
     stackTab: 'artwork',
     pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     async add() {
@@ -124,6 +212,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setLayerPlacement(editor(), item.ref.id, v),
     enabled: { get: (item) => isCarved(item.ref), set: (item, on) => setLayerCarve(editor(), item.ref.id, on), title: 'Stamp this layer into the surface (3D)' },
+    rows: EDITOR_LAYER_ROWS,
     stackTab: 'lattice',
     pick: (item) => { const ed = editor(); if (ed) { setActiveLayer(ed, item.ref.id); flashLayerGeometry(ed, item.ref.id); } }, // the old row's flash
     // a new layer holding a fresh Lattice pattern (the Lattice panel's own lazy create, editor-lattice-pattern.js freshPattern),
@@ -151,6 +240,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     async setPlacement(item, v) { (await lazy.heightPanel()).setHeightField('placement', v, { id: item.ref.id }); },
     enabled: { get: (item) => item.ref.enabled !== false, async set(item, on) { (await lazy.heightPanel()).setHeightEnabled(item.ref.id, on); }, title: 'Stamp this patch' },
+    rows: HEIGHT_ROWS,
     async select(item) { (await lazy.heightPanel()).pickHeightPatch(item.ref.id); },
     stackTab: 'height',
     async pick(item, sub) { const hp = await lazy.heightPanel(); hp.pickHeightPatch(item.ref.id); if (sub != null) hp.selectPatchLayer(sub); },
@@ -165,6 +255,7 @@ export const LAYER_TYPES = Object.freeze({
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setStlField('placement', v, item.ref.id),
     enabled: { get: (item) => item.ref.enabled !== false, set: (item, on) => setStlEnabled(item.ref.id, on), title: 'Stamp this STL' },
+    rows: STL_ROWS,
     remove: (item) => removeStlLayer(item.ref.id),
     stackTab: 'stl', // no 2D view yet (planned): its panel points to the sidebar card
     pick: (item) => { _edStlKey = item.key; },
@@ -174,6 +265,72 @@ export const LAYER_TYPES = Object.freeze({
 });
 /** '+ Add layer's tiles, in Fred's order (no Photo: deferred). */
 export const LAYER_ADD_TYPES = Object.freeze(['brick', 'draw', 'lattice', 'height', 'stl']);
+/** The open card's SETTING ROWS (Fred 2026-11-27: "can some show at least a general strength override, 0-100%?"), declared
+ *  once and rendered by ONE row component (cardRow) for every type that declares the row's id in LAYER_TYPES (its get / set).
+ *  A row shows only while its layer carves 3D (cardCarves: the type's Stamp box on; a type without one -- the Bricks --
+ *  always). The slider commits on RELEASE (its 'change'; the number box on its own 'change'): one write, one undo step, one
+ *  rebuild through the type's own commit path; a drag only moves the number. min / max are the slider's travel only. */
+/** A hosted control a card row SUPERSEDES (the same field; see `supersedes` below), as the block to hide:
+ *    rowBlock(id)   the control's row in the palette markup (its .relief-toggle / .cad-slider-row) + the label just before it
+ *    selfBlock(id)  that element itself (an STL control's own field wrapper, main/stl-panel.js renderControl stl_<id>Field) */
+const rowBlock = (id) => Object.freeze({ id, block: 'row' });
+const selfBlock = (id) => Object.freeze({ id, block: 'self' });
+const EDITOR_STAMP = (blocks) => ({ draw: blocks, lattice: blocks }); // Draw + Lattice share #stampLayerSettings
+/**
+ * `supersedes` (advisor 2026-11-27, Fred rejects duplicated controls): per type, the controls of that type's HOSTED block
+ * (HOSTED below: #stampLayerSettings, #brickPanelBody, the STL panel's #stlActive) that edit the SAME field as this row.
+ * While an open card shows this row they are hidden (syncSuperseded); anywhere else -- parked, or #stampLayerSettings in the
+ * 2D editor's Draw tab (no card rows there) -- they show as before.
+ */
+export const LAYER_CARD_ROWS = Object.freeze([
+  Object.freeze({ id: 'relief', label: 'Relief', kind: 'choice', options: Object.freeze([['raised', 'Raised'], ['carved', 'Carved']]),
+    title: 'Raised: the layer stands out of the surface; Carved: it is cut into it',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampReliefToggle')]), brick: [rowBlock('brickReliefToggle')], stl: [selfBlock('stl_raiseField')] }) }),
+  Object.freeze({ id: 'strength', label: 'Strength', kind: 'slider', min: 0, max: 100, step: 1, unit: '%',
+    title: 'How strongly this layer stamps: its height x this (100 % = as set; 0 % = no relief)' }),
+  Object.freeze({ id: 'zOffset', label: 'Z offset', kind: 'slider', min: -1, max: 1, step: 0.005, unit: 'in',
+    title: 'Added over the layer (into the surface when Carved); not scaled by the Strength',
+    supersedes: Object.freeze({ stl: [selfBlock('stl_posZField')] }) }),
+  Object.freeze({ id: 'soften', label: 'Soften edges', kind: 'slider', min: 0, max: 2, step: 0.01, unit: 'in',
+    title: 'Soften the layer\'s edges over this many inches (0 = sharp edges)',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampEdgeFilletRadius')]), stl: [selfBlock('stl_softnessField')] }) }),
+  Object.freeze({ id: 'ground', label: 'Ground under it', kind: 'slider', min: 0, max: 100, step: 1, unit: '%',
+    title: 'Smooth the terrain under the layer toward its smoothed copy (0 % = the terrain as it is)',
+    supersedes: Object.freeze({ ...EDITOR_STAMP([rowBlock('stampTextureSuppression')]) }) }),
+]);
+/** The attribute a superseded block carries while hidden (styles/layout-app.css: display none). */
+export const SUPERSEDED_ATTR = 'data-card-superseded';
+/** A declared block's elements: its row + the label before it, or the element itself (none when not in the page). */
+function supersededEls(spec) {
+  const e = byId(spec.id);
+  if (!e) return [];
+  if (spec.block === 'self') return [e];
+  const r = e.closest('.relief-toggle, .cad-slider-row') || e;
+  const lab = r.previousElementSibling;
+  return lab && lab.matches('label.cad-label') ? [lab, r] : [r];
+}
+/** THE one place the superseded controls are hidden / shown: each declared block is hidden exactly while it sits inside an
+ *  open card of its type that shows the row superseding it, shown everywhere else (parked, or in the 2D editor). */
+export function syncSuperseded() {
+  const by = new Map(); // element -> the row hiding it (null: none). One block may be declared for several types (Draw + Lattice)
+  for (const r of LAYER_CARD_ROWS) {
+    for (const [type, specs] of Object.entries(r.supersedes || {})) {
+      for (const spec of specs) {
+        for (const e of supersededEls(spec)) {
+          const card = e.closest('#layerStackList [data-stack-type]');
+          const hide = !!card && card.dataset.stackType === type && !!card.querySelector(`[data-card-row-wrap="${r.id}"]`);
+          if (hide) by.set(e, r.id); else if (!by.has(e)) by.set(e, null);
+        }
+      }
+    }
+  }
+  for (const [e, rowId] of by) {
+    if (rowId) { e.setAttribute(SUPERSEDED_ATTR, rowId); e.hidden = true; }
+    else if (e.hasAttribute(SUPERSEDED_ATTR)) { e.removeAttribute(SUPERSEDED_ATTR); e.hidden = false; }
+  }
+}
+/** The layer stamps into the 3D right now (its card's rows show): the type's Stamp box, else always. */
+export const cardCarves = (item) => { const T = LAYER_TYPES[item.type]; return !T.enabled || !!T.enabled.get(item); };
 /** Fred (2026-11-23, "are layers expandable into their full previous panel fields?"): the blocks of the old panels an OPEN
  *  card shows, after its summary and its editor door -- MOVED in, parked back (never copied, every id stays unique).
  *    content  the block's id;  park  where it lives while no card shows it;  hide  hide it while parked
@@ -373,6 +530,7 @@ function cardFor(item, after) {
   if (box) box.checked = !!T.enabled.get(item);
   const body = el('div', { class: `panel-body layer-card-body${stl ? ' stl-card-body' : ''}` });
   if (!stl && open) fillBody(item, body);
+  else if (stl && open) fillRows(item, body); // the STL panel's own settings (#stlActive) follow, moved in by syncStlPanel
   card.append(head, body);
   return card;
 }
@@ -383,10 +541,70 @@ function fillBody(item, body) {
   const text = T.summary(item);
   if (text) body.appendChild(el('div', { class: 'layer-card-summary', text }));
   if (T.enabled && !T.enabled.get(item)) body.appendChild(el('div', { class: 'layer-card-note', text: 'Not stamped (its box is off).' }));
+  fillRows(item, body);
   if (T.editorTab) {
     const b = el('button', { type: 'button', class: 'cad-btn cad-btn-secondary layer-card-door', id: cardNameId(item.key).replace('layerCardName_', 'layerCardDoor_'), 'data-stack-door': item.key, text: `Open in the ${T.tabLabel} tab ›` });
     b.addEventListener('click', () => openItemInEditor(item));
     body.appendChild(b);
+  }
+}
+
+/** The card's LAYER_CARD_ROWS its type declares, while the layer carves 3D. */
+function fillRows(item, body) {
+  if (!cardCarves(item)) return;
+  const T = LAYER_TYPES[item.type];
+  for (const row of LAYER_CARD_ROWS) if (T.rows && T.rows[row.id]) body.appendChild(cardRow(item, row));
+}
+/** A card row's ids: layerCardRow_<row>_<key> (the slider) / layerCardRowNum_<row>_<key> (its number box), ':' as '_'. */
+export const cardRowId = (rowId, key, part = 'slider') => `layerCard${part === 'number' ? 'RowNum' : 'Row'}_${rowId}_${String(key).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+/** ONE row component: the app's slider + number pair (.cad-slider-row / .cad-slider / .cad-stepper, as Texture Strength),
+ *  or for a 'choice' row its segmented pair (.relief-toggle, as the panels' own Relief). */
+function cardRow(item, row) {
+  const spec = LAYER_TYPES[item.type].rows[row.id];
+  const v = String(spec.get(item));
+  if (row.kind === 'choice') {
+    const wrap = el('div', { class: 'relief-toggle', id: cardRowId(row.id, item.key), role: 'group', 'aria-label': row.label, title: row.title },
+      row.options.map(([k, text]) => el('button', { type: 'button', class: `relief-toggle-btn${k === v ? ' active' : ''}`, id: `${cardRowId(row.id, item.key)}_${k}`, 'data-card-choice': k, 'aria-pressed': String(k === v), text })));
+    for (const b of wrap.querySelectorAll('[data-card-choice]')) {
+      b.addEventListener('click', () => { if (String(spec.get(item)) !== b.dataset.cardChoice) spec.set(item, b.dataset.cardChoice); });
+    }
+    return el('div', { class: 'layer-card-row', 'data-card-row-wrap': row.id }, [el('label', { class: 'cad-label', text: row.label, title: row.title }), wrap]);
+  }
+  const label = `${row.label} (${row.unit})`;
+  const s = el('input', { type: 'range', class: 'cad-slider', id: cardRowId(row.id, item.key), min: String(row.min), max: String(row.max), step: String(row.step),
+    'aria-label': label, 'data-card-row': row.id, title: row.title });
+  const n = el('input', { type: 'number', id: cardRowId(row.id, item.key, 'number'), min: String(row.min), max: String(row.max), step: String(row.step),
+    'aria-label': label, 'data-card-row': row.id });
+  s.value = v; n.value = v;
+  const commit = (val) => {
+    const x = parseFloat(val);
+    if (!Number.isFinite(x)) { n.value = String(spec.get(item)); return null; } // an empty box writes nothing
+    return spec.set(item, x);
+  };
+  s.addEventListener('input', () => { n.value = s.value; }); // a drag moves the number only
+  s.addEventListener('change', () => commit(s.value));     // the release is the one write
+  n.addEventListener('change', () => { s.value = n.value; commit(n.value); });
+  return el('div', { class: 'layer-card-row', 'data-card-row-wrap': row.id }, [
+    el('label', { class: 'cad-label', for: s.id, text: label, title: row.title }),
+    el('div', { class: 'cad-slider-row' }, [s, el('div', { class: 'cad-stepper' }, [n])]),
+  ]);
+}
+/** The rows on screen re-read their layer (an undo, a load, a write elsewhere): only their values change. */
+function syncRows(card, item) {
+  const T = LAYER_TYPES[item.type];
+  const focused = typeof document !== 'undefined' ? document.activeElement : null;
+  for (const row of LAYER_CARD_ROWS) {
+    if (!T.rows || !T.rows[row.id]) continue;
+    const v = String(T.rows[row.id].get(item));
+    if (row.kind === 'choice') {
+      const g = byId(cardRowId(row.id, item.key));
+      if (g && card.contains(g)) for (const b of g.querySelectorAll('[data-card-choice]')) { const on = b.dataset.cardChoice === v; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); }
+      continue;
+    }
+    for (const part of ['slider', 'number']) {
+      const x = byId(cardRowId(row.id, item.key, part));
+      if (x && card.contains(x) && x !== focused) x.value = v;
+    }
   }
 }
 
@@ -453,6 +671,7 @@ export function refreshLayerStack() {
       for (const c of listEl.children) {
         const it = items.find((i) => i.key === c.dataset.stackKey), line = c.querySelector(':scope > .layer-card-body > .layer-card-summary');
         if (it && line) line.textContent = LAYER_TYPES[it.type].summary(it);
+        if (it) syncRows(c, it);
       }
       const st = byId('layerStackThickenState'); if (st) st.textContent = thickenState();
     } else {
@@ -470,6 +689,7 @@ export function refreshLayerStack() {
     }
   } finally { _rendering = false; }
   syncStlPanel(); // the STL cards' state + its settings in the open one (and the job-timeline lock back on them)
+  syncSuperseded(); // after every block has moved: a hosted control a card row supersedes is hidden in that card only
   if (_dirty) { _dirty = false; refreshLayerStack(); return; }
   refreshEditorStack(); // the editor's view of the same stack
 }

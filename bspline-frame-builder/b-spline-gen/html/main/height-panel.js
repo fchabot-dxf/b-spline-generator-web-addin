@@ -1223,6 +1223,16 @@ export function removeHeightPatch(id) {
   syncHeightPanel();
   syncHeightOverlay();
 }
+/** An optional stamp field of patch `id` with no HEIGHT_CONTROLS entry (the layer stack's card rows, main/layer-stack.js
+ *  LAYER_CARD_ROWS, e.g. `strength`): `value` undefined REMOVES the field (absent = its default, the patch as before). One step. */
+export function setHeightStampField(id, field, value) {
+  if (!find(id)) return false;
+  dropHeightMove();
+  updateRecord(id, (r) => { const n = { ...r }; if (value === undefined) delete n[field]; else n[field] = value; return n; });
+  commitStep(field);
+  syncHeightPanel();
+  return true;
+}
 export function setHeightEnabled(id, on) {
   if (!find(id)) return;
   dropHeightMove();

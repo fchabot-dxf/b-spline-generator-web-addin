@@ -26,6 +26,8 @@ import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND, PLACEMENT_PASS_KINDS } from './apply-stamp-layers.js';
+import { strengthOf } from '../stamp/strength.js';
+import { zOffsetOf } from '../stamp/pass-fields.js';
 import { placementOf } from '../stamp/placement.js';
 import { orderPasses, editorLayerKey, STACK_BRICKS_KEY } from '../stamp/order.js';
 import { stlPasses } from '../stl/layer.js';
@@ -92,7 +94,7 @@ export function rebuildInputDigest(preview, nx, nz) {
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
             h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
-            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}`); // bricks After thicken (else as before)
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}${l._brickPassFields && Object.keys(l._brickPassFields).length ? `|${JSON.stringify(l._brickPassFields)}` : ''}`); // bricks After thicken / Strength / Z offset (else as before)
         }
         return (h >>> 0).toString(36);
     } catch (_) { return null; }
@@ -129,7 +131,7 @@ export function heightsInputDigest(nx, nz) {
         const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
         for (const l of layers) {
             h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
-            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}`); // bricks After thicken (else as before)
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}${l._brickPlacement === 'afterBack' ? '|afterBack' : ''}${l._brickPassFields && Object.keys(l._brickPassFields).length ? `|${JSON.stringify(l._brickPassFields)}` : ''}`); // bricks After thicken / Strength / Z offset (else as before)
         }
         return (h >>> 0).toString(36);
     } catch (_) { return null; }
@@ -412,6 +414,7 @@ export function _collectStampPasses(nx, nz) {
                 // read with the brick depth by main/stamp-mask-manager.js (layer._brickPlacement; absent = 'withSurface',
                 // core/stamp/placement.js) -- the heights stage never reads P.brickSettings (HEIGHTS_INERT_KEYS)
                 placement: placementOf(layer._brickPlacement),
+                ...(layer._brickPassFields || {}), // the bricks' Strength / Z offset (core/stamp/pass-fields.js, read with the depth)
             } : null;
             if (!mask) { if (brickPass) passes.push(brickPass); return; }
             // Build a stamp-pass-shape view of the editor layer. We keep
@@ -432,6 +435,8 @@ export function _collectStampPasses(nx, nz) {
                 edgeFilletRadius: layer.edgeFilletRadius,
                 filletPower: layer.filletPower,
                 placement: placementOf(layer.placement), // Fred 2026-11-23: the layer's own Thicken (absent = 'withSurface')
+                ...strengthOf(layer.strength), // the layer's own Strength (absent = 100 %: no key)
+                ...zOffsetOf(layer.zOffset),   // the layer's own Z offset (core/stamp/pass-fields.js; absent = 0: no key)
             });
             if (brickPass) passes.push(brickPass);
         });
