@@ -24,7 +24,7 @@ const OLD_ORDER = ['stock', 'seed', 'skeleton', 'filter', 'sculptTop', 'back', '
 describe('the stl step is derived from the STL list', () => {
   it('a board with an STL gets one stl step, placed like bricks', () => {
     const steps = deriveJobSteps(jobProjectOf(roster, { templateId: 't' }, stl));
-    expect(steps.filter((s) => s.kind === 'stl')).toEqual([{ id: 'stl', kind: 'stl', label: 'STL stamps', flags: [] }]);
+    expect(steps.filter((s) => s.kind === 'stl')).toEqual([{ id: 'stl', kind: 'stl', label: 'Mesh stamps', flags: [] }]);
     expect(steps.map((s) => s.id).slice(-3)).toEqual(['bricks', 'stl', 'frame']);
   });
   it('a disabled record still counts; two records are still one step', () => {

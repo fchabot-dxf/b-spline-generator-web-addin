@@ -96,7 +96,7 @@ export const JOB_STEP_KINDS = Object.freeze({
   // STL stamps (Surface > STL stamp, main/stl-panel.js; P.stlLayers): ONE step for all of them, like bricks. rebuild.js
   // _collectStampPasses appends the STL passes AFTER every editor layer's art and the bricks; core/engine/apply-stamp-layers.js
   // Max blend reads the heights stamped so far
-  stl: Object.freeze({ label: 'STL stamps', icon: '◭', section: 'stl', opens: { sidebar: 'panel-stl' }, readOnly: 'section', cuts: 'top',
+  stl: Object.freeze({ label: 'Mesh stamps', icon: '◭', section: 'stl', opens: { sidebar: 'panel-stl' }, readOnly: 'section', cuts: 'top',
     dependsOn: ['stock', 'sculptTop', 'vector', 'bricks', 'latticeRails', 'latticeNodes'] }),
   // the frame is laid on the board (editor/editor-frame-profile.js:476)
   frame: Object.freeze({ label: 'Wood frame', icon: '▢', section: 'frame', opens: { sidebar: 'panel-frame' }, readOnly: 'section', cuts: 'frame', dependsOn: ['stock'] }),

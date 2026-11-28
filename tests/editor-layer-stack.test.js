@@ -169,13 +169,13 @@ describe('+ Add layer in the editor: the same picker', () => {
 });
 
 describe('a NEW layer is named by its type', () => {
-  it('Draw N one past the last on screen; a board with only brick parts starts at Draw 1 (was "Layer 3")', () => {
-    expect(typedLayerName([])).toBe('Draw 1');
-    expect(typedLayerName([{ name: 'Wall' }, { name: 'Brick frame' }])).toBe('Draw 1');
-    expect(typedLayerName([{ name: 'Draw 1' }, { name: 'Draw 4' }, { name: 'Lines' }])).toBe('Draw 5');
+  it('Vector N one past the last on screen; a board with only brick parts starts at Vector 1 (was "Layer 3")', () => {
+    expect(typedLayerName([])).toBe('Vector 1');
+    expect(typedLayerName([{ name: 'Wall' }, { name: 'Brick frame' }])).toBe('Vector 1');
+    expect(typedLayerName([{ name: 'Vector 1' }, { name: 'Vector 4' }, { name: 'Lines' }])).toBe('Vector 5');
     expect(typedLayerName([{ name: 'Lattice 2' }], 'Lattice')).toBe('Lattice 3');
     const ed = { _layers: [{ id: '3', name: 'Wall', brickKind: 'wall' }, { id: '4', name: 'Brick frame', brickKind: 'frame' }], _activeLayer: null, _nextLayerId: 5 };
-    expect(addLayer(ed, { skipUndo: true }).name).toBe('Draw 1');
+    expect(addLayer(ed, { skipUndo: true }).name).toBe('Vector 1');
     // a name given is kept (a saved layer, a brick kind, a lattice)
     expect(addLayer(ed, { name: 'Rails', skipUndo: true }).name).toBe('Rails');
   });

@@ -54,7 +54,7 @@ let _idSeq = 0;
 export const newHeightId = () => `hp${Date.now().toString(36)}${(_idSeq++).toString(36)}`;
 
 /** A new, unpainted patch covering the whole board (`board` = { widthIn, heightIn }) at 100 px/in. Async (the encode). */
-export async function newHeightLayer(board, name = 'Height') {
+export async function newHeightLayer(board, name = 'Pixel') {
   const sizeIn = { w: board.widthIn, h: board.heightIn };
   const cols = Math.max(1, Math.round(sizeIn.w * HEIGHT_PX_PER_IN)), rows = Math.max(1, Math.round(sizeIn.h * HEIGHT_PX_PER_IN));
   const raster = await encodeRaster(new Float32Array(cols * rows), cols, rows);

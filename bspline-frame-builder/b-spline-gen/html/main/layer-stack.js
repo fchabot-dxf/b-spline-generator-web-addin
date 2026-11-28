@@ -101,7 +101,7 @@ export const LAYER_TYPES = Object.freeze({
     },
   }),
   draw: Object.freeze({
-    label: 'Draw', theme: 'stamp', icon: SECTION_ICONS.stamp, editorTab: 'artwork', tabLabel: 'Draw',
+    label: 'Vector', theme: 'stamp', icon: SECTION_ICONS.stamp, editorTab: 'artwork', tabLabel: 'Vector',
     name: (item) => item.ref.name || 'Layer',
     summary: (item) => stampSummaryText(layerStampTarget(item.ref)),
     placement: (item) => placementOf(item.ref.placement),
@@ -142,15 +142,15 @@ export const LAYER_TYPES = Object.freeze({
     },
   }),
   height: Object.freeze({
-    label: 'Height patch', theme: 'height', icon: SECTION_ICONS.height, editorTab: 'height', tabLabel: 'Height',
-    name: (item) => item.ref.name || 'Height',
+    label: 'Pixel', theme: 'height', icon: SECTION_ICONS.height, editorTab: 'height', tabLabel: 'Pixel',
+    name: (item) => item.ref.name || 'Pixel',
     summary: (item) => {
       const n = Array.isArray(item.ref.layers) ? item.ref.layers.length : 1;
       return `${item.ref.raise === false ? 'Carved' : 'Raised'} · ${n} paint layer${n === 1 ? '' : 's'}`;
     },
     placement: (item) => placementOf(item.ref.placement),
     async setPlacement(item, v) { (await lazy.heightPanel()).setHeightField('placement', v, { id: item.ref.id }); },
-    enabled: { get: (item) => item.ref.enabled !== false, async set(item, on) { (await lazy.heightPanel()).setHeightEnabled(item.ref.id, on); }, title: 'Stamp this patch' },
+    enabled: { get: (item) => item.ref.enabled !== false, async set(item, on) { (await lazy.heightPanel()).setHeightEnabled(item.ref.id, on); }, title: 'Stamp this Pixel' },
     async select(item) { (await lazy.heightPanel()).pickHeightPatch(item.ref.id); },
     stackTab: 'height',
     async pick(item, sub) { const hp = await lazy.heightPanel(); hp.pickHeightPatch(item.ref.id); if (sub != null) hp.selectPatchLayer(sub); },
@@ -159,12 +159,12 @@ export const LAYER_TYPES = Object.freeze({
     async add() { const rec = await (await lazy.heightPanel()).newHeightPatch(); return rec ? `height:${rec.id}` : null; },
   }),
   stl: Object.freeze({
-    label: 'STL relief', theme: 'stl', icon: SECTION_ICONS.stl, editorTab: null,
-    name: (item) => item.ref.name || 'STL',
+    label: 'Mesh', theme: 'stl', icon: SECTION_ICONS.stl, editorTab: null,
+    name: (item) => item.ref.name || 'Mesh',
     summary: () => '', // its open card holds the STL panel's own settings (main/stl-panel.js #stlActive)
     placement: (item) => placementOf(item.ref.placement),
     setPlacement: (item, v) => setStlField('placement', v, item.ref.id),
-    enabled: { get: (item) => item.ref.enabled !== false, set: (item, on) => setStlEnabled(item.ref.id, on), title: 'Stamp this STL' },
+    enabled: { get: (item) => item.ref.enabled !== false, set: (item, on) => setStlEnabled(item.ref.id, on), title: 'Stamp this Mesh' },
     remove: (item) => removeStlLayer(item.ref.id),
     stackTab: 'stl', // no 2D view yet (planned): its panel points to the sidebar card
     pick: (item) => { _edStlKey = item.key; },

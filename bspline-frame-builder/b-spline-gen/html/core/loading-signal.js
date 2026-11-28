@@ -37,7 +37,7 @@ export const LOADING_STAGES = {
   frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
   stl: { group: 'computing', label: 'reading the STL', surface: 'card' }, // STL-RELIEF: parse + weld + store a mesh (main/stl-panel.js)
   // HEIGHT-PAINTER: a height patch encoded (a stroke's commit, a new patch) or decoded (a loaded project's, before the build)
-  heightPatch: { group: 'computing', label: 'storing the height patch', surface: 'pill' },
+  heightPatch: { group: 'computing', label: 'storing the Pixel layer', surface: 'pill' },
   // HEIGHT-PAINTER slice 2: a heightmap file read (decode, resample, store) / written (16-bit PNG)
   heightImport: { group: 'computing', label: 'reading the heightmap', surface: 'card' },
   heightExport: { group: 'computing', label: 'writing the heightmap', surface: 'card' },

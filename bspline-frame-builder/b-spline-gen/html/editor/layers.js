@@ -354,7 +354,7 @@ function _nextLayerId(editor) {
 /** EDITOR LAYER STACK (Fred 2026-11-23): a NEW layer is named by its TYPE -- 'Draw 1', 'Draw 2', ... (a first drawing
  *  on a board with a Wall and a Frame part was 'Layer 3'). The type's name for a plain drawing layer (main/layer-stack.js
  *  LAYER_TYPES draw.label); a saved layer keeps the name it has (only a new one is named here). */
-export const NEW_LAYER_TYPE_NAME = 'Draw';
+export const NEW_LAYER_TYPE_NAME = 'Vector';
 /** Pure: '<type> N' with N one past the highest '<type> N' already in `layers` (never reuses a number on screen). */
 export function typedLayerName(layers, type = NEW_LAYER_TYPE_NAME) {
   const re = new RegExp(`^${type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);

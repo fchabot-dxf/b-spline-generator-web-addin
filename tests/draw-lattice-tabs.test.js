@@ -11,8 +11,8 @@ import { ART_TABS, setArtTab, initArtTabs, topTabOfArtTab, activeArtTab } from '
 const tabOf = (id) => EDITOR_TABS.find((t) => t.id === id);
 
 describe('declared: Draw and Lattice', () => {
-  it('the Artwork tab is labelled Draw (its ids kept); Lattice is a top-level tab sharing the art panel and tool row', () => {
-    expect(tabOf('artwork')).toMatchObject({ label: 'Draw', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork' });
+  it('the Artwork tab is labelled Vector (its ids kept); Lattice is a top-level tab sharing the art panel and tool row', () => {
+    expect(tabOf('artwork')).toMatchObject({ label: 'Vector', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork' });
     expect(tabOf('lattice')).toMatchObject({ label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork' });
     expect(EDITOR_TABS.map((t) => t.id).slice(0, 3)).toEqual(['frame', 'artwork', 'lattice']);
   });

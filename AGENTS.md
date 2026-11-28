@@ -43,3 +43,7 @@ itself. Never bypass it.
 - Phone first: 390 px wide, touch targets >= 28 px on a coarse pointer, and a loading card before any long work.
 
 Ask the owner before adding any clamp, guard or validation rule.
+
+## 6. Glossary
+
+Feature types on screen: Vector (code: draw/artwork), Pixel (code: height), Mesh (code: stl), Lattice, Bricks.

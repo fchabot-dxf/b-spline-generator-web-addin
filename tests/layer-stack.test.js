@@ -188,7 +188,7 @@ describe('the stack: every layer a card in stamp order, split by the Thicken lin
     card('layer:0').querySelector('.layer-card-name').click();
     expect(card('layer:2').classList.contains('collapsed')).toBe(true);
     expect(card('layer:0').querySelector('.layer-card-summary').textContent).toBe('Raised 0.25 in · V-bit 90°');
-    expect(card('layer:0').querySelector('.layer-card-door').textContent).toBe('Open in the Draw tab ›');
+    expect(card('layer:0').querySelector('.layer-card-door').textContent).toBe('Open in the Vector tab ›');
   });
   it('the Thicken line opens the retired Thicken panel\'s settings (moved, never copied); the job timeline\'s Back opens it', () => {
     mount();
@@ -260,7 +260,7 @@ describe('reorder by the handle; the Thicken line splits body / top only', () =>
 });
 
 describe('+ Add layer: the declared icon-grid picker', () => {
-  it('Brick, Draw, Lattice, Height patch, STL (no Photo) as tiles of mountIconGrid\'s picker', () => {
+  it('Brick, Draw, Lattice, Pixel, Mesh (no Photo) as tiles of mountIconGrid\'s picker', () => {
     mount();
     expect(LAYER_ADD_TYPES).toEqual(['brick', 'draw', 'lattice', 'height', 'stl']);
     expect($('layerStackAdd').classList.contains('icon-grid-picker')).toBe(true);

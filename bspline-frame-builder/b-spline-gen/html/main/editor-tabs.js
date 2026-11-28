@@ -34,7 +34,7 @@ export const EDITOR_TABS = [
   // Redesign phase 2 (Fred): the Artwork tab is DRAW, and the lattices have their own top-level LATTICE tab. Both edit
   // the same drawing: they share the art panel and its tool row (panelId / toolbarId), and `artTabs` says which of
   // main/art-tabs.js ART_TABS each shows. The ids stay (editorTabArtwork, 'artwork'): the matrix, saved state, tests.
-  { id: 'artwork', clears: 'artwork', label: 'Draw', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
+  { id: 'artwork', clears: 'artwork', label: 'Vector', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe'],
     artTabs: ['general', 'draw', 'text', 'edit'], artDefault: 'edit',
     tools: [...SHARED_ART_TOOLS, 'toolNode', 'toolDraw', 'toolLine', 'toolRect', 'toolCircle', 'toolExpand', 'toolText'],
@@ -77,11 +77,11 @@ export const EDITOR_TABS = [
   // Owner 2026-11-23 (Draw's frame): no left rail -- the tool row (`toolbarId`) is the pinned head of its own panel
   // (#heightToolsHead, [data-panel-head]), as Draw's #editorToolbarArtwork heads its panel; the settings (a collapse tree,
   // main/height-panel.js HEIGHT_DRAWER_TREE) scroll under it. On a phone that head is the drawer's, shown in full at peek.
-  { id: 'height', label: 'Height', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight',
+  { id: 'height', label: 'Pixel', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight',
     modes: ['select', 'heightBrush'], peekEssentials: ['#heightToolsHead'] },
   // EDITOR LAYER STACK (Fred 2026-11-23): an STL row selected. No tab button (the stack's row is the picker); its 2D placement
   // view is planned -- for now the panel points to the sidebar card (#editorStlPanel).
-  { id: 'stl', label: 'STL', buttonId: null, panelId: 'editorStlPanel', toolbarId: null, modes: ['select'] },
+  { id: 'stl', label: 'Mesh', buttonId: null, panelId: 'editorStlPanel', toolbarId: null, modes: ['select'] },
 ];
 /** EDITOR LAYER STACK: what shows in full at peek on EVERY tab, before the tab's own `peekEssentials` -- the stack (on a
  *  phone folded to the selected row, main/layer-stack.js EDITOR_STACK_LAYOUTS). */

@@ -94,7 +94,7 @@ export function createStlLayer({ soup, mesh = null, name, board, storedDetail = 
   const record = {
     ...normaliseStlLayer({}),
     id: newStlId(),
-    name: name || 'STL',
+    name: name || 'Mesh',
     unitIn: fitUnitIn(original, board),
     storedDetail,
     origTris: original.indices.length / 3,

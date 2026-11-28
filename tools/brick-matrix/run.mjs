@@ -244,7 +244,7 @@ async function jsJSON(expr) {
 }
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 // the editor layer stack's row kinds (see pickLayerRow below): a group's 'row:<kind>' token -> the retired tab it replaces
-const LAYER_ROWS = Object.freeze({ frame: 'Frame', draw: 'Artwork', lattice: 'Lattice', brick: 'Brick', height: 'Height' });
+const LAYER_ROWS = Object.freeze({ frame: 'Frame', draw: 'Vector', lattice: 'Lattice', brick: 'Brick', height: 'Pixel' });
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
 const setValue = (elId, v, event) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return 'MISSING'; if(e.disabled) return 'DISABLED'; e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event(${JSON.stringify(event)})); return 'ok'; })()`);
 // F35 item 43: a Brick-panel control is acted on / checked with ITS tab up (General for a global block) -- hidden by

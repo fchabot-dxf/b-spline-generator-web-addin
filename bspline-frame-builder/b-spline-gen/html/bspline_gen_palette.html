@@ -1195,7 +1195,7 @@
       <!-- STL-RELIEF (STL-RELIEF-DESIGN.md): an STL stamped into the surface -- place, size, rotate (X / Y / Z), Max / Add, Raised / Carved.
            Rendered from main/stl-panel.js STL_CONTROLS; each STL is one record in P.stlLayers. -->
       <div class="panel panel-stl">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🗿 STL STAMP</div>
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🗿 MESH SETTINGS</div>
         <div class="panel-body hidden" id="stlLayerBody" data-job-lock="stl"></div>
       </div>
 
@@ -1809,11 +1809,11 @@
                the photo (Fred 2026-11-23). -->
           <div id="editorModeTabs" role="tablist" style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
             <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;"><span data-frame-label="wood">Wood frame</span></button>
-            <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Draw</button>
+            <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Vector</button>
             <button type="button" id="editorTabLattice" role="tab" data-editor-tab="lattice" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Lattice</button>
             <button type="button" id="editorTabBrick" role="tab" data-editor-tab="brick" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Brick</button>
             <!-- HEIGHT-PAINTER slice 1: paint height patches on the board (main/height-panel.js) -->
-            <button type="button" id="editorTabHeight" role="tab" data-editor-tab="height" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Height</button>
+            <button type="button" id="editorTabHeight" role="tab" data-editor-tab="height" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Pixel</button>
           </div>
         </div>
         <div class="editor-header-actions" style="display:flex; gap:8px; align-items:center;">
@@ -2927,10 +2927,10 @@
         <!-- EDITOR LAYER STACK: an STL row's settings (main/editor-tabs.js EDITOR_TABS 'stl', no tab button). Its 2D placement
              (top-view footprint, move / scale / rotate) is planned, not built: for now it points to the sidebar card. -->
         <aside class="editor-layers-panel" id="editorStlPanel" style="display:none;">
-          <div class="layers-header"><span>STL relief</span></div>
+          <div class="layers-header"><span>Mesh</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:8px; font-size:12px;">
             <div id="editorStlName" style="font-weight:700;"></div>
-            <div id="editorStlNote" style="color:#666;">Edit in the sidebar card (Layers). Placing an STL on the board here (move, scale, rotate) comes later.</div>
+            <div id="editorStlNote" style="color:#666;">Edit in the sidebar card (Layers). Placing a Mesh on the board here (move, scale, rotate) comes later.</div>
           </div>
         </aside>
 

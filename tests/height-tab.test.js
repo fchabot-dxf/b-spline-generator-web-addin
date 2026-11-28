@@ -48,7 +48,7 @@ afterEach(() => { P.heightLayers = saved.hl; P.widthIn = saved.w; P.heightIn = s
 describe('the tab is declared', () => {
   it('EDITOR_TABS has the Height tab, with its own panel, rail and brush mode', () => {
     const t = EDITOR_TABS.find((x) => x.id === 'height');
-    expect(t).toMatchObject({ label: 'Height', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight' });
+    expect(t).toMatchObject({ label: 'Pixel', buttonId: 'editorTabHeight', panelId: 'editorHeightPanel', toolbarId: 'editorToolbarHeight' });
     expect(t.modes).toEqual(['select', 'heightBrush']);
     expect(EDITOR_TABS.filter((x) => x.id !== 'height').some((x) => x.modes.includes('heightBrush'))).toBe(false);
     expect(getModeHandler('heightBrush')).toBe(heightBrushHandler);

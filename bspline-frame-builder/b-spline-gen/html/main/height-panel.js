@@ -323,7 +323,7 @@ const toolSummary = (toolId) => (HEIGHT_OPTIONS_BAR[toolId] || []).filter((i) =>
 const layerCount = (rec) => { const n = patchLayers(rec).length; return `${n} layer${n === 1 ? '' : 's'}`; };
 export const HEIGHT_TREE_FREE_BRANCHES = Object.freeze([
   Object.freeze({ id: 'patch', title: 'Patch & layers', hosts: Object.freeze(['heightPatchActions', groupDom('layers')]),
-    summary: () => { const r = activeHeightLayer(); return r ? `${r.name || 'Height'} · ${layerCount(r)}` : 'no patch yet'; } }),
+    summary: () => { const r = activeHeightLayer(); return r ? `${r.name || 'Pixel'} · ${layerCount(r)}` : 'no patch yet'; } }),
   Object.freeze({ id: 'view', title: 'View', hosts: Object.freeze([groupDom('view')]),
     summary: () => [controlText('viewLook'), controlText('viewShow')].filter(Boolean).join(' · ') }),
   Object.freeze({ id: 'stamp', title: 'Stamp', hosts: Object.freeze([groupDom('stamp')]),
@@ -397,7 +397,7 @@ const status = (text, isError = false) => {
 function commitStep(what) {
   const ed = editor();
   if (ed && typeof ed.pushState === 'function') commitEdit(ed);
-  else scheduleUndoSnapshot(`height:${what}`, 'Height');
+  else scheduleUndoSnapshot(`height:${what}`, 'Pixel');
   scheduleSessionSave();
   _hooks.onChange();
   // the main panel's layer stack (main/layer-stack.js) re-reads the patches: a card's name, its Thicken side
@@ -448,7 +448,7 @@ function workingCopy(rec) {
   if (_work && _work.id === rec.id && _work.layerId === layer.id && (_work.h === layer.raster.h || _pending > 0)) return _work;
   const d = decodedRaster(layer.raster);
   if (!d) {
-    ensureRasterDecoded(layer.raster).then(() => syncHeightOverlay(), (e) => status(`Could not read the height patch: ${e && e.message ? e.message : e}`, true));
+    ensureRasterDecoded(layer.raster).then(() => syncHeightOverlay(), (e) => status(`Could not read the Pixel layer: ${e && e.message ? e.message : e}`, true));
     return null;
   }
   _work = { id: rec.id, layerId: layer.id, kind: layer.kind, h: layer.raster.h, cols: layer.raster.cols, rows: layer.raster.rows, data: Float32Array.from(d) };
@@ -1193,7 +1193,7 @@ export async function exportHeightmap({ png16 = null, download = true } = {}) {
 export async function newHeightPatch() {
   dropHeightMove();
   let rec = null;
-  await withLoadingStage('heightPatch', async () => { rec = await newHeightLayer(board(), `Height ${list().length + 1}`); });
+  await withLoadingStage('heightPatch', async () => { rec = await newHeightLayer(board(), `Pixel ${list().length + 1}`); });
   P.heightLayers = [...list(), rec];
   _active = rec.id;
   commitStep('add');
@@ -1900,7 +1900,7 @@ export function renderHeightPanel(body, rail = byId('editorToolbarHeight'), bar 
   // the status and carve-range lines, then the collapse tree (HEIGHT_DRAWER_TREE): the groups built below move into it
   body.style.display = 'flex'; body.style.flexDirection = 'column';
   body.appendChild(el('div', { id: 'heightPatchActions', class: 'photo-layer-buttons' }, [
-    el('button', { type: 'button', id: 'heightNew', class: 'cad-btn cad-btn-secondary', text: '＋ New height patch', title: 'An unpainted patch over the whole board (100 pixels per inch)' }),
+    el('button', { type: 'button', id: 'heightNew', class: 'cad-btn cad-btn-secondary', text: '＋ New Pixel', title: 'An unpainted patch over the whole board (100 pixels per inch)' }),
     el('button', { type: 'button', id: 'heightRemove', class: 'cad-btn cad-btn-secondary', text: '🗑 Delete' }),
   ]));
   body.appendChild(el('div', { id: 'heightStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));

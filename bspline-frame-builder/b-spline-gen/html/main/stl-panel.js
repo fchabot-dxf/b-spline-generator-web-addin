@@ -34,6 +34,7 @@ import { cropMesh, isFullCropBox, normaliseCropBox, cropBoxIn, cropBoxOf, STL_CR
 import { pushRecent, recentEntryOf, noteLocalModel, forgetLocalModel, LOCAL_LIBRARY, _resetLocalModelsForTests } from '../core/stl/recent.js';
 import { BRUSH_FALLOFFS } from '../core/falloff.js';
 import { renderCropSliders, openLoopsNote } from './stl-crop-controls.js';
+import { typedLayerName } from '../editor/layers.js'; // a nameless new Mesh is 'Mesh 1', 'Mesh 2' ...
 
 /** The controls' groups, in order: each one FOLDS inside the open STL's card (the app's .panel-sub collapse); `open` = its
  *  default (the user's last fold is remembered per viewer, never in P). 'detail' holds no STL_CONTROLS entry: the Stored detail
@@ -73,7 +74,7 @@ export const STL_CONTROLS = Object.freeze([
   { id: 'posZ', group: 'place', kind: 'slider', path: ['position', 'z'], label: 'Z (height above the surface)', step: 0.01, range: () => [-3, 3],
     note: 'below 0 it sinks into the surface; above 0 it floats' },
   { id: 'surface', group: 'place', kind: 'choice', path: ['surface'], label: 'On the terrain',
-    options: [['follow', 'Follow the terrain', 'Each point of the STL sits on the terrain under it (bends over hills)'], ['level', 'Level', 'One rigid object at the terrain height under its centre (+ Z): the terrain is filled or cut to it']] },
+    options: [['follow', 'Follow the terrain', 'Each point of the Mesh sits on the terrain under it (bends over hills)'], ['level', 'Level', 'One rigid object at the terrain height under its centre (+ Z): the terrain is filled or cut to it']] },
   { id: 'scale', group: 'size', kind: 'slider', path: ['scale'], label: 'Size', step: 0.01, range: () => [0.05, 4] },
   { id: 'zScale', group: 'size', kind: 'slider', path: ['zScale'], label: 'Depth (relief height)', step: 0.01, range: () => [0.05, 4] },
   { id: 'rotX', group: 'rotate', kind: 'slider', path: ['rotation', 'x'], label: 'Around X', step: 1, range: () => [-180, 180] },
@@ -82,9 +83,9 @@ export const STL_CONTROLS = Object.freeze([
   { id: 'blend', group: 'stamp', kind: 'choice', path: ['blend'], label: 'Blend',
     options: [['max', 'Max', 'Only the part above the surface shows; nothing is dug'], ['add', 'Add', 'Its height is added to the surface everywhere it covers']] },
   { id: 'raise', group: 'stamp', kind: 'choice', path: ['raise'], label: 'Relief',
-    options: [[true, 'Raised', 'The STL stands out of the surface'], [false, 'Carved', 'The STL is cut into the surface as a hollow']] },
+    options: [[true, 'Raised', 'The Mesh stands out of the surface'], [false, 'Carved', 'The Mesh is cut into the surface as a hollow']] },
   { id: 'placement', group: 'stamp', kind: 'choice', path: ['placement'], label: 'Thicken',
-    options: [['withSurface', 'Before thicken', 'The back follows the STL: thicken offsets the surface with the STL in it'], ['afterBack', 'After thicken', 'Top only: the back stays as it is without this STL']] },
+    options: [['withSurface', 'Before thicken', 'The back follows the Mesh: thicken offsets the surface with the Mesh in it'], ['afterBack', 'After thicken', 'Top only: the back stays as it is without this Mesh']] },
   { id: 'compress', group: 'stamp', kind: 'slider', path: ['compress'], label: 'Compress (bas-relief)', step: 0.05, range: () => [0, 1],
     note: '0 = true heights; more lifts the low parts and flattens the tall ones' },
   { id: 'softness', group: 'stamp', kind: 'slider', path: ['softness'], label: 'Edge softness (in)', step: 0.05, range: () => [0, 2] },
@@ -116,7 +117,7 @@ const turn = (axis, deg) => Object.freeze({
   run: () => turnStl(axis, deg),
 });
 export const STL_ACTIONS = Object.freeze([
-  Object.freeze({ id: 'stlFit', group: 'size', text: '⇕ Fit to carve depth', title: 'Set the Depth so this STL just fits the stock (Board > Carve Depth): Raised peaks at the top, Carved reaches the bottom', run: () => fitStlToCarveDepth() }),
+  Object.freeze({ id: 'stlFit', group: 'size', text: '⇕ Fit to carve depth', title: 'Set the Depth so this Mesh just fits the stock (Board > Carve Depth): Raised peaks at the top, Carved reaches the bottom', run: () => fitStlToCarveDepth() }),
   Object.freeze({ id: 'stlLayFlat', group: 'rotate', text: '⤵ Lay flat', title: 'Turn it so its thinnest side points up and its longest runs up the board (replaces the rotation)', run: () => layFlatStl() }),
   turn('x', -90), turn('x', 90), turn('y', -90), turn('y', 90), turn('z', -90), turn('z', 90),
 ]);
@@ -150,7 +151,7 @@ function updateRecord(id, change) {
 export const LAYER_STACK_STALE = 'layerStackStale';
 function commit(what) {
   scheduleSessionSave();
-  scheduleUndoSnapshot(`stl:${what}`, 'STL');
+  scheduleUndoSnapshot(`stl:${what}`, 'Mesh');
   _hooks.onChange();
   if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent(LAYER_STACK_STALE));
 }
@@ -225,7 +226,7 @@ const status = (text, isError = false) => {
   s.hidden = !text;
   s.classList.toggle('stl-error', !!isError);
 };
-const fileBase = (name) => String(name || 'STL').replace(/\.[^.]+$/, '').slice(0, 40) || 'STL';
+const fileBase = (name) => String(name || '').replace(/\.[^.]+$/, '').slice(0, 40);
 
 /** The STL list gained or lost a layer: the job-timeline strip declares this event (the 'stl' step exists only with a layer). */
 const announceStlLayersChanged = () => { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stlLayersChanged')); };
@@ -250,7 +251,7 @@ export function addStlFromSoup(soup, name, extra = {}) {
     full = indexMesh(soup);
     cut = cropMesh(full, extra.crop);
   }
-  const { record: made, original } = createStlLayer({ soup, mesh: cut ? cut.mesh : null, name: name || 'STL', board: board() });
+  const { record: made, original } = createStlLayer({ soup, mesh: cut ? cut.mesh : null, name: name || typedLayerName(list(), 'Mesh'), board: board() });
   let record = extra && extra.source ? { ...made, source: { ...extra.source } } : made;
   if (cut) record = { ...record, crop: { box: normaliseCropBox(extra.crop), bounds: meshBounds(full.positions), capped: cut.capped, openLoops: cut.openLoops } };
   // a cropped model is laid flat by the WHOLE model's shape (the pose it has uncropped), not by the kept part's
@@ -298,13 +299,13 @@ const downloadProgress = (name) => (got, total) => status(`Downloading ${name ||
 
 /** Replace the mesh of layer `id` (default: the active one) from a file (more detail after a reload): its place / size / settings are kept. */
 export function reimportStlBuffer(buf, name, id = activeStlLayer()?.id) {
-  if (!find(id)) { status('That STL layer is gone, nothing was replaced.', true); return null; }
+  if (!find(id)) { status('That Mesh is gone, nothing was replaced.', true); return null; }
   return reimportStlSoup(parseStl(buf).soup, name, id);
 }
 
 function reimportStlSoup(soup, name, id) {
   const rec = find(id);
-  if (!rec) { status('That STL layer is gone, nothing was replaced.', true); return null; }
+  if (!rec) { status('That Mesh is gone, nothing was replaced.', true); return null; }
   const fresh = createStlLayer({ soup, name: rec.name, board: board(), storedDetail: normaliseStlLayer(rec).storedDetail });
   const { mesh, origTris, storedTris, health } = fresh.record;
   updateRecord(rec.id, (r) => ({ ...r, mesh, origTris, storedTris, health }));
@@ -413,10 +414,10 @@ function stlFitFor(rec) {
 }
 /** Why the Fit changed nothing, one line per reason (the status line shows it). */
 const FIT_NO_ROOM = Object.freeze({
-  terrain: (top) => `Nothing changed: the terrain under this STL already reaches the stock ${top ? 'top' : 'bottom'} (Carve Depth ${P.carveZ} in).`,
+  terrain: (top) => `Nothing changed: the terrain under this Mesh already reaches the stock ${top ? 'top' : 'bottom'} (Carve Depth ${P.carveZ} in).`,
   zOffset: (top) => `Nothing changed: its Z offset alone already takes it to the stock ${top ? 'top' : 'bottom'} (Carve Depth ${P.carveZ} in).`,
-  flat: () => 'Nothing changed: this STL has no height to scale.',
-  empty: () => 'Nothing changed: this STL covers no point of the board.',
+  flat: () => 'Nothing changed: this Mesh has no height to scale.',
+  empty: () => 'Nothing changed: this Mesh covers no point of the board.',
   unreadable: () => 'Nothing changed: the stored mesh cannot be read.',
   notBuilt: () => 'The surface is not built yet: try again once it is.',
 });
@@ -577,7 +578,7 @@ async function importFile(file, { reimport = false } = {}) {
     await withLoadingStage('stl', async () => {
       const buf = await file.arrayBuffer();
       if (epoch !== _projectEpoch) { stale = true; return; }
-      if (reimport && !find(target)) { status('That STL layer is gone, nothing was replaced.', true); return; }
+      if (reimport && !find(target)) { status('That Mesh is gone, nothing was replaced.', true); return; }
       const soup = await soupFromBuffer(buf);
       if (epoch !== _projectEpoch) { stale = true; return; } // a GLB decode is async too
       done = reimport ? reimportStlSoup(soup, file.name, target) : addStlFromSoup(soup, fileBase(file.name));
@@ -700,13 +701,13 @@ export function renderStlPanel(body) {
   body.innerHTML = '';
   byId('stlActive')?.remove(); // the settings block may sit in the layer stack's open card: a re-render replaces it there too
   body.appendChild(el('div', { class: 'stl-add-row' }, [
-    el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add STL…' }),
+    el('button', { type: 'button', id: 'stlAdd', class: 'cad-btn cad-btn-secondary', text: '＋ Add Mesh…' }),
     el('button', { type: 'button', id: 'stlBrowseSi', class: 'cad-btn cad-btn-secondary', text: '🏛 Browse 3D libraries…', title: `Pick a model from the open 3D collections: ${STL_LIBRARIES.map((l) => l.label).join(', ')}` }),
     el('input', { type: 'file', id: 'stlFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
     el('input', { type: 'file', id: 'stlReimportFile', accept: STL_FILE_ACCEPT, style: 'display:none;' }),
   ]));
   // a board-wide P key (DEFAULT false): its id IS the key, so main/ui-bindings.js bindControls binds it the generic way
-  body.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlFitOnInsert' }), el('span', { text: 'Fit new STLs to the carve depth' })]));
+  body.appendChild(el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id: 'stlFitOnInsert' }), el('span', { text: 'Fit new Meshes to the carve depth' })]));
   body.appendChild(el('div', { id: 'stlStatus', class: 'photo-layer-note', role: 'status', hidden: '' }));
   body.appendChild(el('div', { id: 'stlErrors', class: 'photo-layer-note stl-error', role: 'status', hidden: '' }));
   // (the STL cards are in the main panel's LAYER STACK now, Fred 2026-11-23: main/layer-stack.js builds one card per record,
@@ -776,7 +777,7 @@ function showStlErrors(recs) {
   const lines = [];
   for (const [key, msg] of Object.entries(getStlErrors())) {
     const r = key.startsWith('#') ? recs[Number(key.slice(1))] : recs.find((x) => x && String(x.id) === key);
-    if (r) lines.push(`${r.name || 'STL'}: ${msg}`);
+    if (r) lines.push(`${r.name || 'Mesh'}: ${msg}`);
   }
   box.textContent = '';
   for (const l of lines) box.appendChild(el('div', { text: l }));
@@ -891,7 +892,7 @@ export function syncStlPanel() {
   if (t) {
     t.hidden = !recs.length;
     t.textContent = total > STL_WARN_TOTAL_TRIS
-      ? `⚠ ${total.toLocaleString()} triangles stored in this project. A very large project may not fit the browser's storage: lower the Stored detail of some STLs.`
+      ? `⚠ ${total.toLocaleString()} triangles stored in this project. A very large project may not fit the browser's storage: lower the Stored detail of some Meshes.`
       : `${total.toLocaleString()} triangles stored in this project.`;
     t.classList.toggle('stl-error', total > STL_WARN_TOTAL_TRIS);
   }
