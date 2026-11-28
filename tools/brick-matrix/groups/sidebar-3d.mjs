@@ -16,4 +16,15 @@ export const rows = [
   // (the joint profile + depth moved to each element's Size & joint section, 2026-10-11: groups/wall.mjs editor3d rows)
   // BRICK audit A8: the checkbox lives in the FILTER section now (a surface setting); still a 3D-only sidebar control
   { name: 'Hide filter texture', kind: 'sidebar', do: click('isolateSkeleton'), expect: SURFACE },
+  // Fred 2026-11-27: the Bricks card's setting rows (main/layer-stack.js LAYER_CARD_ROWS; the runner opens the Bricks card
+  // first): each a 3D-only brick setting -- never pending, new relief. Ids: layer-stack.js cardRowId(row, 'bricks').
+  { name: 'Card: Strength 40 %', kind: 'sidebar', do: set('layerCardRow_strength_bricks', 40), expect: SURFACE },
+  { name: 'Card: Strength 100 %', kind: 'sidebar', do: set('layerCardRow_strength_bricks', 100), expect: SURFACE },
+  { name: 'Card: Z offset 0.1 in', kind: 'sidebar', do: set('layerCardRow_zOffset_bricks', 0.1), expect: SURFACE },
+  { name: 'Card: Z offset 0', kind: 'sidebar', do: set('layerCardRow_zOffset_bricks', 0), expect: SURFACE },
+  { name: 'Card: Soften edges 0.1 in', kind: 'sidebar', do: set('layerCardRow_soften_bricks', 0.1), expect: SURFACE },
+  { name: 'Card: Soften edges 0', kind: 'sidebar', do: set('layerCardRow_soften_bricks', 0), expect: SURFACE },
+  { name: 'Card: Ground under it 100 %', kind: 'sidebar', do: set('layerCardRow_ground_bricks', 100), expect: SURFACE },
+  { name: 'Card: Relief Carved', kind: 'sidebar', do: click('layerCardRow_relief_bricks_carved'), expect: SURFACE },
+  { name: 'Card: Relief Raised', kind: 'sidebar', do: click('layerCardRow_relief_bricks_raised'), expect: SURFACE },
 ];

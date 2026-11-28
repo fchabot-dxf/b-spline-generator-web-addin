@@ -126,6 +126,30 @@ describe('selecting a row switches the editor to that layer\'s tools', () => {
     expect(getEditorTab()).toBe('artwork');
     expect(rows().find((r) => r.dataset.stackKey === 'layer:0').classList.contains('is-selected')).toBe(true);
   });
+  it('Fred 2026-11-27: a row holding the SELECTED sub-layer can be folded (and stays folded on redraws); a new pick opens it', async () => {
+    mount();
+    const bricks = () => rows().find((r) => r.dataset.stackKey === 'bricks');
+    await selectEditorRow('bricks', '3');
+    expect(bricks().classList.contains('subs-open')).toBe(true);
+    bricks().querySelector('[data-ed-caret]').click();
+    expect(bricks().classList.contains('subs-open')).toBe(false);
+    refreshEditorStack(); refreshEditorStack();
+    expect(bricks().classList.contains('subs-open')).toBe(false); // was re-opened by every redraw
+    expect(bricks().classList.contains('sub-selected')).toBe(true); // the folded row still says its layer is selected
+    await selectEditorRow('bricks', '4');
+    expect(bricks().classList.contains('subs-open')).toBe(true);
+  });
+  it('the chevron comes BEFORE the icon; a row without sub-layers keeps its room (icons line up)', () => {
+    mount();
+    const head = (k) => rows().find((r) => r.dataset.stackKey === k).querySelector('.layer-card-head');
+    for (const k of ['bricks', 'layer:0']) {
+      const kids = [...head(k).children];
+      const caret = kids.findIndex((c) => c.classList.contains('ed-stack-caret'));
+      expect(caret, k).toBeGreaterThanOrEqual(0);
+      expect(caret, k).toBeLessThan(kids.findIndex((c) => c.classList.contains('layer-card-icon')));
+    }
+    expect(head('layer:0').querySelector('[data-ed-caret]')).toBeNull();
+  });
   it('an STL row selects the STL panel (no 2D view yet)', async () => {
     mount();
     await selectEditorRow('stl:s1');

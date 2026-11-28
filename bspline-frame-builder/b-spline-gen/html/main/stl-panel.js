@@ -170,6 +170,16 @@ export function setStlField(controlId, value, id = null) {
   return true;
 }
 
+/** An optional stamp field of record `id` with no STL_CONTROLS entry (the layer stack's card rows, main/layer-stack.js
+ *  LAYER_CARD_ROWS, e.g. `strength`): `value` undefined REMOVES the field (absent = its default, the record as before). One
+ *  copy-on-write write, one commit (one undo step, one rebuild). */
+export function setStlStampField(id, field, value) {
+  if (!find(id)) return false;
+  updateRecord(id, (r) => { const n = { ...r }; if (value === undefined) delete n[field]; else n[field] = value; return n; });
+  commit(field);
+  return true;
+}
+
 /** One falloff edge box (STL_CROP_EDGE_BOXES) of the ACTIVE record: on / off, one copy-on-write write + one undo step. */
 export function setStlCropEdge(key, on) {
   const box = STL_CROP_EDGE_BOXES.find((b) => b.key === key);
@@ -632,15 +642,17 @@ const STL_FILE_ACCEPT = '.stl,model/stl,application/sla,application/octet-stream
 /** The Stored detail slider's travel (min / max attributes only, NOT a rule: a typed value is taken as setStoredDetail takes it). */
 const DETAIL_SLIDER = Object.freeze({ min: 500, step: 500 });
 
+/** One STL_CONTROLS control, in its own field wrapper stl_<id>Field (label, control, note): the layer stack's card rows hide
+ *  the wrapper of a control they supersede (main/layer-stack.js LAYER_CARD_ROWS supersedes). */
 function renderControl(c) {
   if (c.kind === 'choice') {
-    return el('div', {}, [cad(c.label), el('div', { class: 'relief-toggle', id: `stl_${c.id}`, style: 'margin-bottom:10px;' },
+    return el('div', { id: `stl_${c.id}Field` }, [cad(c.label), el('div', { class: 'relief-toggle', id: `stl_${c.id}`, style: 'margin-bottom:10px;' },
       c.options.map(([key, text, title]) => el('button', { type: 'button', class: 'relief-toggle-btn', 'data-stl-choice': `${c.id}:${key}`, title, text })))]);
   }
   const [min, max] = c.range(P);
   const s = el('input', { type: 'range', id: `stl_${c.id}Slider`, class: 'cad-slider', min: String(min), max: String(max), step: String(c.step) });
   const n = el('input', { type: 'number', id: `stl_${c.id}`, min: String(min), max: String(max), step: String(c.step) });
-  return el('div', {}, [cad(c.label), el('div', { class: 'cad-slider-row', style: 'margin-bottom:10px;' }, [s, el('div', { class: 'cad-stepper', style: 'width:66px;' }, [n])]),
+  return el('div', { id: `stl_${c.id}Field` }, [cad(c.label), el('div', { class: 'cad-slider-row', style: 'margin-bottom:10px;' }, [s, el('div', { class: 'cad-stepper', style: 'width:66px;' }, [n])]),
     c.note ? el('div', { class: 'photo-layer-note', text: c.note }) : null]);
 }
 

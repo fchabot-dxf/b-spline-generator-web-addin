@@ -662,6 +662,22 @@ export function setLayerPlacement(editor, id, placement) {
   _notifyLayerToolingCommit('placement');
 }
 
+/** A layer's optional STAMP field (Fred 2026-11-27, the layer stack's card rows, main/layer-stack.js LAYER_CARD_ROWS: e.g.
+ *  `strength`, core/stamp/strength.js): `value` undefined deletes it (its default = the layer as before; a board never
+ *  touched keeps no field, AGENTS.md rule 3). The same commit + undo route as setLayerPlacement. `id` may be a list (the
+ *  Bricks card writes every brick layer's field): all written, ONE commit. */
+export function setLayerStampField(editor, id, field, value) {
+  if (!editor || !Array.isArray(editor._layers)) return false;
+  const ids = new Set((Array.isArray(id) ? id : [id]).map(String));
+  const layers = editor._layers.filter(l => l && ids.has(String(l.id)));
+  if (!layers.length) return false;
+  for (const layer of layers) { if (value === undefined) delete layer[field]; else layer[field] = value; }
+  renderLayersPanel(editor);
+  commitEdit(editor); // the one commit: persist + remask + rebuild
+  _notifyLayerToolingCommit(field);
+  return true;
+}
+
 /** T27: the palette (showColor) toggle — never disabled. Applies as a
  *  display-only class via applyLayerState (never rewrites an element's
  *  own stored stroke/fill), so turning it back on always restores every

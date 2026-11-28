@@ -8,9 +8,11 @@
  */
 import { indexMesh, decimate, encodeMesh, decodeMesh, meshBounds, meshHealth } from './mesh.js';
 import { renderDepth } from './raster.js';
-import { gaussianSmooth } from '../gaussian.js';
 import { cropFalloffOf, applyCropFalloff, placedFootprint } from './crop.js';
 import { STAMP_PLACEMENTS } from '../stamp/placement.js';
+import { strengthOf } from '../stamp/strength.js';
+import { recordGroundOf } from '../stamp/pass-fields.js';
+import { softenBody } from '../stamp/soften.js';
 
 export const STL_BLENDS = Object.freeze(['max', 'add']);
 /** 'withSurface' (slice 1): part of the heights like any stamp. 'afterBack' (built): the top only; the back is thickened from the
@@ -147,7 +149,7 @@ const rasterKey = (rec, g) => JSON.stringify([rec.mesh.h || rec.mesh.nt, rec.uni
 
 /** The pass's final body (0..1), its coverage and the relief height, from the caches when the inputs are the same. */
 function passBody(rec, grid) {
-  const { nx, nz, widthIn } = grid;
+  const { nx, nz } = grid;
   const rKey = rasterKey(rec, grid);
   // the crop-edge falloff (core/stl/crop.js): null when absent / width 0 / no edge -- then the key and the body are as before
   const fo = cropFalloffOf(rec.cropFalloff);
@@ -161,11 +163,7 @@ function passBody(rec, grid) {
   if (r.hMax > 1e-9) for (let k = 0; k < n; k++) body[k] = r.covered[k] ? r.height[k] / r.hMax : 0;
   if (rec.compress > 0) for (let k = 0; k < n; k++) if (covered[k]) body[k] = compressRelief(body[k], rec.compress);
   if (fo) applyCropFalloff(body, covered, r.height, placedFootprint(decoded(rec), rec), fo, grid);
-  if (rec.softness > 0) {
-    const sigma = rec.softness / (widthIn / (nx - 1));
-    body = gaussianSmooth(body, nx, nz, sigma);
-    covered = Uint8Array.from(covered, (c, k) => (c || body[k] > 1e-4 ? 1 : 0));
-  }
+  ({ body, covered } = softenBody(body, covered, rec.softness, grid)); // the one footprint softening (core/stamp/soften.js)
   return lruSet(_bodyCache, bKey, { body, covered, hMax: r.hMax }, STL_CACHE_CAPS.body);
 }
 
@@ -189,6 +187,7 @@ export function stlPass(rawRec, grid) {
     carve: !rec.raise,
     blend: rec.blend,
     placement: rec.placement, // 'afterBack': stamped on the top only (core/engine/rebuild.js buildHeights backBase)
+    ...strengthOf(rec.strength), // the record's Strength (core/stamp/strength.js; absent = 100 %: no key)
     surface: rec.surface,     // 'level': one rigid object at the terrain under `pivot` (core/engine/apply-stamp-layers.js)
     // the record's position in FRACTIONAL grid coordinates of this build's grid (column i at x = -W/2 + i*dx, row j at
     // y = -H/2 + j*dy: a LARGER row = up, buildHeightField's frame)
@@ -198,8 +197,7 @@ export function stlPass(rawRec, grid) {
     ] } : {}),
     zOffset: rec.position.z,
     profile: 'flat',
-    suppression: 0,
-    smoothing: 0,
+    ...recordGroundOf(rec.suppression), // "Ground under it" (core/stamp/pass-fields.js): absent = 0, as before
     edgeFilletRadius: 0,
     filletPower: 1,
   };

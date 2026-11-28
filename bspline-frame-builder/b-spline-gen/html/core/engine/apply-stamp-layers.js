@@ -24,6 +24,7 @@ import { gaussianSmooth } from '../gaussian.js';
 import { dbg } from '../debug.js';
 import { fitPlane } from '../bricks/plane-fit.js';
 import { sampleGridAt } from '../stl/ghost.js';
+import { passStrength } from '../stamp/strength.js';
 
 /**
  * F35 item 18 (1), brick top FLAT: per grid point, the height of the plane its brick sits on --
@@ -126,18 +127,24 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
 
     dbg('STAMP DEBUG', `Applying stamp layer ${layerIdx} name=${layer.name} depth=${effectiveDepth} profile=${effectiveProfile} suppress=${effectiveSuppression}`);
 
-    const suppressStrength = effectiveSuppression;
+    // LAYER STRENGTH (Fred 2026-11-27, the layer stack's Strength slider, main/layer-stack.js LAYER_TYPES strength): a HEIGHT
+    // scale, set on the pass by whoever builds it (core/stamp/strength.js). The layer's own height (art depth, the bricks' depth, the
+    // STL's height, a height patch's +/-1), its fillet and its suppression are multiplied by it BEFORE its rule runs; the rule
+    // itself is untouched (zOffset, the Level base, a Flat brick's plane: never scaled). Absent / 1 = no arithmetic at all.
+    const strength = passStrength(layer);
+    const suppressStrength = strength === null ? effectiveSuppression : effectiveSuppression * strength;
     const blurRadius = effectiveSmoothing || 0;
     const smoothedTerrain = suppressStrength > 0
       ? gaussianSmooth(reference, nx, nz, blurRadius)
       : null;
 
-    const layerDepth = effectiveDepth;
-    const layerSign  = layerDepth >= 0 ? 1 : -1;
+    const layerDepth = strength === null ? effectiveDepth : effectiveDepth * strength;
+    const layerSign  = effectiveDepth >= 0 ? 1 : -1; // the sign of the layer's OWN depth (a 0 % carve stays a carve)
     const filletRadius = (m && m.metrics && Number.isFinite(m.metrics.effectiveFilletIn))
       ? m.metrics.effectiveFilletIn
       : (eLayer.edgeFilletRadius ?? layer.edgeFilletRadius ?? stampEdgeFilletRadius);
-    const filletAmplitude = layerSign * Math.min(filletRadius, Math.abs(layerDepth));
+    const fullFillet = layerSign * Math.min(filletRadius, Math.abs(effectiveDepth)); // the amplitude the channel was baked for
+    const filletAmplitude = strength === null ? fullFillet : fullFillet * strength;
     // Flat brick tops: fitted against the heights BELOW this layer (terrain + earlier layers), the
     // same base an Organic brick drapes onto
     const flatTop = (m && m.flatTop && m.flatTop.brickOf && m.flatTop.brickOf.length === nx * nz) ? m.flatTop : null;
@@ -145,13 +152,18 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     const planeZ = flatTop ? flatBrickPlaneHeights(base, flatTop.brickOf, flatTop.count, nx) : null;
     const isArt = layer.kind !== STAMP_PASS_KIND.bricks;
     // STL-RELIEF: Carved (read only by the two STL branches below); a pass without the flag falls back to its depth's sign
-    const stlCarves = layer.carve === true || (layer.carve === undefined && layerDepth < 0);
+    const stlCarves = layer.carve === true || (layer.carve === undefined && effectiveDepth < 0);
     // STL-RELIEF 'Level' (Fred 2026-11-22, core/stl/layer.js STL_SURFACES): ONE rigid object whose base is the clean terrain
     // under its pivot (bilinear, fractional grid coordinates from stlPass). Only this pass kind with surface 'level' reads it;
     // every other pass, and every follow STL, takes the branches below exactly as before.
     const stlLevel = layer.kind === STAMP_PASS_KIND.stl && layer.surface === 'level'; // STL only: a height patch always follows (Fred: "No rigid")
     const fromRecord = RECORD_PASS_KINDS.includes(layer.kind);
     const levelBase = stlLevel ? sampleGridAt(cleanHeights, nx, nz, layer.pivot[0], layer.pivot[1]) : 0;
+    // Z OFFSET of a pass that is not a record (art, bricks; Fred 2026-11-27, the layer stack's Z offset row): the SAME meaning
+    // the STL / height branches give their record's zOffset -- (carve ? -1 : 1) * zOffset over the points the layer covers; a
+    // Flat brick's on top of its plane. Never scaled by the strength. Absent / 0 = nothing added (core/stamp/pass-fields.js).
+    const ownZ = !fromRecord && typeof layer.zOffset === 'number' && Number.isFinite(layer.zOffset) && layer.zOffset !== 0
+      ? (stlCarves ? -1 : 1) * layer.zOffset : 0;
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
@@ -160,6 +172,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       // grout (NaN) falls through and stays draped, exactly as in Organic
       if (planeZ && !Number.isNaN(planeZ[k])) {
         stampedHeights[k] = planeZ[k] + artDelta[k] + bodyVal * layerDepth + filletVal * filletAmplitude;
+        if (ownZ !== 0 && (isStamped ? isStamped[k] : bodyVal > 1e-6)) stampedHeights[k] += ownZ;
         continue;
       }
       const stamped   = isStamped ? isStamped[k] : (bodyVal > 1e-6);
@@ -193,6 +206,7 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
         if (stamped) stampedHeights[k] += (stlCarves ? -1 : 1) * ((layer.zOffset || 0) + bodyVal * Math.abs(layerDepth));
       } else {
         stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
+        if (ownZ !== 0 && stamped) stampedHeights[k] += ownZ;
       }
       if (isArt) { artDelta[k] += stampedHeights[k] - before; anyArt = true; }
     }

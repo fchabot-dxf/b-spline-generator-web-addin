@@ -15,6 +15,9 @@
 import { encodeRaster } from './raster.js';
 import { patchComposite, compositeKey, patchGrid, patchReady, ensurePatchDecoded } from './compose.js';
 import { STAMP_PLACEMENTS } from '../stamp/placement.js';
+import { strengthOf } from '../stamp/strength.js';
+import { recordGroundOf } from '../stamp/pass-fields.js';
+import { softenBody } from '../stamp/soften.js';
 
 export const HEIGHT_BLENDS = Object.freeze(['add', 'max']);
 export const HEIGHT_PLACEMENTS = STAMP_PLACEMENTS; // the one table: core/stamp/placement.js
@@ -110,7 +113,9 @@ function sampled(rec, data, grid) {
   const { nx, nz, widthIn, heightIn } = grid;
   const size = sizeOf(rec, grid);
   const g = patchGrid(rec);
-  const key = JSON.stringify([compositeKey(rec), g.cols, g.rows, size.w, size.h, rec.position.x, rec.position.y, rec.rotation, nx, nz, widthIn, heightIn]);
+  // + the record's edge softness (Fred 2026-11-27, core/stamp/soften.js) -- only when set: an untouched patch keeps its key
+  const soft = rec.softness > 0 ? rec.softness : 0;
+  const key = JSON.stringify([compositeKey(rec), g.cols, g.rows, size.w, size.h, rec.position.x, rec.position.y, rec.rotation, nx, nz, widthIn, heightIn, ...(soft ? [soft] : [])]);
   const hit = lruGet(key);
   if (hit) return hit;
   const { cols, rows } = g;
@@ -129,7 +134,7 @@ function sampled(rec, data, grid) {
       covered[j * nx + i] = 1;
     }
   }
-  return lruSet(key, { body, covered });
+  return lruSet(key, softenBody(body, covered, soft, grid)); // soft 0: the same arrays
 }
 
 /**
@@ -157,10 +162,10 @@ export function heightPass(rawRec, grid) {
     carve: !rec.raise,
     blend: rec.blend,
     placement: rec.placement,
+    ...strengthOf(rec.strength), // the record's Strength (core/stamp/strength.js; absent = 100 %: no key)
     zOffset: rec.zOffset,
     profile: 'flat',
-    suppression: 0,
-    smoothing: 0,
+    ...recordGroundOf(rec.suppression), // "Ground under it" (core/stamp/pass-fields.js): absent = 0, as before
     edgeFilletRadius: 0,
     filletPower: 1,
   };
