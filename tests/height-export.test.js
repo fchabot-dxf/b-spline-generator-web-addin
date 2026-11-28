@@ -82,6 +82,6 @@ describe('round trip: export -> import, the same heights within 16-bit precision
     await newHeightPatch();
     await applyHeightGradient([-0.995, 0], [0.995, 0], { startIn: -0.25, endIn: 0.375, falloff: 'linear' }); // Float16-exact stops
     const { out } = await roundTrip();
-    expect(out.fileName).toBe('Height-1_-0.25-0.375in.png');
+    expect(out.fileName).toBe('Pixel-1_-0.25-0.375in.png');
   });
 });

@@ -287,7 +287,7 @@ describe('Fit to carve depth after a crop with the crop-edge falloff (the stamp 
   });
 });
 
-describe('the option: Fit new STLs to the carve depth (P.stlFitOnInsert)', () => {
+describe('the option: Fit new Meshes to the carve depth (P.stlFitOnInsert)', () => {
   it('is declared false in DEFAULT (absent on a saved board = off), never read by a build', () => {
     expect(DEFAULT.stlFitOnInsert).toBe(false);
     expect(REBUILD_INERT_KEYS.has('stlFitOnInsert')).toBe(true);
@@ -296,7 +296,7 @@ describe('the option: Fit new STLs to the carve depth (P.stlFitOnInsert)', () =>
     panelBoard();
     const box = $('stlFitOnInsert');
     expect(box && box.type).toBe('checkbox');
-    expect(box.closest('label').textContent).toBe('Fit new STLs to the carve depth');
+    expect(box.closest('label').textContent).toBe('Fit new Meshes to the carve depth');
   });
   it('off: a new STL is added as it is (Depth 1)', () => {
     panelBoard();
