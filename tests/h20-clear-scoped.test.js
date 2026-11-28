@@ -177,7 +177,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Bricks)', () => {
     const depth = editor._undoStack.length;
     expect(await runClear('artwork', editor)).toBe(true);
     expect(ids(editor)).toEqual(['brick-1', 'brick-2']);
-    expect(editor._layers.map((l) => l.name)).toEqual(['Layer 1', 'Bricks']); // the art layer stays in front
+    expect(editor._layers.map((l) => l.name)).toEqual(['Bricks']); // no empty art layer is left behind (a file may hold none)
     expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe('KEY');
     expect(editor._undoStack.length).toBe(depth + 1);
     expect(frameClear).not.toHaveBeenCalled();
