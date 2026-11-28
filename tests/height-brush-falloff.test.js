@@ -55,7 +55,8 @@ describe('the panel declares the Falloff choice', () => {
     const { HEIGHT_CONTROLS } = await import('../bspline-frame-builder/b-spline-gen/html/main/height-panel.js');
     const ids = HEIGHT_CONTROLS.map((c) => c.id);
     const c = HEIGHT_CONTROLS.find((x) => x.id === 'falloff');
-    expect(c).toMatchObject({ group: 'brush', target: 'brush', kind: 'choice', path: ['falloff'] });
+    // owner 2026-11-27 (visual choices stay in the side panel): the brush's own panel section beside the Tip, an icon picker
+    expect(c).toMatchObject({ group: 'brushShape', picker: true, target: 'brush', kind: 'choice', path: ['falloff'] });
     expect(c.options.map(([k]) => k)).toEqual(Object.keys(BRUSH_FALLOFFS));
     expect(ids.indexOf('falloff')).toBe(ids.indexOf('tip') + 1); // Fred 2026-11-22: no presets -- Falloff right after Tip, above size / hardness
   });

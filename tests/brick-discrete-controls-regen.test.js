@@ -67,10 +67,7 @@ const FIXTURE = `
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
-  <div id="brickSetRow"></div>
   <div id="brickSizePresetList"></div>
-  <input id="brickSizeSlider" type="range" min="0" max="1000" step="1" value="226"><input id="brickSize" type="number" value="0.75">
-  <input id="brickGroutWidth"><input id="brickGroutDepth">
   <button id="brickBtnGroutRecessed"></button><button id="brickBtnGroutFlush"></button>
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
@@ -78,7 +75,7 @@ const FIXTURE = `
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
   <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
-  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutWidthRow"></div><div id="brickGroutDepthRow"></div></div>
+  <div id="brickWallSection"></div><div id="brickSharedSet"><div id="brickSetRow"></div></div><!-- the set row inside its block, as the palette has it (a section with no control on screen hides: brick-tab-sections.js) --><div id="brickSharedLayout"><div id="brickSizeBlock"><input id="brickSizeSlider" type="range" min="0" max="1000" step="1" value="226"><input id="brickSize" type="number" value="0.75"></div><div id="brickGroutWidthRow"><input id="brickGroutWidth"></div><div id="brickGroutDepthRow"><input id="brickGroutDepth"></div></div>
   <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
